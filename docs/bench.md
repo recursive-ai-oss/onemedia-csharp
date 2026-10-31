@@ -57,3 +57,9 @@ fragmented MP4 (done by `run`); `list` shows rows and files. The corpus is `$ONE
 
 Timings are only comparable between runs on a quiet machine. The published run is one command per machine under the
 exclusive bench queue.
+
+## Provenance of the comparator calls
+
+Every comparator call was chosen from the package's published README, its package page and its public type and member
+signatures. No comparator's source, decompiled code or unpacked package contents was read, and no reference tool's source was
+read; the tools run as released binaries.
