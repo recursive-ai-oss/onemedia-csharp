@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 namespace RecursiveAI.OneMedia.IsoBmff;
 
 /// <summary>
@@ -23,6 +24,7 @@ internal sealed class TableWindow
     }
 
     /// <summary>Makes bytes [relative, relative + count) available, returning false past the end of the table or the source.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool Fill(long relative, int count)
     {
         if (relative < 0 || relative + count > _length)
@@ -42,6 +44,7 @@ internal sealed class TableWindow
         return n >= count;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryU8(long relative, out byte value)
     {
         if (Fill(relative, 1))
@@ -54,6 +57,7 @@ internal sealed class TableWindow
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryU16(long relative, out uint value)
     {
         if (Fill(relative, 2))
@@ -66,6 +70,7 @@ internal sealed class TableWindow
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryU32(long relative, out uint value)
     {
         if (Fill(relative, 4))
@@ -78,6 +83,7 @@ internal sealed class TableWindow
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryU64(long relative, out ulong value)
     {
         if (Fill(relative, 8))
@@ -172,6 +178,7 @@ internal sealed class SampleCursor
     public long SyncSampleCount => _hasStss ? _stssCount : SampleCount;
 
     /// <summary>Moves to the next sample; false at the end of the table or where it stops making sense.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool MoveNext()
     {
         if (!_valid)
@@ -232,6 +239,7 @@ internal sealed class SampleCursor
     }
 
     /// <summary>Positions on a sample by number (0-based). Returns false if the sample is not described by the table.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool SeekToSample(long index)
     {
         _valid = false;
@@ -484,6 +492,7 @@ internal sealed class SampleCursor
         return lo < _stssCount && _stss.TryU32(lo * 4, out uint s) ? s - 1L : -1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private int SizeOf(long index)
     {
         if (_t.ConstantSize != 0)
@@ -514,6 +523,7 @@ internal sealed class SampleCursor
         return _t.Sdtp.IsPresent && index < _t.Sdtp.Count && _sdtp.TryU8(index, out byte b) && ((b >> 2) & 3) == 2;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool LoadTimingRun(long run)
     {
         while (run < _sttsRuns)
@@ -537,6 +547,7 @@ internal sealed class SampleCursor
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void LoadCompositionRun(long run)
     {
         while (run < _cttsRuns && _ctts.TryU32(run * 8, out uint count) && _ctts.TryU32((run * 8) + 4, out uint offset))
@@ -557,6 +568,7 @@ internal sealed class SampleCursor
     }
 
     // Points at the next listed sync sample number greater than afterNumber. Writers sometimes repeat an entry; a repeat must not hide the next one.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void LoadSync(long idx, long afterNumber)
     {
         uint v = 0;
@@ -569,6 +581,7 @@ internal sealed class SampleCursor
         _nextSync = idx < _stssCount ? v : uint.MaxValue;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool ChunkStart(long chunk, out long offset)
     {
         offset = 0;
@@ -598,6 +611,7 @@ internal sealed class SampleCursor
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool EnterChunk(long chunk)
     {
         if (chunk >= _chunkNextFirst)

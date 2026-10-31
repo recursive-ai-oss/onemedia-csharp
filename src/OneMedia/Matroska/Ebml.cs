@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Numerics;
 
 namespace RecursiveAI.OneMedia.Matroska;
@@ -24,6 +25,7 @@ public static class Ebml
     /// <param name="id">The ID, marker bits included.</param>
     /// <param name="length">The number of bytes the ID takes (1 to 4).</param>
     /// <returns>False when the data is too short, starts with a zero byte, or the ID is longer than 4 bytes.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryReadId(ReadOnlySpan<byte> data, out uint id, out int length)
     {
         id = 0;
@@ -58,6 +60,7 @@ public static class Ebml
     /// <param name="value">The value with the marker bit cleared.</param>
     /// <param name="length">The number of bytes it takes (1 to 8).</param>
     /// <returns>False when the data is too short or starts with a zero byte.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryReadVint(ReadOnlySpan<byte> data, out ulong value, out int length)
     {
         value = 0;
@@ -92,6 +95,7 @@ public static class Ebml
     /// <param name="size">The size in bytes, or <see cref="UnknownSize"/>.</param>
     /// <param name="length">The number of bytes the field takes (1 to 8).</param>
     /// <returns>False when the data is too short or starts with a zero byte.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryReadSize(ReadOnlySpan<byte> data, out long size, out int length)
     {
         if (!TryReadVint(data, out ulong value, out length))
@@ -109,6 +113,7 @@ public static class Ebml
     /// <param name="payload">The element payload.</param>
     /// <param name="value">The big-endian value.</param>
     /// <returns>False when the payload is longer than 8 bytes.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryReadUnsigned(ReadOnlySpan<byte> payload, out ulong value)
     {
         value = 0;
@@ -129,6 +134,7 @@ public static class Ebml
     /// <param name="payload">The element payload.</param>
     /// <param name="value">The sign-extended big-endian value.</param>
     /// <returns>False when the payload is longer than 8 bytes.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryReadSigned(ReadOnlySpan<byte> payload, out long value)
     {
         value = 0;
@@ -159,6 +165,7 @@ public static class Ebml
     /// <param name="payload">The element payload.</param>
     /// <param name="value">The rounded value.</param>
     /// <returns>False for NaN, infinities, values outside the 64-bit range and payload lengths other than 0, 4 and 8.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryReadFloatRounded(ReadOnlySpan<byte> payload, out long value)
     {
         value = 0;
@@ -182,6 +189,7 @@ public static class Ebml
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static bool IeeeToInt64(ulong bits, int exponentBits, int mantissaBits, out long value)
     {
         value = 0;
@@ -241,6 +249,7 @@ public static class EbmlCrc32
     /// <param name="state">The running state, starting at <see cref="Initial"/>.</param>
     /// <param name="data">The bytes to add.</param>
     /// <returns>The new running state.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static uint Update(uint state, ReadOnlySpan<byte> data)
     {
         uint[] t = Tables;

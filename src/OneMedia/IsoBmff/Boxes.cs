@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Buffers.Binary;
 using System.Text;
 
@@ -195,6 +196,7 @@ public static class BoxReader
     /// <param name="header">The header, when the result is true.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>False when no valid box starts here (the range is exhausted or the size field is impossible); the cause is in <paramref name="defects"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryRead(IMediaSource source, long offset, long rangeEnd, bool isTopLevel, DefectLog? defects, out BoxHeader header, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -218,6 +220,7 @@ public static class BoxReader
     /// <param name="defects">Receives what is wrong; may be <c>null</c>.</param>
     /// <param name="header">The header, when the result is true.</param>
     /// <returns>False when no valid box starts here.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryParse(ReadOnlySpan<byte> bytes, long offset, long rangeEnd, bool isTopLevel, DefectLog? defects, out BoxHeader header)
     {
         header = default;
@@ -405,6 +408,7 @@ public sealed class BoxNode : IStructureNode
     /// <summary>Finds the first child of a type.</summary>
     /// <param name="type">The type to look for.</param>
     /// <returns>The child, or <c>null</c>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public BoxNode? Find(uint type)
     {
         foreach (BoxNode child in EnumerateChildren())
@@ -422,6 +426,7 @@ public sealed class BoxNode : IStructureNode
     /// <param name="maxBytes">Reads at most this many payload bytes.</param>
     /// <returns>The bytes; shorter than the payload when the source ends early (a defect is recorded).</returns>
     /// <exception cref="MediaLimitExceededException">The payload is larger than the allocation limit.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public byte[] ReadPayload(long maxBytes = long.MaxValue)
     {
         long count = Math.Min(PayloadSize, maxBytes);
@@ -437,6 +442,7 @@ public sealed class BoxNode : IStructureNode
         return bytes;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private List<BoxNode> ReadChildren()
     {
         List<BoxNode> list = [];
@@ -473,6 +479,7 @@ public sealed class BoxNode : IStructureNode
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool TryReadNextChild(ref long pos, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BoxNode? child)
     {
         child = null;
@@ -505,8 +512,10 @@ public sealed class BoxNode : IStructureNode
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private int ChildPrefix(BoxHeader child) => ComputePrefix(_context, child);
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static int ComputePrefix(BoxContext context, BoxHeader child)
     {
         if (child.Type == BoxTypes.Meta)
@@ -598,6 +607,7 @@ public sealed class BoxTree
     /// <summary>Finds the first top-level box of a type.</summary>
     /// <param name="type">The type to look for.</param>
     /// <returns>The box, or <c>null</c>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public BoxNode? Find(uint type)
     {
         foreach (BoxNode node in TopLevel)
