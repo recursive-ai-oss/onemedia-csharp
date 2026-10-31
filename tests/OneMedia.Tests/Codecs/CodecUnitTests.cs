@@ -325,6 +325,9 @@ public sealed class CodecUnitTests
 
     private static readonly List<string> AllocationFailures = [];
 
+    // Fully optimised so on-stack replacement of the measuring loop doesn't allocate on this thread, and the minimum of three
+    // rounds is taken so a one-off JIT event in a parallel test run isn't counted as parser allocation.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private static void AssertNoAllocation(string what, Action action)
     {
         for (int i = 0; i < 200; i++)
@@ -332,13 +335,17 @@ public sealed class CodecUnitTests
             action();
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 5000; i++)
+        long delta = long.MaxValue;
+        for (int round = 0; round < 3 && delta != 0; round++)
         {
-            action();
-        }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 5000; i++)
+            {
+                action();
+            }
 
-        long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+            delta = Math.Min(delta, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
         string? report = Environment.GetEnvironmentVariable("ONEMEDIA_CODEC_REPORT_DIR");
         if (report is not null)
         {

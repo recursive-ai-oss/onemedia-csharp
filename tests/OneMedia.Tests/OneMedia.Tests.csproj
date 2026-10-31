@@ -6,6 +6,9 @@
     <RootNamespace>RecursiveAI.OneMedia.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
     <NoWarn>$(NoWarn);xUnit1051;xUnit1031</NoWarn>
+    <!-- Several tests assert zero allocations per packet or per parse. Tiered compilation allocates on the calling thread when it
+         swaps in optimised code, which made those assertions flaky in parallel runs; the tests measure our code, not the JIT. -->
+    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
   <ItemGroup>
