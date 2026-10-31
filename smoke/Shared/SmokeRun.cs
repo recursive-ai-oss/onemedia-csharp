@@ -32,7 +32,7 @@ internal static class SmokeRun
 
         // Sniffing through the explicit registry.
         MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffSniffer());
+        registry.Add(new IsoBmffFormat());
         registry.Add(new EbmlSniffer());
         byte[] mp4 = [0, 0, 0, 16, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'i', (byte)'s', (byte)'o', (byte)'m', 0, 0, 0, 0];
         byte[] mkv = [0x1A, 0x45, 0xDF, 0xA3, 0x88, 0x42, 0x82, 0x84, (byte)'w', (byte)'e', (byte)'b', (byte)'m'];
