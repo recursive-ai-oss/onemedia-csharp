@@ -113,8 +113,9 @@ samples) fetched by the corpus scripts.
 
 ### Where it stands
 
-On 116 files (63 MP4/MOV/3GP/M4A, 53 Matroska/WebM/MKA) against ExifTool 13.60 and MediaInfo 26.10: 1,409 compared fields; every one agrees with at least one
-oracle or is in the table above, except one malformed fixture on purpose (`north_of_here` as a position, reported as `tags.iso6709`). Rows where an oracle
-reported the field and agreed, by kind: native tags ExifTool 625/646 (the 21 others are the collapse rows above and the Matroska track-tag cases), MediaInfo
-496/498 (it prints degrees-minutes-seconds positions as if they were decimal degrees); common view ExifTool 227/229 and MediaInfo 224/232; facts ExifTool
-450/453 and MediaInfo 262/268 (the rest are the duration and positions above).
+On 116 files (63 MP4/MOV/3GP/M4A, 53 Matroska/WebM/MKA) against ExifTool 13.60 and MediaInfo 26.10: 1,266 compared fields. 1,097 agree with every oracle that
+reports them; 145 more agree with one oracle where the other does not report the field (`native` rows only ExifTool lists: MediaInfo has no key for most tags);
+13 are ExifTool's one-value-per-name collapse, 7 are the multi-value and mkvmerge `Encoder` cases, 3 are MediaInfo's stream-based duration, and 1 is a
+malformed fixture on purpose (`north_of_here` as a position, reported as `tags.iso6709`). Per kind, rows where the oracle reported the field and agreed:
+native tags ExifTool 625/646 and MediaInfo 496/498 (MediaInfo prints degrees-minutes-seconds positions as if they were decimal degrees); common view ExifTool
+196/197 and MediaInfo 200/206; facts ExifTool 295/296 and MediaInfo 317/322 (the rest are the durations, positions and the pre-1970 `mvhd` above).
