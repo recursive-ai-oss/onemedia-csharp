@@ -22,24 +22,33 @@ public class PullPathTests
     [Fact]
     public void PullPathAllocatesNothingPerPacket()
     {
-        using FixedPacketDemuxer demuxer = new(new MemoryMediaSource(Data()), PacketSize);
+        byte[] data = Data();
 
-        // Warm up: the first calls may JIT and grow buffers.
-        for (int i = 0; i < 100; i++)
+        // Warm up on a first demuxer: the first calls JIT and grow buffers. The measured loop lives in a fully optimised
+        // helper so on-stack replacement of a long-running loop doesn't allocate on this thread while we measure.
+        using (FixedPacketDemuxer warm = new(new MemoryMediaSource(data), PacketSize))
         {
-            Assert.True(demuxer.TryReadPacket(out _));
+            Drain(warm, out _);
         }
 
-        long checksum = 0;
+        using FixedPacketDemuxer demuxer = new(new MemoryMediaSource(data), PacketSize);
+        Assert.True(demuxer.TryReadPacket(out _));
+        long allocated = Drain(demuxer, out long checksum);
+        Assert.NotEqual(0, checksum);
+        Assert.Equal(0, allocated);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+    private static long Drain(FixedPacketDemuxer demuxer, out long checksum)
+    {
+        checksum = 0;
         long before = GC.GetAllocatedBytesForCurrentThread();
         while (demuxer.TryReadPacket(out PacketView view))
         {
             checksum += view.Data[0] + view.Info.Pts.Ticks;
         }
 
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.NotEqual(0, checksum);
-        Assert.Equal(0, after - before);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     [Fact]

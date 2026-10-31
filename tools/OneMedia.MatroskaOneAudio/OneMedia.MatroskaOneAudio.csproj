@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Checks that the packets, codec configuration and priming the Matroska reader exposes match what OneAudio's own Ogg and MP4 readers
+       produce for the same audio. OneAudio is referenced here only; the core package stays free of it. Not shipped. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.MatroskaOneAudio</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RecursiveAI.OneAudio" />
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>
