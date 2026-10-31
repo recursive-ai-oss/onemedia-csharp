@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using RecursiveAI.OneMedia.IsoBmff;
+using RecursiveAI.OneMedia.Tests.IsoBmffSupport;
 using RecursiveAI.OneMedia.Matroska;
 
 namespace RecursiveAI.OneMedia.Smoke;
@@ -32,7 +33,7 @@ internal static class SmokeRun
 
         // Sniffing through the explicit registry.
         MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffSniffer());
+        registry.Add(new IsoBmffFormat());
         registry.Add(new EbmlSniffer());
         byte[] mp4 = [0, 0, 0, 16, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'i', (byte)'s', (byte)'o', (byte)'m', 0, 0, 0, 0];
         byte[] mkv = [0x1A, 0x45, 0xDF, 0xA3, 0x88, 0x42, 0x82, 0x84, (byte)'w', (byte)'e', (byte)'b', (byte)'m'];
@@ -81,6 +82,25 @@ internal static class SmokeRun
         }
 
         Check("owned packets", owned == 6);
+
+        // An MP4 built in memory, read through the registry entry: tables, edit list, keyframe seek.
+        Mp4Builder.TrackSpec video = new() { SampleCount = 30, IsSync = i => i % 10 == 0, CompositionOffsetOf = _ => 80, SamplesPerChunk = 4 };
+        Mp4Builder.TrackSpec sound = new() { Id = 2, Handler = "soun", Timescale = 44100, SampleCount = 20, DurationOf = _ => 1024, SizeOf = _ => 30, Edits = [(500, 1024)] };
+        Mp4Builder.Layout mp4Layout = Mp4Builder.Build([video, sound], moovFirst: false);
+        MediaFormatRegistry mp4Registry = new();
+        mp4Registry.Add(new IsoBmffFormat());
+        using (IDemuxer mp4Demuxer = mp4Registry.Open(new MemoryMediaSource(mp4Layout.ToArray([video, sound]))))
+        {
+            int mp4Packets = 0;
+            while (mp4Demuxer.TryReadPacket(out _))
+            {
+                mp4Packets++;
+            }
+
+            Check("mp4 packets", mp4Packets == 50 && mp4Demuxer.Tracks.Count == 2 && mp4Demuxer.Tracks[0].Codec == CodecId.H264);
+            Check("mp4 edit list", mp4Demuxer.Tracks[1].Edit.Priming == new MediaTime(1024, 44100));
+            Check("mp4 seek", mp4Demuxer.Seek(new MediaTime(500, 1000)).Ticks == 480);
+        }
 
         // Limits and defects.
         bool threw = false;

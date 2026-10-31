@@ -31,7 +31,7 @@ static int Run(string[] args)
 static int Info(string path)
 {
     MediaFormatRegistry registry = new();
-    registry.Add(new IsoBmffSniffer());
+    registry.Add(new IsoBmffFormat());
     registry.Add(new EbmlSniffer());
     registry.Add(new WavSniffer());
     registry.Add(new AviSniffer());
