@@ -85,4 +85,24 @@ public class IsoSampleEntryTests
         Assert.Equal(1, d.Tracks[0].Audio!.Value.Channels);
         Assert.Equal(rate, d.Tracks[0].Audio!.Value.SampleRate);
     }
+
+    [Fact]
+    public void QuickTimeTextEntryIsTimedText()
+    {
+        TrackSpec text = new() { Id = 1, Handler = "text", Timescale = 1000, SampleCount = 2, SizeOf = _ => 12, DurationOf = _ => 500, SampleEntries = Box("text", new byte[6], U16(1), new byte[43]) };
+        byte[] file = Build([text], moovFirst: true, brand: "qt  ").ToArray([text]);
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(file));
+        Assert.Equal(CodecId.TimedText, d.Tracks[0].Codec);
+    }
+
+    [Theory]
+    [InlineData("tapt")]
+    [InlineData("gmhd")]
+    [InlineData("hinf")]
+    [InlineData("hnti")]
+    public void QuickTimeAndHintContainersHoldBoxes(string type)
+    {
+        uint code = BitConverter.ToUInt32(Encoding.ASCII.GetBytes(type).Reverse().ToArray());
+        Assert.True(BoxReader.IsContainer(code, 0));
+    }
 }
