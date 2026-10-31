@@ -180,6 +180,12 @@ internal static class Program
         });
 
         Console.Write(Reports.Summarize(o.Out));
+        if (o.Audio)
+        {
+            Console.WriteLine("OneAudio comparison:");
+            Console.Write(Reports.Summarize(Path.Combine(o.Out, "oneaudio")));
+        }
+
         Console.WriteLine($"files this run: {done}, left over: {remaining}");
         return remaining > 0 ? 75 : 0;
     }
@@ -239,8 +245,7 @@ internal static class Program
             }
             else
             {
-                List<(StructureCompare.Entry Entry, bool SkipsChildren)> listing = StructureCompare.Mkvinfo(f);
-                message = StructureCompare.Providers.Count == 0 ? $"no structure provider registered ({listing.Count} elements in mkvinfo's listing)" : null;
+                message = StructureCompare.CompareMatroska(f);
             }
 
             Console.WriteLine($"{(message is null ? "same" : "note")} {Path.GetRelativePath(o.Root, f)}{(message is null ? "" : ": " + message)}");

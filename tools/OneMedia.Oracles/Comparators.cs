@@ -106,7 +106,7 @@ internal static class OneAudioCompare
 internal static class StructureCompare
 {
     /// <summary>Structure providers of our readers; add one line per reader as it lands.</summary>
-    public static List<Func<IMediaSource, IStructureNode?>> Providers { get; } = [];
+    public static List<Func<IMediaSource, IStructureNode?>> Providers { get; } = [static source => new RecursiveAI.OneMedia.IsoBmff.BoxTree(source).Root];
 
     internal readonly record struct Entry(int Depth, string Type, long Size);
 
@@ -215,6 +215,52 @@ internal static class StructureCompare
         }
 
         return "no provider recognised the file";
+    }
+
+    /// <summary>
+    /// Compares every element mkvinfo (<c>-a -P -z -v -v</c>) lists with a position and sizes against our element tree: same offset,
+    /// same total size, same data size. Returns a message, or null when every listed element is found and agrees.
+    /// </summary>
+    public static string? CompareMatroska(string file)
+    {
+        string text = Oracle.Run("mkvinfo", "-a", "-P", "-z", "-v", "-v", file);
+        using FileMediaSource source = FileMediaSource.Open(file);
+        RecursiveAI.OneMedia.Matroska.EbmlDocument doc = RecursiveAI.OneMedia.Matroska.EbmlDocument.Open(source);
+        Dictionary<long, IStructureNode> byOffset = [];
+        foreach (RecursiveAI.OneMedia.Matroska.EbmlElement top in doc.Elements)
+        {
+            foreach ((IStructureNode node, int _) in ((IStructureNode)top).Descendants(new MediaLimits { MaxElementCount = 100_000_000 }))
+            {
+                byOffset[node.Offset] = node;
+            }
+        }
+
+        Regex rx = new(@"at (\d+) size (\d+) data size (\d+)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5));
+        int listed = 0, missing = 0, differing = 0;
+        string? first = null;
+        foreach (string line in text.Split('\n'))
+        {
+            Match m = rx.Match(line);
+            if (!m.Success)
+            {
+                continue;
+            }
+
+            listed++;
+            long at = long.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), size = long.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture), data = long.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+            if (!byOffset.TryGetValue(at, out IStructureNode? e))
+            {
+                missing++;
+                first ??= "missing in tree: " + line.Trim();
+            }
+            else if (e.HeaderSize + e.PayloadSize != size || e.PayloadSize != data)
+            {
+                differing++;
+                first ??= $"differs: {line.Trim()} | ours header={e.HeaderSize} payload={e.PayloadSize}";
+            }
+        }
+
+        return missing + differing == 0 ? (listed == 0 ? "mkvinfo listed no elements" : null) : $"{listed} elements: missing {missing}, differing {differing}; first {first}";
     }
 
     private static string FourCc(ulong key)
