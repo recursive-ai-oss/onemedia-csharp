@@ -26,13 +26,21 @@ public static class CodecParameterReader
     /// (<c>avcC</c>, <c>hvcC</c>, <c>vvcC</c>, <c>av1C</c>, <c>vpcC</c>, <c>esds</c>, <c>asc</c>, <c>dOps</c>, <c>dfLa</c>, <c>dac3</c>, <c>dec3</c>, <c>damr</c>,
     /// <c>OpusHead</c>, <c>CodecPrivate</c>); when it is null or <c>CodecPrivate</c> the layout is the codec's Matroska one.</param>
     /// <param name="parameters">The summary when true.</param>
-    /// <returns>False when the codec has no configuration form here, the bytes are empty, or they do not parse. Never throws.</returns>
+    /// <returns>False when the codec has no configuration form here, the bytes are empty (except AMR, whose facts are fixed), or they do not parse. Never throws.</returns>
     public static bool TryDescribe(CodecId codec, CodecConfiguration configuration, out CodecParameters? parameters)
     {
         parameters = null;
         ReadOnlyMemory<byte> data = configuration.Data;
         if (data.IsEmpty)
         {
+            // 3GPP TS 26.244 wants a damr box, but writers exist that leave it out (observed for AMR-WB in 3GP); the sample entry already
+            // says which band, so the fixed AMR facts can still be given.
+            if (codec.Name is "amr-nb" or "amr-wb")
+            {
+                parameters = DescribeAmr(codec.Name == "amr-wb");
+                return true;
+            }
+
             return false;
         }
 

@@ -16,13 +16,14 @@ public sealed partial class CodecFieldDifferentialTests
 
     private static string FfprobePath => Environment.GetEnvironmentVariable("ONEMEDIA_FFPROBE") ?? "ffprobe";
 
-    internal static string RunTool(string exe, string args)
+    internal static string RunTool(string exe, string args, bool includeStandardError = false)
     {
         using Process p = Process.Start(new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false })!;
+        Task<string> error = p.StandardError.ReadToEndAsync();
         string output = p.StandardOutput.ReadToEnd();
-        p.StandardError.ReadToEnd();
+        string errorText = error.GetAwaiter().GetResult();
         p.WaitForExit();
-        return output;
+        return includeStandardError ? output + errorText : output;
     }
 
     [Fact]
@@ -111,11 +112,24 @@ public sealed partial class CodecFieldDifferentialTests
                 mine = t.EntryType + mine[4..];
             }
 
-            string output = RunTool(mp4box, $"\"{path}\" -info");
+            string output = RunTool(mp4box, $"\"{path}\" -info", includeStandardError: true);
             Match m = Rfc6381Line().Match(output);
             string theirs = m.Success ? m.Groups[1].Value.Trim() : "(none)";
             compared++;
             log.Append(Path.GetFileName(path)).Append(": ours=").Append(mine).Append(" mp4box=").Append(theirs).Append('\n');
+            // Two documented differences. MP4Box prints VP9 in the long form with chroma subsampling, colour and range fields appended;
+            // the VP Codec ISO binding makes those optional and we write the four required fields. And it drops a non-zero second
+            // HEVC constraint byte (hvcC general_constraint_indicator_flags is six bytes; 14496-15 Annex E.3 omits only trailing zero bytes,
+            // so ours keeps it).
+            if (ours.Codec == CodecId.Vp9 && theirs.StartsWith(mine + ".", StringComparison.Ordinal))
+            {
+                theirs = mine;
+            }
+            else if (ours.Codec == CodecId.Hevc && mine.StartsWith(theirs + ".", StringComparison.Ordinal) && mine.Length == theirs.Length + 2)
+            {
+                theirs = mine;
+            }
+
             // MP4Box prints the sample entry code for Opus and FLAC ("Opus", "fLaC"); browsers take the strings case-insensitively, so the comparison ignores case.
             if (!string.Equals(mine, theirs, StringComparison.OrdinalIgnoreCase))
             {
@@ -160,7 +174,7 @@ public sealed partial class CodecFieldDifferentialTests
             }
 
             how = $"mp4 {t.EntryType}/{t.ConfigType}";
-            if (t.ConfigType is not null && (codec.Name != "mp3"))
+            if ((t.ConfigType is not null || codec.Name.StartsWith("amr", StringComparison.Ordinal)) && (codec.Name != "mp3"))
             {
                 // vp9 and av1 in ffprobe carry full descriptions from the first frame; the config records are what we are testing here.
                 if (CodecParameterReader.TryDescribe(codec, new CodecConfiguration(t.Config, t.ConfigType), t.FirstSample, out ours))

@@ -204,7 +204,10 @@ public sealed class CodecRepackagingTests
             }
 
             checkedRecords++;
-            if (!parsed || !w.WrittenSpan.SequenceEqual(t.Config))
+            // ffmpeg 7.0.2 appends a zero byte to dec3 (see DescribeMapping); the 5 bytes the spec lays out are what we write.
+            bool same = w.WrittenSpan.SequenceEqual(t.Config)
+                || (t.ConfigType == "dec3" && t.Config.Length == w.WrittenCount + 1 && t.Config[^1] == 0 && w.WrittenSpan.SequenceEqual(t.Config.AsSpan(0, w.WrittenCount)));
+            if (!parsed || !same)
             {
                 problems.Add($"{Path.GetFileName(path)} {t.ConfigType}: parsed={parsed} ours={Convert.ToHexString(w.WrittenSpan)} file={Convert.ToHexString(t.Config)}");
             }
@@ -337,6 +340,9 @@ public sealed class CodecRepackagingTests
             // esds: the descriptor sizes may be written as one byte or as four (observed: four, with ES_ID 1), and ffmpeg adds the bit rates it knows;
             // what must agree is the object type, stream type and the decoder-specific info.
             ConfigMapStatus.Done when boxType == "esds" => EsdsEquivalent(ours, theirs),
+            // dec3: ffmpeg 7.0.2 appends one zero byte after the 24 bits of the single substream record (ETSI TS 102 366 F.6 is byte-aligned
+            // at 5 bytes); 8.0.1 writes the 5 bytes. Observed on both, so a trailing zero byte is accepted.
+            ConfigMapStatus.Done when boxType == "dec3" => ours.SequenceEqual(theirs) || (theirs.Length == ours.Length + 1 && theirs[^1] == 0 && ours.SequenceEqual(theirs.AsSpan(0, ours.Length))),
             ConfigMapStatus.Done => ours.SequenceEqual(theirs),
             ConfigMapStatus.NoConfiguration => theirs.Length == 0 || theirBoxType is null,
             _ => false,
