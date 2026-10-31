@@ -10,6 +10,7 @@ internal sealed class MatroskaReader
 {
     private const int MaxHeaderBytes = Ebml.MaxIdLength + Ebml.MaxSizeLength;
     private const int ReadChunk = 1 << 20;
+    private const int InitialBlockBuffer = 1 << 20;
 
     private enum HeaderStatus { Ok, Eof, Invalid }
 
@@ -267,6 +268,7 @@ internal sealed class MatroskaReader
         }
 
         await WalkSegmentHeadAsync(ct).ConfigureAwait(false);
+        _in.ReadAhead = EbmlInput.MaxEnsure;
         BuildTracks();
         if (_in.CanSeek && _firstClusterPos >= 0)
         {
@@ -316,7 +318,9 @@ internal sealed class MatroskaReader
                     throw new MediaFormatException("The first Cluster comes before the Tracks element, which a forward-only source cannot go back for.") { Offset = h.Offset, Kind = DefectKind.InvalidOrder };
                 }
 
-                // Tracks are somewhere else: the SeekHead says where, otherwise the walk below goes on past the Clusters.
+                // Tracks are somewhere else: the SeekHead says where, otherwise the walk below goes on past the Clusters, reading just
+                // each Cluster's header (a small read) before hopping over its body.
+                _in.ReadAhead = 512;
                 if (!triedSeekHead)
                 {
                     triedSeekHead = true;
@@ -898,7 +902,9 @@ internal sealed class MatroskaReader
         int have = 0;
         if (_blk.Length < size)
         {
-            int target = Math.Min(size, Math.Max(_blk.Length * 2, 64 * 1024));
+            // One megabyte up front holds the blocks of nearly every stream, so the buffer is allocated once, at the first block; a block
+            // that is larger grows it by doubling, and only as far as bytes actually arrive.
+            int target = size <= InitialBlockBuffer ? InitialBlockBuffer : Math.Min(size, Math.Max(_blk.Length * 2, InitialBlockBuffer));
             Array.Resize(ref _blk, target);
         }
 

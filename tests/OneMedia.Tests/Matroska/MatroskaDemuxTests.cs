@@ -450,7 +450,7 @@ public class MatroskaDemuxTests
         using MatroskaDemuxer d = Open(file, defects);
         long before = GC.GetAllocatedBytesForCurrentThread();
         Assert.False(d.TryReadPacket(out _));
-        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 1_000_000);
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 2_000_000);
         Assert.Contains(defects, x => x.Kind == DefectKind.Truncated);
 
         // The same through a forward-only source, where the length is not known up front.
@@ -458,7 +458,7 @@ public class MatroskaDemuxTests
         using MatroskaDemuxer f = MatroskaDemuxer.Open(new StreamForwardSource(new NonSeekableStream(file)), new MediaOpenOptions { Defects = forwardDefects });
         long before2 = GC.GetAllocatedBytesForCurrentThread();
         Assert.False(f.TryReadPacket(out _));
-        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before2 < 1_000_000);
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before2 < 2_000_000);
         Assert.Contains(forwardDefects, x => x.Kind == DefectKind.Truncated);
 
         // Beyond the packet limit it is a limit error before anything is read.

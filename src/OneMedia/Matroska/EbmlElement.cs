@@ -136,6 +136,12 @@ public sealed class EbmlElement : IStructureNode
         }
     }
 
+    /// <summary>The element's whole extent: header and payload.</summary>
+    public ByteRange Range => new(Offset, HeaderSize + PayloadSize);
+
+    /// <summary>The element's payload extent.</summary>
+    public ByteRange Payload => new(Offset + HeaderSize, PayloadSize);
+
     /// <summary>The child elements in file order; empty for anything that is not a master element.</summary>
     public IReadOnlyList<IStructureNode> Children
     {
@@ -311,7 +317,7 @@ public sealed class EbmlElement : IStructureNode
                 long childEnd = payloadStart + size;
                 if (childEnd > limit)
                 {
-                    bool pastFile = length >= 0 && childEnd > length && (end == long.MaxValue || childEnd <= end);
+                    bool pastFile = length >= 0 && childEnd > length;
                     context.Defects.Add(
                         pastFile ? DefectKind.SizeExceedsFile : DefectKind.SizeExceedsParent,
                         DefectSeverity.Error,

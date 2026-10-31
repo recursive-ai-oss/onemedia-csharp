@@ -119,10 +119,15 @@ static int Alloc(string path)
     for (int i = 0; i < 2000 && d.TryReadPacket(out _); i++) { }
 
     long before = GC.GetAllocatedBytesForCurrentThread();
+    long last = before;
+    int shown = 0;
     while (d.TryReadPacket(out PacketView p))
     {
         n++;
         bytes += p.Data.Length;
+        long now = GC.GetAllocatedBytesForCurrentThread();
+        if (now != last && shown++ < 5) { Console.WriteLine($"  allocation of {now - last} bytes at packet {n}: track {p.Info.TrackIndex} size {p.Data.Length} pts {p.Info.Pts.Ticks}"); }
+        last = now;
     }
 
     long after = GC.GetAllocatedBytesForCurrentThread();
