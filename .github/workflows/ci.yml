@@ -1,0 +1,95 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: ubuntu-24.04-arm, rid: linux-arm64 }
+          - { os: macos-latest, rid: osx-arm64 }
+          - { os: windows-latest, rid: win-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      # Actions are pinned by commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Build output goes outside the checkout, as it does locally; the runner context is only available inside steps.
+      - name: Keep build output out of the checkout
+        run: echo "ONEMEDIA_SCRATCH=$RUNNER_TEMP/scratch" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Install the WebAssembly workload
+        # The solution includes the browser-wasm smoke app, which needs the wasm-tools workload to build.
+        run: dotnet workload install wasm-tools
+      - name: Restore
+        run: dotnet restore OneMedia.slnx
+      - name: Build
+        run: dotnet build OneMedia.slnx -c Release --no-restore
+      - name: Test
+        run: dotnet test --solution OneMedia.slnx -c Release --no-build
+      - name: Native AOT toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+      - name: Publish the AOT smoke app (any trim or AOT warning fails)
+        run: dotnet publish smoke/OneMedia.AotSmoke -c Release -r ${{ matrix.rid }} -o "$RUNNER_TEMP/aot" -warnaserror
+      - name: Run the AOT smoke app
+        run: '"$RUNNER_TEMP/aot/OneMedia.AotSmoke"'
+
+  wasm:
+    # The same smoke checks under the browser WebAssembly runtime, hosted by node.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Keep build output out of the checkout
+        run: echo "ONEMEDIA_SCRATCH=$RUNNER_TEMP/scratch" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Install the WebAssembly workload
+        run: dotnet workload install wasm-tools
+      - name: Build the WebAssembly smoke app
+        run: dotnet build smoke/OneMedia.WasmSmoke -c Release
+      - name: Run it under node
+        working-directory: ${{ runner.temp }}/scratch/artifacts/bin/OneMedia.WasmSmoke/release_browser-wasm/AppBundle
+        run: node main.mjs
+
+  pack:
+    # Builds the packages as an artifact only; nothing is pushed anywhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Keep build output out of the checkout
+        run: echo "ONEMEDIA_SCRATCH=$RUNNER_TEMP/scratch" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Pack
+        run: dotnet pack OneMedia.slnx -c Release -o "$RUNNER_TEMP/packages"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages/*
+          if-no-files-found: error
