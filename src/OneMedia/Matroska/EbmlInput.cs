@@ -93,6 +93,21 @@ internal abstract class EbmlInput
         _bufLen = 0;
     }
 
+    /// <summary>Moves forward by <paramref name="count"/> bytes on a seekable input: a buffer adjustment or a jump, with no read.</summary>
+    public void SkipSeekable(long count)
+    {
+        long buffered = _bufLen - _bufPos;
+        if (count <= buffered)
+        {
+            _bufPos += (int)count;
+            return;
+        }
+
+        _bufStart = Position + count;
+        _bufPos = 0;
+        _bufLen = 0;
+    }
+
     /// <summary>Moves forward by <paramref name="count"/> bytes: a buffer adjustment or a seek when the source allows, otherwise a read-and-discard.</summary>
     /// <returns>The number of bytes actually skipped (fewer at the end of a forward-only source).</returns>
     public async ValueTask<long> SkipAsync(long count, CancellationToken cancellationToken)

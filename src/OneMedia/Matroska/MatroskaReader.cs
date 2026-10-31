@@ -120,7 +120,18 @@ internal sealed class MatroskaReader
     // ---------------------------------------------------------------------------------------------------------------------------
     // Element headers
 
-    private async ValueTask<ElementHeader> PeekHeaderAsync(CancellationToken ct)
+    // Almost always the next header is already buffered, and then there is nothing to wait for: answer without an asynchronous method.
+    private ValueTask<ElementHeader> PeekHeaderAsync(CancellationToken ct)
+    {
+        if (_in.Buffered.Length >= MaxHeaderBytes)
+        {
+            return new ValueTask<ElementHeader>(ParseHeader(_in.Buffered, _in.Position));
+        }
+
+        return PeekHeaderSlowAsync(ct);
+    }
+
+    private async ValueTask<ElementHeader> PeekHeaderSlowAsync(CancellationToken ct)
     {
         long offset = _in.Position;
         await _in.EnsureAsync(MaxHeaderBytes, ct).ConfigureAwait(false);
@@ -146,7 +157,23 @@ internal sealed class MatroskaReader
     /// Reads a master element's payload into memory. On damage it logs a defect and returns null, having moved past the element (or to
     /// the end of the data when it claims more than is left), so that callers walking the file always make progress.
     /// </summary>
-    private async ValueTask<byte[]?> ReadPayloadAsync(ElementHeader h, string what, CancellationToken ct)
+    private ValueTask<byte[]?> ReadPayloadAsync(ElementHeader h, string what, CancellationToken ct)
+    {
+        // The element, header and payload, is already buffered: copy it out without an asynchronous method.
+        if (h.Size >= 0 && h.HeaderLength + h.Size <= _in.Buffered.Length)
+        {
+            _in.Advance(h.HeaderLength);
+            _limits.CheckAllocation(h.Size, h.Offset);
+            byte[] data = new byte[h.Size];
+            _in.Buffered[..data.Length].CopyTo(data);
+            _in.Advance(data.Length);
+            return new ValueTask<byte[]?>(data);
+        }
+
+        return ReadPayloadSlowAsync(h, what, ct);
+    }
+
+    private async ValueTask<byte[]?> ReadPayloadSlowAsync(ElementHeader h, string what, CancellationToken ct)
     {
         _in.Advance(h.HeaderLength);
         if (h.Size < 0)
@@ -175,7 +202,24 @@ internal sealed class MatroskaReader
         return data;
     }
 
-    private async ValueTask SkipElementAsync(ElementHeader h, CancellationToken ct)
+    private ValueTask SkipElementAsync(ElementHeader h, CancellationToken ct)
+    {
+        // An empty element, or one whose payload is buffered or can be seeked past, is skipped without an asynchronous method.
+        if (h.Size <= 0 || (_in.CanSeek && h.PayloadOffset + h.Size <= _in.Length))
+        {
+            _in.Advance(h.HeaderLength);
+            if (h.Size > 0)
+            {
+                _in.SkipSeekable(h.Size);
+            }
+
+            return default;
+        }
+
+        return SkipElementSlowAsync(h, ct);
+    }
+
+    private async ValueTask SkipElementSlowAsync(ElementHeader h, CancellationToken ct)
     {
         _in.Advance(h.HeaderLength);
         if (h.Size <= 0)
@@ -204,6 +248,7 @@ internal sealed class MatroskaReader
 
     public async ValueTask OpenAsync(CancellationToken ct)
     {
+        long q0 = Prof.T();
         ElementHeader h = await PeekHeaderAsync(ct).ConfigureAwait(false);
         if (h.Status != HeaderStatus.Ok || h.Id != MatroskaIds.Ebml)
         {
@@ -237,6 +282,7 @@ internal sealed class MatroskaReader
             _defects.Add(DefectKind.Unsupported, DefectSeverity.Warning, h.Offset, $"The file needs Matroska version {Header.DocTypeReadVersion}; this reader implements version 4.");
         }
 
+        long q1 = Prof.T();
         // The Segment follows the header.
         h = await PeekHeaderAsync(ct).ConfigureAwait(false);
         if (h.Status != HeaderStatus.Ok || h.Id != MatroskaIds.Segment)
@@ -269,9 +315,12 @@ internal sealed class MatroskaReader
             }
         }
 
+        long q2 = Prof.T();
         await WalkSegmentHeadAsync(ct).ConfigureAwait(false);
+        long q3 = Prof.T();
         _in.ReadAhead = EbmlInput.MaxEnsure;
         BuildTracks();
+        Prof.A[4] += q1 - q0; Prof.A[5] += q2 - q1; Prof.A[6] += q3 - q2; Prof.A[7] += Prof.T() - q3;
         if (_in.CanSeek && _firstClusterPos >= 0)
         {
             _in.SeekTo(_firstClusterPos);
@@ -401,8 +450,11 @@ internal sealed class MatroskaReader
             throw new MediaFormatException("The Segment has no Tracks element.") { Offset = SegmentStart, Kind = DefectKind.MissingRequired };
         }
 
+        long r0 = Prof.T();
         MatroskaParser.VerifyCrc(tracksBytes, tracksOffset, _defects, "Tracks");
+        long r1 = Prof.T();
         List<MatroskaTrackEntry> entries = MatroskaParser.ParseTracks(tracksBytes, tracksOffset, _defects, _limits);
+        Prof.A[8] += r1 - r0; Prof.A[9] += Prof.T() - r1;
         Entries = entries;
     }
 
