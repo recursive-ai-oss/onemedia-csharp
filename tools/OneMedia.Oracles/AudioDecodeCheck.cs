@@ -93,9 +93,53 @@ internal static class AudioDecodeCheck
 
             using (b)
             {
-                return Compare(name, codec, a, b, probeFrames);
+                string line = Compare(name, codec, a, b, probeFrames);
+                if (line.Contains("\tdiffers\t", StringComparison.Ordinal) && !line.Contains("format differs", StringComparison.Ordinal))
+                {
+                    int shift = FindShift(file, ours, nativePath, nativeRegistry, out bool nativeAhead);
+                    if (shift != 0)
+                    {
+                        line = line.Replace("\tdiffers\t", "\tshifted-equal\t", StringComparison.Ordinal) + $"; first 20000 frames equal when {(nativeAhead ? "the native stream is" : "our stream is")} offset by {shift} frames";
+                    }
+                }
+
+                return line;
             }
         }
+    }
+
+    // Tries the usual codec-delay offsets: if one side's first 20000 frames equal the other's after skipping that many, the two differ in priming only.
+    private static int FindShift(string ourPath, AudioCodecRegistry ours, string nativePath, AudioCodecRegistry native, out bool nativeAhead)
+    {
+        nativeAhead = true;
+        foreach (int shift in new[] { 1024, 2048, 1105, 1681, 529, 576, 1152, 2257, 312, 624, 1000 })
+        {
+            foreach (bool skipNative in new[] { true, false })
+            {
+                using IAudioDecoder x = AudioDecoder.OpenFile(ourPath, ours);
+                using IAudioDecoder y = AudioDecoder.OpenFile(nativePath, native);
+                if (x.Format.Channels != y.Format.Channels)
+                {
+                    return 0;
+                }
+
+                float[] skip = new float[shift * x.Format.Channels];
+                if (Fill(skipNative ? y : x, skip) < shift)
+                {
+                    continue;
+                }
+
+                float[] p = new float[20000 * x.Format.Channels], q = new float[p.Length];
+                int n = Math.Min(Fill(x, p), Fill(y, q));
+                if (n > 4000 && p.AsSpan(0, n * x.Format.Channels).SequenceEqual(q.AsSpan(0, n * x.Format.Channels)))
+                {
+                    nativeAhead = skipNative;
+                    return shift;
+                }
+            }
+        }
+
+        return 0;
     }
 
     private static long CountFrames(IAudioDecoder d)

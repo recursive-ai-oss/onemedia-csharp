@@ -19,6 +19,8 @@ internal static class Program
           structure [--family F] [FILES...]    Compare box and element listings with MP4Box and mkvinfo.
           io [--family F] [--root DIR] [--out DIR] [--no-http] [--no-strace] [FILES...]
               Bytes read and request counts to probe each file: ffprobe, mediainfo, exiftool and our reader.
+          infocheck [--family F] [FILES...]
+              Compare Media.Open (tracks, codecs, sizes, rates, languages, duration) with ffprobe.
           audiodecode [--family F] [--out DIR] [FILES...]
               Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
@@ -46,6 +48,7 @@ internal static class Program
             case "diff": return Diff(o);
             case "structure": return Structure(o);
             case "io": return Io(o);
+            case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
             case "rangeserver": return Serve(o);
             case "selftest": return SelfTest.Run(o.Files.Count > 0 ? o.Files : Select(o, "isobmff").Take(3).Concat(Select(o, "matroska").Take(3)).ToList());

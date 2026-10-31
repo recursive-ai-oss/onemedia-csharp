@@ -13,8 +13,11 @@ internal sealed class PacketConcatenationStream : Stream
     private int _count;
     private bool _ended;
 
-    public PacketConcatenationStream(IDemuxer demuxer, int trackIndex)
+    private readonly IDisposable? _alsoDispose;
+
+    public PacketConcatenationStream(IDemuxer demuxer, int trackIndex, IDisposable? alsoDispose)
     {
+        _alsoDispose = alsoDispose;
         _demuxer = demuxer;
         _trackIndex = trackIndex;
         for (int i = 0; i < demuxer.Tracks.Count; i++)
@@ -85,6 +88,7 @@ internal sealed class PacketConcatenationStream : Stream
         if (disposing)
         {
             _demuxer.Dispose();
+            _alsoDispose?.Dispose();
         }
 
         base.Dispose(disposing);

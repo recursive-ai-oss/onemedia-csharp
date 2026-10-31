@@ -63,12 +63,7 @@ public abstract class OneMediaContainerFormat : global::OneAudio.IContainerForma
             {
                 // OneAudio reads MP3 from a byte stream only, so the track's frames are handed over as one.
                 global::OneAudio.IContainerFormat mp3 = registry.Detect(Mp3Probe)!;
-                global::OneAudio.IAudioDecoder mp3Decoder = mp3.Open(new PacketConcatenationStream(demuxer, track.Index), registry, limits, false, cancellationToken);
-                if (!leaveOpen)
-                {
-                    stream.Dispose();
-                }
-
+                global::OneAudio.IAudioDecoder mp3Decoder = mp3.Open(new PacketConcatenationStream(demuxer, track.Index, leaveOpen ? null : stream), registry, limits, false, cancellationToken);
                 return mp3Decoder;
             }
 

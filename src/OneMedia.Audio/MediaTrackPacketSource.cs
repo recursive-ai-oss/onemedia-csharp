@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Buffers;
 using RecursiveAI.OneMedia.Codecs.Aac;
 using RecursiveAI.OneMedia.Codecs.Flac;
@@ -48,6 +49,8 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     private readonly long _length;
     private readonly int _timeScale;
     private bool _pendingMidStream;
+    private long _opusEnd = -1;
+    private long _opusGranule;
     private bool _disposed;
 
     private MediaTrackPacketSource(IDemuxer demuxer, MediaTrack track, bool ownsDemuxer, global::OneAudio.CodecId codec, byte[][] headers, ReadOnlyMemory<byte> config, int rate, int channels, int priming, long length)
@@ -107,9 +110,16 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         int channels = track.Audio?.Channels ?? 0;
         ReadOnlyMemory<byte> config = default;
         byte[][] headers = [];
-        long rawFrames = track.Duration.IsKnown && rate > 0 ? track.Duration.Rescale(rate, MediaRounding.NearestAwayFromZero).Ticks : -1;
+        long rawFrames = track.Duration.IsKnown && rate > 0 ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
+        // A Matroska duration is a rounded segment figure, not a count of this track's frames, so only ISO tables give an exact length.
+        if (!iso)
+        {
+            rawFrames = -1;
+        }
+
         int priming = 0;
         long length = -1;
+        long opusEnd = -1;
 
         switch (track.Codec.Name)
         {
@@ -125,7 +135,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 }
                 else
                 {
-                    config = track.Configuration.Data;
+                    config = track.Configuration.Data.Length >= 2 ? track.Configuration.Data : SynthesizeAsc(track);
                 }
 
                 (priming, length) = TrimOf(track, rate, rawFrames);
@@ -136,17 +146,25 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 config = track.Configuration.Data;
                 rate = track.Codec.Name == "amr-wb" ? 16000 : 8000;
                 channels = 1;
-                rawFrames = track.Duration.IsKnown ? track.Duration.Rescale(rate, MediaRounding.NearestAwayFromZero).Ticks : -1;
+                rawFrames = iso && track.Duration.IsKnown ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
                 (priming, length) = TrimOf(track, rate, rawFrames);
                 break;
 
             case "opus":
                 headers = OpusHeaders(track, iso, out int preSkip, out int opusChannels);
-                _ = preSkip;
+                if (iso)
+                {
+                    // MP4 states Opus's real end in the edit list: media_time (the pre-skip) plus the segment duration.
+                    (_, long editLength) = TrimOf(track, 48000, track.Duration.IsKnown ? track.Duration.Rescale(48000, MediaRounding.Floor).Ticks : -1);
+                    if (editLength >= 0 && (track.Edit.Edits?.Any(e => !e.IsEmpty) ?? false))
+                    {
+                        opusEnd = preSkip + editLength;
+                    }
+                }
                 rate = 0;
                 channels = opusChannels;
                 // OneAudio counts Opus length from the raw granule total (it subtracts the pre-skip itself).
-                length = track.Duration.IsKnown ? track.Duration.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks : -1;
+                length = iso && track.Duration.IsKnown ? track.Duration.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks : -1;
                 break;
 
             case "vorbis":
@@ -167,11 +185,12 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 break;
         }
 
-        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length);
+        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd };
     }
 
-    // Priming and length in frames at the track's rate, from what the container states: the first non-empty edit's start (or the iTunes
-    // gapless delay) is dropped from the front and the padding after the last edit from the end (ISO/IEC 14496-12 §8.6.6).
+    // Priming and length in frames at the track's rate, from what the container states. With an edit list the first non-empty edit gives both
+    // (media_time is the priming, segment_duration the length; ISO/IEC 14496-12 §8.6.6); when the iTunes gapless tag replaced the priming, or
+    // there is no edit list, the length is the media's frames less priming and end padding. Frame counts truncate, as OneAudio's MP4 reader does.
     private static (int Priming, long Length) TrimOf(MediaTrack track, int rate, long rawFrames)
     {
         if (rate <= 0)
@@ -179,16 +198,52 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             return (0, -1);
         }
 
-        long priming = track.Edit.Priming.IsKnown ? track.Edit.Priming.Rescale(rate, MediaRounding.NearestAwayFromZero).Ticks : 0;
-        long padding = track.Edit.EndPadding.IsKnown ? track.Edit.EndPadding.Rescale(rate, MediaRounding.NearestAwayFromZero).Ticks : 0;
+        long priming = track.Edit.Priming.IsKnown ? track.Edit.Priming.Rescale(rate, MediaRounding.Floor).Ticks : 0;
+        long padding = track.Edit.EndPadding.IsKnown ? track.Edit.EndPadding.Rescale(rate, MediaRounding.Floor).Ticks : 0;
         if (rawFrames < 0)
         {
             return ((int)Math.Min(priming, int.MaxValue), -1);
         }
 
+        foreach (EditSegment e in track.Edit.Edits ?? [])
+        {
+            if (e.IsEmpty)
+            {
+                continue;
+            }
+
+            long editStart = e.MediaStart.Rescale(rate, MediaRounding.Floor).Ticks;
+            if (editStart == priming)
+            {
+                priming = Math.Clamp(priming, 0, rawFrames);
+                long room = rawFrames - priming;
+                long segment = e.Duration.Ticks > 0 ? e.Duration.Rescale(rate, MediaRounding.Floor).Ticks : room;
+                return ((int)Math.Min(priming, int.MaxValue), Math.Clamp(segment, 0, room));
+            }
+
+            break;
+        }
+
         priming = Math.Clamp(priming, 0, rawFrames);
-        long length = Math.Max(0, rawFrames - priming - padding);
-        return ((int)Math.Min(priming, int.MaxValue), length);
+        return ((int)Math.Min(priming, int.MaxValue), Math.Max(0, rawFrames - priming - padding));
+    }
+
+    // Old Matroska files (A_AAC/MPEG4/LC and the like) can omit CodecPrivate; the AudioSpecificConfig is then rebuilt from the track's
+    // object type (named by the CodecID), rate and channels (ISO/IEC 14496-3 §1.6.2.1: 5 bits object type, 4 bits rate index, 4 bits channels).
+    private static byte[] SynthesizeAsc(MediaTrack track)
+    {
+        int[] rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+        int index = Array.IndexOf(rates, track.Audio?.SampleRate ?? 0);
+        int channels = track.Audio?.Channels ?? 0;
+        string tag = track.CodecTag ?? "";
+        int objectType = tag.Contains("MAIN", StringComparison.Ordinal) ? 1 : tag.Contains("SSR", StringComparison.Ordinal) ? 3 : tag.Contains("LTP", StringComparison.Ordinal) ? 4 : 2;
+        if (index < 0 || channels is < 1 or > 7)
+        {
+            throw new global::OneAudio.AudioFormatException("The AAC track has no CodecPrivate and its rate or channel count does not allow rebuilding one.");
+        }
+
+        int bits = (objectType << 11) | (index << 7) | (channels << 3);
+        return [(byte)(bits >> 8), (byte)bits];
     }
 
     private static byte[][] OpusHeaders(MediaTrack track, bool iso, out int preSkip, out int channels)
@@ -329,6 +384,18 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             }
         }
 
+        if (Codec.Name == "opus" && _opusEnd >= 0 && _opusGranule >= 0)
+        {
+            if (!OpusToc.TryGetSamples(data, out int samples))
+            {
+                _opusGranule = -1;
+                return -1;
+            }
+
+            _opusGranule += samples;
+            return _opusGranule > _opusEnd ? _opusEnd : -1;
+        }
+
         if (_length >= 0 && _rate > 0 && _primingInTimestamps && Codec.Name is "aac" or "amr-nb" or "amr-wb")
         {
             MediaTime endTime = info.Pts.Add(info.Duration, MediaRounding.NearestAwayFromZero);
@@ -353,6 +420,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 
         int rate = _rate > 0 ? _rate : 48000;
         _nextHeader = _headers.Length;
+        _opusGranule = -1; // the running position is lost; the end limit is not applied after a seek
         if (_length >= 0 && frame >= _length)
         {
             _demuxer.Seek(new MediaTime(long.MaxValue / 4, 1), SeekMode.PreviousKeyframe);
