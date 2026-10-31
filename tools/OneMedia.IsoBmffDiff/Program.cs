@@ -50,7 +50,7 @@ if (args.Length >= 3 && args[0] == "--make-big")
 
 if (args.Length >= 2 && args[0] == "--io")
 {
-    return ProbeIo(args[1]);
+    return ProbeIo(args[1], args);
 }
 
 if (args.Length >= 2 && args[0] == "--stream")
@@ -488,7 +488,7 @@ return failures == 0 ? 0 : 1;
 }
 
 // Probe = open, list tracks and duration, read no packet. Counts what the source is asked for.
-static int ProbeIo(string path)
+static int ProbeIo(string path, string[] args)
 {
     CountingObserver counter = new();
     using FileMediaSource file = FileMediaSource.Open(path);
@@ -497,6 +497,16 @@ static int ProbeIo(string path)
     long tracks = d.Tracks.Count;
     MediaTime duration = d.Duration;
     Console.WriteLine($"{Path.GetFileName(path)}: size={file.Length} tracks={tracks} duration={duration} reads={counter.Reads} bytesReturned={counter.Bytes} uniqueBytes={counter.UniqueBytes()} largestRead={counter.Largest}");
+    if (d.Movie.IsFragmented && args.Length > 2 && args[2] == "--seek")
+    {
+        // A seek into the middle of a fragmented file: what it reads on top of the probe, without touching any media data.
+        long readsBefore = counter.Reads, bytesBefore = counter.Bytes;
+        long seconds = args.Length > 3 ? long.Parse(args[3], CultureInfo.InvariantCulture) : 300;
+        MediaTime landed = d.Seek(new MediaTime(seconds, 1));
+        d.TryReadPacket(out _);
+        Console.WriteLine($"  seek to {seconds} s landed at {landed}: reads={counter.Reads - readsBefore} bytesReturned={counter.Bytes - bytesBefore} (includes the first packet's payload)");
+    }
+
     return 0;
 }
 
