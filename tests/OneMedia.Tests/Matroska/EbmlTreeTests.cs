@@ -44,6 +44,21 @@ public class EbmlTreeTests
     }
 
     [Fact]
+    public void JunkBetweenSegmentChildrenIsSkippedWithADefectAndTheTreeContinues()
+    {
+        byte[] file = Cat(Header(), SegmentElement(
+            InfoElement(),
+            new byte[] { 0, 0, 0, 0, 0, 0, 0 },
+            TracksElement(Track(1, 1, "V_VP8")),
+            ClusterElement(0, Simple(1, 0, 0x80, Fill(10, 1)))));
+        EbmlDocument doc = Doc(file);
+        Assert.Equal(["Info", "Tracks", "Cluster"], doc.Segment!.ChildElements.Select(e => e.Name).ToArray());
+        MediaDefect defect = Assert.Single(doc.Defects);
+        Assert.Equal(DefectKind.UnaccountedBytes, defect.Kind);
+        Assert.Equal(doc.Segment.ChildElements[0].Range.End, defect.Offset);
+    }
+
+    [Fact]
     public void UnknownSizeElementsGetTheirEndFromTheNextSibling()
     {
         byte[] file = Cat(Header(), SegmentUnknown(
@@ -115,9 +130,9 @@ public class EbmlTreeTests
     }
 
     [Fact]
-    public void InvalidHeadersStopTheParentWithADefect()
+    public void InvalidHeadersWithNothingToResumeAtStopTheParentWithADefect()
     {
-        byte[] file = Cat(Header(), SegmentElement(InfoElement(), [0x00, 0x01, 0x02], TracksElement(Track(1, 1, "V_VP8"))));
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), [0x00, 0x01, 0x02]));
         DefectLog defects = new();
         EbmlElement segment = Doc(file, defects).Segment!;
         Assert.Equal(["Info"], segment.ChildElements.Select(e => e.Name).ToArray());

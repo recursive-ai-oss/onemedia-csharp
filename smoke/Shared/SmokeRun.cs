@@ -98,6 +98,8 @@ internal static class SmokeRun
         log2.Add(DefectKind.Truncated, DefectSeverity.Error, 7, "cut off");
         Check("defect log", log2.Count == 1 && log2.HasErrors && log2[0].Offset == 7);
 
+        await MatroskaSmoke.RunAsync(Check);
+
         log(string.Create(CultureInfo.InvariantCulture, $"failures: {failures}"));
         return failures;
     }

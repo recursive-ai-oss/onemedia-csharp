@@ -253,6 +253,50 @@ public sealed class EbmlElement : IStructureNode
     }
 
     /// <summary>
+    /// Looks for the next position in [<paramref name="from"/>, <paramref name="limit"/>) where a known Segment child (level 1) starts with a
+    /// sound size. Reads in 4 KiB windows that overlap by one header, so a header is never split.
+    /// </summary>
+    private static bool TryFindNextTopLevel(EbmlTreeContext context, long from, long limit, out long found)
+    {
+        const int Window = 4096;
+        Span<byte> buffer = new byte[Window];
+        long position = from;
+        while (position < limit)
+        {
+            int got = context.ReadAt(position, buffer[..(int)Math.Min(Window, limit - position)]);
+            if (got <= 0)
+            {
+                break;
+            }
+
+            bool more = got == Window && position + got < limit;
+            int last = more ? got - (Ebml.MaxIdLength + Ebml.MaxSizeLength) : got;
+            for (int i = 0; i < last; i++)
+            {
+                ReadOnlySpan<byte> window = buffer[i..got];
+                if (Ebml.TryReadId(window, out uint id, out int idLength)
+                    && MatroskaIds.LevelOf(id) == 1
+                    && Ebml.TryReadSize(window[idLength..], out long size, out int sizeLength)
+                    && (size < 0 || position + i + idLength + sizeLength + size <= limit))
+                {
+                    found = position + i;
+                    return true;
+                }
+            }
+
+            if (!more)
+            {
+                break;
+            }
+
+            position += last;
+        }
+
+        found = 0;
+        return false;
+    }
+
+    /// <summary>
     /// Reads child headers from <paramref name="start"/> to <paramref name="end"/>. For an unknown-size parent (<paramref name="terminatorLevel"/> ≥ 0)
     /// the run ends at the first element whose level is that of the parent or higher (RFC 8794 §6.2).
     /// </summary>
@@ -274,6 +318,14 @@ public sealed class EbmlElement : IStructureNode
             ReadOnlySpan<byte> window = header[..got];
             if (!Ebml.TryReadId(window, out uint id, out int idLength) || !Ebml.TryReadSize(window[idLength..], out long size, out int sizeLength))
             {
+                if (parent is { Id: MatroskaIds.Segment } && TryFindNextTopLevel(context, position + 1, limit, out long resumeAt))
+                {
+                    // Damage inside a Segment: carry on at the next Segment child that has a sound header, as the demuxer does.
+                    context.Defects.Add(DefectKind.UnaccountedBytes, DefectSeverity.Error, position, $"{resumeAt - position} bytes are not a valid element; the next one starts at {resumeAt}.");
+                    position = resumeAt;
+                    continue;
+                }
+
                 context.Defects.Add(DefectKind.InvalidSize, DefectSeverity.Error, position, "An element header is not a valid EBML ID and size; the rest of the parent is not parsed.");
                 break;
             }
