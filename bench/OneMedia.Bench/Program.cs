@@ -125,7 +125,7 @@ static int Prepare(string corpus, string home)
     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
     string ffmpeg = Path.Combine(home, "oracles", "bin", "ffmpeg");
     ProcessStartInfo psi = new(File.Exists(ffmpeg) ? ffmpeg : "ffmpeg") { RedirectStandardError = true };
-    foreach (string a in new[] { "-v", "error", "-nostdin", "-i", source, "-map", "0", "-c", "copy", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", target + ".part" })
+    foreach (string a in new[] { "-v", "error", "-nostdin", "-i", source, "-map", "0:v", "-map", "0:a", "-c", "copy", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", target + ".part" })
     {
         psi.ArgumentList.Add(a);
     }
