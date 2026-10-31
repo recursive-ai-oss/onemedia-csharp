@@ -1,0 +1,60 @@
+<Project>
+
+  <PropertyGroup Label="Name">
+    <!-- NuGet package IDs carry the publisher prefix; this is the only place it is written. -->
+    <PackagePrefix>RecursiveAI.</PackagePrefix>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Output">
+    <!-- Build output stays out of the source folders. Set ONEMEDIA_SCRATCH to a directory to build there; the default is artifacts/ at the
+         repository root, which .gitignore covers. -->
+    <OneMediaScratch Condition="'$(OneMediaScratch)' == ''">$(ONEMEDIA_SCRATCH)</OneMediaScratch>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath Condition="'$(OneMediaScratch)' != ''">$([MSBuild]::EnsureTrailingSlash('$(OneMediaScratch)'))artifacts</ArtifactsPath>
+    <ArtifactsPath Condition="'$(OneMediaScratch)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Language and analysis">
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Safe, bounds-checked C# throughout: no pointers. -->
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Reproducible packages">
+    <!-- Path mapping is for the packages only (projects under src/). Test projects keep real paths. -->
+    <_ProjectDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</_ProjectDir>
+    <_SrcDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'src'))</_SrcDir>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' and $(_ProjectDir.StartsWith('$(_SrcDir)'))">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package metadata">
+    <!-- The one place the package version lives; the core package, the audio adapter and the tool share it. -->
+    <Version>0.1.0-preview.1</Version>
+    <Authors>Recursive AI, LLC</Authors>
+    <Company>Recursive AI, LLC</Company>
+    <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
+    <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/recursive-ai-oss/onemedia-csharp</RepositoryUrl>
+    <PackageProjectUrl>https://recursiveai.org/onemedia/</PackageProjectUrl>
+    <PackageReadmeFile>PACKAGE.md</PackageReadmeFile>
+    <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
+    <PackageTags>mp4;mov;3gp;matroska;mkv;webm;avi;mpegts;flv;ogg;wav;flac;container;demux;mux;remux;metadata;tags;subtitles;nativeaot;trimmable;sharpmp4;taglib;atl;metadataextractor;mediainfo;ffprobe;mkvtoolnix</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+</Project>
