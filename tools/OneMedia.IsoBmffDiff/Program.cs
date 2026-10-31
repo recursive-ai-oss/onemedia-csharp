@@ -362,14 +362,15 @@ static int MakeBig(string path, double gigabytes, string layout)
 
 static string Run(string exe, params string[] arguments)
 {
-    ProcessStartInfo psi = new(exe) { RedirectStandardOutput = true, UseShellExecute = false };
+    ProcessStartInfo psi = new(exe) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
     foreach (string a in arguments)
     {
         psi.ArgumentList.Add(a);
     }
 
     using Process p = Process.Start(psi)!;
-    string output = p.StandardOutput.ReadToEnd();
+    // MP4Box -info writes to standard error; ffprobe only writes there when something is wrong.
+    string output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
     p.WaitForExit();
     return output;
 }
