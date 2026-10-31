@@ -358,6 +358,37 @@ public class IsoBmffDemuxTests
     }
 
     [Fact]
+    public void ITunesGaplessTagSetsPrimingAndPadding()
+    {
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(File.ReadAllBytes(IsoBmffTestHelpers.Path("family/aac-itunes-gapless.m4a"))));
+        Assert.NotNull(d.Movie.GaplessInfo);
+        Assert.True(IsoBmffEngine.TryParseGapless(d.Movie.GaplessInfo!, out long delay, out long padding, out _));
+        MediaTrack t = d.Tracks[0];
+        int rate = t.Audio!.Value.SampleRate;
+        Assert.Equal(delay, t.Edit.Priming.Rescale(rate, MediaRounding.NearestAwayFromZero).Ticks);
+        Assert.Equal(padding, t.Edit.EndPadding.Rescale(rate, MediaRounding.NearestAwayFromZero).Ticks);
+        Assert.Equal(CodecId.Aac, t.Codec);
+        Assert.Equal("esds", t.Configuration.Format);
+    }
+
+    [Theory]
+    [InlineData("family/amrnb.3gp", "amr-nb", "samr")]
+    [InlineData("family/amrwb.3gp", "amr-wb", "sawb")]
+    public void AmrInThreeGpHasItsConfiguration(string name, string codec, string tag)
+    {
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(File.ReadAllBytes(IsoBmffTestHelpers.Path(name))));
+        Assert.Equal(codec, d.Tracks[0].Codec.Name);
+        Assert.Equal(tag, d.Tracks[0].CodecTag);
+        if (tag == "samr")
+        {
+            Assert.Equal("damr", d.Tracks[0].Configuration.Format);
+        }
+        // TODO(handoff): the AMR-WB entry has no damr box; find which box carries its setup (inspect the file with MP4Box -diso).
+        Assert.Equal(TrackKind.Audio, d.Tracks[0].Kind);
+        Assert.Equal(150, IsoBmffTestHelpers.Demux(d).Count);
+    }
+
+    [Fact]
     public void GaplessTagIsParsed()
     {
         Assert.True(IsoBmffEngine.TryParseGapless(" 00000000 00000840 000001C0 0000000000A8E0E0 00000000 00000000", out long delay, out long padding, out long frames));
