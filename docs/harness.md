@@ -64,6 +64,38 @@ provider returns, and reads mkvinfo's element listing for Matroska.
 one with planted mistakes (shifted times, short payloads, flipped flags, a missing packet) must produce exactly the
 planted counts.
 
+`--audio` ends with a summary of the OneAudio comparisons, printed separately from the ffprobe one.
+
+The `last` exception scope matches only the final packet of a track.
+
+### ISO times
+
+ffprobe reports MP4 times on the edited timeline: leading empty edits add to every time and the first non-empty edit's start
+subtracts. The harness shifts our times by that amount per track (in the track timescale) before comparing, and applies the
+same shift to OneAudio's times, which are unshifted.
+
+### `audiodecode`
+
+`audiodecode FILES` decodes the default audio stream through the adapter and through OneAudio's own path: its MP4 reader for
+MP4-family files; for Matroska, the stream copied by ffmpeg to Ogg, FLAC, M4A or MP3 and read by OneAudio. It reports frame
+counts, the first differing sample and the largest difference, and the frame count ffprobe's duration implies. When the sample
+streams differ it looks for a shift among the usual codec delays and reports `shifted-equal`; equal on the shorter length is
+`prefix-equal`. The stream is the one ffprobe marks default, as `MediaFile.Audio` picks. `audiopcm FILE OUT.f32` writes the
+adapter's decode as float32 for comparison with any other decoder (`ONEMEDIA_NATIVE=1` uses OneAudio's MP4 reader instead).
+The twin made by ffmpeg is not always a good reference (see docs/audio-adapter.md); decode the same stream with ffmpeg to
+float32 and compare with an offset search in those cases.
+
+### `infocheck`
+
+`infocheck FILES` compares `Media.Open` (tracks, codec, size, rate, channels, language, duration) with ffprobe. Attachment
+streams are ignored; durations may differ by one tick of the container's own clock.
+
+### Structure notes
+
+`structure` ignores children of `stsd` entries. MP4Box prints size 0 for QuickTime-style sample entries and lists `moov`
+before `mdat` in some large files; mkvinfo prints declared sizes where our tree clamps at the end of a truncated file. These
+are reported as notes, not differences.
+
 ### Known ffprobe conventions
 
 - Matroska `pos` is the start of the Block element, not of the frame payload.

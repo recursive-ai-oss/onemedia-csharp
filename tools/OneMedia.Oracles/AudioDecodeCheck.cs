@@ -43,19 +43,47 @@ internal static class AudioDecodeCheck
         return 0;
     }
 
+    /// <summary>Writes the adapter's decode of the first audio stream as interleaved little-endian float32, for comparison with other decoders' output.</summary>
+    public static int DumpPcm(string file, string output)
+    {
+        // ONEMEDIA_NATIVE=1 reads MP4-family files with OneAudio's own reader instead of the adapter.
+        AudioCodecRegistry registry = Environment.GetEnvironmentVariable("ONEMEDIA_NATIVE") == "1"
+            ? new AudioCodecRegistry().AddMp4().AddAac().AddAmrNb().AddAmrWb()
+            : MediaAudioExtensions.CreateRegistry();
+        using IAudioDecoder d = AudioDecoder.OpenFile(file, registry);
+        float[] buf = new float[ChunkFrames * Math.Max(1, d.Format.Channels)];
+        using FileStream o = File.Create(output);
+        int got;
+        long frames = 0;
+        while ((got = d.Read(buf)) > 0)
+        {
+            byte[] bytes = new byte[got * d.Format.Channels * 4];
+            for (int i = 0; i < got * d.Format.Channels; i++)
+            {
+                System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(i * 4), buf[i]);
+            }
+
+            o.Write(bytes);
+            frames += got;
+        }
+
+        Console.WriteLine($"{frames} frames, {d.Format.SampleRate} Hz, {d.Format.Channels} ch");
+        return 0;
+    }
+
     private static string One(string file, string work)
     {
         string name = Path.GetFileName(file);
         string ext = Path.GetExtension(file).ToLowerInvariant();
         bool iso = ext is ".mp4" or ".m4a" or ".3gp" or ".3g2" or ".mov";
-        (string codec, int rate, int channels, long probeFrames) = Probe(file);
+        (string codec, int rate, int channels, long probeFrames, int streamIndex) = Probe(file);
         string nativePath = file;
         AudioCodecRegistry nativeRegistry = new AudioCodecRegistry().AddMp4().AddAac().AddAmrNb().AddAmrWb();
         if (!iso)
         {
             string target = codec switch { "opus" or "vorbis" => ".ogg", "flac" => ".flac", "aac" => ".m4a", "mp3" => ".mp3", _ => ".mka" };
             nativePath = Path.Combine(work, Path.GetFileNameWithoutExtension(file) + "-native" + target);
-            using (System.Diagnostics.Process p = Oracle.Start("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-map", "0:a:0", "-c", "copy", nativePath], redirectStdErr: true))
+            using (System.Diagnostics.Process p = Oracle.Start("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-map", "0:" + streamIndex.ToString(CultureInfo.InvariantCulture), "-c", "copy", nativePath], redirectStdErr: true))
             {
                 p.StandardError.ReadToEnd();
                 p.WaitForExit();
@@ -222,10 +250,14 @@ internal static class AudioDecodeCheck
     }
 
     // First audio stream: codec, rate, channels and the frame count ffprobe's duration implies (rounded).
-    private static (string Codec, int Rate, int Channels, long Frames) Probe(string file)
+    private static (string Codec, int Rate, int Channels, long Frames, int Index) Probe(string file)
     {
-        string text = Oracle.Run("ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name,sample_rate,channels,duration", "-of", "csv=p=0", file).Trim();
-        string[] f = text.Split(',');
+        // The stream MediaFile.Audio picks: the first audio stream marked default, else the first.
+        string[] rows = Oracle.Run("ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index,codec_name,sample_rate,channels,duration:stream_disposition=default", "-of", "csv=p=0", file).Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string text = rows.FirstOrDefault(r => r.TrimEnd().EndsWith(",1", StringComparison.Ordinal)) ?? rows.FirstOrDefault() ?? "";
+        string[] all = text.Trim().Split(',');
+        int index = all.Length > 0 && int.TryParse(all[0], CultureInfo.InvariantCulture, out int ix) ? ix : 0;
+        string[] f = all.Skip(1).ToArray();
         string codec = f.Length > 0 ? f[0] : "";
         int rate = f.Length > 1 && int.TryParse(f[1], CultureInfo.InvariantCulture, out int r) ? r : 0;
         int ch = f.Length > 2 && int.TryParse(f[2], CultureInfo.InvariantCulture, out int c) ? c : 0;
@@ -236,6 +268,6 @@ internal static class AudioDecodeCheck
         }
 
         codec = codec switch { "amr_nb" => "amr-nb", "amr_wb" => "amr-wb", _ => codec };
-        return (codec, rate, ch, frames);
+        return (codec, rate, ch, frames, index);
     }
 }

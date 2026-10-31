@@ -23,6 +23,7 @@ internal static class Program
               Compare Media.Open (tracks, codecs, sizes, rates, languages, duration) with ffprobe.
           audiodecode [--family F] [--out DIR] [FILES...]
               Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
+          audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
           selftest [FILES...]                  Check the harness against exact and deliberately wrong fake formats.
           list [--family F] [--root DIR]       Print the files a family selects.
@@ -50,6 +51,7 @@ internal static class Program
             case "io": return Io(o);
             case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
+            case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "rangeserver": return Serve(o);
             case "selftest": return SelfTest.Run(o.Files.Count > 0 ? o.Files : Select(o, "isobmff").Take(3).Concat(Select(o, "matroska").Take(3)).ToList());
             case "list":

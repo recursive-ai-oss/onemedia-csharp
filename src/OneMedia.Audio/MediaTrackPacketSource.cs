@@ -138,7 +138,9 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                     config = track.Configuration.Data.Length >= 2 ? track.Configuration.Data : SynthesizeAsc(track);
                 }
 
-                (priming, length) = TrimOf(track, rate, rawFrames);
+                // ISO priming truncates, as OneAudio's own MP4 reader does. Matroska CodecDelay is in nanoseconds and 1024 frames at 48 kHz
+                // is 21333333 ns, which truncates to 1023, so it rounds to the nearest frame.
+                (priming, length) = TrimOf(track, rate, rawFrames, iso ? MediaRounding.Floor : MediaRounding.NearestAwayFromZero);
                 break;
 
             case "amr-nb":
@@ -191,14 +193,14 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     // Priming and length in frames at the track's rate, from what the container states. With an edit list the first non-empty edit gives both
     // (media_time is the priming, segment_duration the length; ISO/IEC 14496-12 §8.6.6); when the iTunes gapless tag replaced the priming, or
     // there is no edit list, the length is the media's frames less priming and end padding. Frame counts truncate, as OneAudio's MP4 reader does.
-    private static (int Priming, long Length) TrimOf(MediaTrack track, int rate, long rawFrames)
+    private static (int Priming, long Length) TrimOf(MediaTrack track, int rate, long rawFrames, MediaRounding primingRounding = MediaRounding.Floor)
     {
         if (rate <= 0)
         {
             return (0, -1);
         }
 
-        long priming = track.Edit.Priming.IsKnown ? track.Edit.Priming.Rescale(rate, MediaRounding.Floor).Ticks : 0;
+        long priming = track.Edit.Priming.IsKnown ? track.Edit.Priming.Rescale(rate, primingRounding).Ticks : 0;
         long padding = track.Edit.EndPadding.IsKnown ? track.Edit.EndPadding.Rescale(rate, MediaRounding.Floor).Ticks : 0;
         if (rawFrames < 0)
         {
