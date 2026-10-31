@@ -212,7 +212,7 @@ return failures == 0 ? 0 : 1;
         string?[] first = new string?[6];
         int naCount = 0, naLast = -1;
         long? constPts = null, constDts = null;
-        int gapDurations = 0, hybridSkipped = 0, zeroStated = 0;
+        int gapDurations = 0, hybridSkipped = 0, zeroStated = 0, dupDiscard = 0;
         long? ratioK = null;
         bool ratioOk = true;
         string modalDuration = other.GroupBy(x => x[3]).OrderByDescending(g => g.Count()).First().Key;
@@ -299,9 +299,11 @@ return failures == 0 ? 0 : 1;
                 // ffprobe marks every packet of a data track (RTP hint, MPEG-4 systems) as a key frame; the sync sample table of the track is what we report.
                 notes.Append($" track{t.Index}:data-track-keyframe@{i}");
             }
-            else if (zeroDur && fl.Contains('K', StringComparison.Ordinal) == m.Key)
+            else if ((zeroDur || (i > 0 && other[i - 1][2] == o[2])) && fl.Contains('D', StringComparison.Ordinal) && fl.Contains('K', StringComparison.Ordinal) == m.Key)
             {
-                // ffprobe flags samples whose duration it had to work out as discardable; the box states no such thing.
+                // ffprobe flags a packet as discardable when its own timeline repeats a decode time (it guesses durations the box does not state, so
+                // two packets can land on the same time); the box states no such thing and our times are exact.
+                dupDiscard++;
             }
             else if (edgeDiscard)
             {
@@ -314,6 +316,11 @@ return failures == 0 ? 0 : 1;
                 notes.Append($" track{t.Index}:parser-keyframe@{i}");
             }
             else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
+        }
+
+        if (dupDiscard > 0)
+        {
+            notes.Append($" track{t.Index}:discard-flag-on-repeated-time-only-theirs x{dupDiscard}");
         }
 
         if (zeroStated > 0)
