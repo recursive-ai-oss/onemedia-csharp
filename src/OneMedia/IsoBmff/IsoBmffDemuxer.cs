@@ -24,7 +24,7 @@ public sealed class IsoBmffDemuxer : IDemuxer
     private readonly IsoBmffEngine _engine;
     private readonly MediaLimits _limits;
     private readonly CancellationToken _cancellation;
-    private readonly RandomFragmentLoader? _loader;
+    private readonly SeekableFragmentLoader? _loader;
     private byte[] _buffer = new byte[64 * 1024];
     private long _nextFragmentPosition;
     private long _mdatEnd;
@@ -46,7 +46,7 @@ public sealed class IsoBmffDemuxer : IDemuxer
         _nextFragmentPosition = opened.MoovEnd;
         if (source is not null)
         {
-            _loader = new RandomFragmentLoader(source, options.Limits, defects);
+            _loader = new SeekableFragmentLoader(source, options.Limits, defects);
         }
     }
 

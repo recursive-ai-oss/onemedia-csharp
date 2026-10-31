@@ -50,7 +50,7 @@ public static class IsoCodecMap
                 return CodecId.AmrWb;
             case "alac":
                 return new CodecId("alac");
-            case "sowt" or "twos" or "in24" or "in32" or "fl32" or "fl64" or "lpcm" or "raw " or "ipcm" or "fpcm" or "sowt\0":
+            case "sowt" or "twos" or "in24" or "in32" or "fl32" or "fl64" or "lpcm" or "raw " or "ipcm" or "fpcm":
                 return CodecId.Pcm;
             case "tx3g":
                 return CodecId.TimedText;

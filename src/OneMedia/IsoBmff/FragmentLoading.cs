@@ -16,7 +16,7 @@ internal interface IFragmentLoader
     ValueTask<FragmentLocation> LoadNextAsync(long position, MovieFragment into, CancellationToken cancellationToken);
 }
 
-internal sealed class RandomFragmentLoader(IMediaSource source, MediaLimits limits, DefectLog defects) : IFragmentLoader
+internal sealed class SeekableFragmentLoader(IMediaSource source, MediaLimits limits, DefectLog defects) : IFragmentLoader
 {
     public ValueTask<FragmentLocation> LoadNextAsync(long position, MovieFragment into, CancellationToken cancellationToken) =>
         new(LoadNext(position, into, cancellationToken));
