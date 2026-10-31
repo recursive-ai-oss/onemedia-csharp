@@ -25,6 +25,9 @@ internal enum Role
 
     /// <summary>A managed library the bar is measured against.</summary>
     Gate,
+
+    /// <summary>OneMedia as it was before a change, kept beside the current figure; shown with a ratio but never counted in the bar.</summary>
+    Previous,
 }
 
 internal delegate Work RunFn(string path);
@@ -69,6 +72,73 @@ internal static class Impls
     {
         MediaFormatRegistry registry = Registry.Value ?? throw new NotAvailableException("no OneMedia reader is registered in this build");
         return registry.Open(FileMediaSource.Open(path));
+    }
+
+    /// <summary>
+    /// The file source as it behaved before it remembered its length: every call to <see cref="Length"/> asks the file system. Used to show
+    /// the effect of that change in one process, on the same files.
+    /// </summary>
+    private sealed class PerCallLengthSource : IMediaSource
+    {
+        private readonly FileMediaSource _inner;
+        private readonly Microsoft.Win32.SafeHandles.SafeFileHandle _handle;
+
+        public PerCallLengthSource(string path)
+        {
+            _inner = FileMediaSource.Open(path);
+            _handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, FileOptions.RandomAccess);
+        }
+
+        public long Length => RandomAccess.GetLength(_handle);
+
+        public int Read(long offset, Span<byte> destination, System.Threading.CancellationToken cancellationToken = default) =>
+            _inner.Read(offset, destination, cancellationToken);
+
+        public void Dispose()
+        {
+            _inner.Dispose();
+            _handle.Dispose();
+        }
+    }
+
+    private static IDemuxer OpenOursPerCallLength(string path)
+    {
+        MediaFormatRegistry registry = Registry.Value ?? throw new NotAvailableException("no OneMedia reader is registered in this build");
+        return registry.Open(new PerCallLengthSource(path));
+    }
+
+    public static Work OursDemuxPerCallLength(string path)
+    {
+        using IDemuxer d = OpenOursPerCallLength(path);
+        return Drain(d);
+    }
+
+    public static Work OursAudioPerCallLength(string path)
+    {
+        using IDemuxer d = OpenOursPerCallLength(path);
+        SelectFirstAudio(d);
+        return Drain(d);
+    }
+
+    private static void SelectFirstAudio(IDemuxer d)
+    {
+        int audio = -1;
+        for (int i = 0; i < d.Tracks.Count; i++)
+        {
+            if (d.Tracks[i].Kind == TrackKind.Audio && audio < 0)
+            {
+                audio = i;
+            }
+            else
+            {
+                d.SetTrackEnabled(i, false);
+            }
+        }
+
+        if (audio < 0)
+        {
+            throw new InvalidOperationException("no audio track");
+        }
     }
 
     public static Work OursDemux(string path)

@@ -49,7 +49,7 @@ internal static class Rows
             [new("OneMedia", Role.Ours, Impls.OursDemux), new("SharpMP4", Role.Gate, Impls.SharpMp4Demux)],
             [FfmpegCopy]),
         new("mp4-audio", "0.1", "MP4/MOV: read the audio track's packets", Mp4Files,
-            [new("OneMedia", Role.Ours, Impls.OursAudio), new("OneAudio Mp4PacketSource", Role.Gate, Impls.OneAudioMp4)],
+            [new("OneMedia", Role.Ours, Impls.OursAudio), new("OneMedia, length asked of the file each time", Role.Previous, Impls.OursAudioPerCallLength), new("OneAudio Mp4PacketSource", Role.Gate, Impls.OneAudioMp4)],
             []),
         new("mp4-probe", "0.1", "MP4/MOV: open, track list, duration, tags", Mp4Files,
             [
@@ -60,7 +60,7 @@ internal static class Rows
             ],
             [Ffprobe, MediaInfo, ExifTool, new("MP4Box -info", "MP4Box", f => ["-info", f])]),
         new("mkv-demux", "0.1", "Matroska/WebM: read every packet", MkvFiles,
-            [new("OneMedia", Role.Ours, Impls.OursDemux), new("StefH Matroska", Role.Gate, Impls.StefHMatroskaDemux)],
+            [new("OneMedia", Role.Ours, Impls.OursDemux), new("OneMedia, length asked of the file each time", Role.Previous, Impls.OursDemuxPerCallLength), new("StefH Matroska", Role.Gate, Impls.StefHMatroskaDemux)],
             [FfmpegCopy, new("mkvextract tracks (first track)", "mkvextract", f => [f, "tracks", "0:/dev/null"])]),
         new("mkv-probe", "0.1", "Matroska/WebM: open, track list, duration", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursProbe), new("NEbml element reader", Role.Gate, Impls.NEbmlProbe)],
