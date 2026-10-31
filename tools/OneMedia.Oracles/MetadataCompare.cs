@@ -254,8 +254,13 @@ internal static partial class MetadataCompare
             Match m = DateRegex().Match(v);
             if (m.Success)
             {
-                DateTime dt = new(int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture),
-                    int.Parse(m.Groups[4].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[5].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[6].Value, CultureInfo.InvariantCulture));
+                int[] p = [.. Enumerable.Range(1, 6).Select(i => int.Parse(m.Groups[i].Value, CultureInfo.InvariantCulture))];
+                if (p[0] < 1 || p[1] is < 1 or > 12 || p[2] < 1 || p[2] > DateTime.DaysInMonth(p[0], p[1]) || p[3] > 23 || p[4] > 59 || p[5] > 59)
+                {
+                    continue; // an unset date such as 0000:00:00 00:00:00
+                }
+
+                DateTime dt = new(p[0], p[1], p[2], p[3], p[4], p[5]);
                 Match z = OffsetRegex().Match(v[m.Length..]);
                 if (z.Success)
                 {
