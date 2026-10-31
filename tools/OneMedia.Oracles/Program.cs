@@ -3,7 +3,7 @@ using System.Globalization;
 namespace RecursiveAI.OneMedia.Oracles;
 
 /// <summary>
-/// Differential and I/O harness. Commands: diff, structure, io, rangeserver, selftest, list.
+/// Differential and I/O harness. Commands: diff, structure, io, meta, rangeserver, selftest, list.
 /// Run with no arguments for usage.
 /// </summary>
 internal static class Program
@@ -17,13 +17,15 @@ internal static class Program
               --audio adds OneAudio's Mp4PacketSource (MP4/3GP) and Ogg comparisons for audio tracks.
               --budget stops starting files after N minutes and exits 75 when work remains (rerun with --resume).
           structure [--family F] [FILES...]    Compare box and element listings with MP4Box and mkvinfo.
-          io [--family F] [--root DIR] [--out DIR] [--no-http] [--no-strace] [FILES...]
+          io [--family F] [--root DIR] [--out DIR] [--no-http] [--no-strace] [--metadata] [FILES...]
               Bytes read and request counts to probe each file: ffprobe, mediainfo, exiftool and our reader.
           infocheck [--family F] [FILES...]
               Compare Media.Open (tracks, codecs, sizes, rates, languages, duration) with ffprobe.
           audiodecode [--family F] [--out DIR] [FILES...]
               Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
           audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
+          meta [--family F] [--out DIR] [FILES...]
+              Compare our tags and basic facts with ExifTool and MediaInfo field by field; writes metadata-compare.tsv.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
           selftest [FILES...]                  Check the harness against exact and deliberately wrong fake formats.
           list [--family F] [--root DIR]       Print the files a family selects.
@@ -52,6 +54,9 @@ internal static class Program
             case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
+            case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
+            case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
+            case "mapping-doc": return MetadataCompare.WriteMappingDoc(o.Out);
             case "rangeserver": return Serve(o);
             case "selftest": return SelfTest.Run(o.Files.Count > 0 ? o.Files : Select(o, "isobmff").Take(3).Concat(Select(o, "matroska").Take(3)).ToList());
             case "list":
@@ -75,6 +80,7 @@ internal static class Program
         public bool Audio { get; private set; }
         public bool Http { get; private set; } = true;
         public bool Strace { get; private set; } = true;
+        public bool Metadata { get; private set; }
         public int Port { get; private set; }
         public List<string> Files { get; } = [];
 
@@ -98,6 +104,7 @@ internal static class Program
                     case "--audio": o.Audio = true; break;
                     case "--no-http": o.Http = false; break;
                     case "--no-strace": o.Strace = false; break;
+                    case "--metadata": o.Metadata = true; break;
                     default: o.Files.Add(e.Current); break;
                 }
             }
@@ -266,6 +273,7 @@ internal static class Program
     private static int Io(Options o)
     {
         List<string> files = o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family);
+        IoHarness.ReadMetadata = o.Metadata;
         List<IoRow> rows = IoHarness.Run(files, o.Root, o.Out, o.Http, o.Strace, o.Resume, Readers.Create());
         IoHarness.Write(o.Out, rows);
         return 0;

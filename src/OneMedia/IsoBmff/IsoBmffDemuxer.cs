@@ -1,3 +1,5 @@
+using RecursiveAI.OneMedia.Metadata;
+
 namespace RecursiveAI.OneMedia.IsoBmff;
 
 /// <summary>
@@ -15,7 +17,7 @@ namespace RecursiveAI.OneMedia.IsoBmff;
 /// <see cref="TryReadPacket"/> allocates nothing once its payload buffer has grown to the largest sample.</para>
 /// <para>Not thread-safe.</para>
 /// </remarks>
-public sealed class IsoBmffDemuxer : IDemuxer
+public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
 {
     private readonly IMediaSource? _source;
     private readonly IForwardMediaSource? _forward;
@@ -139,6 +141,18 @@ public sealed class IsoBmffDemuxer : IDemuxer
 
     /// <summary>The 1-based sample description index of the packet last returned (index into <c>Movie.Tracks[i].SampleEntries</c>).</summary>
     public int SampleDescriptionIndex => _engine.LastDescriptionIndex;
+
+    /// <summary>
+    /// Reads the file's tags and basic facts (see <see cref="IMetadataProvider"/>). For a seekable source it also looks at the top-level boxes after the
+    /// movie box (XMP, file-level metadata), costing a few header reads; for a forward-only source it reads the movie box that was already buffered.
+    /// </summary>
+    /// <param name="cancellationToken">Observed between boxes.</param>
+    /// <returns>The metadata; valid while the demuxer is open.</returns>
+    public MediaMetadata ReadMetadata(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return IsoMetadataReader.Read(_opened.TableSource, _source is not null, _opened.Movie, Tracks, Duration, _limits, Defects, cancellationToken);
+    }
 
     /// <inheritdoc />
     public void SetTrackEnabled(int trackIndex, bool enabled) => _engine.SetTrackEnabled(trackIndex, enabled);
