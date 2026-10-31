@@ -51,7 +51,7 @@ internal static class Impls
     {
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
-        // registry.Add(new MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
         foreach (IMediaFormatSniffer s in registry.Formats)
         {
             if (s is IMediaFormat)

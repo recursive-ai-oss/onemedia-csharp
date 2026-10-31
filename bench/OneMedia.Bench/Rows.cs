@@ -24,17 +24,13 @@ internal static class Rows
         "generated/large/over4gb-moov-at-end.mp4",
     ];
 
+    // The largest Blender Matroska file in the corpus is 1.2 GB; the over-4 GiB file is generated.
     private static readonly string[] MkvFiles =
     [
+        "generated/mkv/h264-aac.mkv",
         "matroska-test-files/test1.mkv",
-        "matroska-test-files/test2.mkv",
-        "matroska-test-files/test3.mkv",
-        "matroska-test-files/test4.mkv",
         "matroska-test-files/test5.mkv",
-        "matroska-test-files/test6.mkv",
-        "matroska-test-files/test7.mkv",
-        "matroska-test-files/test8.mkv",
-        "blender/Sintel.2010.720p.mkv",
+        "blender/Sintel.2010.1080p.mkv",
         "blender/tears_of_steel_1080p.webm",
         "generated/large/over4gb.mkv",
     ];
@@ -65,9 +61,9 @@ internal static class Rows
             [Ffprobe, MediaInfo, ExifTool, new("MP4Box -info", "MP4Box", f => ["-info", f])]),
         new("mkv-demux", "0.1", "Matroska/WebM: read every packet", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursDemux), new("StefH Matroska", Role.Gate, Impls.StefHMatroskaDemux)],
-            [FfmpegCopy]),
+            [FfmpegCopy, new("mkvextract tracks (first track)", "mkvextract", f => [f, "tracks", "0:/dev/null"])]),
         new("mkv-probe", "0.1", "Matroska/WebM: open, track list, duration", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursProbe), new("NEbml element reader", Role.Gate, Impls.NEbmlProbe)],
-            [Ffprobe, MediaInfo, ExifTool, new("mkvmerge -J", "mkvmerge", f => ["-J", f])]),
+            [Ffprobe, MediaInfo, ExifTool, new("mkvmerge -J", "mkvmerge", f => ["-J", f]), new("mkvinfo", "mkvinfo", f => [f])]),
     ];
 }
