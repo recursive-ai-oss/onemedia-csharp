@@ -11,8 +11,8 @@ internal static class Readers
     public static MediaFormatRegistry Create()
     {
         MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffFormat());
-        registry.Add(new MatroskaFormat());
+        registry.Add(new IsoBmff.IsoBmffFormat());
+        registry.Add(new Matroska.MatroskaFormat());
         return registry;
     }
 }
