@@ -78,11 +78,13 @@ return failures == 0 ? 0 : 1;
     List<Pkt>[] ours;
     IReadOnlyList<MediaTrack> tracks;
     DefectLog defects;
+    bool isFragmented;
     using (FileMediaSource src = FileMediaSource.Open(file))
     using (IsoBmffDemuxer d = IsoBmffDemuxer.Open(src, new MediaOpenOptions { LeaveOpen = true }))
     {
         tracks = d.Tracks;
         defects = d.Defects;
+        isFragmented = d.Movie.IsFragmented;
         ours = new List<Pkt>[tracks.Count];
         for (int i = 0; i < ours.Length; i++)
         {
@@ -180,11 +182,16 @@ return failures == 0 ? 0 : 1;
             total++;
             if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; first[0] ??= $"@{i} {m.Size}->{o[4]}"; }
             if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; first[1] ??= $"@{i} {m.Pos}->{o[5]}"; }
-            if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
+            if (isFragmented && i == 0 && o[3] == "N/A")
             {
-                if (i == n - 1 && t.Codec.Name is "mp3" or "ac3" or "eac3")
+                notes.Append($" track{t.Index}:first-fragment-duration-N/A({m.Duration})");
+            }
+            else if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
+            {
+                if (i == n - 1)
                 {
-                    notes.Append($" track{t.Index}:last-duration-from-parser({m.Duration}->{odur})");
+                    // ffprobe replaces the last packet's duration (from the edit list end or the audio parser); the table value is what the file stores.
+                    notes.Append($" track{t.Index}:last-duration({m.Duration}->{o[3]})");
                 }
                 else
                 {
@@ -205,7 +212,13 @@ return failures == 0 ? 0 : 1;
             }
             else { bad[4]++; dtsConst = false; }
             string fl = o[6];
-            if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
+            bool discardOnlyOurs = isFragmented && m.Discard && !fl.Contains('D', StringComparison.Ordinal) && fl.Contains('K', StringComparison.Ordinal) == m.Key;
+            if (discardOnlyOurs)
+            {
+                // ffprobe applies the edit list's discard only to samples of the movie box's own table, not to fragment samples.
+                notes.Append($" track{t.Index}:fragment-discard-flag-only-ours@{i}");
+            }
+            else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
         }
 
         bool negativeOffsets = mine.Any(x => x.Pts < x.Dts);

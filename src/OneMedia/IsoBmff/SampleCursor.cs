@@ -215,7 +215,7 @@ internal sealed class SampleCursor
             _current.IsSync = _nextSync == next + 1;
             if (_current.IsSync)
             {
-                LoadSync(_syncIdx + 1);
+                LoadSync(_syncIdx + 1, next + 1);
             }
         }
         else
@@ -371,7 +371,7 @@ internal sealed class SampleCursor
                 }
             }
 
-            LoadSync(lo);
+            LoadSync(lo, index);
         }
 
         _current = new TableSample
@@ -387,7 +387,7 @@ internal sealed class SampleCursor
         };
         if (_hasStss && _current.IsSync)
         {
-            LoadSync(_syncIdx + 1);
+            LoadSync(_syncIdx + 1, index + 1);
         }
 
         _current.IsDisposable = IsDisposable(index);
@@ -551,10 +551,17 @@ internal sealed class SampleCursor
         _cttsLeft = long.MaxValue;
     }
 
-    private void LoadSync(long idx)
+    // Points at the next listed sync sample number greater than afterNumber. Writers sometimes repeat an entry; a repeat must not hide the next one.
+    private void LoadSync(long idx, long afterNumber)
     {
+        uint v = 0;
+        while (idx < _stssCount && _stss.TryU32(idx * 4, out v) && v <= afterNumber)
+        {
+            idx++;
+        }
+
         _syncIdx = idx;
-        _nextSync = idx < _stssCount && _stss.TryU32(idx * 4, out uint v) ? v : uint.MaxValue;
+        _nextSync = idx < _stssCount ? v : uint.MaxValue;
     }
 
     private bool ChunkStart(long chunk, out long offset)
