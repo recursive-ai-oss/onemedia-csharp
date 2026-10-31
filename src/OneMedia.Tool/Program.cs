@@ -1,11 +1,12 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Globalization;
 using System.Reflection;
+using System.Text;
+using System.Text.Json;
 using RecursiveAI.OneMedia;
-using RecursiveAI.OneMedia.IsoBmff;
-using RecursiveAI.OneMedia.Matroska;
-using RecursiveAI.OneMedia.Sniffing;
+using RecursiveAI.OneMedia.Codecs;
 
 return Run(args);
 
@@ -18,63 +19,188 @@ static int Run(string[] args)
         return 0;
     }
 
-    if (args.Length == 2 && args[0] == "info")
+    if (args.Length >= 2 && args[0] == "info")
     {
-        return Info(args[1]);
+        bool json = args.Contains("--json");
+        string? path = args.Skip(1).FirstOrDefault(a => a != "--json");
+        if (path is not null)
+        {
+            return Info(path, json);
+        }
     }
 
     Console.Error.WriteLine("usage: onemedia --version");
-    Console.Error.WriteLine("       onemedia info <file>    names the container format by its content");
+    Console.Error.WriteLine("       onemedia info <file> [--json]   format, duration, tracks and defects of a media file");
     return 2;
 }
 
-static int Info(string path)
+static int Info(string path, bool json)
 {
-    MediaFormatRegistry registry = new();
-    registry.Add(new IsoBmffFormat());
-    registry.Add(new MatroskaFormat());
-    registry.Add(new WavSniffer());
-    registry.Add(new AviSniffer());
-    registry.Add(new AsfSniffer());
-    registry.Add(new MpegTsSniffer());
-    registry.Add(new MpegPsSniffer());
-    registry.Add(new FlvSniffer());
-    registry.Add(new OggSniffer());
-    registry.Add(new FlacSniffer());
-    registry.Add(new AiffSniffer());
-    registry.Add(new CafSniffer());
-    registry.Add(new Id3Sniffer());
-    registry.Add(new MpegAudioSniffer());
-    registry.Add(new AdtsSniffer());
-    registry.Add(new AmrSniffer());
-    registry.Add(new IvfSniffer());
-
     try
     {
-        using FileMediaSource source = FileMediaSource.Open(path);
-        if (!registry.TrySniff(source, out FormatMatch match))
+        using MediaFile media = Media.Open(path);
+        if (json)
         {
-            Console.WriteLine("format: unknown");
-            return 1;
+            WriteJson(media);
         }
-
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"format: {match.Format.Id} ({match.Format.DisplayName})"));
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"confidence: {match.Result.Confidence}"));
-        if (match.Result.Detail is not null)
+        else
         {
-            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"detail: {match.Result.Detail}"));
+            WriteText(media);
         }
 
         return 0;
     }
-    catch (IOException ex)
+    catch (UnsupportedMediaException ex)
+    {
+        Console.Error.WriteLine("unsupported: " + ex.Message);
+        return 1;
+    }
+    catch (MediaException ex)
+    {
+        Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message);
+        return 1;
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {
         Console.Error.WriteLine(ex.Message);
         return 1;
     }
-    catch (UnauthorizedAccessException ex)
+}
+
+static string Time(MediaTime t) => t.IsKnown ? t.ToTimeSpan().ToString("c", CultureInfo.InvariantCulture) : "unknown";
+
+static string Describe(MediaTrack t) => CodecParameterReader.TryDescribe(t.Codec, t.Configuration, out CodecParameters? p) && p?.Rfc6381 is { } s ? s : "";
+
+static void WriteText(MediaFile media)
+{
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"format: {media.Format}"));
+    Console.WriteLine("duration: " + Time(media.ContainerDuration));
+    foreach (MediaTrack t in media.Tracks)
     {
-        Console.Error.WriteLine(ex.Message);
-        return 1;
+        StringBuilder sb = new();
+        sb.Append(CultureInfo.InvariantCulture, $"track {t.Index}: {t.Kind.ToString().ToLowerInvariant()} {(t.Codec.IsUnknown ? "unknown" : t.Codec.Name)}");
+        string rfc = Describe(t);
+        if (rfc.Length > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" ({rfc})");
+        }
+
+        if (t.CodecTag is not null)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" [{t.CodecTag}]");
+        }
+
+        if (t.Video is { } v)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" {v.Width}x{v.Height}");
+            if (v.RotationDegrees != 0)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $" rotate {v.RotationDegrees}");
+            }
+
+            if (v.FrameRateNumerator > 0 && v.FrameRateDenominator > 0)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $" {v.FrameRateNumerator}/{v.FrameRateDenominator} fps");
+            }
+        }
+
+        if (t.Audio is { } a)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" {a.SampleRate} Hz {a.Channels} ch");
+        }
+
+        if (t.Language is not null)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" lang={t.Language}");
+        }
+
+        if (t.Disposition != TrackDisposition.None)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" disposition={t.Disposition}");
+        }
+
+        if (t.IsProtected)
+        {
+            sb.Append(" protected");
+        }
+
+        Console.WriteLine(sb.ToString());
     }
+
+    foreach (MediaDefect d in media.Defects)
+    {
+        Console.WriteLine("defect: " + d);
+    }
+}
+
+static void WriteJson(MediaFile media)
+{
+    using Stream stdout = Console.OpenStandardOutput();
+    using Utf8JsonWriter w = new(stdout, new JsonWriterOptions { Indented = true });
+    w.WriteStartObject();
+    w.WriteString("format", media.Format.Name);
+    if (media.ContainerDuration.IsKnown)
+    {
+        w.WriteNumber("durationTicks", media.ContainerDuration.Ticks);
+        w.WriteNumber("durationTimescale", media.ContainerDuration.Timescale);
+    }
+
+    w.WriteStartArray("tracks");
+    foreach (MediaTrack t in media.Tracks)
+    {
+        w.WriteStartObject();
+        w.WriteNumber("index", t.Index);
+        w.WriteString("kind", t.Kind.ToString().ToLowerInvariant());
+        w.WriteString("codec", t.Codec.Name);
+        if (t.CodecTag is not null)
+        {
+            w.WriteString("codecTag", t.CodecTag);
+        }
+
+        string rfc = Describe(t);
+        if (rfc.Length > 0)
+        {
+            w.WriteString("rfc6381", rfc);
+        }
+
+        w.WriteNumber("timescale", t.Timescale);
+        if (t.Video is { } v)
+        {
+            w.WriteNumber("width", v.Width);
+            w.WriteNumber("height", v.Height);
+            w.WriteNumber("rotation", v.RotationDegrees);
+        }
+
+        if (t.Audio is { } a)
+        {
+            w.WriteNumber("sampleRate", a.SampleRate);
+            w.WriteNumber("channels", a.Channels);
+        }
+
+        if (t.Language is not null)
+        {
+            w.WriteString("language", t.Language);
+        }
+
+        w.WriteString("disposition", t.Disposition.ToString());
+        w.WriteBoolean("protected", t.IsProtected);
+        w.WriteEndObject();
+    }
+
+    w.WriteEndArray();
+    w.WriteStartArray("defects");
+    foreach (MediaDefect d in media.Defects)
+    {
+        w.WriteStartObject();
+        w.WriteString("kind", d.Kind.ToString());
+        w.WriteString("severity", d.Severity.ToString());
+        w.WriteNumber("offset", d.Offset);
+        w.WriteString("message", d.Message);
+        w.WriteEndObject();
+    }
+
+    w.WriteEndArray();
+    w.WriteEndObject();
+    w.Flush();
+    Console.WriteLine();
 }
