@@ -51,11 +51,13 @@ seed() {
   mkdir -p "$corpus"
   [ -d "$here/testdata/fuzz/$target" ] && cp -n "$here/testdata/fuzz/$target"/* "$corpus/" 2>/dev/null || true
   [ -n "$s" ] && [ -d "$s" ] || { printf '\000\000' > "$corpus/empty.seed"; return; }
+  # copy the first 3000 bytes of every existing file matching the patterns; a missing pattern is not an error
+  heads() { local prefix="$1"; shift; local f; for f in "$@"; do [ -f "$f" ] || continue; { printf "$prefix"; head -c 3000 "$f"; } > "$corpus/$(basename "$f").seed"; done; }
   case "$target" in
-    codecs-nal)            for f in "$s"/*.h264 "$s"/*.hevc; do { printf '\000'; head -c 3000 "$f"; } > "$corpus/$(basename "$f").seed"; done ;;
-    codecs-av1-vpx-mpeg2)  for f in "$s"/*.obu "$s"/*.m2v "$s"/*.ivf; do head -c 3000 "$f" > "$corpus/$(basename "$f").seed"; done ;;
-    codecs-aac)            for f in "$s"/*.aac; do head -c 3000 "$f" > "$corpus/$(basename "$f").seed"; done ;;
-    codecs-audio)          for f in "$s"/*.ac3 "$s"/*.eac3 "$s"/*.mp3 "$s"/*.flac; do head -c 3000 "$f" > "$corpus/$(basename "$f").seed"; done ;;
+    codecs-nal)            heads '\000' "$s"/*.h264 "$s"/*.hevc ;;
+    codecs-av1-vpx-mpeg2)  heads '' "$s"/*.obu "$s"/*.m2v "$s"/*.ivf ;;
+    codecs-aac)            heads '' "$s"/*.aac ;;
+    codecs-audio)          heads '' "$s"/*.ac3 "$s"/*.eac3 "$s"/*.mp3 "$s"/*.flac ;;
     codecs-config)
       # configuration records pulled out of the generated MP4 files: <codec><format><box content>
       if command -v python3 >/dev/null; then

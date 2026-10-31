@@ -111,12 +111,13 @@ public sealed partial class CodecFieldDifferentialTests
                 mine = t.EntryType + mine[4..];
             }
 
-            string output = RunTool(mp4box, $"-info \"{path}\"");
+            string output = RunTool(mp4box, $"\"{path}\" -info");
             Match m = Rfc6381Line().Match(output);
             string theirs = m.Success ? m.Groups[1].Value.Trim() : "(none)";
             compared++;
             log.Append(Path.GetFileName(path)).Append(": ours=").Append(mine).Append(" mp4box=").Append(theirs).Append('\n');
-            if (mine != theirs)
+            // MP4Box prints the sample entry code for Opus and FLAC ("Opus", "fLaC"); browsers take the strings case-insensitively, so the comparison ignores case.
+            if (!string.Equals(mine, theirs, StringComparison.OrdinalIgnoreCase))
             {
                 problems.Add($"{Path.GetFileName(path)}: ours={mine} mp4box={theirs}");
             }
@@ -149,7 +150,7 @@ public sealed partial class CodecFieldDifferentialTests
             return false;
         }
 
-        if (ext == ".mp4")
+        if (ext is ".mp4" or ".3gp")
         {
             MiniContainers.Mp4Track? t = MiniContainers.ReadMp4(file);
             if (t is null)
@@ -203,6 +204,7 @@ public sealed partial class CodecFieldDifferentialTests
             case ".aac":
             case ".ac3":
             case ".eac3":
+            case ".amr":
                 return CodecParameterReader.TryDescribeSample(codec, file, out ours);
             case ".ivf":
                 return CodecParameterReader.TryDescribeSample(codec, file.AsSpan(32 + 12), out ours);
@@ -240,6 +242,8 @@ public sealed partial class CodecFieldDifferentialTests
         "eac3" => CodecId.Eac3,
         "mp3" => CodecId.Mp3,
         "mp2" => new CodecId("mp2"),
+        "amr_nb" => CodecId.AmrNb,
+        "amr_wb" => CodecId.AmrWb,
         _ => CodecId.Unknown,
     };
 

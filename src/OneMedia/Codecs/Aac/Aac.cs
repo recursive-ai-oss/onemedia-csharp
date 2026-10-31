@@ -463,7 +463,7 @@ public static class AdtsRepackager
         }
 
         // Channel configuration 0: the first raw data block starts with a program_config_element (id_syn_ele = 5, §4.4.1).
-        // The ASC is then the usual 13 bits, a zero GASpecificConfig prefix of 3 bits, and the PCE bits copied as they are.
+        // The ASC is then the usual 13 bits, a zero GASpecificConfig prefix of 3 bits and the PCE (aligned afresh, see below).
         int start = Math.Min(h.HeaderSize, frame.Length);
         ReadOnlySpan<byte> body = frame[start..];
         BitReader r = new(body);
@@ -472,18 +472,31 @@ public static class AdtsRepackager
             return false;
         }
 
-        // Re-read the PCE with the same grammar as the ASC parser to learn its length in bits.
+        // byte_alignment() inside the PCE is counted from the start of the structure that holds it: the raw data block here, the
+        // AudioSpecificConfig there. The PCE starts 3 bits into the block but 16 bits into the config, so the padding differs and the
+        // PCE is copied in two parts: the fields up to the alignment, then the comment bytes after it.
         BitReader probe = new(body);
         probe.SkipBits(3);
         long pceStart = probe.BitsConsumed;
-        if (!SkipPce(ref probe))
+        if (!SkipPceFields(ref probe))
         {
             return false;
         }
 
-        long pceBits = probe.BitsConsumed - pceStart;
-        long totalBits = 5 + 4 + 4 + 3 + pceBits;
-        int bytes = (int)((totalBits + 7) / 8);
+        long preBits = probe.BitsConsumed - pceStart;
+        probe.ByteAlign();
+        long postStart = probe.BitsConsumed;
+        int comment = (int)probe.ReadBits(8);
+        probe.SkipBits(8L * comment);
+        if (probe.Overrun)
+        {
+            return false;
+        }
+
+        long postBits = probe.BitsConsumed - postStart;
+        long headBits = 5 + 4 + 4 + 3;
+        long alignedPre = (headBits + preBits + 7) / 8 * 8;
+        int bytes = (int)((alignedPre + postBits + 7) / 8);
         Span<byte> o = writer.GetSpan(bytes);
         o[..bytes].Clear();
         BitWriter bw = new(o);
@@ -493,16 +506,33 @@ public static class AdtsRepackager
         bw.Write(0, 3);
         BitReader copy = new(body);
         copy.SkipBits(3);
-        for (long i = 0; i < pceBits; i++)
+        for (long i = 0; i < preBits; i++)
         {
             bw.Write((uint)copy.ReadBit(), 1);
+        }
+
+        for (long i = headBits + preBits; i < alignedPre; i++)
+        {
+            bw.Write(0, 1);
+        }
+
+        copy.ByteAlign();
+        for (long i = 0; i < postBits; i++)
+        {
+            bw.Write((uint)copy.ReadBit(), 1);
+        }
+
+        // A config that does not read back is not worth returning (a garbage PCE can pass the length walk above).
+        if (!AudioSpecificConfig.TryParse(o[..bytes], out _))
+        {
+            return false;
         }
 
         writer.Advance(bytes);
         return true;
     }
 
-    private static bool SkipPce(ref BitReader r)
+    private static bool SkipPceFields(ref BitReader r)
     {
         r.SkipBits(10);
         int front = (int)r.ReadBits(4);
@@ -528,9 +558,6 @@ public static class AdtsRepackager
 
         r.SkipBits(5L * (front + side + back));
         r.SkipBits((4 * lfe) + (4 * assoc) + (5 * cc));
-        r.ByteAlign();
-        int comment = (int)r.ReadBits(8);
-        r.SkipBits(8L * comment);
         return !r.Overrun;
     }
 

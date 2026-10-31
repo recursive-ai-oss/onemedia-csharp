@@ -131,6 +131,48 @@ public sealed class CodecUnitTests
     }
 
     [Fact]
+    public void AdtsWithProgramConfigElementYieldsAConfigThatParses()
+    {
+        // The PCE starts 3 bits into the raw data block but 16 bits into the AudioSpecificConfig, so its byte_alignment() padding
+        // differs between the two; the derived config must realign it rather than copy the block's padding.
+        byte[] body = Bits((5, 3), (0, 4), (1, 2), (3, 4), (1, 4), (0, 4), (0, 4), (0, 2), (0, 3), (0, 4), (0, 1), (0, 1), (0, 1),
+            (1, 1), (0, 4), (0, 6), (0, 8), (7, 3), (0, 5));
+        int length = 7 + body.Length;
+        byte[] frame = new byte[length];
+        frame[0] = 0xff;
+        frame[1] = 0xf1;
+        frame[2] = 0x4c; // AAC LC, 48 kHz, channel configuration 0
+        frame[3] = (byte)(length >> 11);
+        frame[4] = (byte)(length >> 3);
+        frame[5] = (byte)(((length & 7) << 5) | 0x1f);
+        frame[6] = 0xfc;
+        body.CopyTo(frame.AsSpan(7));
+
+        ArrayBufferWriter<byte> w = new();
+        Assert.True(AdtsRepackager.TryCreateConfig(frame, w));
+        Assert.True(AudioSpecificConfig.TryParse(w.WrittenSpan, out AudioSpecificConfig c));
+        Assert.Equal(2, c.Channels);
+        Assert.Equal(48000, c.SamplingFrequency);
+    }
+
+    [Fact]
+    public void AdtsWithGarbageProgramConfigElementIsRefused()
+    {
+        // Found by fuzzing: channel configuration 0, a CRC, and a block that starts with a PCE whose fields add up to a nonsense layout.
+        byte[] frame = Convert.FromHexString(
+            "fff800009201000000b4b4b4281db40e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e" +
+            "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e" +
+            "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e" +
+            "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0eb4b4b4c4b40e0000000000" +
+            "0000b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b40026000000000000002d");
+        ArrayBufferWriter<byte> w = new();
+        if (AdtsRepackager.TryCreateConfig(frame, w))
+        {
+            Assert.True(AudioSpecificConfig.TryParse(w.WrittenSpan, out _));
+        }
+    }
+
+    [Fact]
     public void OpusPacketDurations()
     {
         Assert.True(OpusToc.TryGetSamples([0x00], out int s));      // config 0: SILK NB 10 ms, one frame

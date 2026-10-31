@@ -129,16 +129,13 @@ public static class CodecParameterReader
             case "amr-nb":
             case "amr-wb":
                 {
-                    bool wide = codec.Name == "amr-wb";
-                    parameters = new CodecParameters
+                    if (!AmrSpecificBox.TryParse(data.Span, out _))
                     {
-                        Codec = codec,
-                        Rfc6381 = wide ? "sawb" : "samr",
-                        SampleRate = wide ? 16000 : 8000,
-                        Channels = 1,
-                        SamplesPerFrame = AmrFrame.SamplesPerFrame(wide),
-                    };
-                    return AmrSpecificBox.TryParse(data.Span, out _);
+                        return false;
+                    }
+
+                    parameters = DescribeAmr(codec.Name == "amr-wb");
+                    return true;
                 }
 
             default:
@@ -199,6 +196,16 @@ public static class CodecParameterReader
                 if (AdtsHeader.TryParse(sample, out AdtsHeader adts) && AudioSpecificConfig.TryParse(AdtsAsc(adts), out AudioSpecificConfig config))
                 {
                     parameters = config.Describe();
+                    return true;
+                }
+
+                return false;
+            case "amr-nb":
+            case "amr-wb":
+                // RFC 4867 §5.1: a storage-format file starts with the "#!AMR" magic, which also says narrow or wide band.
+                if (AmrFrame.TryReadMagic(sample, out bool wideband, out _))
+                {
+                    parameters = DescribeAmr(wideband);
                     return true;
                 }
 
@@ -286,6 +293,15 @@ public static class CodecParameterReader
                 }
         }
     }
+
+    private static CodecParameters DescribeAmr(bool wide) => new()
+    {
+        Codec = wide ? CodecId.AmrWb : CodecId.AmrNb,
+        Rfc6381 = wide ? "sawb" : "samr",
+        SampleRate = wide ? 16000 : 8000,
+        Channels = 1,
+        SamplesPerFrame = AmrFrame.SamplesPerFrame(wide),
+    };
 
     private static byte[] AdtsAsc(in AdtsHeader h)
     {
