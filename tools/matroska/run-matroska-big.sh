@@ -21,7 +21,7 @@ if [ ! -f big.mkv ]; then
   "$ORACLES/ffmpeg" -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=25:duration=135 \
     -f lavfi -i sine=frequency=440:sample_rate=48000:duration=135 -c:v rawvideo -pix_fmt rgb24 -allow_raw_vfw 1 -c:a libopus -f matroska big.mkv
 fi
-[ -f big-live.mkv ] || "$ORACLES/ffmpeg" -hide_banner -loglevel error -y -i big.mkv -c copy -f matroska -live 1 big-live.mkv
+[ -f big-live.mkv ] || "$ORACLES/ffmpeg" -hide_banner -loglevel error -y -i big.mkv -c copy -allow_raw_vfw 1 -f matroska -live 1 big-live.mkv
 [ -f big-tracks-last.mkv ] || python3 "$here/tools/matroska/make-tracks-last.py" big.mkv big-tracks-last.mkv
 [ -f small.mkv ] || "$ORACLES/ffmpeg" -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=160x112:rate=25:duration=3 -f lavfi -i sine=duration=3 -c:v libx264 -c:a libopus small.mkv
 ls -l big.mkv big-live.mkv big-tracks-last.mkv small.mkv

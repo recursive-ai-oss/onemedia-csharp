@@ -2,7 +2,7 @@
 # Runs the Matroska checks against the oracle binaries: packet differential against ffprobe, mkvinfo structure and track headers,
 # forward-only equality, and the OneAudio comparison. Writes fixtures with make-fixtures.sh when the work directory has none.
 #
-#   tools/matroska/run-matroska-diff.sh <work-dir> [extra-media-dir]
+#   tools/matroska/run-matroska-diff.sh <work-dir> [extra-media-dir...]
 #
 # Environment: ORACLES (directory with ffprobe, ffmpeg, mkvinfo, mkvmerge; default ~/onemedia/oracles/bin),
 #              TEST_FILES (directory holding the published test1.mkv..test8.mkv).
@@ -10,7 +10,7 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="${1:?work directory}"
-extra="${2:-}"
+shift
 ORACLES="${ORACLES:-$HOME/onemedia/oracles/bin}"
 export ONEMEDIA_SCRATCH="$work"   # the build writes to $work/artifacts
 art="$work/artifacts"
@@ -30,7 +30,7 @@ fi
 
 files=("$work"/fx/*.mk? "$work"/fx/*.webm)
 if [ -n "${TEST_FILES:-}" ]; then files+=("$TEST_FILES"/test[1-8].mkv); fi
-if [ -n "$extra" ]; then files+=("$extra"/*.mk? "$extra"/*.webm); fi
+for extra in "$@"; do files+=("$extra"/*.mk? "$extra"/*.webm); done
 
 bad=0; n=0
 for f in "${files[@]}"; do

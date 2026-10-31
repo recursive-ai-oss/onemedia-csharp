@@ -54,11 +54,20 @@ static List<OurPacket> ReadOurs(IDemuxer d, int limit)
     return list;
 }
 
+// Adler-32 (the same checksum ffprobe prints with -show_data_hash adler32), so payload bytes can be compared with its packets.
 static uint Hash(ReadOnlySpan<byte> data)
 {
-    uint h = 2166136261;
-    foreach (byte b in data) { h = (h ^ b) * 16777619; }
-    return h;
+    uint a = 1, b = 0;
+    int i = 0;
+    while (i < data.Length)
+    {
+        int end = Math.Min(data.Length, i + 5552);
+        for (; i < end; i++) { a += data[i]; b += a; }
+        a %= 65521;
+        b %= 65521;
+    }
+
+    return (b << 16) | a;
 }
 
 static int Dump(string path, int limit)
@@ -191,6 +200,7 @@ static int Diff(string path, string ffprobe)
     Dictionary<string, int> unexplained = [];
     Dictionary<string, int> posKinds = [];
     long compared = 0;
+    long hashesCompared = 0;
     StringBuilder examples = new();
     bool inexact = d.Info.TimestampScale != 0 && 1_000_000_000 % d.Info.TimestampScale != 0;
     for (int s = 0; s < streams; s++)
@@ -215,6 +225,13 @@ static int Diff(string path, string ffprobe)
                 else if (d.Tracks[s].Codec == CodecId.WebVtt && Num(t, "size") < p.Size) { Add(explained, $"s{s}:webvtt-block-repacked"); }
                 else { Bad(s, i, $"size {p.Size}/{Num(t, "size")}"); }
             }
+
+            else if (t.TryGetValue("data_hash", out string? dh) && dh.StartsWith("ADLER32:", StringComparison.Ordinal)
+                && uint.Parse(dh[8..], NumberStyles.HexNumber, CultureInfo.InvariantCulture) != p.Hash)
+            {
+                Bad(s, i, "payload hash differs");
+            }
+            else { hashesCompared++; }
 
             long? theirPts = NumN(t, "pts");
             long? theirDur = NumN(t, "duration");
@@ -252,7 +269,7 @@ static int Diff(string path, string ffprobe)
     }
 
     long unexplainedTotal = unexplained.Values.Sum();
-    Console.WriteLine($"{Path.GetFileName(path)}: ours={ours.Count} ffprobe={theirs.Count} compared={compared} unexplained={unexplainedTotal} [{string.Join(", ", unexplained.Select(kv => kv.Key + "=" + kv.Value))}] explained=[{string.Join(", ", explained.OrderBy(kv => kv.Key).Select(kv => kv.Key + "=" + kv.Value))}] defects={d.Defects.Count} pos:[{string.Join(", ", posKinds.OrderBy(kv => kv.Key).Select(kv => kv.Key + "=" + kv.Value))}]");
+    Console.WriteLine($"{Path.GetFileName(path)}: ours={ours.Count} ffprobe={theirs.Count} compared={compared} payloadHashesEqual={hashesCompared} unexplained={unexplainedTotal} [{string.Join(", ", unexplained.Select(kv => kv.Key + "=" + kv.Value))}] explained=[{string.Join(", ", explained.OrderBy(kv => kv.Key).Select(kv => kv.Key + "=" + kv.Value))}] defects={d.Defects.Count} pos:[{string.Join(", ", posKinds.OrderBy(kv => kv.Key).Select(kv => kv.Key + "=" + kv.Value))}]");
     if (examples.Length > 0) { Console.Write(examples.ToString()); }
     return unexplainedTotal == 0 ? 0 : 1;
 
@@ -448,7 +465,7 @@ static Dictionary<int, (long, long)> ParseTimeBases(string text)
 static string RunFfprobe(string ffprobe, string path, out string streams)
 {
     streams = Run(ffprobe, ["-v", "error", "-show_entries", "stream=index,time_base", "-of", "compact=p=0", path]);
-    return Run(ffprobe, ["-v", "error", "-show_packets", "-show_entries", "packet=stream_index,pts,dts,duration,size,pos,flags", "-of", "compact=p=0", path]);
+    return Run(ffprobe, ["-v", "error", "-show_packets", "-show_entries", "packet=stream_index,pts,dts,duration,size,pos,flags,data_hash", "-show_data_hash", "adler32", "-of", "compact=p=0", path]);
 }
 
 static string Run(string exe, string[] arguments)
