@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.Bench</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>

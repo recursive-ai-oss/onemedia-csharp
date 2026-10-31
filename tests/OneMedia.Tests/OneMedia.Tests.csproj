@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>$(PackagePrefix)OneMedia.Tests</AssemblyName>
+    <RootNamespace>RecursiveAI.OneMedia.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);xUnit1051;xUnit1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Linq" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A trivial demuxer shared with the smoke apps. -->
+    <Compile Include="../../smoke/Shared/FixedPacketDemuxer.cs" Link="Shared/FixedPacketDemuxer.cs" />
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+  </ItemGroup>
+
+</Project>

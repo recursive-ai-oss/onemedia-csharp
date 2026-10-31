@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OneMedia/OneMedia.csproj" />
+    <Project Path="src/OneMedia.Audio/OneMedia.Audio.csproj" />
+    <Project Path="src/OneMedia.Tool/OneMedia.Tool.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OneMedia.Tests/OneMedia.Tests.csproj" />
+  </Folder>
+  <Folder Name="/smoke/">
+    <Project Path="smoke/OneMedia.AotSmoke/OneMedia.AotSmoke.csproj" />
+    <Project Path="smoke/OneMedia.WasmSmoke/OneMedia.WasmSmoke.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/OneMedia.Oracles/OneMedia.Oracles.csproj" />
+  </Folder>
+  <Folder Name="/bench/">
+    <Project Path="bench/OneMedia.Bench/OneMedia.Bench.csproj" />
+  </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/OneMedia.Fuzz/OneMedia.Fuzz.csproj" />
+  </Folder>
+</Solution>
