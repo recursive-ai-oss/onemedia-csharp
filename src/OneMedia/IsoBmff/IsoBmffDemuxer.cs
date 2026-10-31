@@ -25,7 +25,9 @@ public sealed class IsoBmffDemuxer : IDemuxer
     private readonly MediaLimits _limits;
     private readonly CancellationToken _cancellation;
     private readonly SeekableFragmentLoader? _loader;
-    private byte[] _buffer = new byte[64 * 1024];
+    private const int MinPayloadBuffer = 4 * 1024;
+    private readonly PayloadReadAhead _readAhead = new();
+    private byte[] _buffer = []; // the first packet allocates it, so opening just to probe costs none of it
     private long _nextFragmentPosition;
     private long _mdatEnd;
     private BoxHeader? _pending;
@@ -287,13 +289,13 @@ public sealed class IsoBmffDemuxer : IDemuxer
         int size = info.Size;
         if (_buffer.Length < size)
         {
-            _buffer = new byte[Math.Max(size, Math.Min(_buffer.Length * 2, Array.MaxLength))];
+            _buffer = new byte[Math.Max(Math.Max(size, MinPayloadBuffer), Math.Min(_buffer.Length * 2, Array.MaxLength))];
         }
 
         long offset = info.SourceRange.Offset;
         if (_source is not null)
         {
-            if (_source.Read(offset, _buffer.AsSpan(0, size), _cancellation) == size)
+            if (_readAhead.Read(_source, offset, _buffer.AsSpan(0, size), _cancellation) == size)
             {
                 return true;
             }
@@ -376,6 +378,7 @@ public sealed class IsoBmffDemuxer : IDemuxer
         }
 
         _disposed = true;
+        _readAhead.Release();
         if (!_leaveOpen)
         {
             _source?.Dispose();

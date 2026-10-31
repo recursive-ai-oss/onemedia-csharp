@@ -10,7 +10,7 @@ internal sealed class TableWindow
     private readonly IMediaSource _source;
     private readonly long _start;
     private readonly long _length;
-    private readonly byte[] _buffer = new byte[WindowBytes];
+    private readonly byte[] _buffer;
     private long _bufferStart = -1;
     private int _bufferLength;
 
@@ -19,6 +19,7 @@ internal sealed class TableWindow
         _source = source;
         _start = start;
         _length = Math.Max(0, length);
+        _buffer = new byte[(int)Math.Clamp(_length, 8, WindowBytes)]; // a short table needs no more than itself
     }
 
     /// <summary>Makes bytes [relative, relative + count) available, returning false past the end of the table or the source.</summary>
