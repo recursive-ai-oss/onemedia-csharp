@@ -652,6 +652,9 @@ internal static class LanguageCodes
         "vie", "ind", "tgl", "msa", "msa", "amh", "tir", "orm", "som", "swa", "kin", "run", "nya", "mlg", "epo",
     ];
 
+    // Codes 128..138 (Table 4-1 of the QuickTime File Format Specification): Welsh to Javanese (Roman).
+    private static readonly string[] MacHighToIso = ["cym", "eus", "cat", "lat", "que", "grn", "aym", "tat", "uig", "dzo", "jav"];
+
     public static string Decode(ushort code)
     {
         if (code is 0x7FFF)
@@ -661,7 +664,7 @@ internal static class LanguageCodes
 
         if (code < 0x400)
         {
-            return code < MacToIso.Length ? MacToIso[code] : "und";
+            return code < MacToIso.Length ? MacToIso[code] : code is >= 128 && code - 128 < MacHighToIso.Length ? MacHighToIso[code - 128] : "und";
         }
 
         // Three characters of 5 bits, each the letter minus 0x60.
