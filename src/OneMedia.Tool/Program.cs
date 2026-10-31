@@ -7,6 +7,8 @@ using System.Text;
 using System.Text.Json;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Codecs;
+using RecursiveAI.OneMedia.Metadata;
+using RecursiveAI.OneMedia.Tags;
 
 return Run(args);
 
@@ -127,10 +129,62 @@ static void WriteText(MediaFile media)
         Console.WriteLine(sb.ToString());
     }
 
+    foreach (CommonField field in Enum.GetValues<CommonField>())
+    {
+        foreach (CommonValue v in media.Tags.Values(field))
+        {
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"tag {field}: {v.Text}"));
+        }
+    }
+
+    WriteFactText("captureTime", media.CaptureTime, v => v.ToString());
+    WriteFactText("location", media.Location, ShowLocation);
+    WriteFactText("make", media.Device.Make, v => v);
+    WriteFactText("model", media.Device.Model, v => v);
+    WriteFactText("software", media.Device.Software, v => v);
+    WriteFactText("rotation", media.Rotation, ShowRotation);
+
     foreach (MediaDefect d in media.Defects)
     {
         Console.WriteLine("defect: " + d);
     }
+}
+
+static string ShowLocation(GeoLocation v) => string.Create(CultureInfo.InvariantCulture, $"{v.Latitude:0.######},{v.Longitude:0.######}") + (v.Altitude is { } alt ? string.Create(CultureInfo.InvariantCulture, $",{alt:0.##}") : "");
+
+static string ShowRotation(VideoOrientation v) => v.RotationDegrees.ToString(CultureInfo.InvariantCulture) + (v.MirrorHorizontal ? " mirrored" : "");
+
+static void WriteFactText<T>(string name, Fact<T> fact, Func<T, string> show)
+{
+    if (fact.Best is { } best)
+    {
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{name}: {show(best.Value)} ({best.Source}, {fact.Candidates.Count} candidate(s))"));
+    }
+}
+
+static void WriteFactJson<T>(Utf8JsonWriter w, string name, Fact<T> fact, Func<T, string> show)
+{
+    if (!fact.HasValue)
+    {
+        return;
+    }
+
+    w.WriteStartObject(name);
+    w.WriteString("value", show(fact.Best!.Value));
+    w.WriteStartArray("candidates");
+    foreach (FactCandidate<T> c in fact.Candidates)
+    {
+        w.WriteStartObject();
+        w.WriteString("value", show(c.Value));
+        w.WriteString("source", c.Source);
+        w.WriteString("raw", c.RawValue);
+        w.WriteString("interpretation", c.Interpretation);
+        w.WriteString("timezone", c.Certainty.ToString());
+        w.WriteEndObject();
+    }
+
+    w.WriteEndArray();
+    w.WriteEndObject();
 }
 
 static void WriteJson(MediaFile media)
@@ -188,6 +242,27 @@ static void WriteJson(MediaFile media)
     }
 
     w.WriteEndArray();
+    w.WriteStartArray("tags");
+    foreach (CommonField field in Enum.GetValues<CommonField>())
+    {
+        foreach (CommonValue v in media.Tags.Values(field))
+        {
+            w.WriteStartObject();
+            w.WriteString("field", field.ToString());
+            w.WriteString("text", v.Text);
+            w.WriteEndObject();
+        }
+    }
+
+    w.WriteEndArray();
+    w.WriteStartObject("facts");
+    WriteFactJson(w, "captureTime", media.CaptureTime, v => v.ToString());
+    WriteFactJson(w, "location", media.Location, ShowLocation);
+    WriteFactJson(w, "make", media.Device.Make, v => v);
+    WriteFactJson(w, "model", media.Device.Model, v => v);
+    WriteFactJson(w, "software", media.Device.Software, v => v);
+    WriteFactJson(w, "rotation", media.Rotation, ShowRotation);
+    w.WriteEndObject();
     w.WriteStartArray("defects");
     foreach (MediaDefect d in media.Defects)
     {

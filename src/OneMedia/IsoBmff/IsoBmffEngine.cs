@@ -25,6 +25,13 @@ internal sealed class TrackState
     /// <summary>True for PCM audio, whose table samples are single sample frames that are joined into packets (see <see cref="IsoBmffEngine.TryNextTableSample"/>).</summary>
     public bool GroupFrames { get; init; }
 
+    /// <summary>
+    /// QuickTime audio whose table samples are single audio samples of a packetised format (IMA 4:1, u-law, ...): the sample size in the table is a
+    /// placeholder of one byte, and the real packet is <c>BytesPerFrame</c> bytes for <c>SamplesPerPacket</c> samples, by sample description (1-based).
+    /// Null for every other track.
+    /// </summary>
+    public (int SamplesPerPacket, int BytesPerFrame)[]? SamplePackets { get; init; }
+
     public bool ReportedRange { get; set; }
 }
 
@@ -58,7 +65,7 @@ internal sealed class IsoBmffEngine
             MediaTrack info = BuildTrack(t, movie, qt, sidxDuration, ref gaplessUsed, out long editStart);
             infos[i] = info;
             SampleCursor? cursor = t.HasSampleTable && t.SampleCount > 0 ? new SampleCursor(t.Layout, tableSource, defects, fileLength, movie.Range.Offset) : null;
-            States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart, GroupFrames = info.Kind == TrackKind.Audio && info.Codec == CodecId.Pcm };
+            States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart, GroupFrames = info.Kind == TrackKind.Audio && info.Codec == CodecId.Pcm, SamplePackets = SamplePacketsOf(t, info.Kind, info.Codec) };
             if (cursor is not null && !cursor.IsValid)
             {
                 States[i].Cursor = null;
@@ -69,6 +76,50 @@ internal sealed class IsoBmffEngine
         Duration = ComputeDuration(movie, infos, sidxDuration);
         FindFragmentStarts();
         ResetFragmentTimes();
+    }
+
+    // QuickTime File Format, sound sample description version 1: when the sample table counts audio samples (a constant table size of one byte),
+    // a packet of SamplesPerPacket samples takes BytesPerFrame bytes in its chunk. MP3-in-QuickTime descriptions are left out: their bytes per frame
+    // is an average, so the real frame boundaries are only known to an MP3 parser.
+    private static (int, int)[]? SamplePacketsOf(IsoTrack t, TrackKind kind, CodecId codec)
+    {
+        if (kind != TrackKind.Audio || t.Layout.ConstantSize != 1 || codec == CodecId.Mp3 || codec == CodecId.Pcm)
+        {
+            return null;
+        }
+
+        (int, int)[] result = new (int, int)[t.SampleEntries.Count];
+        bool any = false;
+        for (int i = 0; i < result.Length; i++)
+        {
+            SampleEntry e = t.SampleEntries[i];
+            if (e.SoundVersion == 1 && e.SamplesPerPacket > 1 && e.BytesPerFrame > 0)
+            {
+                result[i] = (e.SamplesPerPacket, e.BytesPerFrame);
+                any = true;
+            }
+        }
+
+        return any ? result : null;
+    }
+
+    // Seeking lands on a table sample; for packetised QuickTime audio the packet starts at the last multiple of samples-per-packet in its chunk.
+    private static void SnapToPacket(TrackState s)
+    {
+        if (s.SamplePackets is not { } packets || s.Cursor is not { IsValid: true } c)
+        {
+            return;
+        }
+
+        int d = c.Current.DescriptionIndex;
+        if (d >= 1 && d <= packets.Length && packets[d - 1].SamplesPerPacket > 1)
+        {
+            long back = (c.Current.Offset - c.ChunkStartOffset) % packets[d - 1].SamplesPerPacket;
+            if (back > 0)
+            {
+                c.SeekToSample(c.Current.Index - back);
+            }
+        }
     }
 
     public IsoMovie Movie { get; }
@@ -197,7 +248,16 @@ internal sealed class IsoBmffEngine
         if (kind == TrackKind.Audio && entry is not null)
         {
             int rate = entry.SampleRate > 0 ? entry.SampleRate : (int)Math.Min(timescale, int.MaxValue);
-            audio = new AudioTrackInfo(rate, entry.ChannelCount, entry.SampleSizeBits);
+            int channels = entry.ChannelCount;
+            if (entry.OriginalFormat is "samr" or "sawb")
+            {
+                // 3GPP TS 26.244 §8.3 (AMRSampleEntry): the channel count and sample rate fields are not meaningful (files write 2 channels and the
+                // media timescale); AMR-NB and AMR-WB are mono at 8 and 16 kHz.
+                rate = entry.OriginalFormat == "samr" ? 8000 : 16000;
+                channels = 1;
+            }
+
+            audio = new AudioTrackInfo(rate, channels, entry.SampleSizeBits);
         }
         else if (kind == TrackKind.Video)
         {
@@ -246,7 +306,7 @@ internal sealed class IsoBmffEngine
             Disposition = disposition,
             Audio = audio,
             Video = video,
-            PacketCount = movie.IsFragmented || (kind == TrackKind.Audio && codec == CodecId.Pcm) ? -1 : t.SampleCount,
+            PacketCount = movie.IsFragmented || (kind == TrackKind.Audio && codec == CodecId.Pcm) || SamplePacketsOf(t, kind, codec) is not null ? -1 : t.SampleCount,
             IsProtected = entry?.IsProtected ?? false,
         };
     }
@@ -411,6 +471,8 @@ internal sealed class IsoBmffEngine
 
             SampleCursor cursor = best.Cursor!;
             TableSample sample = cursor.Current;
+            long chunkStart = cursor.ChunkStartOffset;
+            long offset = sample.Offset;
             cursor.MoveNext();
             long duration = sample.Duration;
             int size = sample.Size;
@@ -429,8 +491,26 @@ internal sealed class IsoBmffEngine
                 }
             }
 
+            if (best.SamplePackets is { } packets && sample.DescriptionIndex >= 1 && sample.DescriptionIndex <= packets.Length && packets[sample.DescriptionIndex - 1].SamplesPerPacket > 1)
+            {
+                // Join the samples of one chunk into packets of up to 1024 samples (a whole number of the format's packets), as other tools do.
+                (int perPacket, int bytesPerFrame) = packets[sample.DescriptionIndex - 1];
+                // The table counts samples one byte each, so the offset within the chunk is in samples; packets are bytesPerFrame bytes apart.
+                offset = chunkStart + ((sample.Offset - chunkStart) / perPacket * bytesPerFrame);
+                int maxSamples = Math.Max(perPacket, FramesPerPacket / perPacket * perPacket);
+                int samples = 1;
+                while (samples < maxSamples && cursor.IsValid && cursor.ChunkStartOffset == chunkStart && cursor.Current.DescriptionIndex == sample.DescriptionIndex)
+                {
+                    duration += cursor.Current.Duration;
+                    samples++;
+                    cursor.MoveNext();
+                }
+
+                size = (int)Math.Min(int.MaxValue, ((samples + (long)perPacket - 1) / perPacket) * bytesPerFrame);
+            }
+
             LastDescriptionIndex = sample.DescriptionIndex;
-            if (Describe(best, sample.Offset, size, sample.Dts, sample.CompositionOffset, duration, sample.IsSync, sample.IsDisposable, out info))
+            if (Describe(best, offset, size, sample.Dts, sample.CompositionOffset, duration, sample.IsSync, sample.IsDisposable, out info))
             {
                 return true;
             }
@@ -578,6 +658,7 @@ internal sealed class IsoBmffEngine
             return MediaTime.Unknown;
         }
 
+        SnapToPacket(primary);
         MediaTime landing = new(pc.Current.Dts + pc.Current.CompositionOffset, ts);
         MediaTime landingDts = new(pc.Current.Dts, ts);
         foreach (TrackState s in States)
@@ -590,6 +671,7 @@ internal sealed class IsoBmffEngine
             long t = landingDts.TryRescale(s.Info.Timescale, MediaRounding.Floor, out MediaTime other) ? other.Ticks : long.MaxValue / 4;
             long sample = s.Cursor.FindSampleByDecodeTime(t);
             s.Cursor.SeekToSample(s.Cursor.SyncAtOrBefore(sample));
+            SnapToPacket(s);
         }
 
         return landing;

@@ -432,7 +432,7 @@ public static class MovieReader
         string format = entry.TypeName;
         int dri = Be.U16(p, 6);
         int prefix = 8;
-        int width = 0, height = 0, channels = 0, bits = 0, rate = 0, version = 0;
+        int width = 0, height = 0, channels = 0, bits = 0, rate = 0, version = 0, perPacket = 0, bytesPerPacket = 0, bytesPerFrame = 0;
         if (handler == "vide")
         {
             prefix = 78;
@@ -449,6 +449,10 @@ public static class MovieReader
             if (isQuickTime && version == 1)
             {
                 prefix = 44;
+                // QuickTime File Format, sound sample description version 1: samples per packet, bytes per packet, bytes per frame, bytes per sample.
+                perPacket = (int)Math.Min(Be.U32(p, 28), int.MaxValue);
+                bytesPerPacket = (int)Math.Min(Be.U32(p, 32), int.MaxValue);
+                bytesPerFrame = (int)Math.Min(Be.U32(p, 36), int.MaxValue);
             }
             else if (isQuickTime && version == 2)
             {
@@ -526,6 +530,9 @@ public static class MovieReader
             SampleSizeBits = bits,
             SampleRate = rate,
             SoundVersion = version,
+            SamplesPerPacket = perPacket,
+            BytesPerPacket = bytesPerPacket,
+            BytesPerFrame = bytesPerFrame,
             Extensions = extensions,
             Configuration = config,
         };
