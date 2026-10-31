@@ -1,0 +1,8 @@
+# Accepted differences between our demuxers and ffprobe. Tab-separated, one rule per line:
+#   format   field   scope   rule   follows   reason
+# format: our container format name or *.   field: pts dts duration size pos key hash count or *.
+# scope:  * | kind=video|audio|subtitle|data | codec=<ffprobe codec name> | file=<substring of the path>
+# rule:   ignore | ffprobe-na (ffprobe prints N/A) | ours-na (we report no value) | tolerance=N (ticks of ffprobe's time base)
+# follows: which side follows the specification (ours, ffprobe, neither), or n/a when it is a definition choice.
+# A rule only excuses a difference; it is counted separately in the reports. Add rules with the experiment that justifies them.
+matroska	pos	*	ignore	neither	ffprobe reports the start of the Block element (id and size included); we report the start of the frame payload, as the packet's source range must be the bytes handed to the codec.
