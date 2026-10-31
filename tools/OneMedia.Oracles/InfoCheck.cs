@@ -106,7 +106,8 @@ internal static class InfoCheck
             }
         }
 
-        if (s.TryGetProperty("tags", out JsonElement tags) && tags.TryGetProperty("language", out JsonElement lang) && t.Language is not null && lang.GetString() != t.Language)
+        if (s.TryGetProperty("tags", out JsonElement tags) && tags.TryGetProperty("language", out JsonElement lang) && t.Language is not null && lang.GetString() != t.Language
+            && !(t.Language.Length < 3 || t.Language.Contains('-', StringComparison.Ordinal))) // a BCP 47 tag from LanguageBCP47 is ours; ffprobe prints the Language element beside it
         {
             problems.Add($"#{t.Index} language {lang.GetString()} vs {t.Language}");
         }

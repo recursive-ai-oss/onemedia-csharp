@@ -90,6 +90,11 @@ float32 and compare with an offset search in those cases.
 `infocheck FILES` compares `Media.Open` (tracks, codec, size, rate, channels, language, duration) with ffprobe. Attachment
 streams are ignored; durations may differ by one tick of the container's own clock.
 
+### `packetset`
+
+`packetset FILE` lists, per track, each packet's byte position and size from ours and from ffprobe and compares them as sets, so a difference in how
+packets are counted (edit-list repeats, split or joined PCM packets) can be told from a difference in what bytes they cover.
+
 ### Structure notes
 
 `structure` ignores children of `stsd` entries. MP4Box prints size 0 for QuickTime-style sample entries and lists `moov`
