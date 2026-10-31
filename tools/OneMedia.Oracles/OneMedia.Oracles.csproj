@@ -1,13 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Placeholder for the differential harness: runs reference tools as black boxes and compares their output with ours. -->
+  <!-- Differential and I/O harness: runs reference tools as black boxes and compares their output with ours.
+       Never referenced from src/. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>RecursiveAI.OneMedia.Oracles</RootNamespace>
+    <AssemblyName>OneMedia.Oracles</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <!-- Comparator for audio tracks: OneAudio's own MP4 and Ogg packet readers. -->
+    <PackageReference Include="RecursiveAI.OneAudio" />
   </ItemGroup>
 
 </Project>
