@@ -133,7 +133,10 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <summary>The duration the container states about itself (movie header, fragment header or Segment information), or <see cref="MediaTime.Unknown"/>. It can disagree with the tracks.</summary>
     public MediaTime ContainerDuration => Container.Duration;
 
-    /// <summary>The longest track duration the track headers state, or <see cref="MediaTime.Unknown"/> when no track states one (Matroska, fragmented files).</summary>
+    /// <summary>
+    /// The longest track duration as presented: the sum of the edit list's segments (ISO/IEC 14496-12 §8.6.6) when the track has one, else the media
+    /// header's duration; <see cref="MediaTime.Unknown"/> when no track states one (Matroska, fragmented files).
+    /// </summary>
     public MediaTime TracksDuration
     {
         get
@@ -141,9 +144,10 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
             MediaTime longest = MediaTime.Unknown;
             foreach (MediaTrack t in Container.Tracks)
             {
-                if (t.Duration.IsKnown && (!longest.IsKnown || t.Duration > longest))
+                MediaTime d = PresentedDuration(t);
+                if (d.IsKnown && (!longest.IsKnown || d > longest))
                 {
-                    longest = t.Duration;
+                    longest = d;
                 }
             }
 
@@ -151,11 +155,57 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         }
     }
 
+    private static MediaTime PresentedDuration(MediaTrack t)
+    {
+        if (t.Edit.Edits is { Count: > 0 } edits)
+        {
+            MediaTime total = default;
+            foreach (EditSegment e in edits)
+            {
+                if (!e.Duration.IsKnown)
+                {
+                    return t.Duration;
+                }
+
+                total = total.Add(e.Duration, MediaRounding.NearestAwayFromZero);
+            }
+
+            if (total.Ticks > 0)
+            {
+                return total;
+            }
+        }
+
+        return t.Duration;
+    }
+
     /// <summary>
-    /// The duration to present: <see cref="TracksDuration"/> when the tracks state one, else <see cref="ContainerDuration"/>. A track's own media header is
-    /// what players and ffprobe go by when the movie header is wrong or shorter than the tracks, so it wins; both figures stay available.
+    /// The duration to present: the container's own figure, unless a track without an edit list is longer than it (a movie header shorter than its
+    /// tracks), in which case that track wins, as in other tools; with no container figure, <see cref="TracksDuration"/>. A track with an edit list never
+    /// overrides the container: its list may repeat or trim media, and the movie header already accounts for it. Both figures stay available as
+    /// <see cref="ContainerDuration"/> and <see cref="TracksDuration"/>.
     /// </summary>
-    public MediaTime ExactDuration => TracksDuration.IsKnown ? TracksDuration : ContainerDuration;
+    public MediaTime ExactDuration
+    {
+        get
+        {
+            if (!ContainerDuration.IsKnown)
+            {
+                return TracksDuration;
+            }
+
+            MediaTime best = ContainerDuration;
+            foreach (MediaTrack t in Container.Tracks)
+            {
+                if (t.Edit.Edits is not { Count: > 0 } && t.Duration.IsKnown && t.Duration > best)
+                {
+                    best = t.Duration;
+                }
+            }
+
+            return best;
+        }
+    }
 
     /// <summary>The <see cref="ExactDuration"/> as a <see cref="TimeSpan"/> (rounded to the nearest tick), or null when nothing states one.</summary>
     public TimeSpan? Duration => ExactDuration.IsKnown ? ExactDuration.ToTimeSpan() : null;

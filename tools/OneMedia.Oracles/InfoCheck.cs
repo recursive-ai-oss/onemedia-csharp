@@ -73,7 +73,7 @@ internal static class InfoCheck
     {
         string kind = s.GetProperty("codec_type").GetString() ?? "";
         string expectKind = t.Kind switch { TrackKind.Video => "video", TrackKind.Audio => "audio", TrackKind.Subtitle => "subtitle", TrackKind.Data => "data", _ => "" };
-        if (expectKind.Length > 0 && kind != expectKind && !(kind == "attachment" || (kind == "data" && t.Kind == TrackKind.Unknown)))
+        if (expectKind.Length > 0 && kind != expectKind && !(kind == "attachment" || (kind == "data" && t.Kind == TrackKind.Unknown) || (kind == "data" && t.Kind == TrackKind.Subtitle && t.Codec == CodecId.WebVtt))) // ffprobe does not know WebVTT in MP4 and calls it data
         {
             problems.Add($"#{t.Index} kind {kind} vs {expectKind}");
         }
@@ -95,7 +95,8 @@ internal static class InfoCheck
 
         if (t.Audio is { } a)
         {
-            if (s.TryGetProperty("sample_rate", out JsonElement r) && int.Parse(r.GetString()!, CultureInfo.InvariantCulture) != a.SampleRate)
+            if (s.TryGetProperty("sample_rate", out JsonElement r) && int.Parse(r.GetString()!, CultureInfo.InvariantCulture) is var theirRate && theirRate != a.SampleRate
+                && !(t.Codec == CodecId.Aac && a.SampleRate == 2 * theirRate)) // Matroska OutputSamplingFrequency (the SBR rate) against the core rate ffprobe reads from the AAC setup bytes
             {
                 problems.Add($"#{t.Index} rate {r.GetString()} vs {a.SampleRate}");
             }

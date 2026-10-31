@@ -30,6 +30,16 @@ internal static class MetadataSmoke
             check("metadata: mp4 location", m.Facts.Location.HasValue && Math.Abs(m.Facts.Location.Value.Latitude - 37.7749) < 1e-6);
         }
 
+        // The same file through the happy path: tags, facts and native atoms on MediaFile.
+        using (MediaFile media = Media.Open(mp4))
+        {
+            check("metadata: MediaFile tags", media.Tags.Title == "Smoke title");
+            check("metadata: MediaFile location", media.Location.HasValue && media.Location.Candidates.Count > 0);
+            check("metadata: MediaFile facts", media.Device is not null && media.Rotation is not null && media.CaptureTime is not null);
+            NativeTag first = media.Metadata.NativeTags[0];
+            check("metadata: MediaFile native", media.Native[first.System, first.Key] is not null);
+        }
+
         // Matroska: a global TITLE tag, read synchronously and through a ranged source.
         byte[] simple = El(0x67C8, El(0x45A3, "TITLE"u8.ToArray()), El(0x4487, "Smoke title"u8.ToArray()));
         byte[] tags = El(0x1254C367, El(0x7373, El(0x63C0, []), simple));
@@ -49,6 +59,17 @@ internal static class MetadataSmoke
             await using MatroskaAsyncDemuxer a = await MatroskaAsyncDemuxer.OpenAsync(ranged);
             MediaMetadata m = await a.ReadMetadataAsync();
             check("metadata: matroska ranged title", m.Tags.Title == "Smoke title");
+        }
+
+        await using (MediaFile media = await Media.OpenAsync(mkv.Length, (offset, buffer, _) =>
+        {
+            int count = (int)Math.Min(buffer.Length, mkv.Length - offset);
+            mkv.AsMemory((int)offset, count).CopyTo(buffer);
+            return new ValueTask<int>(count);
+        }))
+        {
+            MediaMetadata m = await media.ReadMetadataAsync();
+            check("metadata: MediaFile async title", m.Tags.Title == "Smoke title" && media.Tags.Title == "Smoke title");
         }
 
         string table = TagMappingTable.RenderMarkdown();

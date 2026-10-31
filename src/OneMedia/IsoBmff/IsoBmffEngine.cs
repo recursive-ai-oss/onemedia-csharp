@@ -258,6 +258,13 @@ internal sealed class IsoBmffEngine
                 channels = 1;
             }
 
+            else if (IsoCodecMap.TryGetObjectType(entry.Configuration, out int objectType) && objectType == 0xE1)
+            {
+                // Object type 0xE1 is QCELP speech (3GPP2 C.S0050 carriage in MP4), always one channel; files state two in the entry (observed in a 3G2 file
+                // that another tool reports as mono).
+                channels = 1;
+            }
+
             audio = new AudioTrackInfo(rate, channels, entry.SampleSizeBits);
         }
         else if (kind == TrackKind.Video)
