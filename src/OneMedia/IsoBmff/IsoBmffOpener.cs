@@ -23,6 +23,44 @@ internal sealed class RangeMemorySource(byte[] data, int count, long baseOffset,
     }
 }
 
+/// <summary>
+/// Serves the many tiny reads of box parsing from one read-ahead window, so a ranged or remote source sees a few requests instead of one
+/// per box header. Used only while the structure is parsed; the source must not change underneath it.
+/// </summary>
+internal sealed class ReadAheadSource(IMediaSource inner) : IMediaSource
+{
+    private const int WindowBytes = 32 * 1024;
+    private readonly byte[] _window = new byte[WindowBytes];
+    private long _start = -1;
+    private int _count;
+
+    public long Length => inner.Length;
+
+    public int Read(long offset, Span<byte> destination, CancellationToken cancellationToken = default)
+    {
+        if (destination.Length >= WindowBytes)
+        {
+            return inner.Read(offset, destination, cancellationToken);
+        }
+
+        if (_start < 0 || offset < _start || offset + destination.Length > _start + _count)
+        {
+            // Refill from the requested offset; a short window at the end of the data is fine.
+            _count = inner.Read(offset, _window, cancellationToken);
+            _start = offset;
+        }
+
+        long rel = offset - _start;
+        int n = (int)Math.Max(0, Math.Min(destination.Length, _count - rel));
+        _window.AsSpan((int)rel, n).CopyTo(destination);
+        return n;
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
 /// <summary>What opening a file's structure yields: the movie, where the sample tables can be read, and where fragments continue.</summary>
 internal sealed class OpenedMovie
 {
@@ -49,8 +87,9 @@ internal static class IsoBmffOpener
 {
     private const int MaxLeadingBoxes = 4096;
 
-    public static OpenedMovie Open(IMediaSource source, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
+    public static OpenedMovie Open(IMediaSource rawSource, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
     {
+        ReadAheadSource source = new(rawSource);
         long length = source.Length;
         BoxTree tree = new(source, limits, defects);
         FileTypeBox? ftyp = null;
@@ -84,7 +123,7 @@ internal static class IsoBmffOpener
             sidx = ScanSegmentIndex(source, moov.Header.End, length, limits, defects, cancellationToken);
         }
 
-        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = source, MoovEnd = moov.Header.End, SidxDuration = sidx, Length = length };
+        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = rawSource, MoovEnd = moov.Header.End, SidxDuration = sidx, Length = length };
     }
 
     public static async ValueTask<OpenedMovie> OpenAsync(IAsyncMediaSource source, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
@@ -199,7 +238,7 @@ internal static class IsoBmffOpener
         throw new MediaFormatException(new MediaDefect(DefectKind.MissingRequired, DefectSeverity.Error, source.Position, "The data has no movie box.", "isobmff.no-moov"));
     }
 
-    private static MediaTime ScanSegmentIndex(IMediaSource source, long position, long length, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
+    private static MediaTime ScanSegmentIndex(ReadAheadSource source, long position, long length, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
     {
         MediaTime best = MediaTime.Unknown;
         for (int i = 0; i < 64 && position < length && BoxReader.TryRead(source, position, length, true, defects, out BoxHeader h, cancellationToken); i++)

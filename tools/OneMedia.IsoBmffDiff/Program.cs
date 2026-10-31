@@ -183,6 +183,7 @@ return failures == 0 ? 0 : 1;
         int n = Math.Min(mine.Count, other.Count);
         int[] bad = new int[6]; // size pos dur pts dts flags
         string?[] first = new string?[6];
+        int naCount = 0, naLast = -1;
         long? constPts = null, constDts = null;
         bool ptsConst = true, dtsConst = true;
         for (int i = 0; i < n; i++)
@@ -192,9 +193,15 @@ return failures == 0 ? 0 : 1;
             total++;
             if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; first[0] ??= $"@{i} {m.Size}->{o[4]}"; }
             if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; first[1] ??= $"@{i} {m.Pos}->{o[5]}"; }
-            if (isFragmented && i == 0 && t.Kind == TrackKind.Audio && (o[3] == "N/A" || (long.TryParse(o[3], out long firstDur) && firstDur != m.Duration)))
+            if (isFragmented && o[3] == "N/A")
             {
-                // The first audio sample of these fragmented files states a longer duration in its run than the codec frame; ffprobe reports N/A or the frame length.
+                // ffprobe leaves the duration of the first fragment's samples unset when it comes from a default in the track fragment header; the box states it.
+                naCount++;
+                naLast = i;
+            }
+            else if (isFragmented && i == 0 && t.Kind == TrackKind.Audio && long.TryParse(o[3], out long firstDur) && firstDur != m.Duration)
+            {
+                // The first audio sample of these fragmented files states a longer duration in its run than the codec frame.
                 notes.Append($" track{t.Index}:first-fragment-duration({m.Duration}->{o[3]})");
             }
             else if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
@@ -235,6 +242,11 @@ return failures == 0 ? 0 : 1;
                 notes.Append($" track{t.Index}:parser-keyframe@{i}");
             }
             else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
+        }
+
+        if (naCount > 0)
+        {
+            notes.Append($" track{t.Index}:ffprobe-N/A-duration x{naCount} (last at index {naLast})");
         }
 
         bool negativeOffsets = mine.Any(x => x.Pts < x.Dts);
