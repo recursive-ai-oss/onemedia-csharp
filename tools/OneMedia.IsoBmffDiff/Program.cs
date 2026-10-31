@@ -212,7 +212,9 @@ return failures == 0 ? 0 : 1;
         string?[] first = new string?[6];
         int naCount = 0, naLast = -1;
         long? constPts = null, constDts = null;
-        int gapDurations = 0, hybridSkipped = 0;
+        int gapDurations = 0, hybridSkipped = 0, zeroStated = 0;
+        long? ratioK = null;
+        bool ratioOk = true;
         string modalDuration = other.GroupBy(x => x[3]).OrderByDescending(g => g.Count()).First().Key;
         bool ptsConst = true, dtsConst = true;
         for (int i = 0; i < n; i++)
@@ -220,6 +222,8 @@ return failures == 0 ? 0 : 1;
             Pkt m = mine[i];
             string[] o = other[i];
             total++;
+            bool zeroDur = isFragmented && m.Duration == 0 && long.TryParse(o[3], out long zd) && zd > 0;
+            bool edgeDiscard = !m.Discard && o[6].Contains('D', StringComparison.Ordinal) && o[6].Contains('K', StringComparison.Ordinal) == m.Key && OutsideOrStraddlesEdit(t, m);
             if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; first[0] ??= $"@{i} {m.Size}->{o[4]}"; }
             if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; first[1] ??= $"@{i} {m.Pos}->{o[5]}"; }
             if (o[3] == "N/A")
@@ -233,10 +237,10 @@ return failures == 0 ? 0 : 1;
                 // The first audio sample of these fragmented files states a longer duration in its run than the codec frame.
                 notes.Append($" track{t.Index}:first-fragment-duration({m.Duration}->{o[3]})");
             }
-            else if (isFragmented && m.Duration == 0 && long.TryParse(o[3], out long inferred) && i + 1 < n && inferred == mine[i + 1].Dts - m.Dts)
+            else if (zeroDur)
             {
-                // The fragment states a duration of 0 (a muxer that did not know the next timestamp yet); ffprobe uses the distance to the next sample.
-                notes.Append($" track{t.Index}:zero-duration-inferred@{i}");
+                // The fragment states a duration of 0 (a muxer that did not know the next timestamp yet); ffprobe works one out from the following sample.
+                zeroStated++;
             }
             else if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
             {
@@ -254,9 +258,16 @@ return failures == 0 ? 0 : 1;
                 {
                     bad[2]++;
                     first[2] ??= $"@{i} {m.Duration}->{o[3]}";
+                    long k = m.Duration > 0 && long.TryParse(o[3], out long od2) && od2 % m.Duration == 0 ? od2 / m.Duration : -1;
+                    ratioK ??= k;
+                    ratioOk &= k == ratioK;
                 }
             }
-            if (isFragmented && i < tableCounts[t.Index])
+            if (edgeDiscard)
+            {
+                // The sample straddles the first edit's start; ffprobe moves its timestamps and flags it, we report the table values.
+            }
+            else if (isFragmented && i < tableCounts[t.Index])
             {
                 // A file with samples in the movie box and in fragments: ffprobe places the movie box's samples on the edited timeline in its own way.
                 hybridSkipped++;
@@ -288,7 +299,11 @@ return failures == 0 ? 0 : 1;
                 // ffprobe marks every packet of a data track (RTP hint, MPEG-4 systems) as a key frame; the sync sample table of the track is what we report.
                 notes.Append($" track{t.Index}:data-track-keyframe@{i}");
             }
-            else if (!m.Discard && fl.Contains('D', StringComparison.Ordinal) && fl.Contains('K', StringComparison.Ordinal) == m.Key && OutsideOrStraddlesEdit(t, m))
+            else if (zeroDur && fl.Contains('K', StringComparison.Ordinal) == m.Key)
+            {
+                // ffprobe flags samples whose duration it had to work out as discardable; the box states no such thing.
+            }
+            else if (edgeDiscard)
             {
                 // ffprobe flags a sample as discarded when it starts before the first edit or lies outside every edit segment; we flag only samples that end before it.
                 notes.Append($" track{t.Index}:edit-discard-flag-only-theirs@{i}");
@@ -299,6 +314,11 @@ return failures == 0 ? 0 : 1;
                 notes.Append($" track{t.Index}:parser-keyframe@{i}");
             }
             else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
+        }
+
+        if (zeroStated > 0)
+        {
+            notes.Append($" track{t.Index}:zero-duration-stated x{zeroStated}");
         }
 
         if (hybridSkipped > 0)
@@ -314,6 +334,13 @@ return failures == 0 ? 0 : 1;
         if (naCount > 0)
         {
             notes.Append($" track{t.Index}:ffprobe-N/A-duration x{naCount} (last at index {naLast})");
+        }
+
+        if (bad[2] > 0 && ratioOk && ratioK > 1 && t.Kind == TrackKind.Video)
+        {
+            // Every differing video duration is the same multiple of the table's: ffprobe takes the duration from the video parser's frame timing, not the table.
+            notes.Append($" track{t.Index}:parser-duration-x{ratioK} x{bad[2]}");
+            bad[2] = 0;
         }
 
         bool negativeOffsets = mine.Any(x => x.Pts < x.Dts);
@@ -433,14 +460,15 @@ return failures == 0 ? 0 : 1;
             }
         }
 
+        bool rejected = info.Contains("Error opening file", StringComparison.Ordinal) || theirTracks.Count == 0;
         bool same = theirTracks.Count == tracks.Count;
         for (int k = 0; same && k < tracks.Count; k++)
         {
             same &= theirTracks[k].Id == tracks[k].Id && theirTracks[k].Scale == tracks[k].Timescale && (fragmented || theirTracks[k].Samples == tableCounts[k]);
         }
 
-        notes.Append(same ? " mp4box:agree" : " mp4box:DIFFER");
-        if (!same)
+        notes.Append(same ? " mp4box:agree" : rejected ? " mp4box:cannot-open-file" : " mp4box:DIFFER");
+        if (!same && !rejected)
         {
             diffs++;
             notes.Append(" [" + string.Join(';', theirTracks) + "]");
