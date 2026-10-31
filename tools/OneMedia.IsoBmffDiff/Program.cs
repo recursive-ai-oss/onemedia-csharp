@@ -9,6 +9,7 @@ using OneAudio;
 using OneAudio.Mp4;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.IsoBmff;
+using RecursiveAI.OneMedia.Tests.IsoBmffSupport;
 using OAPacketView = OneAudio.PacketView;
 using PacketView = RecursiveAI.OneMedia.PacketView;
 using CodecId = RecursiveAI.OneMedia.CodecId;
@@ -34,6 +35,11 @@ for (int i = 0; i < args.Length; i++)
     {
         files.Add(args[i]);
     }
+}
+
+if (args.Length >= 3 && args[0] == "--make-big")
+{
+    return MakeBig(args[1], double.Parse(args[2], CultureInfo.InvariantCulture), args.Length > 3 ? args[3] : "moovlast");
 }
 
 int failures = 0;
@@ -280,6 +286,31 @@ return failures == 0 ? 0 : 1;
     string defectText = defects.Count > 0 ? $" defects={defects.Count}" : string.Empty;
     Console.WriteLine($"{Path.GetFileName(file)}: tracks={tracks.Count} packets={total} diffs={diffs} audio={audioPackets}/{audioDiffs}{defectText}{notes}");
     return (total, diffs, audioPackets, audioDiffs);
+}
+
+// Writes a sparse MP4 whose media data is a run of zeros: only the structure is real, so the file can be gigabytes on a filesystem with sparse support.
+static int MakeBig(string path, double gigabytes, string layout)
+{
+    int samples = (int)(gigabytes * 1024 * 1024 * 1024 / 1100);
+    Mp4Builder.TrackSpec t = new()
+    {
+        Id = 1,
+        Handler = "soun",
+        Timescale = 44100,
+        SampleCount = samples,
+        SizeOf = i => 1000 + (i % 201),
+        DurationOf = _ => 1024,
+        SamplesPerChunk = 50,
+        Co64 = gigabytes >= 3.9,
+    };
+    Mp4Builder.Layout l = Mp4Builder.Build([t], layout == "faststart");
+    using FileStream fs = File.Create(path);
+    fs.Write(l.Head);
+    fs.SetLength(l.Head.Length + l.MdatPayloadSize + l.Tail.Length);
+    fs.Seek(l.Head.Length + l.MdatPayloadSize, SeekOrigin.Begin);
+    fs.Write(l.Tail);
+    Console.WriteLine($"{path}: {fs.Length} bytes, {samples} samples, head {l.Head.Length}, tail {l.Tail.Length}");
+    return 0;
 }
 
 static string Run(string exe, params string[] arguments)

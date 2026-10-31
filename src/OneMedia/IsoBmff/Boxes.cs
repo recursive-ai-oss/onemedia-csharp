@@ -457,12 +457,14 @@ public sealed class BoxNode : IStructureNode
         return list;
     }
 
-    private int ChildPrefix(BoxHeader child)
+    private int ChildPrefix(BoxHeader child) => ComputePrefix(_context, child);
+
+    private static int ComputePrefix(BoxContext context, BoxHeader child)
     {
         if (child.Type == BoxTypes.Meta)
         {
             Span<byte> head = stackalloc byte[8]; // a meta payload's first 8 bytes tell the ISO and QuickTime layouts apart
-            int n = _context.Source.Read(child.PayloadOffset, head);
+            int n = context.Source.Read(child.PayloadOffset, head);
             return BoxReader.PayloadPrefix(child.Type, quickTimeMeta: n == 8 && BoxReader.IsQuickTimeMeta(head));
         }
 
@@ -472,7 +474,7 @@ public sealed class BoxNode : IStructureNode
     internal static BoxNode CreateRoot(BoxContext context, long length) =>
         new(context, new BoxHeader(0, 0, 0, length, false, (ulong)length), null, 0, 0);
 
-    internal BoxNode CreateTopLevel(BoxHeader h) => new(_context, h, null, 1, BoxReader.PayloadPrefix(h.Type));
+    internal BoxNode CreateTopLevel(BoxHeader h) => new(_context, h, null, 1, ComputePrefix(_context, h));
 }
 
 internal sealed class BoxContext(IMediaSource source, MediaLimits limits, DefectLog defects)
