@@ -465,7 +465,7 @@ public class FixtureTagTests
     {
         byte[] cover = new byte[200_000];
         Array.Fill(cover, (byte)0xAB);
-        byte[] attachment = Ebl.El(0x1941A469, Ebl.El(0x61A7, Encoding.UTF8.GetBytes("cover.jpg")), Ebl.S(0x4660, "image/jpeg"), Ebl.Bin(0x465C, cover), Ebl.U(0x46AE, 77));
+        byte[] attachment = Ebl.El(0x1941A469, Ebl.El(0x61A7, Ebl.S(0x466E, "cover.jpg"), Ebl.S(0x4660, "image/jpeg"), Ebl.Bin(0x465C, cover), Ebl.U(0x46AE, 77)));
         byte[] cluster = Ebl.ClusterElement(0, Ebl.Simple(1, 0, 0x80, Ebl.Fill(300_000, 1)));
         byte[] file = Ebl.Cat(Ebl.Header(), Ebl.SegmentElement(Ebl.InfoElement(), Ebl.TracksElement(Ebl.Track(1, 1, "V_MPEG4/ISO/AVC")), attachment, cluster));
         long clusterStart = file.Length - cluster.Length;

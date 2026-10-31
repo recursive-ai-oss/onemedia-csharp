@@ -110,3 +110,11 @@ samples) fetched by the corpus scripts.
 | `mvhd` before 1970 | A writer that stored Unix-epoch seconds in the 1904-epoch field gives 1942 for a 2008 recording. We report the literal value (MediaInfo does too); ExifTool shows 2008. |
 | 3GPP `loci` | Coordinates are 16.16 fixed point; the quantised value (51.500687 for 51.5007) is what the file holds. |
 | `trkn`/MP4Box `©trk` | MP4Box adds its track number as a text item `©trk` beside the numeric `trkn`; the numeric pair is the track number. |
+
+### Where it stands
+
+On 116 files (63 MP4/MOV/3GP/M4A, 53 Matroska/WebM/MKA) against ExifTool 13.60 and MediaInfo 26.10: 1,409 compared fields; every one agrees with at least one
+oracle or is in the table above, except one malformed fixture on purpose (`north_of_here` as a position, reported as `tags.iso6709`). Rows where an oracle
+reported the field and agreed, by kind: native tags ExifTool 625/646 (the 21 others are the collapse rows above and the Matroska track-tag cases), MediaInfo
+496/498 (it prints degrees-minutes-seconds positions as if they were decimal degrees); common view ExifTool 227/229 and MediaInfo 224/232; facts ExifTool
+450/453 and MediaInfo 262/268 (the rest are the duration and positions above).
