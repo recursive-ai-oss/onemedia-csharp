@@ -6,6 +6,9 @@
     <RootNamespace>RecursiveAI.OneMedia.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
     <NoWarn>$(NoWarn);xUnit1051;xUnit1031</NoWarn>
+    <!-- Several tests assert zero allocations per packet or per parse. Tiered compilation allocates on the calling thread when it
+         swaps in optimised code, which made those assertions flaky in parallel runs; the tests measure our code, not the JIT. -->
+    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,6 +33,8 @@
     <!-- Small fixtures and their ffprobe packet listings. -->
     <None Include="../../testdata/isobmff/*" Link="testdata/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/isobmff/family/*" Link="testdata/isobmff/family/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The codec fuzz targets double as robustness checks: the tests feed them random, truncated and bit-flipped input. -->
+    <Compile Include="../../fuzz/OneMedia.Fuzz/CodecFuzz.cs" Link="Codecs/CodecFuzz.cs" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
   </ItemGroup>
