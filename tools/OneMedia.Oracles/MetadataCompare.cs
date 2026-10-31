@@ -238,7 +238,31 @@ internal static partial class MetadataCompare
 
     private static string Norm(string s) => s.Trim().Normalize(NormalizationForm.FormC);
 
-    private static bool Same(string a, string b) => Norm(a) == Norm(b) || Norm(a).Replace("\r\n", "\n") == Norm(b).Replace("\r\n", "\n");
+    private static bool Same(string a, string b)
+    {
+        if (Norm(a) == Norm(b) || Norm(a).Replace("\r\n", "\n") == Norm(b).Replace("\r\n", "\n"))
+        {
+            return true;
+        }
+
+        // Dates are compared as instants (or as wall-clock readings when one side drops the zone): the oracles reformat them.
+        return TryDate(a, out DateTime ia, out DateTime wa) && TryDate(b, out DateTime ib, out DateTime wb) && (Math.Abs((ia - ib).TotalSeconds) < 1 || Math.Abs((wa - wb).TotalSeconds) < 1);
+    }
+
+    private static bool TryDate(string v, out DateTime instant, out DateTime wall)
+    {
+        instant = wall = default;
+        foreach (DateTime d in DateValues(new Dictionary<string, List<string>> { ["x"] = [v] }, ["x"]))
+        {
+            instant = d;
+            Match m = DateRegex().Match(v);
+            wall = new DateTime(int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture),
+                int.Parse(m.Groups[4].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[5].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[6].Value, CultureInfo.InvariantCulture));
+            return true;
+        }
+
+        return false;
+    }
 
     private static List<string> Values(Dictionary<string, List<string>> d, string[] keys)
     {
