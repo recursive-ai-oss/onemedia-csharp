@@ -170,6 +170,7 @@ return failures == 0 ? 0 : 1;
 
         int n = Math.Min(mine.Count, other.Count);
         int[] bad = new int[6]; // size pos dur pts dts flags
+        string?[] first = new string?[6];
         long? constPts = null, constDts = null;
         bool ptsConst = true, dtsConst = true;
         for (int i = 0; i < n; i++)
@@ -177,8 +178,8 @@ return failures == 0 ? 0 : 1;
             Pkt m = mine[i];
             string[] o = other[i];
             total++;
-            if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; }
-            if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; }
+            if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; first[0] ??= $"@{i} {m.Size}->{o[4]}"; }
+            if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; first[1] ??= $"@{i} {m.Pos}->{o[5]}"; }
             if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
             {
                 if (i == n - 1 && t.Codec.Name is "mp3" or "ac3" or "eac3")
@@ -188,6 +189,7 @@ return failures == 0 ? 0 : 1;
                 else
                 {
                     bad[2]++;
+                    first[2] ??= $"@{i} {m.Duration}->{o[3]}";
                 }
             }
             if (long.TryParse(o[1], out long opts))
@@ -203,7 +205,7 @@ return failures == 0 ? 0 : 1;
             }
             else { bad[4]++; dtsConst = false; }
             string fl = o[6];
-            if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; }
+            if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
         }
 
         bool negativeOffsets = mine.Any(x => x.Pts < x.Dts);
@@ -226,7 +228,7 @@ return failures == 0 ? 0 : 1;
             {
                 diffs += bad[k];
                 string extra = k == 3 && ptsConst ? $" (constant {constPts})" : k == 4 && dtsConst ? $" (constant {constDts})" : string.Empty;
-                notes.Append(CultureInfo.InvariantCulture, $" track{t.Index}:{names[k]}x{bad[k]}{extra}");
+                notes.Append(CultureInfo.InvariantCulture, $" track{t.Index}:{names[k]}x{bad[k]}{extra}{(first[k] is null ? "" : " (" + first[k] + ")")}");
             }
         }
     }
