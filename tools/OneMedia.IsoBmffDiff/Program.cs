@@ -48,6 +48,16 @@ if (args.Length >= 3 && args[0] == "--make-big")
     return MakeBig(args[1], double.Parse(args[2], CultureInfo.InvariantCulture), args.Length > 3 ? args[3] : "moovlast");
 }
 
+if (args.Length >= 2 && args[0] == "--io")
+{
+    return ProbeIo(args[1]);
+}
+
+if (args.Length >= 2 && args[0] == "--stream")
+{
+    return StreamFile(args[1]);
+}
+
 int failures = 0;
 long totalPackets = 0, totalAudio = 0;
 foreach (string file in files)
@@ -356,6 +366,47 @@ return failures == 0 ? 0 : 1;
     return (total, diffs, audioPackets, audioDiffs);
 }
 
+// Probe = open, list tracks and duration, read no packet. Counts what the source is asked for.
+static int ProbeIo(string path)
+{
+    CountingObserver counter = new();
+    using FileMediaSource file = FileMediaSource.Open(path);
+    using ObservedMediaSource observed = new(file, null, counter);
+    using IsoBmffDemuxer d = IsoBmffDemuxer.Open(observed, new MediaOpenOptions { LeaveOpen = true });
+    long tracks = d.Tracks.Count;
+    MediaTime duration = d.Duration;
+    Console.WriteLine($"{Path.GetFileName(path)}: size={file.Length} tracks={tracks} duration={duration} reads={counter.Reads} bytesReturned={counter.Bytes} uniqueBytes={counter.UniqueBytes()} largestRead={counter.Largest}");
+    return 0;
+}
+
+// Full demux twice (the second after a seek to the start) reporting allocation and memory use.
+static int StreamFile(string path)
+{
+    using FileMediaSource file = FileMediaSource.Open(path);
+    using IsoBmffDemuxer d = IsoBmffDemuxer.Open(file, new MediaOpenOptions { LeaveOpen = true });
+    long before = GC.GetAllocatedBytesForCurrentThread();
+    long n1 = 0, bytes1 = 0;
+    while (d.TryReadPacket(out PacketView v))
+    {
+        n1++;
+        bytes1 += v.Data.Length;
+    }
+
+    long pass1 = GC.GetAllocatedBytesForCurrentThread() - before;
+    d.Seek(MediaTime.Zero);
+    before = GC.GetAllocatedBytesForCurrentThread();
+    long n2 = 0;
+    while (d.TryReadPacket(out PacketView v))
+    {
+        n2++;
+    }
+
+    long pass2 = GC.GetAllocatedBytesForCurrentThread() - before;
+    using Process me = Process.GetCurrentProcess();
+    Console.WriteLine($"{Path.GetFileName(path)}: size={file.Length} packets={n1}/{n2} payloadBytes={bytes1} allocatedFirstPass={pass1} allocatedSecondPass={pass2} (per packet {(double)pass2 / Math.Max(1, n2):F3}) peakWorkingSetMB={me.PeakWorkingSet64 >> 20} gcHeapMB={GC.GetTotalMemory(false) >> 20}");
+    return 0;
+}
+
 // Writes a sparse MP4 whose media data is a run of zeros: only the structure is real, so the file can be gigabytes on a filesystem with sparse support.
 static int MakeBig(string path, double gigabytes, string layout)
 {
@@ -394,6 +445,42 @@ static string Run(string exe, params string[] arguments)
     string output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
     p.WaitForExit();
     return output;
+}
+
+internal sealed class CountingObserver : IMediaReadObserver
+{
+    private readonly List<(long Start, long End)> _ranges = [];
+
+    public long Reads { get; private set; }
+
+    public long Bytes { get; private set; }
+
+    public long Largest { get; private set; }
+
+    public void OnRead(long offset, int requested, int returned)
+    {
+        Reads++;
+        Bytes += returned;
+        Largest = Math.Max(Largest, returned);
+        _ranges.Add((offset, offset + returned));
+    }
+
+    public long UniqueBytes()
+    {
+        long total = 0, end = long.MinValue;
+        foreach ((long start, long stop) in _ranges.OrderBy(r => r.Start))
+        {
+            long from = Math.Max(start, end);
+            if (stop > from)
+            {
+                total += stop - from;
+            }
+
+            end = Math.Max(end, stop);
+        }
+
+        return total;
+    }
 }
 
 internal sealed record Pkt(long Pts, long Dts, long Duration, int Size, long Pos, bool Key, bool Discard, byte[] Data);
