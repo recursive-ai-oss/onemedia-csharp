@@ -196,6 +196,17 @@ public class IsoBmffDemuxTests
     }
 
     [Fact]
+    public void RepeatedSyncSampleEntriesDoNotHideLaterOnes()
+    {
+        TrackSpec v = new() { SampleCount = 30, IsSync = i => i % 3 != 2, RepeatSyncEntries = true, SamplesPerChunk = 4 };
+        List<Got> got = IsoBmffTestHelpers.Demux(Build([v], true).ToArray([v]), out _, out _);
+        for (int i = 0; i < 30; i++)
+        {
+            Assert.Equal(i % 3 != 2, got[i].Key);
+        }
+    }
+
+    [Fact]
     public void SeekLandsOnKeyframesAndSkipsToEnd()
     {
         TrackSpec v = new()

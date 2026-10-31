@@ -182,9 +182,10 @@ return failures == 0 ? 0 : 1;
             total++;
             if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; first[0] ??= $"@{i} {m.Size}->{o[4]}"; }
             if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; first[1] ??= $"@{i} {m.Pos}->{o[5]}"; }
-            if (isFragmented && i == 0 && o[3] == "N/A")
+            if (isFragmented && i == 0 && t.Kind == TrackKind.Audio && (o[3] == "N/A" || (long.TryParse(o[3], out long firstDur) && firstDur != m.Duration)))
             {
-                notes.Append($" track{t.Index}:first-fragment-duration-N/A({m.Duration})");
+                // The first audio sample of these fragmented files states a longer duration in its run than the codec frame; ffprobe reports N/A or the frame length.
+                notes.Append($" track{t.Index}:first-fragment-duration({m.Duration}->{o[3]})");
             }
             else if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
             {
@@ -217,6 +218,11 @@ return failures == 0 ? 0 : 1;
             {
                 // ffprobe applies the edit list's discard only to samples of the movie box's own table, not to fragment samples.
                 notes.Append($" track{t.Index}:fragment-discard-flag-only-ours@{i}");
+            }
+            else if (!m.Key && fl.Contains('K', StringComparison.Ordinal) && !m.Discard && t.Codec.Name is "h264" or "hevc")
+            {
+                // ffprobe marks a sample as a keyframe when the H.264/HEVC parser finds an IDR picture, even if the sync sample table omits it.
+                notes.Append($" track{t.Index}:parser-keyframe@{i}");
             }
             else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
         }

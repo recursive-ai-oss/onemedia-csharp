@@ -71,6 +71,7 @@ public static class Mp4Builder
         public int SamplesPerChunk { get; set; } = 1;
         public bool Co64 { get; set; }
         public bool CompactSizes { get; set; }
+        public bool RepeatSyncEntries { get; set; }
         public bool ConstantSizeBox { get; set; }
         public byte[]? SampleEntries { get; set; }
         public int EntryCount { get; set; } = 1;
@@ -274,6 +275,10 @@ public static class Mp4Builder
                 if (sync(i))
                 {
                     k.Add((uint)i + 1);
+                    if (s.RepeatSyncEntries)
+                    {
+                        k.Add((uint)i + 1);
+                    }
                 }
             }
 
