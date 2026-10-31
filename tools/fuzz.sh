@@ -43,7 +43,7 @@ seed() {
   if [ -d "$here/testdata/fuzz/$target" ]; then cp -n "$here/testdata/fuzz/$target"/* "$corpus/" 2>/dev/null || true; fi
   case "$target" in
     isobmff) # The first byte picks the path (bit 0: forward-only, bit 1: seeks); the rest is the file.
-             for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/isobmff/*.mov "$here"/testdata/isobmff/*.3gp; do
+             for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/isobmff/*.mov "$here"/testdata/isobmff/*.3gp "$here"/testdata/isobmff/family/*.mp4 "$here"/testdata/isobmff/family/*.m4a "$here"/testdata/isobmff/family/*.3gp; do
                [ -f "$f" ] || continue
                { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
