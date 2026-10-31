@@ -134,6 +134,19 @@ internal abstract class EbmlInput
         return skipped;
     }
 
+    /// <summary>Fills the buffer with the first bytes of a source that is still at its start, so the first read of them is not made again.</summary>
+    public void Seed(ReadOnlySpan<byte> head)
+    {
+        if (_bufLen != 0 || _bufStart != 0 || _bufPos != 0)
+        {
+            throw new InvalidOperationException("Only an unread input can be seeded.");
+        }
+
+        head = head[..Math.Min(head.Length, Window)];
+        head.CopyTo(_buf);
+        _bufLen = head.Length;
+    }
+
     /// <summary>Declares the absolute position of the first byte a forward-only source will deliver.</summary>
     public void StartAt(long position)
     {

@@ -26,11 +26,83 @@ internal sealed class RangeMemorySource(byte[] data, int count, long baseOffset,
 }
 
 /// <summary>
+/// The bytes of a small movie box, read once, serving every later read that falls inside them (box parsing and the sample-table windows)
+/// without a call to the source; a read that is not wholly inside goes to the source as before. The bytes sit in a buffer rented from
+/// the shared pool and are given back by <see cref="Release"/>, after which every read goes to the source.
+/// </summary>
+internal sealed class MovieBoxCache : IMediaSource
+{
+    /// <summary>Movie boxes up to this size are held whole. Larger ones are read through windows, so the cache never grows with the file.</summary>
+    public const int MaxBytes = 128 * 1024;
+
+    private readonly IMediaSource _inner;
+    private readonly long _start;
+    private byte[]? _bytes;
+    private int _count;
+
+    private MovieBoxCache(IMediaSource inner, long start, byte[] bytes, int count)
+    {
+        _inner = inner;
+        _start = start;
+        _bytes = bytes;
+        _count = count;
+    }
+
+    /// <summary>Reads the movie box in one request, or returns null when it is too large, cut off, or the source gives fewer bytes than it claims.</summary>
+    public static MovieBoxCache? TryLoad(IMediaSource inner, in BoxHeader movie, long fileLength, CancellationToken cancellationToken)
+    {
+        long size = movie.End - movie.Offset;
+        if (size <= 0 || size > MaxBytes || movie.End > fileLength)
+        {
+            return null;
+        }
+
+        byte[] bytes = ArrayPool<byte>.Shared.Rent((int)size);
+        int got = inner.Read(movie.Offset, bytes.AsSpan(0, (int)size), cancellationToken);
+        if (got != size)
+        {
+            ArrayPool<byte>.Shared.Return(bytes);
+            return null;
+        }
+
+        return new MovieBoxCache(inner, movie.Offset, bytes, (int)size);
+    }
+
+    public long Length => _inner.Length;
+
+    public int Read(long offset, Span<byte> destination, CancellationToken cancellationToken = default)
+    {
+        long relative = offset - _start;
+        if (_bytes is { } bytes && relative >= 0 && relative + destination.Length <= _count)
+        {
+            bytes.AsSpan((int)relative, destination.Length).CopyTo(destination);
+            return destination.Length;
+        }
+
+        return _inner.Read(offset, destination, cancellationToken);
+    }
+
+    /// <summary>Returns the buffer to the pool. The source underneath is not disposed: its owner does that.</summary>
+    public void Release()
+    {
+        if (_bytes is { } bytes)
+        {
+            _bytes = null;
+            _count = 0;
+            ArrayPool<byte>.Shared.Return(bytes);
+        }
+    }
+
+    public void Dispose() => Release();
+}
+
+/// <summary>
 /// Serves the many tiny reads of box parsing from one read-ahead window, so a ranged or remote source sees a few requests instead of one
 /// per box header. Used only while the structure is parsed; the source must not change underneath it.
 /// </summary>
-internal sealed class ReadAheadSource(IMediaSource inner) : IMediaSource
+internal sealed class ReadAheadSource : IMediaSource
 {
+    private readonly IMediaSource _inner;
     private const int WindowBytes = 32 * 1024;
 
     // A read far from the previous window is a jump over sample tables or media data, so it fetches a small window rather than 32 KiB
@@ -41,13 +113,29 @@ internal sealed class ReadAheadSource(IMediaSource inner) : IMediaSource
     private int _count;
     private bool _disposed;
 
-    public long Length => inner.Length;
+    public ReadAheadSource(IMediaSource inner) => _inner = inner;
+
+    /// <summary>Starts with the first bytes of the source already in the window.</summary>
+    public ReadAheadSource(IMediaSource inner, ReadOnlySpan<byte> head)
+    {
+        _inner = inner;
+        if (!head.IsEmpty)
+        {
+            head = head[..Math.Min(head.Length, WindowBytes)];
+            _window = ArrayPool<byte>.Shared.Rent(WindowBytes);
+            head.CopyTo(_window);
+            _start = 0;
+            _count = head.Length;
+        }
+    }
+
+    public long Length => _inner.Length;
 
     public int Read(long offset, Span<byte> destination, CancellationToken cancellationToken = default)
     {
         if (destination.Length >= WindowBytes || _disposed)
         {
-            return inner.Read(offset, destination, cancellationToken);
+            return _inner.Read(offset, destination, cancellationToken);
         }
 
         byte[] window = _window ??= ArrayPool<byte>.Shared.Rent(WindowBytes);
@@ -55,7 +143,7 @@ internal sealed class ReadAheadSource(IMediaSource inner) : IMediaSource
         {
             // Refill from the requested offset; a short window at the end of the data is fine.
             bool near = _start < 0 || (offset >= _start && offset - (_start + _count) <= WindowBytes);
-            _count = inner.Read(offset, window.AsSpan(0, near ? WindowBytes : Math.Max(JumpWindowBytes, destination.Length)), cancellationToken);
+            _count = _inner.Read(offset, window.AsSpan(0, near ? WindowBytes : Math.Max(JumpWindowBytes, destination.Length)), cancellationToken);
             _start = offset;
         }
 
@@ -98,6 +186,9 @@ internal sealed class OpenedMovie
     public required long Length { get; init; }
 
     public bool MediaDataPrecededMovie { get; init; }
+
+    /// <summary>Gives back the pooled buffer behind <see cref="TableSource"/>, if there is one. Reads after that go to the file.</summary>
+    public void Release() => (TableSource as MovieBoxCache)?.Release();
 }
 
 /// <summary>Finds <c>ftyp</c> and <c>moov</c> with a handful of header reads and parses the movie box.</summary>
@@ -105,9 +196,9 @@ internal static class IsoBmffOpener
 {
     private const int MaxLeadingBoxes = 4096;
 
-    public static OpenedMovie Open(IMediaSource rawSource, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
+    public static OpenedMovie Open(IMediaSource rawSource, ReadOnlySpan<byte> head, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
     {
-        using ReadAheadSource source = new(rawSource);
+        using ReadAheadSource source = new(rawSource, head);
         long length = source.Length;
         BoxTree tree = new(source, limits, defects);
         FileTypeBox? ftyp = null;
@@ -134,9 +225,23 @@ internal static class IsoBmffOpener
             throw new MediaFormatException(new MediaDefect(DefectKind.MissingRequired, DefectSeverity.Error, Math.Min(pos, length), "The file has no movie box.", "isobmff.no-moov"));
         }
 
-        IsoMovie movie = MovieReader.Read(moov, source, limits, defects, ftyp?.IsQuickTime ?? false);
+        // A small movie box is read once and parsed from memory; the sample-table windows then read from it too.
+        MovieBoxCache? cache = MovieBoxCache.TryLoad(rawSource, moov.Header, length, cancellationToken);
+        IMediaSource tables = cache ?? rawSource;
+        IsoMovie movie;
+        try
+        {
+            movie = cache is null ? MovieReader.Read(moov, source, limits, defects, ftyp?.IsQuickTime ?? false)
+                : MovieReader.Read(new BoxTree(cache, limits, defects).CreateNode(moov.Header), cache, limits, defects, ftyp?.IsQuickTime ?? false);
+        }
+        catch
+        {
+            cache?.Release();
+            throw;
+        }
+
         List<SegmentIndexBox> sidx = movie.IsFragmented ? ScanSegmentIndex(source, moov.Header.End, length, limits, defects, cancellationToken) : [];
-        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = rawSource, MoovEnd = moov.Header.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length };
+        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = tables, MoovEnd = moov.Header.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length };
     }
 
     public static async ValueTask<OpenedMovie> OpenAsync(IAsyncMediaSource source, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)

@@ -230,7 +230,9 @@ public static class Ebml
 /// <summary>CRC-32 as the EBML <c>CRC-32</c> element uses it: the IEEE 802.3 polynomial, stored little-endian (RFC 8794 §11.3.1).</summary>
 public static class EbmlCrc32
 {
-    private static readonly uint[] Table = BuildTable();
+    // Eight tables for "slice-by-8": table k holds the CRC of a byte followed by k zero bytes, so eight input bytes are folded with eight
+    // lookups and no dependency between the bytes except through the one running value. Table 0 is the usual byte-at-a-time table.
+    private static readonly uint[] Tables = BuildTables();
 
     /// <summary>Starts a running checksum.</summary>
     public const uint Initial = 0xFFFFFFFF;
@@ -241,10 +243,18 @@ public static class EbmlCrc32
     /// <returns>The new running state.</returns>
     public static uint Update(uint state, ReadOnlySpan<byte> data)
     {
-        uint[] table = Table;
+        uint[] t = Tables;
+        while (data.Length >= 8)
+        {
+            ulong v = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(data) ^ state;
+            state = t[(7 << 8) + (int)(v & 0xFF)] ^ t[(6 << 8) + (int)((v >> 8) & 0xFF)] ^ t[(5 << 8) + (int)((v >> 16) & 0xFF)] ^ t[(4 << 8) + (int)((v >> 24) & 0xFF)]
+                ^ t[(3 << 8) + (int)((v >> 32) & 0xFF)] ^ t[(2 << 8) + (int)((v >> 40) & 0xFF)] ^ t[(1 << 8) + (int)((v >> 48) & 0xFF)] ^ t[(int)(v >> 56)];
+            data = data[8..];
+        }
+
         foreach (byte b in data)
         {
-            state = table[(state ^ b) & 0xFF] ^ (state >> 8);
+            state = t[(state ^ b) & 0xFF] ^ (state >> 8);
         }
 
         return state;
@@ -260,9 +270,9 @@ public static class EbmlCrc32
     /// <returns>The CRC-32 value.</returns>
     public static uint Compute(ReadOnlySpan<byte> data) => Finish(Update(Initial, data));
 
-    private static uint[] BuildTable()
+    private static uint[] BuildTables()
     {
-        uint[] table = new uint[256];
+        uint[] table = new uint[8 * 256];
         for (uint i = 0; i < 256; i++)
         {
             uint c = i;
@@ -272,6 +282,15 @@ public static class EbmlCrc32
             }
 
             table[i] = c;
+        }
+
+        for (int k = 1; k < 8; k++)
+        {
+            for (int i = 0; i < 256; i++)
+            {
+                uint previous = table[((k - 1) << 8) + i];
+                table[(k << 8) + i] = (previous >> 8) ^ table[previous & 0xFF];
+            }
         }
 
         return table;

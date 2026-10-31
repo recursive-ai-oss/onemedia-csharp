@@ -120,6 +120,42 @@ public class EbmlPrimitiveTests
     }
 
     [Fact]
+    public void Crc32OfAnyLengthAndSplitMatchesTheBytewiseDefinition()
+    {
+        // The definition, one bit at a time: reflected polynomial 0xEDB88320, initial value and final inversion all ones.
+        static uint Reference(ReadOnlySpan<byte> data)
+        {
+            uint crc = 0xFFFFFFFF;
+            foreach (byte b in data)
+            {
+                crc ^= b;
+                for (int k = 0; k < 8; k++)
+                {
+                    crc = (crc & 1) != 0 ? 0xEDB88320 ^ (crc >> 1) : crc >> 1;
+                }
+            }
+
+            return ~crc;
+        }
+
+        byte[] data = new byte[1000];
+        new Random(7).NextBytes(data);
+        for (int length = 0; length <= 70; length++)
+        {
+            Assert.Equal(Reference(data.AsSpan(0, length)), EbmlCrc32.Compute(data.AsSpan(0, length)));
+        }
+
+        Assert.Equal(Reference(data), EbmlCrc32.Compute(data));
+
+        // Running state across uneven pieces equals one pass.
+        uint state = EbmlCrc32.Initial;
+        state = EbmlCrc32.Update(state, data.AsSpan(0, 13));
+        state = EbmlCrc32.Update(state, data.AsSpan(13, 500));
+        state = EbmlCrc32.Update(state, data.AsSpan(513));
+        Assert.Equal(Reference(data), EbmlCrc32.Finish(state));
+    }
+
+    [Fact]
     public void XiphLacedCodecPrivateSplits()
     {
         byte[] a = Fill(3, 1), b = Fill(300, 2), c = Fill(5, 3);

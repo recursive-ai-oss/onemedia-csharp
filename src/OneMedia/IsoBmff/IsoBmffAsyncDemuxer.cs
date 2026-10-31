@@ -192,7 +192,7 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer, IMetadataProvider, IAsy
 }
 
 /// <summary>The format entry for ISO BMFF / QuickTime files (MP4, MOV, 3GP/3G2, M4A/M4V, fragmented MP4 and CMAF), for the explicit registry.</summary>
-public sealed class IsoBmffFormat : IMediaFormat
+public sealed class IsoBmffFormat : IMediaFormat, IHeadSeededFormat
 {
     private static readonly IsoBmffSniffer Sniffer = new();
 
@@ -208,6 +208,9 @@ public sealed class IsoBmffFormat : IMediaFormat
     /// <inheritdoc />
     public IDemuxer Open(IMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
         IsoBmffDemuxer.Open(source, options, cancellationToken);
+
+    IDemuxer IHeadSeededFormat.Open(IMediaSource source, ReadOnlySpan<byte> head, MediaOpenOptions options, CancellationToken cancellationToken) =>
+        IsoBmffDemuxer.Open(source, head, options, cancellationToken);
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
