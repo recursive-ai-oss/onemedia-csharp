@@ -28,7 +28,7 @@ public static class MovieReader
         List<TrackExtends> extends = [];
         bool fragmented = false;
         long fragmentDuration = -1;
-        foreach (BoxNode child in moov.Children)
+        foreach (BoxNode child in moov.EnumerateChildren())
         {
             switch (child.Type)
             {
@@ -46,7 +46,7 @@ public static class MovieReader
                     break;
                 case BoxTypes.Mvex:
                     fragmented = true;
-                    foreach (BoxNode ex in child.Children)
+                    foreach (BoxNode ex in child.EnumerateChildren())
                     {
                         if (ex.Type == BoxTypes.Trex)
                         {
@@ -129,7 +129,7 @@ public static class MovieReader
         string handlerName = string.Empty;
         List<EditListEntry> edits = [];
         BoxNode? stbl = null;
-        foreach (BoxNode child in trak.Children)
+        foreach (BoxNode child in trak.EnumerateChildren())
         {
             if (child.Type == BoxTypes.Tkhd)
             {
@@ -145,7 +145,7 @@ public static class MovieReader
             }
             else if (child.Type == BoxTypes.Mdia)
             {
-                foreach (BoxNode m in child.Children)
+                foreach (BoxNode m in child.EnumerateChildren())
                 {
                     if (m.Type == BoxTypes.Mdhd)
                     {
@@ -300,7 +300,7 @@ public static class MovieReader
         IMediaSource source, MediaLimits limits, DefectLog defects)
     {
         Span<byte> head = stackalloc byte[16]; // the count fields at the start of each table box
-        foreach (BoxNode box in stbl.Children)
+        foreach (BoxNode box in stbl.EnumerateChildren())
         {
             switch (box.Type)
             {
@@ -413,10 +413,16 @@ public static class MovieReader
 
     private static void ReadSampleDescriptions(BoxNode stsd, List<SampleEntry> entries, string handler, bool isQuickTime, MediaLimits limits, DefectLog defects)
     {
-        foreach (BoxNode entry in stsd.Children)
+        foreach (BoxNode entry in stsd.EnumerateChildren())
         {
-            // An entry's fixed fields are small; its extension boxes are too. Anything bigger than the allocation limit is refused.
-            byte[] p = entry.ReadPayload();
+            // An entry's fixed fields and configuration boxes are small. Reading at most 1 MiB bounds what a hostile file can make us keep per entry.
+            const int MaxEntryBytes = 1 << 20;
+            if (entry.PayloadSize > MaxEntryBytes)
+            {
+                defects.Add(DefectKind.LimitReached, DefectSeverity.Warning, entry.Offset, "A sample entry is larger than 1 MiB; only its first mebibyte is read.", "isobmff.entry-large");
+            }
+
+            byte[] p = entry.ReadPayload(MaxEntryBytes);
             entries.Add(ParseSampleEntry(entry, p, handler, isQuickTime, limits, defects));
         }
     }
@@ -569,7 +575,7 @@ public static class MovieReader
     // name and data.
     private static string? FindGaplessInfo(BoxNode moov, MediaLimits limits)
     {
-        foreach (BoxNode top in moov.Children)
+        foreach (BoxNode top in moov.EnumerateChildren())
         {
             if (top.Type == BoxTypes.Meta)
             {
@@ -581,7 +587,7 @@ public static class MovieReader
             }
             else if (top.Type == BoxTypes.Udta)
             {
-                foreach (BoxNode m in top.Children)
+                foreach (BoxNode m in top.EnumerateChildren())
                 {
                     if (m.Type == BoxTypes.Meta && SearchIlst(m, limits) is { } found)
                     {
@@ -603,7 +609,7 @@ public static class MovieReader
         }
 
         uint dashes = BoxTypes.Make("----");
-        foreach (BoxNode item in ilst.Children)
+        foreach (BoxNode item in ilst.EnumerateChildren())
         {
             if (item.Type != dashes)
             {

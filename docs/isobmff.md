@@ -41,6 +41,7 @@ All carry the byte offset of the box (or entry) they concern. Reading continues 
 | `isobmff.short-read` | `Truncated` | The source returned fewer bytes than the sample size | The sample is skipped. |
 | `isobmff.traf-unknown-track`, `isobmff.traf-no-tfhd` | `Inconsistent`, `MissingRequired` | A track fragment names a track the movie does not declare, or has no header | The track fragment is skipped. |
 | `isobmff.forward-order` | `InvalidOrder` | Forward-only source: a sample lies before the current position | The sample is skipped. |
+| `isobmff.entry-large` | `LimitReached` | A sample entry is larger than 1 MiB | Only its first mebibyte is read. |
 | `isobmff.limit` | `LimitReached` | Depth, element count, allocation or sample-table limit | The box list or fragment walk ends. |
 
 Limits used: `MaxStructureDepth`, `MaxElementCount`, `MaxTracks`, `MaxSampleTableEntries`, `MaxAllocationBytes` (the movie box is only read whole

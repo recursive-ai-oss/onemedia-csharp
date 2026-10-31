@@ -394,7 +394,7 @@ public sealed class BoxNode : IStructureNode
     /// <returns>The child, or <c>null</c>.</returns>
     public BoxNode? Find(uint type)
     {
-        foreach (BoxNode child in Children)
+        foreach (BoxNode child in EnumerateChildren())
         {
             if (child.Type == type)
             {
@@ -427,34 +427,69 @@ public sealed class BoxNode : IStructureNode
     private List<BoxNode> ReadChildren()
     {
         List<BoxNode> list = [];
-        if (!BoxReader.IsContainer(Header.Type, Parent?.Header.Type ?? 0) || _context.Source is null)
+        long pos = ChildrenOffset;
+        while (TryReadNextChild(ref pos, out BoxNode? child))
         {
-            return list;
+            list.Add(child);
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// Walks the child boxes without keeping them, so a box with millions of children costs no memory. Use it for one pass over a container;
+    /// <see cref="Children"/> caches the list.
+    /// </summary>
+    /// <returns>The children in file order, with the same defect reporting as <see cref="Children"/>.</returns>
+    public IEnumerable<BoxNode> EnumerateChildren()
+    {
+        if (_children is not null)
+        {
+            foreach (BoxNode cached in _children)
+            {
+                yield return cached;
+            }
+
+            yield break;
+        }
+
+        long pos = ChildrenOffset;
+        while (TryReadNextChild(ref pos, out BoxNode? child))
+        {
+            yield return child;
+        }
+    }
+
+    private bool TryReadNextChild(ref long pos, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BoxNode? child)
+    {
+        child = null;
+        if (!BoxReader.IsContainer(Header.Type, Parent?.Header.Type ?? 0) || pos >= Header.End)
+        {
+            return false;
         }
 
         try
         {
-            _context.Limits.CheckDepth(_depth + 1, Offset);
-            long pos = ChildrenOffset;
-            long end = Header.End;
-            while (pos < end)
+            if (pos == ChildrenOffset)
             {
-                if (!BoxReader.TryRead(_context.Source, pos, end, isTopLevel: false, _context.Defects, out BoxHeader h))
-                {
-                    break;
-                }
-
-                _context.Limits.CheckElementCount(++_context.Count, h.Offset);
-                list.Add(new BoxNode(_context, h, this, _depth + 1, ChildPrefix(h)));
-                pos = h.End;
+                _context.Limits.CheckDepth(_depth + 1, Offset);
             }
+
+            if (!BoxReader.TryRead(_context.Source, pos, Header.End, isTopLevel: false, _context.Defects, out BoxHeader h))
+            {
+                return false;
+            }
+
+            _context.Limits.CheckElementCount(++_context.Count, h.Offset);
+            child = new BoxNode(_context, h, this, _depth + 1, ChildPrefix(h));
+            pos = h.End;
+            return true;
         }
         catch (MediaLimitExceededException e)
         {
             _context.Defects.Add(DefectKind.LimitReached, DefectSeverity.Error, e.Offset, e.Message, "isobmff.limit");
+            return false;
         }
-
-        return list;
     }
 
     private int ChildPrefix(BoxHeader child) => ComputePrefix(_context, child);
