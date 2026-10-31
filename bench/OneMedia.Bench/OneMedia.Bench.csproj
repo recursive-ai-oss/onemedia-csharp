@@ -3,11 +3,18 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>RecursiveAI.OneMedia.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <!-- Comparators. They live in this project only; none of them is referenced by anything that ships. -->
+    <PackageReference Include="RecursiveAI.OneAudio" />
+    <PackageReference Include="SharpMP4" />
+    <PackageReference Include="Matroska" />
+    <PackageReference Include="MetadataExtractor" />
+    <PackageReference Include="TagLibSharp" />
+    <PackageReference Include="z440.atl.core" />
   </ItemGroup>
 
 </Project>
