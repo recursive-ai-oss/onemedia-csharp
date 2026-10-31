@@ -72,6 +72,10 @@ foreach (string file in files)
             failures++;
         }
     }
+    catch (MediaFormatException e) when (e.Kind == DefectKind.MissingRequired)
+    {
+        Console.WriteLine($"{Path.GetFileName(file)}: skipped, no movie box (a media segment needs its initialization segment)");
+    }
     catch (Exception e)
     {
         failures++;
@@ -89,12 +93,14 @@ return failures == 0 ? 0 : 1;
     IReadOnlyList<MediaTrack> tracks;
     DefectLog defects;
     bool isFragmented;
+    long[] tableCounts;
     using (FileMediaSource src = FileMediaSource.Open(file))
     using (IsoBmffDemuxer d = IsoBmffDemuxer.Open(src, new MediaOpenOptions { LeaveOpen = true }))
     {
         tracks = d.Tracks;
         defects = d.Defects;
         isFragmented = d.Movie.IsFragmented;
+        tableCounts = d.Movie.Tracks.Select(x => x.SampleCount).ToArray();
         ours = new List<Pkt>[tracks.Count];
         for (int i = 0; i < ours.Length; i++)
         {
@@ -158,14 +164,37 @@ return failures == 0 ? 0 : 1;
         start = t.Edit.StartTime.Rescale(t.Timescale, MediaRounding.NearestAwayFromZero).Ticks;
         long shift = start - editStart;
         int nonEmptyEdits = (t.Edit.Edits ?? []).Count(e => !e.IsEmpty);
-        if (nonEmptyEdits >= 2 || (nonEmptyEdits == 1 && mine.Count > other.Count))
+        if (nonEmptyEdits >= 2 || (nonEmptyEdits == 1 && mine.Count != other.Count))
         {
-            // ffprobe applies the edit list to the sample index: it drops samples outside the segments and repeats samples that several segments use,
-            // so its packet list cannot be lined up with the table. We expose the edits in TrackEditInfo instead. Check that everything it lists is a
-            // sample of ours with the same size and position.
-            HashSet<(long, long)> known = [.. mine.Select(x => (x.Pos, (long)x.Size))];
-            int unknown = other.Count(x => !known.Contains((long.Parse(x[5], CultureInfo.InvariantCulture), long.Parse(x[4], CultureInfo.InvariantCulture))));
-            notes.Append($" track{t.Index}:edit-list-applied-by-ffprobe({mine.Count} vs {other.Count}, {unknown} of its packets not ours)");
+            // ffprobe applies the edit list to the sample index: it drops samples outside the segments, repeats samples that several segments use and
+            // cuts packets at segment boundaries, so its packet list cannot be lined up with the table. We expose the edits in TrackEditInfo instead.
+            // Check that every packet it lists lies inside bytes we list contiguously (our packets merged where one ends where the next begins).
+            List<(long Start, long End)> merged = [];
+            foreach (Pkt x in mine.OrderBy(x => x.Pos))
+            {
+                if (merged.Count > 0 && merged[^1].End >= x.Pos)
+                {
+                    merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, x.Pos + x.Size));
+                }
+                else
+                {
+                    merged.Add((x.Pos, x.Pos + x.Size));
+                }
+            }
+
+            int unknown = 0;
+            foreach (string[] x in other)
+            {
+                long pos = long.Parse(x[5], CultureInfo.InvariantCulture), size = long.Parse(x[4], CultureInfo.InvariantCulture);
+                int lo = merged.BinarySearch((pos, 0), Comparer<(long Start, long End)>.Create((l, r) => l.Start.CompareTo(r.Start)));
+                int at = lo >= 0 ? lo : ~lo - 1;
+                if (at < 0 || merged[at].End < pos + size)
+                {
+                    unknown++;
+                }
+            }
+
+            notes.Append($" track{t.Index}:edit-list-applied-by-ffprobe({mine.Count} vs {other.Count}, {unknown} of its packets outside ours)");
             diffs += unknown;
             continue;
         }
@@ -183,7 +212,7 @@ return failures == 0 ? 0 : 1;
         string?[] first = new string?[6];
         int naCount = 0, naLast = -1;
         long? constPts = null, constDts = null;
-        int gapDurations = 0;
+        int gapDurations = 0, hybridSkipped = 0;
         string modalDuration = other.GroupBy(x => x[3]).OrderByDescending(g => g.Count()).First().Key;
         bool ptsConst = true, dtsConst = true;
         for (int i = 0; i < n; i++)
@@ -216,7 +245,7 @@ return failures == 0 ? 0 : 1;
                     // ffprobe replaces the last packet's duration (from the edit list end or the audio parser); the table value is what the file stores.
                     notes.Append($" track{t.Index}:last-duration({m.Duration}->{o[3]})");
                 }
-                else if (!isFragmented && o[3] == modalDuration && m.Duration > odur)
+                else if (o[3] == modalDuration && m.Duration > odur)
                 {
                     // The table states a longer delta (a gap in the decode times); ffprobe keeps reporting the usual frame duration while the next DTS still moves by the delta.
                     gapDurations++;
@@ -227,18 +256,26 @@ return failures == 0 ? 0 : 1;
                     first[2] ??= $"@{i} {m.Duration}->{o[3]}";
                 }
             }
-            if (long.TryParse(o[1], out long opts))
+            if (isFragmented && i < tableCounts[t.Index])
             {
-                long d = opts - (m.Pts + shift);
-                if (d != 0) { bad[3]++; constPts ??= d; ptsConst &= d == constPts; }
+                // A file with samples in the movie box and in fragments: ffprobe places the movie box's samples on the edited timeline in its own way.
+                hybridSkipped++;
             }
-            else { bad[3]++; ptsConst = false; }
-            if (long.TryParse(o[2], out long odts))
+            else
             {
-                long d = odts - (m.Dts + shift);
-                if (d != 0) { bad[4]++; constDts ??= d; dtsConst &= d == constDts; }
+                if (long.TryParse(o[1], out long opts))
+                {
+                    long d = opts - (m.Pts + shift);
+                    if (d != 0) { bad[3]++; constPts ??= d; ptsConst &= d == constPts; }
+                }
+                else { bad[3]++; ptsConst = false; }
+                if (long.TryParse(o[2], out long odts))
+                {
+                    long d = odts - (m.Dts + shift);
+                    if (d != 0) { bad[4]++; constDts ??= d; dtsConst &= d == constDts; }
+                }
+                else { bad[4]++; dtsConst = false; }
             }
-            else { bad[4]++; dtsConst = false; }
             string fl = o[6];
             bool discardOnlyOurs = isFragmented && m.Discard && !fl.Contains('D', StringComparison.Ordinal) && fl.Contains('K', StringComparison.Ordinal) == m.Key;
             if (discardOnlyOurs)
@@ -246,12 +283,27 @@ return failures == 0 ? 0 : 1;
                 // ffprobe applies the edit list's discard only to samples of the movie box's own table, not to fragment samples.
                 notes.Append($" track{t.Index}:fragment-discard-flag-only-ours@{i}");
             }
+            else if (!m.Key && fl.Contains('K', StringComparison.Ordinal) && !m.Discard && t.Kind is TrackKind.Data or TrackKind.Unknown)
+            {
+                // ffprobe marks every packet of a data track (RTP hint, MPEG-4 systems) as a key frame; the sync sample table of the track is what we report.
+                notes.Append($" track{t.Index}:data-track-keyframe@{i}");
+            }
+            else if (!m.Discard && fl.Contains('D', StringComparison.Ordinal) && fl.Contains('K', StringComparison.Ordinal) == m.Key && OutsideOrStraddlesEdit(t, m))
+            {
+                // ffprobe flags a sample as discarded when it starts before the first edit or lies outside every edit segment; we flag only samples that end before it.
+                notes.Append($" track{t.Index}:edit-discard-flag-only-theirs@{i}");
+            }
             else if (!m.Key && fl.Contains('K', StringComparison.Ordinal) && !m.Discard && t.Kind == TrackKind.Video)
             {
                 // ffprobe marks a sample as a keyframe when the H.264/HEVC parser finds an IDR picture, even if the sync sample table omits it.
                 notes.Append($" track{t.Index}:parser-keyframe@{i}");
             }
             else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
+        }
+
+        if (hybridSkipped > 0)
+        {
+            notes.Append($" track{t.Index}:movie-box-samples-timestamps-not-compared x{hybridSkipped}");
         }
 
         if (gapDurations > 0)
@@ -275,6 +327,13 @@ return failures == 0 ? 0 : 1;
         {
             notes.Append($" track{t.Index}:negative-cts-dts-shift({constDts})");
             bad[4] = 0;
+        }
+
+        if (negativeOffsets && ptsConst && dtsConst && bad[3] > 0 && bad[4] > 0 && constPts - constDts == mine.Max(x => x.Dts - x.Pts) && bad[3] == bad[4])
+        {
+            // Both of the above at once: a constant shift of every timestamp (ffprobe aligns the first sample with the edit list) and the negative-offset shift of DTS.
+            notes.Append($" track{t.Index}:negative-cts-and-edit-shift(pts {constPts}, dts {constDts})");
+            bad[3] = bad[4] = 0;
         }
 
         string[] names = ["size", "pos", "dur", "pts", "dts", "flags"];
@@ -377,7 +436,7 @@ return failures == 0 ? 0 : 1;
         bool same = theirTracks.Count == tracks.Count;
         for (int k = 0; same && k < tracks.Count; k++)
         {
-            same &= theirTracks[k].Id == tracks[k].Id && theirTracks[k].Scale == tracks[k].Timescale && (fragmented || theirTracks[k].Samples == ours[k].Count);
+            same &= theirTracks[k].Id == tracks[k].Id && theirTracks[k].Scale == tracks[k].Timescale && (fragmented || theirTracks[k].Samples == tableCounts[k]);
         }
 
         notes.Append(same ? " mp4box:agree" : " mp4box:DIFFER");
@@ -457,6 +516,27 @@ static int MakeBig(string path, double gigabytes, string layout)
     fs.Write(l.Tail);
     Console.WriteLine($"{path}: {fs.Length} bytes, {samples} samples, head {l.Head.Length}, tail {l.Tail.Length}");
     return 0;
+}
+
+// True when the sample starts before the first non-empty edit or lies outside every non-empty edit segment (all in the track's media timescale).
+static bool OutsideOrStraddlesEdit(MediaTrack t, Pkt m)
+{
+    long first = -1;
+    bool inside = false;
+    foreach (EditSegment e in t.Edit.Edits ?? [])
+    {
+        if (e.IsEmpty)
+        {
+            continue;
+        }
+
+        long start = e.MediaStart.Ticks;
+        long length = e.Duration.Rescale(t.Timescale, MediaRounding.NearestAwayFromZero).Ticks;
+        first = first < 0 ? start : first;
+        inside |= m.Pts < start + length && m.Pts + m.Duration > start;
+    }
+
+    return first >= 0 && (!inside || m.Pts < first);
 }
 
 static string Run(string exe, params string[] arguments)
