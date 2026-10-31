@@ -75,10 +75,22 @@ internal abstract class EbmlInput
         return true;
     }
 
-    /// <summary>Consumes buffered bytes. The caller has already ensured them.</summary>
+    /// <summary>
+    /// Consumes bytes the caller has already ensured. Should a caller ask for more than is buffered (a header peeked before the buffer was
+    /// dropped by a seek), the position still moves exactly that far and the buffer is emptied, so it never goes out of step with the file.
+    /// </summary>
     public void Advance(int count)
     {
-        _bufPos += count;
+        count = Math.Max(0, count);
+        if (count <= _bufLen - _bufPos)
+        {
+            _bufPos += count;
+            return;
+        }
+
+        _bufStart += _bufPos + count;
+        _bufPos = 0;
+        _bufLen = 0;
     }
 
     /// <summary>Moves forward by <paramref name="count"/> bytes: a buffer adjustment or a seek when the source allows, otherwise a read-and-discard.</summary>

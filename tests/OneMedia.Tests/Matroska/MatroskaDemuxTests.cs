@@ -72,6 +72,19 @@ public class MatroskaDemuxTests
     }
 
     [Fact]
+    public void TracksAfterTheFirstClusterAreFoundByWalkingPastIt()
+    {
+        // No SeekHead: the reader meets a Cluster first, tries the (empty) SeekHead lookup, which moves the input, then walks on.
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(),
+            ClusterElement(0, Simple(1, 0, 0x80, Fill(6, 1)), Simple(1, 40, 0, Fill(4, 2))),
+            ClusterElement(80, Simple(1, 0, 0x80, Fill(5, 3))),
+            TracksElement(Track(1, 1, "V_VP8"))));
+        using MatroskaDemuxer d = Open(file);
+        Assert.Equal(CodecId.Vp8, d.Tracks[0].Codec);
+        Assert.Equal(3, ReadAll(d).Count);
+    }
+
+    [Fact]
     public void SimpleBlockFlagsMapToPacketAttributes()
     {
         byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 1, "V_VP9")),

@@ -329,6 +329,9 @@ internal sealed class MatroskaReader
                     {
                         break;
                     }
+
+                    // The SeekHead lookups moved the input and gave nothing; the header peeked above is stale. Look again from the Cluster.
+                    continue;
                 }
             }
 
