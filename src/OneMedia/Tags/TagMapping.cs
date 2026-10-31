@@ -28,11 +28,13 @@ public static class TagMappingTable
     private const string ExifToolUser = "ExifTool QuickTime UserData tags";
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
+    private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
+    private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
 
     private static TagMappingRow Row(CommonField f, string system, string document, string note, params string[] keys) => new(f, system, keys, document, note);
 
-    /// <summary>The rows in precedence order: for each field, iTunes items, then key-table metadata, then QuickTime user data, then 3GPP boxes, then Matroska tags.</summary>
+    /// <summary>The rows in precedence order: for each field, iTunes items, then key-table metadata, then QuickTime user data, then 3GPP boxes, then XMP, then Matroska tags.</summary>
     public static IReadOnlyList<TagMappingRow> Rows { get; } =
     [
         Row(CommonField.Title, TagSystems.ITunes, Picard, "", "©nam"),
@@ -88,7 +90,8 @@ public static class TagMappingTable
         Row(CommonField.Copyright, TagSystems.ThreeGpp, ThreeGppDoc, "", "cprt"),
 
         Row(CommonField.Encoder, TagSystems.ITunes, ExifToolUser, "Picard files ©too under Encoded By; the atom names the writing tool, so it is the encoder here", "©too"),
-        Row(CommonField.Encoder, TagSystems.QuickTimeKeys, ExifToolKeys, "", Mdta + "encoder"),
+        Row(CommonField.Encoder, TagSystems.QuickTimeKeys, ExifToolKeys, "ffmpeg writes the bare key encoder", "encoder", Mdta + "encoder"),
+        Row(CommonField.Encoder, TagSystems.QuickTimeUserData, ExifToolUser, "", "©too"),
 
         Row(CommonField.EncodedBy, TagSystems.QuickTimeUserData, ExifToolUser, "", "©enc"),
 
@@ -108,6 +111,12 @@ public static class TagMappingTable
         Row(CommonField.TrackTotal, TagSystems.ITunes, Picard, "trkn: 16-bit total at byte 4", "trkn"),
         Row(CommonField.DiscNumber, TagSystems.ITunes, Picard, "disk: 16-bit number at byte 2", "disk"),
         Row(CommonField.DiscTotal, TagSystems.ITunes, Picard, "disk: 16-bit total at byte 4", "disk"),
+        Row(CommonField.Title, TagSystems.Xmp, XmpDoc, "language alternative: the x-default item", Dc + "#title"),
+        Row(CommonField.Artist, TagSystems.Xmp, XmpDoc, "first creator", Dc + "#creator"),
+        Row(CommonField.Description, TagSystems.Xmp, XmpDoc, "", Dc + "#description"),
+        Row(CommonField.Copyright, TagSystems.Xmp, XmpDoc, "", Dc + "#rights"),
+        Row(CommonField.Keywords, TagSystems.Xmp, XmpDoc, "", Dc + "#subject"),
+        Row(CommonField.Date, TagSystems.Xmp, XmpDoc, "", "http://ns.adobe.com/xap/1.0/#CreateDate"),
         Row(CommonField.Title, TagSystems.Matroska, MatroskaDoc, "lowest level of 30 or above first (track before album)", "TITLE"),
         Row(CommonField.Title, TagSystems.MatroskaInfo, MatroskaDoc, "Segment Info Title, after the tags", "Title"),
         Row(CommonField.Artist, TagSystems.Matroska, MatroskaDoc, "", "ARTIST", "LEAD_PERFORMER"),

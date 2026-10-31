@@ -54,6 +54,7 @@ internal sealed class FactsBuilder(DefectLog defects)
                     case qt + "creationdate":
                         AddTime(RankAppleCreationDate, t, text, source, "ISO 8601 date-time written by the Apple camera, with its UTC offset");
                         break;
+                    case "creation_time":
                     case qt + "creation_time":
                         AddTime(RankVendorCreationTime, t, text, source, "ISO 8601 creation time");
                         break;

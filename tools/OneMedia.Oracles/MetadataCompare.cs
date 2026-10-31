@@ -112,19 +112,22 @@ internal static partial class MetadataCompare
                 inEt ? (inMi ? "match" : "match-et") : etVals.Count == 0 ? (inMi ? "match-mi" : "unreported") : (inMi ? "match-mi" : "differs")));
         }
 
+        // Container track properties ("TrackNumber", "Encoder" of a track) are not tags of the movie.
+        Dictionary<string, List<string>> etMovie = et.Where(kv => !kv.Key.StartsWith("Track", StringComparison.Ordinal)).ToDictionary(kv => kv.Key, kv => kv.Value);
+
         // common view
         CommonTags c = m.Tags;
-        Common(rows, name, "Title", c.Title, et, ["Title"], mi, ["Title", "Movie"]);
-        Common(rows, name, "Artist", c.Artist, et, ["Artist", "Performer"], mi, ["Performer"]);
-        Common(rows, name, "Album", c.Album, et, ["Album"], mi, ["Album"]);
-        Common(rows, name, "Genre", c.Genre, et, ["Genre"], mi, ["Genre"]);
-        Common(rows, name, "Comment", c.Comment, et, ["Comment"], mi, ["Comment"]);
-        Common(rows, name, "Description", c.Description, et, ["Description"], mi, ["Description"]);
-        Common(rows, name, "Copyright", c.Copyright, et, ["Copyright"], mi, ["Copyright"]);
-        Common(rows, name, "Composer", c.Composer, et, ["Composer"], mi, ["Composer"]);
-        Common(rows, name, "Encoder", c.Encoder, et, ["Encoder", "Software", "WritingApp"], mi, ["Encoded_Application", "Writing_Library"]);
-        Common(rows, name, "TrackNumber", c.TrackNumber?.ToString(CultureInfo.InvariantCulture), et, ["TrackNumber"], mi, ["Track_Position"], leadingNumber: true);
-        Common(rows, name, "Cover", c.Pictures.Count > 0 ? "yes" : null, et, ["CoverArt", "Picture"], mi, ["Cover"], presence: true);
+        Common(rows, name, "Title", c.Title, etMovie, ["Title"], mi, ["Title", "Movie"]);
+        Common(rows, name, "Artist", c.Artist, etMovie, ["Artist", "Performer"], mi, ["Performer"]);
+        Common(rows, name, "Album", c.Album, etMovie, ["Album"], mi, ["Album"]);
+        Common(rows, name, "Genre", c.Genre, etMovie, ["Genre"], mi, ["Genre"]);
+        Common(rows, name, "Comment", c.Comment, etMovie, ["Comment"], mi, ["Comment"]);
+        Common(rows, name, "Description", c.Description, etMovie, ["Description"], mi, ["Description"]);
+        Common(rows, name, "Copyright", c.Copyright, etMovie, ["Copyright"], mi, ["Copyright"]);
+        Common(rows, name, "Composer", c.Composer, etMovie, ["Composer"], mi, ["Composer"]);
+        Common(rows, name, "Encoder", c.Encoder, etMovie, ["Encoder", "Software", "WritingApp"], mi, ["Encoded_Application", "Writing_Library"]);
+        Common(rows, name, "TrackNumber", c.TrackNumber?.ToString(CultureInfo.InvariantCulture), etMovie, ["TrackNumber"], mi, ["Track_Position"], leadingNumber: true);
+        Common(rows, name, "Cover", c.Pictures.Count > 0 ? "yes" : null, etMovie, ["CoverArt", "Picture"], mi, ["Cover"], presence: true);
 
         // facts
         MediaFacts f = m.Facts;
@@ -175,9 +178,9 @@ internal static partial class MetadataCompare
                 inEt || inMi ? "match" : etLoc.Count + miLoc.Count == 0 ? "unreported" : "differs"));
         }
 
-        Device(rows, name, "Make", f.Make, et, ["Make", "Manufacturer"]);
-        Device(rows, name, "Model", f.Model, et, ["Model"]);
-        Device(rows, name, "Software", f.Software, et, ["Software", "CreatorTool", "WritingApp", "MuxingApp", "Encoder"]);
+        Device(rows, name, "Make", f.Make, etMovie, ["Make", "Manufacturer"]);
+        Device(rows, name, "Model", f.Model, etMovie, ["Model"]);
+        Device(rows, name, "Software", f.Software, etMovie, ["Software", "CreatorTool", "WritingApp", "MuxingApp", "Encoder"]);
     }
 
     private static void Device(List<Row> rows, string file, string field, Fact<string> fact, Dictionary<string, List<string>> et, string[] keys)
