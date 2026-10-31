@@ -42,7 +42,13 @@ internal static class OneAudioCompare
                 SHA256.HashData(v.Data, digest);
                 PacketRecord m = i < mine.Count ? mine[i] : default;
                 // OneAudio reports decode time and duration in the media timescale; it has no position or sync flag.
+                // OneAudio reports media times; our records are placed on ffprobe's edited timeline, so the same shift is applied here.
                 MediaTime ts = new(v.Timestamp, scale);
+                if (ours.Shifts.Length > track.Index)
+                {
+                    ts = OurReader.Shifted(ts, ours.Shifts[track.Index]);
+                }
+
                 theirs.Add(new PacketRecord(track.Index, ts, ts, new MediaTime(v.Duration, scale), v.Data.Length, m.Pos, m.Key, Convert.ToHexStringLower(digest)));
                 i++;
             }
@@ -106,9 +112,30 @@ internal static class OneAudioCompare
 internal static class StructureCompare
 {
     /// <summary>Structure providers of our readers; add one line per reader as it lands.</summary>
-    public static List<Func<IMediaSource, IStructureNode?>> Providers { get; } = [static source => new RecursiveAI.OneMedia.IsoBmff.BoxTree(source).Root];
+    public static List<Func<IMediaSource, IStructureNode?>> Providers { get; } = [static source =>
+    {
+        // The tree reads its top-level boxes on first use; ask for them so the root has its children.
+        RecursiveAI.OneMedia.IsoBmff.BoxTree tree = new(source);
+        return new FileNode([.. tree.TopLevel]);
+    }];
 
     internal readonly record struct Entry(int Depth, string Type, long Size);
+
+    // The whole file as one node (type key 0) over the top-level boxes, as the comparison expects.
+    private sealed class FileNode(IReadOnlyList<IStructureNode> children) : IStructureNode
+    {
+        public ulong TypeKey => 0;
+
+        public long Offset => 0;
+
+        public int HeaderSize => 0;
+
+        public long PayloadSize => 0;
+
+        public bool IsSizeInferred => false;
+
+        public IReadOnlyList<IStructureNode> Children => children;
+    }
 
     /// <summary>Box listing from MP4Box: every XML element carrying a <c>Type</c> attribute, in document order.</summary>
     public static List<Entry> Mp4BoxListing(string file)
@@ -177,7 +204,38 @@ internal static class StructureCompare
     /// <summary>Runs the comparison for one ISO file. Returns a message, or null when the trees agree.</summary>
     public static string? CompareIso(string file)
     {
-        List<Entry> theirs = Mp4BoxListing(file);
+        List<Entry> theirs;
+        try
+        {
+            theirs = Mp4BoxListing(file);
+        }
+        catch (XmlException e)
+        {
+            return "MP4Box produced no box listing: " + e.Message;
+        }
+
+        // Sample entries (children of stsd) are read as format-model data here, not as a box tree: leave out what MP4Box lists inside them.
+        int stsdDepth = -1;
+        theirs = [.. theirs.Where(e =>
+        {
+            if (stsdDepth >= 0 && e.Depth <= stsdDepth)
+            {
+                stsdDepth = -1;
+            }
+
+            if (stsdDepth >= 0 && e.Depth > stsdDepth + 1)
+            {
+                return false;
+            }
+
+            if (e.Type == "stsd")
+            {
+                stsdDepth = e.Depth;
+            }
+
+            return true;
+        })];
+
         if (Providers.Count == 0)
         {
             return $"no structure provider registered ({theirs.Count} boxes in MP4Box's listing)";

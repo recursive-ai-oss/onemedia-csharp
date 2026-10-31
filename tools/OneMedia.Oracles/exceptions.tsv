@@ -6,3 +6,14 @@
 # follows: which side follows the specification (ours, ffprobe, neither), or n/a when it is a definition choice.
 # A rule only excuses a difference; it is counted separately in the reports. Add rules with the experiment that justifies them.
 matroska	pos	*	ignore	neither	ffprobe reports the start of the Block element (id and size included); we report the start of the frame payload, as the packet's source range must be the bytes handed to the codec.
+isobmff	duration	last	ignore	ours	The last packet's duration: ffprobe replaces it (parser frame length for MP3/AC-3/AAC, or the edit's end); the sample table states the value we report (docs/isobmff.md).
+matroska	duration	kind=audio	ours-na	neither	duration-from-codec: ffprobe derives a duration the file does not store from the codec's frame length; ours stays unknown (docs/matroska-differential.md).
+matroska	duration	last	ignore	ours	last-block-duration-differs: the last block's stored BlockDuration is shorter than the codec's frame; ffprobe reports the frame length (docs/matroska-differential.md).
+matroska	pts	*	tolerance=1	ours	inexact-timebase: when TimestampScale does not divide 10^9 ours are exact nanosecond ticks and ffprobe's integer time base rounds (docs/matroska-differential.md).
+matroska	dts	*	tolerance=1	ours	inexact-timebase, as for pts.
+matroska	duration	*	tolerance=1	ours	inexact-timebase, as for pts.
+matroska	size	file=compression	ignore	ffprobe	frame-compression-not-undone: ours delivers zlib-compressed frames as stored; ffprobe sizes are after decompression.
+matroska	hash	file=compression	ignore	ffprobe	frame-compression-not-undone, as for size.
+matroska	duration	codec=webvtt	ignore	ours	webvtt-block-repacked: ffprobe repacks the WebVTT-in-Matroska block.
+matroska	size	codec=webvtt	ignore	ours	webvtt-block-repacked.
+matroska	hash	codec=webvtt	ignore	ours	webvtt-block-repacked.

@@ -25,6 +25,9 @@ internal sealed class OurResult
     public string Format { get; init; } = "";
     public List<MediaTrack> Tracks { get; init; } = [];
     public List<PacketRecord> Packets { get; init; } = [];
+
+    /// <summary>Per track, the shift applied to our times to place them where ffprobe puts them (ISO edit lists); empty when none was applied.</summary>
+    public MediaTime[] Shifts { get; init; } = [];
 }
 
 /// <summary>Reads a file through the registry and reduces every packet to a <see cref="PacketRecord"/>.</summary>
@@ -36,9 +39,9 @@ internal static class OurReader
         {
             using FileMediaSource source = FileMediaSource.Open(path);
             using IDemuxer demuxer = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
-            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks] };
-            Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
             MediaTime[] shift = demuxer.Format == MediaFormatId.IsoBmff ? [.. demuxer.Tracks.Select(EditShift)] : [];
+            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift };
+            Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
             while (demuxer.TryReadPacket(out PacketView view))
             {
                 SHA256.HashData(view.Data, digest);
@@ -79,11 +82,12 @@ internal static class OurReader
         }
 
         MediaTime lead = track.Edit.StartTime.IsKnown ? track.Edit.StartTime : MediaTime.Zero;
-        return lead - start;
+        // In the track's own timescale, so the shift is exact for the media times it is added to.
+        return lead.Rescale(track.Timescale, MediaRounding.NearestAwayFromZero).Subtract(start, MediaRounding.NearestAwayFromZero);
     }
 
-    private static MediaTime Shifted(MediaTime t, MediaTime shift) =>
-        t.IsKnown && !shift.IsZero ? (t + shift).Rescale(t.Timescale, MediaRounding.NearestAwayFromZero) : t;
+    internal static MediaTime Shifted(MediaTime t, MediaTime shift) =>
+        t.IsKnown && !shift.IsZero ? t.Add(shift, MediaRounding.NearestAwayFromZero) : t;
 }
 
 /// <summary>

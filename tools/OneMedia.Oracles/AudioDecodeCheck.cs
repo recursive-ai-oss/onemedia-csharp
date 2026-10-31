@@ -28,7 +28,7 @@ internal static class AudioDecodeCheck
             }
             catch (Exception e) when (e is OneAudioException or MediaException or IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
             {
-                line = $"{Path.GetFileName(file)}\t\t\t\t\t\t\t\t\tskipped\terror {e.GetType().Name}: {e.Message.Replace('\t', ' ').Replace('\n', ' ')}";
+                line = $"{Path.GetFileName(file)}\t\t\t\t\t\t\t\t\tskipped\terror {e.GetType().Name}: {e.Message.Replace('\t', ' ').Replace('\n', ' ')} [{string.Join(" < ", (e.StackTrace ?? "").Split('\n').Take(4).Select(l => l.Trim().Split('(')[0]))}]";
             }
 
             if (!line.Contains("\tsame\t", StringComparison.Ordinal))
