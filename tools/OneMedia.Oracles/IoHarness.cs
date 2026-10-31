@@ -28,6 +28,9 @@ internal sealed class CountingObserver : IMediaReadObserver
 /// </summary>
 internal static class IoHarness
 {
+    /// <summary>When set, our reader also reads the file's tags and basic facts after opening it (the metadata I/O rows).</summary>
+    public static bool ReadMetadata { get; set; }
+
     private static readonly TimeSpan ToolTimeout = TimeSpan.FromMinutes(5);
     private static string _logDir = ".";
 
@@ -290,7 +293,20 @@ internal static class IoHarness
         }
 
         using IDemuxer demuxer = format.Open(source, new MediaOpenOptions { LeaveOpen = true });
-        return "opened " + match.Format.Id + ", " + demuxer.Tracks.Count + " tracks";
+        return "opened " + match.Format.Id + ", " + demuxer.Tracks.Count + " tracks" + MetadataNote(demuxer);
+    }
+
+    private static string MetadataNote(object demuxer)
+    {
+        if (!ReadMetadata || demuxer is not RecursiveAI.OneMedia.Metadata.IMetadataProvider provider)
+        {
+            return "";
+        }
+
+        RecursiveAI.OneMedia.Metadata.MediaMetadata m = provider.ReadMetadata();
+        _ = m.Tags.Title;
+        _ = m.Facts.CaptureTime.Best;
+        return ", metadata: " + m.NativeTags.Count + " native tags";
     }
 
     private static async Task<string> ProbeOursAsync(MediaFormatRegistry registry, ObservedMediaSource source)
@@ -306,7 +322,20 @@ internal static class IoHarness
         }
 
         await using IAsyncDemuxer demuxer = await format.OpenAsync(source, new MediaOpenOptions { LeaveOpen = true }).ConfigureAwait(false);
-        return "opened " + match.Format.Id + ", " + demuxer.Tracks.Count + " tracks";
+        return "opened " + match.Format.Id + ", " + demuxer.Tracks.Count + " tracks" + await MetadataNoteAsync(demuxer).ConfigureAwait(false);
+    }
+
+    private static async Task<string> MetadataNoteAsync(IAsyncDemuxer demuxer)
+    {
+        if (ReadMetadata && demuxer is RecursiveAI.OneMedia.Matroska.MatroskaAsyncDemuxer mkv)
+        {
+            RecursiveAI.OneMedia.Metadata.MediaMetadata m = await mkv.ReadMetadataAsync().ConfigureAwait(false);
+            _ = m.Tags.Title;
+            _ = m.Facts.CaptureTime.Best;
+            return ", metadata: " + m.NativeTags.Count + " native tags";
+        }
+
+        return MetadataNote(demuxer);
     }
 
     private static (int Exit, string StdOut, string StdErr, bool TimedOut) RunTool(string exe, IEnumerable<string> args)

@@ -11,7 +11,8 @@ internal static class Readers
     public static MediaFormatRegistry Create()
     {
         MediaFormatRegistry registry = new();
-        // One line per reader, e.g. registry.Add(new IsoBmffFormat());
+        registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
+        registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
         return registry;
     }
 }
