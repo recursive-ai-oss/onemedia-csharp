@@ -41,7 +41,11 @@ internal static class MatroskaTarget
                     Drain(d, 200);
                 }
 
-                d.SetTrackEnabled(0, false);
+                if (d.Tracks.Count > 0)
+                {
+                    d.SetTrackEnabled(0, false);
+                }
+
                 d.Seek(MediaTime.Zero);
                 Drain(d, 200);
             }

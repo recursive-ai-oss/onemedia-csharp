@@ -67,7 +67,7 @@ binaries only (versions in the results table below). `tools/matroska/run-matrosk
 `tools/matroska/make-fixtures.sh` writes the synthetic fixtures (ffmpeg- and mkvmerge-written files from generated input) and
 `tools/matroska/run-matroska-big.sh` the large-file checks.
 
-For every stream the packets are compared in order: size, PTS, duration, key flag, and position. Each difference is in an explained class or it is
+For every stream the packets are compared in order: size, payload checksum (ffprobe's `-show_data_hash adler32` against the Adler-32 of the bytes we deliver), PTS, duration, key flag, and position. Each difference is in an explained class or it is
 unexplained; the tool exits non-zero on any unexplained difference.
 
 ### Explained classes
