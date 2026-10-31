@@ -25,6 +25,11 @@
   <ItemGroup>
     <!-- A trivial demuxer shared with the smoke apps. -->
     <Compile Include="../../smoke/Shared/FixedPacketDemuxer.cs" Link="Shared/FixedPacketDemuxer.cs" />
+    <!-- Writes synthetic MP4 files; shared with the comparison tool. -->
+    <Compile Include="../../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
+    <!-- Small fixtures and their ffprobe packet listings. -->
+    <None Include="../../testdata/isobmff/*" Link="testdata/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/isobmff/family/*" Link="testdata/isobmff/family/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
   </ItemGroup>
