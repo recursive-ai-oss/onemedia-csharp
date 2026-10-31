@@ -32,7 +32,7 @@ the executable. The tools are executed only; their files and sources are never r
 `tools/corpus/manifest.tsv` lists every fetched file: URL, archive kind, SHA-256 and size of the download and of the
 file, licence or notice, and whether it may be committed (`committable`, small cuts with the notice) or is
 `fetch-only`. `fetch.sh` downloads what is missing, verifies pins, and stops at once if a benchmark lock appears.
-`generate.sh` writes the generated set. Files that a pinned encoder cannot produce are reported as failed and skipped.
+`generate.sh` writes the generated set; `generated-manifest.tsv` is a copy of its manifest from the last full run. Files that a pinned encoder cannot produce are reported as failed and skipped.
 Not available in the pinned ffmpeg build: HE-AAC (no AAC encoder beyond the native LC one).
 
 ## Packet differential
@@ -87,3 +87,10 @@ running through a job queue. Results are per file, so a rerun resumes.
   Used for ffprobe, mediainfo and ExifTool, and for our reader through `ObservedMediaSource` over `FileMediaSource`.
 
 Page cache does not affect these counts. Timing is not measured here.
+
+### Baseline of the reference tools
+
+`docs/io-oracle-baseline.tsv` holds the measured cost of ffprobe, MediaInfo and ExifTool on the whole corpus: bytes and
+request or read-call counts per file. Our own reader's columns join it as the readers land (`io` already measures them
+through the same sources). ffprobe and MediaInfo were run with the pinned builds listed in the installers.
+ExifTool timed out (five minutes) on one Matroska audio file with nested tags and is marked `n/a`.
