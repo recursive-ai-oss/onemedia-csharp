@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace RecursiveAI.OneMedia.IsoBmff;
 
 /// <summary>A read-only view of bytes that sit at <c>baseOffset</c> in a larger file; reads outside them return nothing.</summary>
@@ -30,34 +32,47 @@ internal sealed class RangeMemorySource(byte[] data, int count, long baseOffset,
 internal sealed class ReadAheadSource(IMediaSource inner) : IMediaSource
 {
     private const int WindowBytes = 32 * 1024;
-    private readonly byte[] _window = new byte[WindowBytes];
+
+    // A read far from the previous window is a jump over sample tables or media data, so it fetches a small window rather than 32 KiB
+    // it will not use; reads that continue near the last window keep the full size.
+    private const int JumpWindowBytes = 4 * 1024;
+    private byte[]? _window; // rented on the first refill and returned by Dispose; reads after that go straight to the source
     private long _start = -1;
     private int _count;
+    private bool _disposed;
 
     public long Length => inner.Length;
 
     public int Read(long offset, Span<byte> destination, CancellationToken cancellationToken = default)
     {
-        if (destination.Length >= WindowBytes)
+        if (destination.Length >= WindowBytes || _disposed)
         {
             return inner.Read(offset, destination, cancellationToken);
         }
 
+        byte[] window = _window ??= ArrayPool<byte>.Shared.Rent(WindowBytes);
         if (_start < 0 || offset < _start || offset + destination.Length > _start + _count)
         {
             // Refill from the requested offset; a short window at the end of the data is fine.
-            _count = inner.Read(offset, _window, cancellationToken);
+            bool near = _start < 0 || (offset >= _start && offset - (_start + _count) <= WindowBytes);
+            _count = inner.Read(offset, window.AsSpan(0, near ? WindowBytes : Math.Max(JumpWindowBytes, destination.Length)), cancellationToken);
             _start = offset;
         }
 
         long rel = offset - _start;
         int n = (int)Math.Max(0, Math.Min(destination.Length, _count - rel));
-        _window.AsSpan((int)rel, n).CopyTo(destination);
+        window.AsSpan((int)rel, n).CopyTo(destination);
         return n;
     }
 
     public void Dispose()
     {
+        _disposed = true;
+        if (_window is { } window)
+        {
+            _window = null;
+            ArrayPool<byte>.Shared.Return(window);
+        }
     }
 }
 
@@ -92,7 +107,7 @@ internal static class IsoBmffOpener
 
     public static OpenedMovie Open(IMediaSource rawSource, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
     {
-        ReadAheadSource source = new(rawSource);
+        using ReadAheadSource source = new(rawSource);
         long length = source.Length;
         BoxTree tree = new(source, limits, defects);
         FileTypeBox? ftyp = null;

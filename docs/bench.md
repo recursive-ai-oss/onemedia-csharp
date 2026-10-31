@@ -1,0 +1,76 @@
+# Speed rows
+
+`bench/OneMedia.Bench` measures OneMedia against managed comparators and prints the ratio, allocations and memory for each
+row. It is a console app, not packed, and the only project that references the comparator packages.
+
+## What is measured
+
+| Row | OneMedia | Comparator (the bar) | Reference tools (information) |
+|---|---|---|---|
+| `mp4-demux` | read every packet of every track | SharpMP4 | `ffmpeg -c copy -f null` |
+| `mp4-audio` | read the audio track only, other tracks switched off | OneAudio `Mp4PacketSource` | – |
+| `mp4-probe` | open, track list, duration | MetadataExtractor, TagLib#, ATL.NET (fastest of the three counts) | ffprobe, MediaInfo, ExifTool, `MP4Box -info` |
+| `mkv-demux` | read every packet | the Matroska package (full deserialise, then walk the blocks) | `ffmpeg -c copy -f null`, `mkvextract tracks` (first track) |
+| `mkv-probe` | open, track list, duration | the package's element reader: Info and Tracks read, clusters skipped | ffprobe, MediaInfo, ExifTool, `mkvmerge -J`, `mkvinfo` |
+
+The Matroska package counts a laced block as one packet, where OneMedia delivers each frame of a lace; the table flags the
+different counts. The comparator therefore does less work per file than OneMedia on laced audio, which favours the comparator.
+
+Files per row are listed by `list`: a small generated file, open-movie files of different shapes (1080p, fragmented,
+Matroska/WebM), the published Matroska test files, and the over-4 GiB files with the index at the end (MP4) and a plain
+over-4 GiB Matroska. A file missing from the corpus is skipped and said so.
+
+**The work is the same for everyone.** A packet read counts the packet, adds its size and XORs its first and last byte, so
+every payload is delivered to the caller and not skipped. The counts are printed next to the times; a comparator whose
+packet count differs from OneMedia's is flagged in the table (Matroska laced blocks, files the package cannot read). The probe
+rows read what each library offers: tracks and duration, plus the title and first artist where the library has them;
+OneMedia's native tags join its probe when its tag layer lands.
+
+**Calls.** Each comparator is called as its published README shows, with a 64 KiB file buffer. Where the README does not cover a
+row the obvious public call is used: SharpMP4 reads track by track with `ReadSample`; MetadataExtractor uses
+`ImageMetadataReader.ReadMetadata(stream)` and reads every tag's description; TagLib# uses `File.Create(path)`; ATL.NET uses
+`new Track(path)`. ATL.NET is audio-oriented and may refuse video files; a refusal is shown as `fail`.
+
+## Method
+
+- One fresh process per (row, implementation, file), so peak memory belongs to that work alone. The parent reads each file
+  once before its rows so all implementations start with it in the page cache; the tables say so.
+- In the process: two untimed runs (JIT and type loading, then sizing), then 5 samples, each the mean of enough back-to-back
+  runs to take about 50 ms. The median is reported, and the range is kept in `results.tsv`. Files over 1 GiB get one warm-up run and
+  then 3 samples of one run each. The first run of every cell (JIT and type loading included) is shown apart as "cold first run" in
+  the note column; it is not part of the ratio.
+- Allocation is `GC.GetAllocatedBytesForCurrentThread` per run, and per packet. Peak memory is the process's peak working set;
+  the working set before any work is printed beside it.
+- Reference tools run as processes under `/usr/bin/time`, three times (once over 1 GiB): wall time measured by the parent, peak
+  resident set from `time`. Their start-up cost is part of the figure.
+- Ratio = OneMedia's median ÷ the fastest managed comparator's median for that file. The bar is a geometric mean ≤ 1.00× per
+  row and no file above 1.25×. Rows with no managed comparator pass.
+- Every run records CPU, logical cores, ISA flags, storage of the corpus, runtime, restored package versions, tool versions and the
+  one-minute load average before, during (mean and max of 5 s samples) and after.
+
+## Running it
+
+```
+dotnet run -c Release --project bench/OneMedia.Bench -- run --rows 0.1 --out results/x64 [--corpus DIR]
+```
+
+`--rows` takes a stage (`0.1`) or row ids. `--files a,b` keeps files whose path contains one of the strings, `--no-tools` leaves
+out the reference tools, `--reps` and `--tool-reps` set the repetitions, `--budget MIN` stops starting new cells after that many
+minutes (exit code 75) and `--resume` continues from `results.tsv`. `report` rebuilds `report.md`; `prepare` derives the
+fragmented MP4 (done by `run`); `list` shows rows and files. The corpus is `$ONEMEDIA_HOME/corpus` (default `~/onemedia/corpus`).
+
+Timings are only comparable between runs on a quiet machine. The published run is one command per machine under the
+exclusive bench queue.
+
+## Provenance of the comparator calls
+
+Every comparator call was chosen from the package's published README, its package page and its public type and member
+signatures. No comparator's source, decompiled code or unpacked package contents was read, and no reference tool's source was
+read; the tools run as released binaries.
+
+## Looking at a cell
+
+- `OneMedia.Bench once ROW IMPL REL [CORPUS [TIMES]]` runs one cell, optionally in a loop, and prints the mean time of a run.
+- `bench/iocount.sh DLL ROW IMPL REL` counts the read calls and bytes a cell makes on its input file (strace).
+- `bench/profile.sh DLL ROW IMPL REL TIMES` samples a looped cell with `dotnet-trace` and prints self and inclusive time by method.
+  It needs `dotnet-trace` in `~/onemedia/u5-bench/tools` (`dotnet tool install dotnet-trace --tool-path ...`).

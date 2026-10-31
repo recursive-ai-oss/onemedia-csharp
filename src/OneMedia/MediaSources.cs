@@ -58,6 +58,7 @@ public sealed class MemoryMediaSource : IMediaSource, IAsyncMediaSource
 public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
 {
     private readonly SafeFileHandle _handle;
+    private long _length = -1; // remembered size, or -1 when it must be read
 
     private FileMediaSource(SafeFileHandle handle) => _handle = handle;
 
@@ -72,8 +73,36 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
         return new FileMediaSource(File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, FileOptions.RandomAccess | FileOptions.Asynchronous));
     }
 
-    /// <inheritdoc />
-    public long Length => RandomAccess.GetLength(_handle);
+    /// <summary>
+    /// The file's current size. It is read from the file system once and kept until a read comes back short or asks for bytes at or past
+    /// that size, which is when a file that is still being written may have grown; the next call then reads it again. A reader that
+    /// asks for the length often therefore costs one system call per growth check instead of one per call.
+    /// </summary>
+    public long Length
+    {
+        get
+        {
+            long known = Volatile.Read(ref _length);
+            if (known >= 0)
+            {
+                return known;
+            }
+
+            known = RandomAccess.GetLength(_handle);
+            Volatile.Write(ref _length, known);
+            return known;
+        }
+    }
+
+    // Forgets the remembered length when a read may have reached the end of the data it describes.
+    private void NoteRead(long offset, int requested, int returned)
+    {
+        long known = Volatile.Read(ref _length);
+        if (known >= 0 && (returned < requested || offset + requested >= known))
+        {
+            Volatile.Write(ref _length, -1);
+        }
+    }
 
     /// <inheritdoc />
     public int Read(long offset, Span<byte> destination, CancellationToken cancellationToken = default)
@@ -92,6 +121,7 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
             total += n;
         }
 
+        NoteRead(offset, destination.Length, total);
         return total;
     }
 
@@ -111,6 +141,7 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
             total += n;
         }
 
+        NoteRead(offset, destination.Length, total);
         return total;
     }
 

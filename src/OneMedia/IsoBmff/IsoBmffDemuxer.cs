@@ -1,3 +1,4 @@
+using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
 
 namespace RecursiveAI.OneMedia.IsoBmff;
@@ -27,7 +28,10 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
     private readonly MediaLimits _limits;
     private readonly CancellationToken _cancellation;
     private readonly SeekableFragmentLoader? _loader;
-    private byte[] _buffer = new byte[64 * 1024];
+    private const int MinPayloadBuffer = 64 * 1024;
+    private readonly PayloadReadAhead _readAhead = new();
+    private byte[] _buffer = []; // taken by the first packet, so opening just to probe costs none of it
+    private bool _bufferRented;
     private long _nextFragmentPosition;
     private long _mdatEnd;
     private BoxHeader? _pending;
@@ -296,18 +300,44 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
         return true;
     }
 
+    // The first packet takes the usual 64 KiB buffer from the shared pool (so repeated opens allocate nothing); a larger sample replaces it
+    // with an array of its own. Either way the buffer only grows, so the pull path allocates nothing once it has seen its largest sample.
+    private void GrowBuffer(int size)
+    {
+        if (_buffer.Length == 0 && size <= MinPayloadBuffer)
+        {
+            _buffer = ArrayPool<byte>.Shared.Rent(MinPayloadBuffer);
+            _bufferRented = true;
+            return;
+        }
+
+        byte[] grown = new byte[Math.Max(Math.Max(size, MinPayloadBuffer), Math.Min(_buffer.Length * 2, Array.MaxLength))];
+        ReturnBuffer();
+        _buffer = grown;
+    }
+
+    private void ReturnBuffer()
+    {
+        if (_bufferRented)
+        {
+            _bufferRented = false;
+            ArrayPool<byte>.Shared.Return(_buffer);
+            _buffer = [];
+        }
+    }
+
     private bool ReadPayload(in PacketInfo info)
     {
         int size = info.Size;
         if (_buffer.Length < size)
         {
-            _buffer = new byte[Math.Max(size, Math.Min(_buffer.Length * 2, Array.MaxLength))];
+            GrowBuffer(size);
         }
 
         long offset = info.SourceRange.Offset;
         if (_source is not null)
         {
-            if (_source.Read(offset, _buffer.AsSpan(0, size), _cancellation) == size)
+            if (_readAhead.Read(_source, offset, _buffer.AsSpan(0, size), _cancellation) == size)
             {
                 return true;
             }
@@ -390,6 +420,8 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
         }
 
         _disposed = true;
+        _readAhead.Release();
+        ReturnBuffer();
         if (!_leaveOpen)
         {
             _source?.Dispose();

@@ -9,5 +9,11 @@
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="SharpFuzz" Version="2.2.0" />
+    <!-- Comparators: bench project only. TagLibSharp is LGPL and is only ever run as a black box there. -->
+    <PackageVersion Include="SharpMP4" Version="0.3.2" />
+    <PackageVersion Include="Matroska" Version="0.0.12" />
+    <PackageVersion Include="MetadataExtractor" Version="2.9.3" />
+    <PackageVersion Include="TagLibSharp" Version="2.3.0" />
+    <PackageVersion Include="z440.atl.core" Version="7.19.0" />
   </ItemGroup>
 </Project>
