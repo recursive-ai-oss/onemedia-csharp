@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>$(PackagePrefix)OneMedia</AssemblyName>
+    <RootNamespace>RecursiveAI.OneMedia</RootNamespace>
+    <PackageId>$(PackagePrefix)OneMedia</PackageId>
+    <Description>Containers, metadata, subtitles; no decoding. A managed media container library with no dependency beyond .NET: sources, exact media time, limits, typed defects, content sniffing and the track and packet model that the format readers build on. Unaffiliated with other products or companies named OneMedia.</Description>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="$(PackagePrefix)OneMedia.Tests" />
+    <InternalsVisibleTo Include="$(PackagePrefix)OneMedia.Fuzz" />
+  </ItemGroup>
+
+</Project>
