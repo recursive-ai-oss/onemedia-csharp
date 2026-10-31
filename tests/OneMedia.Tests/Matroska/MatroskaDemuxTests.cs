@@ -196,24 +196,90 @@ public class MatroskaDemuxTests
         Assert.True(d.TryReadPacket(out PacketView p));
         Assert.Equal(Cat(prefix, stored), p.Data.ToArray());
         Assert.Equal(prefix.Length + stored.Length, p.Info.Size);
-        Assert.True(p.Info.SourceRange.IsNone); // the one case where a packet differs from its source bytes
+        Assert.Equal(stored.Length, p.Info.SourceRange.Length); // the range names the stored bytes, not the restored ones
         Assert.Equal(prefix, d.Entries[0].HeaderStripPrefix.ToArray());
     }
 
-    [Fact]
-    public void ZlibAndEncryptionAreReported()
+    private static byte[] Deflate(byte[] data)
     {
-        byte[] zlib = El(0x6D80, El(0x6240, U(0x5033, 0), El(0x5034, U(0x4254, 0))));
-        byte[] enc = El(0x6D80, El(0x6240, U(0x5033, 1), El(0x5035, U(0x47E1, 5))));
-        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 1, "V_VP8", zlib), Track(2, 2, "A_OPUS", enc)), ClusterElement(0, Simple1(0, true, Fill(5, 1)))));
+        using MemoryStream ms = new();
+        using (System.IO.Compression.ZLibStream z = new(ms, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            z.Write(data);
+        }
+
+        return ms.ToArray();
+    }
+
+    private static byte[] ZlibTrack() => El(0x6D80, El(0x6240, U(0x5033, 0), El(0x5034, U(0x4254, 0))));
+
+    [Fact]
+    public void ZlibFramesAreInflatedAndKeepTheirStoredRange()
+    {
+        byte[] plain = Fill(300, 7);
+        byte[] stored = Deflate(plain);
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 17, "S_TEXT/UTF8", ZlibTrack())), ClusterElement(0, Simple1(0, true, stored))));
         DefectLog defects = new();
         using MatroskaDemuxer d = Open(file, defects);
-        Assert.True(d.Entries[0].HasUnsupportedFrameCompression);
-        Assert.False(d.Tracks[0].IsProtected);
-        Assert.True(d.Tracks[1].IsProtected);
-        Assert.Contains(defects, x => x.Kind == DefectKind.Unsupported);
-        Assert.True(d.TryReadPacket(out PacketView p)); // delivered as stored
-        Assert.Equal(5, p.Data.Length);
+        Assert.False(d.Entries[0].HasUnsupportedFrameCompression);
+        Assert.True(d.TryReadPacket(out PacketView p));
+        Assert.Equal(plain, p.Data.ToArray());
+        Assert.Equal(plain.Length, p.Info.Size);
+        Assert.Equal(stored.Length, p.Info.SourceRange.Length);
+        Assert.True(file.AsSpan((int)p.Info.SourceRange.Offset, stored.Length).SequenceEqual(stored));
+        Assert.DoesNotContain(defects, x => x.Kind == DefectKind.InvalidValue);
+    }
+
+    [Fact]
+    public void ABadZlibFrameIsDeliveredAsStoredWithAWarning()
+    {
+        byte[] junk = Fill(20, 3);
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 17, "S_TEXT/UTF8", ZlibTrack())), ClusterElement(0, Simple1(0, true, junk))));
+        DefectLog defects = new();
+        using MatroskaDemuxer d = Open(file, defects);
+        Assert.True(d.TryReadPacket(out PacketView p));
+        Assert.Equal(junk, p.Data.ToArray());
+        Assert.Contains(defects, x => x.Kind == DefectKind.InvalidValue && x.Severity == DefectSeverity.Warning);
+    }
+
+    [Fact]
+    public void InflatedSizeIsLimited()
+    {
+        byte[] stored = Deflate(new byte[100_000]); // a few hundred bytes that inflate to 100 kB
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 17, "S_TEXT/UTF8", ZlibTrack())), ClusterElement(0, Simple1(0, true, stored))));
+        MediaLimits limits = MediaLimits.Default with { MaxPacketBytes = 4096 };
+        using MatroskaDemuxer d = Open(file, limits: limits);
+        Assert.Throws<MediaLimitExceededException>(() => d.TryReadPacket(out _));
+    }
+
+    [Fact]
+    public void EncryptionIsReported()
+    {
+        byte[] enc = El(0x6D80, El(0x6240, U(0x5033, 1), El(0x5035, U(0x47E1, 5))));
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 2, "A_OPUS", enc)), ClusterElement(0, Simple1(0, true, Fill(5, 1)))));
+        using MatroskaDemuxer d = Open(file);
+        Assert.True(d.Tracks[0].IsProtected);
+    }
+
+    [Fact]
+    public void OutputSamplingFrequencyIsTheTrackRateForSbr()
+    {
+        byte[] audio = El(0xE1, F64(0xB5, 24000), F64(0x78B5, 48000), U(0x9F, 2));
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 2, "A_AAC", audio)), ClusterElement(0, Simple1(0, true, Fill(5, 1)))));
+        using MatroskaDemuxer d = Open(file);
+        Assert.Equal(48000, d.Tracks[0].Audio!.Value.SampleRate);
+    }
+
+    [Fact]
+    public void VfwFourCcNamesTheCodec()
+    {
+        byte[] bih = new byte[40];
+        bih[0] = 40;
+        "H264"u8.CopyTo(bih.AsSpan(16));
+        byte[] file = Cat(Header(), SegmentElement(InfoElement(), TracksElement(Track(1, 1, "V_MS/VFW/FOURCC", Bin(0x63A2, bih), El(0xE0, U(0xB0, 64), U(0xBA, 48)))), ClusterElement(0, Simple1(0, true, Fill(5, 1)))));
+        using MatroskaDemuxer d = Open(file);
+        Assert.Equal(CodecId.H264, d.Tracks[0].Codec);
+        Assert.Equal("H264", d.Tracks[0].CodecTag);
     }
 
     [Fact]

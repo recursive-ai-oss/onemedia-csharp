@@ -128,7 +128,7 @@ internal sealed class SampleCursor
     // chunk walk
     private long _stscEntry, _chunk, _chunkLeft, _chunkNextFirst;
     private uint _spc, _desc;
-    private long _chunkOffset;
+    private long _chunkOffset, _chunkStart;
     // sync samples
     private long _syncIdx;
     private uint _nextSync;
@@ -163,6 +163,9 @@ internal sealed class SampleCursor
     public long SampleCount { get; }
 
     public bool IsValid => _valid;
+
+    /// <summary>The file offset of the first byte of the chunk holding <see cref="Current"/>.</summary>
+    public long ChunkStartOffset => _chunkStart;
 
     public ref readonly TableSample Current => ref _current;
 
@@ -353,6 +356,7 @@ internal sealed class SampleCursor
         }
 
         _chunkOffset = chunkStart + inChunk;
+        _chunkStart = chunkStart;
 
         // sync samples: the first listed sync sample number at or after this one
         if (_hasStss)
@@ -625,6 +629,7 @@ internal sealed class SampleCursor
         _chunk = chunk;
         _chunkLeft = _spc;
         _chunkOffset = start;
+        _chunkStart = start;
         return true;
     }
 

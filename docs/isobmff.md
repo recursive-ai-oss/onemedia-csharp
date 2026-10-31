@@ -177,5 +177,11 @@ adds leading empty edits) and lists the following as explained, never as agreeme
 | `Discard` on a fragment sample before the edit start: ffprobe flags it only for samples from `moov`'s tables | The edit list applies to fragments too (§8.6.6). |
 | H.264/HEVC keyframes: ffprobe also marks IDR pictures that the sync sample table omits | We use container information only (decode-free); MP4Box's report agrees with the table. |
 | One-frame-per-sample PCM (`sowt`, `twos`): ffprobe regroups samples into ~1000-byte packets | We return the sample table's samples; bytes covered and offsets are identical. |
+| Edit lists that play media twice (a 106-segment video track in one file, an MP3 track in another): ffprobe lists the repeated samples again; it also splits PCM packets at edit boundaries | Ours lists each stored sample once; `packetset` confirms every position and size of ours is among ffprobe's. |
+| A fragmented file whose edit is `[0+0]` (segment_duration 0): ffprobe drops the first moov-table samples | §8.6.6 reads a zero duration as the whole track in a fragmented file; we keep every sample. |
+| QuickTime MP3 stored as one-byte table samples (`multitrack.mov`, 17.6 million of them): ffprobe reframes by MP3 frame headers | Ours reports table samples (finding frames is codec work); bytes covered are the same. |
+| A video track whose sample entry and `tkhd` say 240x180 while the H.263 picture header says 352x288 (`0625rvt6-42.mov`) | Ours is the container's value; the picture header is payload, read only by tools that parse the stream. |
+| Duration of fragmented files: ffprobe scans the fragments for the real length; `mvhd` of a fragmented file often states a shorter one or none | Ours stays structural (no scan on open). `MediaFile.ContainerDuration` is the box value, `TracksDuration` the longest media header duration; fragment totals are not summed. |
+| Duration of files whose `mvhd` is shorter than a track (or whose `mvhd` timescale is wrong): ffprobe reports the longest stream | `MediaFile.Duration` follows ffprobe (longest track), `ContainerDuration` keeps the box value. |
 
 Everything else (size, byte offset, key flag, durations, timestamps) matches on every packet of every compared file.

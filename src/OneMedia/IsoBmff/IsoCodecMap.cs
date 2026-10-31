@@ -52,7 +52,8 @@ public static class IsoCodecMap
                 return new CodecId("alac");
             case "sowt" or "twos" or "in24" or "in32" or "fl32" or "fl64" or "lpcm" or "raw " or "ipcm" or "fpcm":
                 return CodecId.Pcm;
-            case "tx3g":
+            case "tx3g" or "text":
+                // QuickTime text sample entries carry the same kind of timed text as 3GPP tx3g.
                 return CodecId.TimedText;
             case "wvtt":
                 return CodecId.WebVtt;

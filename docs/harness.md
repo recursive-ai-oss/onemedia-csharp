@@ -90,6 +90,27 @@ float32 and compare with an offset search in those cases.
 `infocheck FILES` compares `Media.Open` (tracks, codec, size, rate, channels, language, duration) with ffprobe. Attachment
 streams are ignored; durations may differ by one tick of the container's own clock.
 
+Differences that remain on the 213-file corpus are all explained, none is hidden by the tool except those it accepts above:
+
+| Difference | Class |
+|---|---|
+| Fragmented files (about 20): ffprobe scans the fragments for the length; the movie header states none or a shorter one | Ours stays structural: no scan on open. `ContainerDuration` is the box value. |
+| `Fraunhofer...small.mp4`: ffprobe 136 s, ours 4,352 s | The movie header's figure is 32 times the tracks' (a wrong movie timescale); ours reports the header, `TracksDuration` is 136 s. |
+| `apple_cv.mov`, `ctk_cpro.mov` | ffprobe reports "missing mandatory atoms, broken header" and falls back to a length it derives from packets; ours is the movie header. |
+| `bedroses.mov`, `mp3audioproblem.mp4`, `discont-frag.mp4` | Edit-list classes (docs/isobmff.md). |
+| `0625rvt6-42.mov` size 352x288 vs 240x180 | ffprobe reads the H.263 picture header; the track header and sample entry say 240x180. |
+| `atlantis405-test.mkv` channels 6 vs 2 | The AC-3 track header says 2; ffprobe reads 5.1 from the bitstream. Ours is the header. |
+| `azumi.mkv`, `ticket-a_aac.mkv` stream count | ffprobe lists attachments as streams. |
+| `650vid.3g2` | Fixed (QCELP is mono). |
+| Matroska AAC with SBR | Ours is `OutputSamplingFrequency` (the rate heard); ffprobe prints the core rate. Accepted when ours is twice theirs. |
+| Matroska language | Ours prefers `LanguageBCP47` over `Language`; accepted when ours is a BCP 47 tag. |
+| WebVTT in MP4 | ffprobe calls it `data`; accepted. |
+
+### `packetset`
+
+`packetset FILE` lists, per track, each packet's byte position and size from ours and from ffprobe and compares them as sets, so a difference in how
+packets are counted (edit-list repeats, split or joined PCM packets) can be told from a difference in what bytes they cover.
+
 ### Structure notes
 
 `structure` ignores children of `stsd` entries. MP4Box prints size 0 for QuickTime-style sample entries and lists `moov`

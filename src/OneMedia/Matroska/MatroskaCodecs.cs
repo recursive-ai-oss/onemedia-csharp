@@ -85,6 +85,51 @@ internal static class MatroskaCodecs
         }
     }
 
+    /// <summary>
+    /// Names the codec of a <c>V_MS/VFW/FOURCC</c> track from the <c>biCompression</c> field of the BITMAPINFOHEADER that is its CodecPrivate (Matroska codec
+    /// mapping; Microsoft BITMAPINFOHEADER layout: biSize at 0, biCompression at 16). The FourCC is returned as the codec tag even when it is not recognised.
+    /// </summary>
+    public static bool TryFromBitmapInfoHeader(ReadOnlySpan<byte> codecPrivate, out CodecId codec, out string? fourcc)
+    {
+        codec = CodecId.Unknown;
+        fourcc = null;
+        if (codecPrivate.Length < 20)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> raw = codecPrivate.Slice(16, 4);
+        foreach (byte b in raw)
+        {
+            if (b is < 0x20 or > 0x7E)
+            {
+                return false;
+            }
+        }
+
+        fourcc = System.Text.Encoding.Latin1.GetString(raw);
+        string key = fourcc.ToUpperInvariant();
+        codec = key switch
+        {
+            "H264" or "X264" or "AVC1" or "DAVC" => CodecId.H264,
+            "HEVC" or "HEV1" or "HVC1" or "H265" or "X265" => CodecId.Hevc,
+            "XVID" or "DIVX" or "DX50" or "MP4V" or "FMP4" or "3IV2" or "DIV5" => new CodecId("mpeg4"),
+            "DIV3" or "MP43" or "DIV4" or "COL1" or "AP41" => new CodecId("msmpeg4v3"),
+            "MJPG" or "AVRN" => CodecId.Mjpeg,
+            "MPG2" or "MP2V" => CodecId.Mpeg2Video,
+            "MPG1" or "MP1V" => new CodecId("mpeg1video"),
+            "VP80" => CodecId.Vp8,
+            "VP90" => CodecId.Vp9,
+            "AV01" => CodecId.Av1,
+            "WMV1" => new CodecId("wmv1"),
+            "WMV2" => new CodecId("wmv2"),
+            "WMV3" => new CodecId("wmv3"),
+            "WVC1" => new CodecId("vc1"),
+            _ => CodecId.Unknown,
+        };
+        return true;
+    }
+
     public static TrackKind KindOf(long trackType) => trackType switch
     {
         1 => TrackKind.Video,

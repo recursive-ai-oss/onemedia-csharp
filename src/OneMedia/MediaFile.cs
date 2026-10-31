@@ -1,4 +1,6 @@
 using System.Buffers;
+using RecursiveAI.OneMedia.Metadata;
+using RecursiveAI.OneMedia.Tags;
 
 namespace RecursiveAI.OneMedia;
 
@@ -83,7 +85,42 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         }
     }
 
-    // Marked place for the metadata layer: Tags, CaptureTime, Location, Device and Native[...] attach here once that layer lands.
+    private MediaMetadata? _metadata;
+
+    /// <summary>
+    /// The file's metadata: native tags, the common view and the basic facts. Read on first use from the demuxer's structure (no media data
+    /// is read) and kept. A file opened from an asynchronous source must call <see cref="ReadMetadataAsync"/> first.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The file came from an asynchronous source and <see cref="ReadMetadataAsync"/> has not run, or its format has no metadata reader.</exception>
+    public MediaMetadata Metadata => _metadata ??= (_sync as IMetadataProvider ?? throw NotYetRead()).ReadMetadata();
+
+    /// <summary>Reads the metadata from either kind of source and keeps it for <see cref="Metadata"/> and the properties built on it.</summary>
+    /// <param name="cancellationToken">Cancels reading.</param>
+    /// <returns>The metadata.</returns>
+    /// <exception cref="InvalidOperationException">The format has no metadata reader.</exception>
+    public async ValueTask<MediaMetadata> ReadMetadataAsync(CancellationToken cancellationToken = default) =>
+        _metadata ??= _async is IAsyncMetadataProvider a ? await a.ReadMetadataAsync(cancellationToken).ConfigureAwait(false)
+            : _sync is IMetadataProvider p ? p.ReadMetadata(cancellationToken) : throw NotYetRead();
+
+    /// <summary>The common tag view over the movie-level tags: title, artist, comment, pictures and the rest. Read-only.</summary>
+    public CommonTags Tags => Metadata.Tags;
+
+    /// <summary>When the recording was made, with every candidate the file offers (<see cref="Fact{T}.Candidates"/>), best first.</summary>
+    public Fact<MediaDateTime> CaptureTime => Metadata.Facts.CaptureTime;
+
+    /// <summary>Where the recording was made, with its candidates.</summary>
+    public Fact<GeoLocation> Location => Metadata.Facts.Location;
+
+    /// <summary>The recording device: make, model and software, each with its candidates.</summary>
+    public DeviceFacts Device => Metadata.Facts.Device;
+
+    /// <summary>The display rotation of the first video track, with its candidates.</summary>
+    public Fact<VideoOrientation> Rotation => Metadata.Facts.Orientation;
+
+    /// <summary>Raw access to the native tags: <c>media.Native["udta", "©day"]</c>, and <see cref="MediaNative.Reader"/> for the demuxer itself.</summary>
+    public MediaNative Native => new(this);
+
+    private InvalidOperationException NotYetRead() => new(_sync is null ? "Call ReadMetadataAsync first for a file opened from an asynchronous source." : "This format has no metadata reader.");
 
     private IMediaContainer Container => (IMediaContainer?)_sync ?? _async!;
 
@@ -93,11 +130,85 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <summary>The tracks in container order.</summary>
     public IReadOnlyList<MediaTrack> Tracks => Container.Tracks;
 
-    /// <summary>The container's duration as an exact <see cref="MediaTime"/>, or <see cref="MediaTime.Unknown"/>.</summary>
+    /// <summary>The duration the container states about itself (movie header, fragment header or Segment information), or <see cref="MediaTime.Unknown"/>. It can disagree with the tracks.</summary>
     public MediaTime ContainerDuration => Container.Duration;
 
-    /// <summary>The duration as a <see cref="TimeSpan"/> (rounded to the nearest tick), or null when the container does not say.</summary>
-    public TimeSpan? Duration => Container.Duration.IsKnown ? Container.Duration.ToTimeSpan() : null;
+    /// <summary>
+    /// The longest track duration as presented: the sum of the edit list's segments (ISO/IEC 14496-12 §8.6.6) when the track has one, else the media
+    /// header's duration; <see cref="MediaTime.Unknown"/> when no track states one (Matroska, fragmented files).
+    /// </summary>
+    public MediaTime TracksDuration
+    {
+        get
+        {
+            MediaTime longest = MediaTime.Unknown;
+            foreach (MediaTrack t in Container.Tracks)
+            {
+                MediaTime d = PresentedDuration(t);
+                if (d.IsKnown && (!longest.IsKnown || d > longest))
+                {
+                    longest = d;
+                }
+            }
+
+            return longest;
+        }
+    }
+
+    private static MediaTime PresentedDuration(MediaTrack t)
+    {
+        if (t.Edit.Edits is { Count: > 0 } edits)
+        {
+            MediaTime total = default;
+            foreach (EditSegment e in edits)
+            {
+                if (!e.Duration.IsKnown)
+                {
+                    return t.Duration;
+                }
+
+                total = total.Add(e.Duration, MediaRounding.NearestAwayFromZero);
+            }
+
+            if (total.Ticks > 0)
+            {
+                return total;
+            }
+        }
+
+        return t.Duration;
+    }
+
+    /// <summary>
+    /// The duration to present: the container's own figure, unless a track without an edit list is longer than it (a movie header shorter than its
+    /// tracks), in which case that track wins, as in other tools; with no container figure, <see cref="TracksDuration"/>. A track with an edit list never
+    /// overrides the container: its list may repeat or trim media, and the movie header already accounts for it. Both figures stay available as
+    /// <see cref="ContainerDuration"/> and <see cref="TracksDuration"/>.
+    /// </summary>
+    public MediaTime ExactDuration
+    {
+        get
+        {
+            if (!ContainerDuration.IsKnown)
+            {
+                return TracksDuration;
+            }
+
+            MediaTime best = ContainerDuration;
+            foreach (MediaTrack t in Container.Tracks)
+            {
+                if (t.Edit.Edits is not { Count: > 0 } && t.Duration.IsKnown && t.Duration > best)
+                {
+                    best = t.Duration;
+                }
+            }
+
+            return best;
+        }
+    }
+
+    /// <summary>The <see cref="ExactDuration"/> as a <see cref="TimeSpan"/> (rounded to the nearest tick), or null when nothing states one.</summary>
+    public TimeSpan? Duration => ExactDuration.IsKnown ? ExactDuration.ToTimeSpan() : null;
 
     /// <summary>Deviations found so far; grows as packets are read.</summary>
     public DefectLog Defects => Container.Defects;
@@ -113,12 +224,6 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
     /// <summary>The asynchronous demuxer, or null when the file was opened from a seekable source.</summary>
     public IAsyncDemuxer? AsyncDemuxer => _async;
-
-    /// <summary>
-    /// The format reader itself (<c>IsoBmffDemuxer</c> or <c>MatroskaDemuxer</c> and their asynchronous twins), which exposes the
-    /// format's own model: the movie box tree for ISO, track entries and info for Matroska.
-    /// </summary>
-    public object Native => (object?)_sync ?? _async!;
 
     private MediaTrack? FirstOf(TrackKind kind)
     {
@@ -234,4 +339,28 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
             await _async.DisposeAsync().ConfigureAwait(false);
         }
     }
+}
+
+/// <summary>Raw lookups over a file's native tags and the format reader behind it; see <see cref="MediaFile.Native"/>.</summary>
+public readonly struct MediaNative
+{
+    private readonly MediaFile _file;
+
+    internal MediaNative(MediaFile file) => _file = file;
+
+    /// <summary>The first movie-level native tag with the system and key, or null.</summary>
+    /// <param name="system">One of <see cref="TagSystems"/>.</param>
+    /// <param name="key">The key as the system spells it.</param>
+    public NativeTag? this[string system, string key] => _file.Metadata[system, key];
+
+    /// <summary>Every native tag, movie or track level, with the system and key.</summary>
+    /// <param name="system">One of <see cref="TagSystems"/>.</param>
+    /// <param name="key">The key.</param>
+    public IEnumerable<NativeTag> Find(string system, string key) => _file.Metadata.Find(system, key);
+
+    /// <summary>
+    /// The format reader itself (<c>IsoBmffDemuxer</c> or <c>MatroskaDemuxer</c> and their asynchronous twins), which exposes the
+    /// format's own model: the movie box tree for ISO, track entries and info for Matroska.
+    /// </summary>
+    public object Reader => (object?)_file.Demuxer ?? _file.AsyncDemuxer!;
 }

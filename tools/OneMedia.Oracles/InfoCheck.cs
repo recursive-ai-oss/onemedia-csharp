@@ -40,20 +40,20 @@ internal static class InfoCheck
                     i++;
                 }
 
-                if (doc.RootElement.GetProperty("format").TryGetProperty("duration", out JsonElement d) && media.ContainerDuration.IsKnown)
+                if (doc.RootElement.GetProperty("format").TryGetProperty("duration", out JsonElement d) && media.ExactDuration.IsKnown)
                 {
                     double theirs = double.Parse(d.GetString()!, CultureInfo.InvariantCulture);
-                    long micro = media.ContainerDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
+                    long micro = media.ExactDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
                     // "Within one tick": one tick of the container's own clock, never finer than ffprobe's microsecond.
-                    long tick = Math.Max(1, 1_000_000 / media.ContainerDuration.Timescale);
+                    long tick = Math.Max(1, 1_000_000 / media.ExactDuration.Timescale);
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
                     {
                         problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
                     }
                 }
-                else if (media.ContainerDuration.IsKnown != doc.RootElement.GetProperty("format").TryGetProperty("duration", out _))
+                else if (media.ExactDuration.IsKnown != doc.RootElement.GetProperty("format").TryGetProperty("duration", out _))
                 {
-                    problems.Add("duration known on one side only: ours " + media.ContainerDuration + (media.Native is RecursiveAI.OneMedia.IsoBmff.IsoBmffDemuxer { Movie.IsFragmented: true } ? " (fragmented file without a stated duration)" : ""));
+                    problems.Add("duration known on one side only: ours " + media.ExactDuration + (media.Native.Reader is RecursiveAI.OneMedia.IsoBmff.IsoBmffDemuxer { Movie.IsFragmented: true } ? " (fragmented file without a stated duration)" : ""));
                 }
             }
             catch (Exception e) when (e is MediaException or JsonException or IOException or InvalidOperationException or KeyNotFoundException)
@@ -73,7 +73,7 @@ internal static class InfoCheck
     {
         string kind = s.GetProperty("codec_type").GetString() ?? "";
         string expectKind = t.Kind switch { TrackKind.Video => "video", TrackKind.Audio => "audio", TrackKind.Subtitle => "subtitle", TrackKind.Data => "data", _ => "" };
-        if (expectKind.Length > 0 && kind != expectKind && !(kind == "attachment" || (kind == "data" && t.Kind == TrackKind.Unknown)))
+        if (expectKind.Length > 0 && kind != expectKind && !(kind == "attachment" || (kind == "data" && t.Kind == TrackKind.Unknown) || (kind == "data" && t.Kind == TrackKind.Subtitle && t.Codec == CodecId.WebVtt))) // ffprobe does not know WebVTT in MP4 and calls it data
         {
             problems.Add($"#{t.Index} kind {kind} vs {expectKind}");
         }
@@ -95,7 +95,8 @@ internal static class InfoCheck
 
         if (t.Audio is { } a)
         {
-            if (s.TryGetProperty("sample_rate", out JsonElement r) && int.Parse(r.GetString()!, CultureInfo.InvariantCulture) != a.SampleRate)
+            if (s.TryGetProperty("sample_rate", out JsonElement r) && int.Parse(r.GetString()!, CultureInfo.InvariantCulture) is var theirRate && theirRate != a.SampleRate
+                && !(t.Codec == CodecId.Aac && a.SampleRate == 2 * theirRate)) // Matroska OutputSamplingFrequency (the SBR rate) against the core rate ffprobe reads from the AAC setup bytes
             {
                 problems.Add($"#{t.Index} rate {r.GetString()} vs {a.SampleRate}");
             }
@@ -106,7 +107,8 @@ internal static class InfoCheck
             }
         }
 
-        if (s.TryGetProperty("tags", out JsonElement tags) && tags.TryGetProperty("language", out JsonElement lang) && t.Language is not null && lang.GetString() != t.Language)
+        if (s.TryGetProperty("tags", out JsonElement tags) && tags.TryGetProperty("language", out JsonElement lang) && t.Language is not null && lang.GetString() != t.Language
+            && !(t.Language.Length < 3 || t.Language.Contains('-', StringComparison.Ordinal))) // a BCP 47 tag from LanguageBCP47 is ours; ffprobe prints the Language element beside it
         {
             problems.Add($"#{t.Index} language {lang.GetString()} vs {t.Language}");
         }

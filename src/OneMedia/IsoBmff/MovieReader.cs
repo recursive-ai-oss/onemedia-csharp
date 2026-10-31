@@ -432,7 +432,7 @@ public static class MovieReader
         string format = entry.TypeName;
         int dri = Be.U16(p, 6);
         int prefix = 8;
-        int width = 0, height = 0, channels = 0, bits = 0, rate = 0, version = 0;
+        int width = 0, height = 0, channels = 0, bits = 0, rate = 0, version = 0, perPacket = 0, bytesPerPacket = 0, bytesPerFrame = 0;
         if (handler == "vide")
         {
             prefix = 78;
@@ -446,11 +446,17 @@ public static class MovieReader
             bits = Be.U16(p, 18);
             rate = (int)(Be.U32(p, 24) >> 16);
             prefix = 28;
-            if (isQuickTime && version == 1)
+            // Old QuickTime files have no ftyp, and some carry QuickTime sound descriptions under other brands: the layout is read from the data.
+            bool quickTimeLayout = isQuickTime || (version is 1 or 2 && SoundEntryIsQuickTime(p, version));
+            if (quickTimeLayout && version == 1)
             {
                 prefix = 44;
+                // QuickTime File Format, sound sample description version 1: samples per packet, bytes per packet, bytes per frame, bytes per sample.
+                perPacket = (int)Math.Min(Be.U32(p, 28), int.MaxValue);
+                bytesPerPacket = (int)Math.Min(Be.U32(p, 32), int.MaxValue);
+                bytesPerFrame = (int)Math.Min(Be.U32(p, 36), int.MaxValue);
             }
-            else if (isQuickTime && version == 2)
+            else if (quickTimeLayout && version == 2)
             {
                 // QuickTime sound description version 2: a float64 rate and a 32-bit channel count follow the common fields.
                 prefix = 64;
@@ -459,7 +465,7 @@ public static class MovieReader
                 rate = hz is > 0 and < 4e9 ? (int)Math.Min(hz, int.MaxValue) : 0;
                 bits = (int)Math.Min(Be.U32(p, 48), 256);
             }
-            else if (!isQuickTime)
+            else if (!quickTimeLayout)
             {
                 version = 0; // ISO/IEC 14496-12 audio entry version 1 keeps the 28-byte layout; the extra boxes follow as children.
             }
@@ -526,9 +532,50 @@ public static class MovieReader
             SampleSizeBits = bits,
             SampleRate = rate,
             SoundVersion = version,
+            SamplesPerPacket = perPacket,
+            BytesPerPacket = bytesPerPacket,
+            BytesPerFrame = bytesPerFrame,
             Extensions = extensions,
             Configuration = config,
         };
+    }
+
+    // ISO/IEC 14496-12 audio entries put their child boxes right after the 28 fixed bytes; QuickTime version 1 and 2 descriptions insert 16 or 36 bytes first.
+    // When a valid box starts at 28 the entry is ISO; otherwise it is QuickTime if the extra fields fit.
+    private static bool SoundEntryIsQuickTime(byte[] p, int version)
+    {
+        int qt = version == 1 ? 44 : 64;
+        if (p.Length <= 28 || LooksLikeBox(p, 28))
+        {
+            return false;
+        }
+
+        return p.Length >= qt;
+    }
+
+    private static bool LooksLikeBox(byte[] p, int pos)
+    {
+        if (pos + 8 > p.Length)
+        {
+            return false;
+        }
+
+        uint size = Be.U32(p, pos);
+        if (size < 8 || size > p.Length - pos)
+        {
+            return false;
+        }
+
+        for (int i = 4; i < 8; i++)
+        {
+            byte c = p[pos + i];
+            if (c is < 0x20 or > 0x7E and not 0xA9)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static uint ConfigBoxType(string format) => format switch

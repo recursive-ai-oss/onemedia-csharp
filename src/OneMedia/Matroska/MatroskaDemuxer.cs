@@ -163,7 +163,7 @@ public sealed class MatroskaDemuxer : IDemuxer, IMetadataProvider
 /// <summary>
 /// Reads Matroska and WebM asynchronously, for ranged or remote sources (HTTP range requests, blob storage) and forward-only streams.
 /// </summary>
-public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer
+public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer, IAsyncMetadataProvider
 {
     private readonly MatroskaReader _reader;
     private readonly IAsyncDisposable? _source;

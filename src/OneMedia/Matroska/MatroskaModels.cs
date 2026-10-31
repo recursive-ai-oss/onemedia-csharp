@@ -162,6 +162,9 @@ public sealed class MatroskaTrackEntry
     /// <summary>True when a frame-level compression other than header stripping is declared (zlib, bzlib, lzo1x); the frames are then delivered as stored.</summary>
     public bool HasUnsupportedFrameCompression { get; init; }
 
+    /// <summary>True when the track's frames are zlib-compressed (ContentCompAlgo 0), which the demuxer inflates.</summary>
+    public bool UsesZlib { get; init; }
+
     /// <summary>True when a ContentEncryption element is present.</summary>
     public bool IsEncrypted { get; init; }
 }

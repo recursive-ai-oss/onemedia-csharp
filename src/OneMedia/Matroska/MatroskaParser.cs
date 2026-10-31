@@ -357,6 +357,7 @@ internal static class MatroskaParser
         // RFC 9559 §5.1.4.1.31: only an encoding whose scope includes frame contents changes the frames. One header-stripping
         // encoding is restored; any other frame compression is reported and the frames are delivered as stored.
         byte[] prefix = [];
+        bool zlib = false;
         bool unsupported = false;
         bool encrypted = false;
         int frameEncodings = 0;
@@ -377,6 +378,10 @@ internal static class MatroskaParser
             {
                 prefix = e.CompressionSettings.ToArray();
             }
+            else if (e.Type == 0 && e.CompressionAlgorithm == 0 && frameEncodings == 1)
+            {
+                zlib = true;
+            }
             else if (e.Type == 0)
             {
                 unsupported = true;
@@ -387,11 +392,12 @@ internal static class MatroskaParser
         {
             unsupported = true;
             prefix = [];
+            zlib = false;
         }
 
         if (unsupported)
         {
-            defects.Add(DefectKind.Unsupported, DefectSeverity.Warning, offset, $"Track {number} uses a frame compression this reader does not undo (zlib, bzlib, lzo1x or stacked encodings); its frames are delivered as stored.");
+            defects.Add(DefectKind.Unsupported, DefectSeverity.Warning, offset, $"Track {number} uses a frame compression this reader does not undo (bzlib, lzo1x or stacked encodings); its frames are delivered as stored.");
         }
 
         return new MatroskaTrackEntry
@@ -421,6 +427,7 @@ internal static class MatroskaParser
             Audio = audio,
             ContentEncodings = encodings,
             HeaderStripPrefix = prefix,
+            UsesZlib = zlib,
             HasUnsupportedFrameCompression = unsupported,
             IsEncrypted = encrypted,
         };

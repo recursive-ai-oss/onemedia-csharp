@@ -129,6 +129,18 @@ public static class BoxTypes
     public const uint Dinf = 0x64696E66;
     /// <summary>Data reference box.</summary>
     public const uint Dref = 0x64726566;
+
+    /// <summary>QuickTime track aperture mode dimensions (<c>tapt</c>): holds <c>clef</c>, <c>prof</c> and <c>enof</c>.</summary>
+    public static readonly uint Tapt = Make("tapt");
+
+    /// <summary>QuickTime generic media information (<c>gmhd</c>): holds <c>gmin</c> and the media-specific boxes.</summary>
+    public static readonly uint Gmhd = Make("gmhd");
+
+    /// <summary>Hint track information (<c>hinf</c>) and hint track user data (<c>hnti</c>, which holds <c>sdp </c>).</summary>
+    public static readonly uint Hinf = Make("hinf");
+
+    /// <summary>See <see cref="Hinf"/>.</summary>
+    public static readonly uint Hnti = Make("hnti");
     /// <summary>Track reference box.</summary>
     public const uint Tref = 0x74726566;
     /// <summary>Protection scheme information box.</summary>
@@ -304,7 +316,8 @@ public static class BoxReader
         BoxTypes.Moov or BoxTypes.Trak or BoxTypes.Mdia or BoxTypes.Minf or BoxTypes.Stbl or BoxTypes.Edts or BoxTypes.Dinf
             or BoxTypes.Mvex or BoxTypes.Moof or BoxTypes.Traf or BoxTypes.Mfra or BoxTypes.Udta or BoxTypes.Tref or BoxTypes.Sinf
             or BoxTypes.Schi or BoxTypes.Meta or BoxTypes.Ilst or BoxTypes.Stsd or BoxTypes.Dref => true,
-        _ => parent == BoxTypes.Ilst, // each iTunes item box holds mean/name/data children
+        _ => parent == BoxTypes.Ilst // each iTunes item box holds mean/name/data children
+            || type == BoxTypes.Tapt || type == BoxTypes.Gmhd || type == BoxTypes.Hinf || type == BoxTypes.Hnti,
     };
 
     /// <summary>

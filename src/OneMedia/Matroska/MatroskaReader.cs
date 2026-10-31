@@ -31,6 +31,8 @@ internal sealed class MatroskaReader
 
         public byte[] Prefix { get; init; } = [];
 
+        public bool Zlib { get; init; }
+
         public long DefaultDurationNs { get; init; }
 
         /// <summary>CodecDelay in ticks, subtracted from every Block timestamp of the track.</summary>
@@ -539,6 +541,12 @@ internal sealed class MatroskaReader
         {
             MatroskaTrackEntry e = Entries[i];
             MatroskaCodecs.Map(e.CodecId, out CodecId codec, out string? format, out string? tag);
+            if (codec.IsUnknown && format == "bitmapinfoheader" && MatroskaCodecs.TryFromBitmapInfoHeader(e.CodecPrivate.Span, out CodecId vfwCodec, out string? fourcc))
+            {
+                codec = vfwCodec;
+                tag = fourcc;
+            }
+
             TrackKind kind = MatroskaCodecs.KindOf(e.TrackType);
             TrackDisposition disposition = TrackDisposition.None;
             if (e.Default) { disposition |= TrackDisposition.Default; }
@@ -557,7 +565,7 @@ internal sealed class MatroskaReader
                 video = new VideoTrackInfo(Clamp(v.PixelWidth), Clamp(v.PixelHeight), 0, parN, parD, fpsN, fpsD);
             }
 
-            AudioTrackInfo? audio = e.Audio is { } a ? new AudioTrackInfo(Clamp(a.SamplingFrequency), Clamp(a.Channels), Clamp(a.BitDepth)) : null;
+            AudioTrackInfo? audio = e.Audio is { } a ? new AudioTrackInfo(Clamp(a.OutputSamplingFrequency > 0 ? a.OutputSamplingFrequency : a.SamplingFrequency), Clamp(a.Channels), Clamp(a.BitDepth)) : null;
             tracks.Add(new MediaTrack
             {
                 Index = i,
@@ -575,7 +583,7 @@ internal sealed class MatroskaReader
                 Video = video,
                 IsProtected = e.IsEncrypted,
             });
-            states.Add(new TrackState { Entry = e, IsVideo = kind == TrackKind.Video, Enabled = true, Prefix = e.HeaderStripPrefix.ToArray(), DefaultDurationNs = e.DefaultDurationNs, CodecDelayTicks = Clock.NanosecondsToNearestTicks(e.CodecDelayNs) });
+            states.Add(new TrackState { Entry = e, IsVideo = kind == TrackKind.Video, Enabled = true, Prefix = e.HeaderStripPrefix.ToArray(), Zlib = e.UsesZlib, DefaultDurationNs = e.DefaultDurationNs, CodecDelayTicks = Clock.NanosecondsToNearestTicks(e.CodecDelayNs) });
             if (!_trackByNumber.TryAdd(e.TrackNumber, i))
             {
                 _defects.Add(DefectKind.Duplicate, DefectSeverity.Warning, e.Offset, $"TrackNumber {e.TrackNumber} is used by more than one track; Blocks go to the first.");
@@ -1203,8 +1211,8 @@ internal sealed class MatroskaReader
         int size;
         if (state.Prefix.Length > 0)
         {
-            // Header stripping (RFC 9559 §5.1.4.1.31.5): the removed bytes go back in front of the frame. This is the one case where a
-            // packet's bytes are not a contiguous range of the source.
+            // Header stripping (RFC 9559 §5.1.4.1.31.5): the removed bytes go back in front of the frame. The packet's bytes are then not a contiguous
+            // range of the source; its source range still names the stored frame.
             size = state.Prefix.Length + length;
             if (_out.Length < size)
             {
@@ -1215,7 +1223,14 @@ internal sealed class MatroskaReader
             Buffer.BlockCopy(_blk, offset, _out, state.Prefix.Length, length);
             _currentBuffer = _out;
             _currentOffset = 0;
-            range = ByteRange.None;
+            range = new ByteRange(_blkFileOffset + offset, length);
+        }
+        else if (state.Zlib && TryInflate(offset, length, _blkFileOffset + offset, out size))
+        {
+            // ContentCompAlgo 0 (RFC 9559 §5.1.4.1.31.6): the stored frame is a zlib stream. Undoing it is container framing; the source range names the stored bytes.
+            _currentBuffer = _out;
+            _currentOffset = 0;
+            range = new ByteRange(_blkFileOffset + offset, length);
         }
         else
         {
@@ -1237,6 +1252,42 @@ internal sealed class MatroskaReader
             range,
             size,
             discard);
+    }
+
+    // Inflates one stored frame into _out, never past the packet size limit. A frame that is not valid zlib is reported and delivered as stored.
+    private bool TryInflate(int offset, int length, long fileOffset, out int inflated)
+    {
+        inflated = 0;
+        try
+        {
+            using MemoryStream stored = new(_blk, offset, length, writable: false);
+            using System.IO.Compression.ZLibStream z = new(stored, System.IO.Compression.CompressionMode.Decompress);
+            int total = 0;
+            while (true)
+            {
+                if (total == _out.Length)
+                {
+                    Array.Resize(ref _out, (int)Math.Min(Math.Max(256L, _out.Length * 2L), _limits.MaxPacketBytes + 1L));
+                }
+
+                int n = z.Read(_out, total, _out.Length - total);
+                if (n == 0)
+                {
+                    break;
+                }
+
+                total += n;
+                _limits.CheckPacket(total, fileOffset);
+            }
+
+            inflated = total;
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            _defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, fileOffset, "A frame of a zlib-compressed track is not a valid zlib stream; it is delivered as stored.");
+            return false;
+        }
     }
 
     public void SetTrackEnabled(int trackIndex, bool enabled)
