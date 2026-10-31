@@ -76,7 +76,12 @@ static string Describe(MediaTrack t) => CodecParameterReader.TryDescribe(t.Codec
 static void WriteText(MediaFile media)
 {
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"format: {media.Format}"));
-    Console.WriteLine("duration: " + Time(media.ContainerDuration));
+    Console.WriteLine("duration: " + Time(media.ExactDuration));
+    if (media.ContainerDuration.IsKnown && media.ContainerDuration != media.ExactDuration)
+    {
+        Console.WriteLine("container duration: " + Time(media.ContainerDuration));
+    }
+
     foreach (MediaTrack t in media.Tracks)
     {
         StringBuilder sb = new();
@@ -193,10 +198,16 @@ static void WriteJson(MediaFile media)
     using Utf8JsonWriter w = new(stdout, new JsonWriterOptions { Indented = true });
     w.WriteStartObject();
     w.WriteString("format", media.Format.Name);
+    if (media.ExactDuration.IsKnown)
+    {
+        w.WriteNumber("durationTicks", media.ExactDuration.Ticks);
+        w.WriteNumber("durationTimescale", media.ExactDuration.Timescale);
+    }
+
     if (media.ContainerDuration.IsKnown)
     {
-        w.WriteNumber("durationTicks", media.ContainerDuration.Ticks);
-        w.WriteNumber("durationTimescale", media.ContainerDuration.Timescale);
+        w.WriteNumber("containerDurationTicks", media.ContainerDuration.Ticks);
+        w.WriteNumber("containerDurationTimescale", media.ContainerDuration.Timescale);
     }
 
     w.WriteStartArray("tracks");

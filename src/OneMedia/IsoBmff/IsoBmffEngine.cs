@@ -1,4 +1,5 @@
 using System.Globalization;
+using RecursiveAI.OneMedia.Codecs;
 
 namespace RecursiveAI.OneMedia.IsoBmff;
 
@@ -263,6 +264,12 @@ internal sealed class IsoBmffEngine
         {
             int w = entry?.Width > 0 ? entry.Width : (int)(t.Header.Width >> 16);
             int h = entry?.Height > 0 ? entry.Height : (int)(t.Header.Height >> 16);
+            if ((w == 0 || h == 0) && entry is not null && CodecParameterReader.TryDescribe(codec, entry.Configuration, out CodecParameters? coded) && coded is { Width: > 0, Height: > 0 })
+            {
+                // Neither the sample entry nor the track header states a size (observed in a file whose muxer left both zero): the sequence parameter set does.
+                w = coded.Width;
+                h = coded.Height;
+            }
             int pn = 1, pd = 1;
             ExtensionBox? pasp = entry?.FindExtension(BoxTypes.Pasp);
             if (pasp is not null && pasp.Payload.Length >= 8)

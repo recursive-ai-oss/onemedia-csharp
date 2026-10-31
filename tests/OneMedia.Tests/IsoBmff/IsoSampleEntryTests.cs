@@ -27,7 +27,7 @@ public class IsoSampleEntryTests
             SamplesPerChunk = 1088,
             SampleEntries = Ima4Entry(2),
         };
-        Layout layout = Build([audio], moovFirst: false, brand: "qt  ");
+        Layout layout = Build([audio], moovFirst: false, brand: "isom");
         byte[] file = layout.ToArray([audio]);
         List<Got> got = IsoBmffTestHelpers.Demux(file, out IReadOnlyList<MediaTrack> tracks, out DefectLog defects);
         Assert.Empty(defects);
@@ -62,12 +62,14 @@ public class IsoSampleEntryTests
     public void QuickTimeAacConfigurationInsideWaveIsFound()
     {
         TrackSpec audio = new() { Id = 1, Handler = "soun", Timescale = 22050, SampleCount = 4, SizeOf = _ => 200, DurationOf = _ => 1024, SampleEntries = Convert.FromHexString(QuickTimeAacEntry) };
-        byte[] file = Build([audio], moovFirst: true, brand: "qt  ").ToArray([audio]);
+        byte[] file = Build([audio], moovFirst: true, brand: "mp42").ToArray([audio]);
         using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(file));
         MediaTrack t = d.Tracks[0];
         Assert.Equal(CodecId.Aac, t.Codec);
         Assert.Equal("esds", t.Configuration.Format);
         Assert.True(t.Configuration.Data.Length > 30);
+        Assert.True(RecursiveAI.OneMedia.Codecs.Aac.EsDescriptor.TryParse(t.Configuration.Data, out RecursiveAI.OneMedia.Codecs.Aac.EsDescriptor? es));
+        Assert.Equal("1380048400002000", Convert.ToHexString(es!.DecoderSpecificInfo.Span).ToLowerInvariant());
     }
 
     [Theory]

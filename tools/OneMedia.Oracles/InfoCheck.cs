@@ -40,20 +40,20 @@ internal static class InfoCheck
                     i++;
                 }
 
-                if (doc.RootElement.GetProperty("format").TryGetProperty("duration", out JsonElement d) && media.ContainerDuration.IsKnown)
+                if (doc.RootElement.GetProperty("format").TryGetProperty("duration", out JsonElement d) && media.ExactDuration.IsKnown)
                 {
                     double theirs = double.Parse(d.GetString()!, CultureInfo.InvariantCulture);
-                    long micro = media.ContainerDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
+                    long micro = media.ExactDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
                     // "Within one tick": one tick of the container's own clock, never finer than ffprobe's microsecond.
-                    long tick = Math.Max(1, 1_000_000 / media.ContainerDuration.Timescale);
+                    long tick = Math.Max(1, 1_000_000 / media.ExactDuration.Timescale);
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
                     {
                         problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
                     }
                 }
-                else if (media.ContainerDuration.IsKnown != doc.RootElement.GetProperty("format").TryGetProperty("duration", out _))
+                else if (media.ExactDuration.IsKnown != doc.RootElement.GetProperty("format").TryGetProperty("duration", out _))
                 {
-                    problems.Add("duration known on one side only: ours " + media.ContainerDuration + (media.Native is RecursiveAI.OneMedia.IsoBmff.IsoBmffDemuxer { Movie.IsFragmented: true } ? " (fragmented file without a stated duration)" : ""));
+                    problems.Add("duration known on one side only: ours " + media.ExactDuration + (media.Native.Reader is RecursiveAI.OneMedia.IsoBmff.IsoBmffDemuxer { Movie.IsFragmented: true } ? " (fragmented file without a stated duration)" : ""));
                 }
             }
             catch (Exception e) when (e is MediaException or JsonException or IOException or InvalidOperationException or KeyNotFoundException)

@@ -130,11 +130,35 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <summary>The tracks in container order.</summary>
     public IReadOnlyList<MediaTrack> Tracks => Container.Tracks;
 
-    /// <summary>The container's duration as an exact <see cref="MediaTime"/>, or <see cref="MediaTime.Unknown"/>.</summary>
+    /// <summary>The duration the container states about itself (movie header, fragment header or Segment information), or <see cref="MediaTime.Unknown"/>. It can disagree with the tracks.</summary>
     public MediaTime ContainerDuration => Container.Duration;
 
-    /// <summary>The duration as a <see cref="TimeSpan"/> (rounded to the nearest tick), or null when the container does not say.</summary>
-    public TimeSpan? Duration => Container.Duration.IsKnown ? Container.Duration.ToTimeSpan() : null;
+    /// <summary>The longest track duration the track headers state, or <see cref="MediaTime.Unknown"/> when no track states one (Matroska, fragmented files).</summary>
+    public MediaTime TracksDuration
+    {
+        get
+        {
+            MediaTime longest = MediaTime.Unknown;
+            foreach (MediaTrack t in Container.Tracks)
+            {
+                if (t.Duration.IsKnown && (!longest.IsKnown || t.Duration > longest))
+                {
+                    longest = t.Duration;
+                }
+            }
+
+            return longest;
+        }
+    }
+
+    /// <summary>
+    /// The duration to present: <see cref="TracksDuration"/> when the tracks state one, else <see cref="ContainerDuration"/>. A track's own media header is
+    /// what players and ffprobe go by when the movie header is wrong or shorter than the tracks, so it wins; both figures stay available.
+    /// </summary>
+    public MediaTime ExactDuration => TracksDuration.IsKnown ? TracksDuration : ContainerDuration;
+
+    /// <summary>The <see cref="ExactDuration"/> as a <see cref="TimeSpan"/> (rounded to the nearest tick), or null when nothing states one.</summary>
+    public TimeSpan? Duration => ExactDuration.IsKnown ? ExactDuration.ToTimeSpan() : null;
 
     /// <summary>Deviations found so far; grows as packets are read.</summary>
     public DefectLog Defects => Container.Defects;
