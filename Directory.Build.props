@@ -49,7 +49,7 @@
     <PackageProjectUrl>https://recursiveai.org/onemedia/</PackageProjectUrl>
     <PackageReadmeFile>PACKAGE.md</PackageReadmeFile>
     <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
-    <PackageTags>mp4;mov;3gp;fmp4;matroska;mkv;webm;container;demux;metadata;tags;exif;nativeaot;trimmable;wasm;sharpmp4;metadataextractor;mediainfo;ffprobe;mkvtoolnix</PackageTags>
+    <PackageTags>mp4;mov;3gp;fmp4;matroska;mkv;webm;container;demux;metadata;tags;nativeaot;trimmable;wasm;sharpmp4;metadataextractor;mediainfo;ffprobe;mkvtoolnix</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
