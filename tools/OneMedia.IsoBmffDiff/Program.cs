@@ -332,7 +332,7 @@ return failures == 0 ? 0 : 1;
         }
     }
 
-    string defectText = defects.Count > 0 ? $" defects={defects.Count}" : string.Empty;
+    string defectText = defects.Count > 0 ? $" defects={defects.Count} [{string.Join("; ", defects.Take(2))}]" : string.Empty;
     Console.WriteLine($"{Path.GetFileName(file)}: tracks={tracks.Count} packets={total} diffs={diffs} audio={audioPackets}/{audioDiffs}{defectText}{notes}");
     return (total, diffs, audioPackets, audioDiffs);
 }
