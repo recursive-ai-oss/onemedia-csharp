@@ -43,7 +43,12 @@ internal static class IsoBmffTarget
                     Drain(d, 200);
                 }
 
-                d.SetTrackEnabled(0, false);
+                if (d.Tracks.Count > 0)
+                {
+                    // A caller bug (an index past the track list) throws ArgumentOutOfRangeException by contract, so only valid indexes are tried.
+                    d.SetTrackEnabled(0, false);
+                }
+
                 d.Seek(MediaTime.Zero);
                 Drain(d, 200);
             }
