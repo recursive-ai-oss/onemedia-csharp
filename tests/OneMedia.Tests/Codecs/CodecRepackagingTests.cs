@@ -157,6 +157,64 @@ public sealed class CodecRepackagingTests
     }
 
     [Fact]
+    public void ConfigurationRecordsRewriteToTheSameBytes()
+    {
+        if (StreamsDir is null)
+        {
+            return;
+        }
+
+        int checkedRecords = 0;
+        List<string> problems = [];
+        foreach (string path in Files("*.mp4"))
+        {
+            MiniContainers.Mp4Track t = MiniContainers.ReadMp4(File.ReadAllBytes(path))!;
+            ArrayBufferWriter<byte> w = new();
+            bool parsed = true;
+            switch (t.ConfigType)
+            {
+                case "avcC":
+                    parsed = AvcDecoderConfigurationRecord.TryParse(t.Config, out AvcDecoderConfigurationRecord? avc);
+                    avc?.Write(w);
+                    break;
+                case "hvcC":
+                    parsed = HevcDecoderConfigurationRecord.TryParse(t.Config, out HevcDecoderConfigurationRecord? hevc);
+                    hevc?.Write(w);
+                    break;
+                case "av1C":
+                    parsed = RecursiveAI.OneMedia.Codecs.Av1.Av1CodecConfigurationRecord.TryParse(t.Config, out RecursiveAI.OneMedia.Codecs.Av1.Av1CodecConfigurationRecord? av1);
+                    av1?.Write(w);
+                    break;
+                case "vpcC":
+                    parsed = RecursiveAI.OneMedia.Codecs.Vpx.VpCodecConfigurationRecord.TryParse(t.Config, out RecursiveAI.OneMedia.Codecs.Vpx.VpCodecConfigurationRecord? vp);
+                    vp?.Write(w);
+                    break;
+                case "dOps":
+                    parsed = RecursiveAI.OneMedia.Codecs.Opus.OpusHead.TryParseDOps(t.Config, out RecursiveAI.OneMedia.Codecs.Opus.OpusHead? head);
+                    head?.WriteDOps(w);
+                    break;
+                case "dac3":
+                    parsed = RecursiveAI.OneMedia.Codecs.Ac3.Ac3SyncFrame.TryParse(t.FirstSample, out RecursiveAI.OneMedia.Codecs.Ac3.Ac3SyncFrame frame) && frame.TryWriteDac3(w);
+                    break;
+                case "dec3":
+                    parsed = RecursiveAI.OneMedia.Codecs.Ac3.Ac3SyncFrame.TryParse(t.FirstSample, out RecursiveAI.OneMedia.Codecs.Ac3.Ac3SyncFrame eframe) && eframe.TryWriteDec3((eframe.BitRate + 999) / 1000, w);
+                    break;
+                default:
+                    continue;
+            }
+
+            checkedRecords++;
+            if (!parsed || !w.WrittenSpan.SequenceEqual(t.Config))
+            {
+                problems.Add($"{Path.GetFileName(path)} {t.ConfigType}: parsed={parsed} ours={Convert.ToHexString(w.WrittenSpan)} file={Convert.ToHexString(t.Config)}");
+            }
+        }
+
+        string text = Report("config-roundtrip.txt", $"records={checkedRecords} problems={problems.Count}\n{string.Join('\n', problems)}\n");
+        Assert.True(problems.Count == 0, text);
+    }
+
+    [Fact]
     public void AdtsToRawAndConfigEqualsFfmpegCopyToMp4()
     {
         if (StreamsDir is null)
