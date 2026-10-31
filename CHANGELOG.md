@@ -4,6 +4,13 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+
+- Opening an MP4/MOV or Matroska file is cheaper: the registry's first look at the file is handed to the reader instead of being read again, a movie box of up to 128 KiB is read in one request and parsed and table-read from memory, and Matroska answers buffered header peeks, payload reads and skips without an asynchronous method. On the 4.38 GB movie-box-last file a probe reads 91,892 bytes in 31 reads (was 124,660 in 32); on the 4.45 GB Matroska file it reads one 4 KiB block (was 36,864 bytes in 2 reads).
+- Reading one track of an interleaved MP4 reads each chunk in one request instead of a 4, 8, 16 KiB climb.
+- The EBML CRC-32 uses eight tables, eight bytes at a time.
+- The hot paths of the readers (header and table parsers, the sample cursor, the packet pull) are compiled fully optimised on first call, so a short-lived process does not spend its first moments in unoptimised code.
+
 ### Added
 
 - `MediaFile.Tags`, `CaptureTime`, `Location`, `Device`, `Rotation`, `Native[...]` and `ReadMetadataAsync`, and tags and facts in `onemedia info` (text and `--json`).
