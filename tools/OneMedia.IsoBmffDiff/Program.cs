@@ -14,11 +14,13 @@ using OAPacketView = OneAudio.PacketView;
 using PacketView = RecursiveAI.OneMedia.PacketView;
 using CodecId = RecursiveAI.OneMedia.CodecId;
 
-// Usage: IsoBmffDiff [--ffprobe <path>] [--no-audio] [--list] <file>...
+// Usage: IsoBmffDiff [--ffprobe <path>] [--mp4box <path>] [--no-audio] <file>...
+//        IsoBmffDiff --make-big <path> <gigabytes> [moovlast|faststart]
 // For each file: demuxes it with the ISO BMFF demuxer, compares every packet with `ffprobe -show_packets` (size, byte offset, duration,
 // key/discard flags, and timestamps once the edit list is applied the way ffprobe applies it), and compares audio packets with OneAudio's
 // MP4 packet source. Prints one summary line per file and the first differences.
 string ffprobe = "ffprobe";
+string? mp4box = null;
 bool audio = true;
 List<string> files = [];
 for (int i = 0; i < args.Length; i++)
@@ -26,6 +28,10 @@ for (int i = 0; i < args.Length; i++)
     if (args[i] == "--ffprobe")
     {
         ffprobe = args[++i];
+    }
+    else if (args[i] == "--mp4box")
+    {
+        mp4box = args[++i];
     }
     else if (args[i] == "--no-audio")
     {
@@ -86,7 +92,7 @@ return failures == 0 ? 0 : 1;
         while (d.TryReadPacket(out PacketView v))
         {
             PacketInfo p = v.Info;
-            ours[p.TrackIndex].Add(new Pkt(p.Pts.Ticks, p.Dts.Ticks, p.Duration.Ticks, p.Size, p.SourceRange.Offset, p.IsKeyframe, (p.Flags & PacketAttributes.Discard) != 0, v.Data.ToArray()));
+            ours[p.TrackIndex].Add(new Pkt(p.Pts.Ticks, p.Dts.Ticks, p.Duration.Ticks, p.Size, p.SourceRange.Offset, p.IsKeyframe, (p.Flags & PacketAttributes.Discard) != 0, audio && tracks[p.TrackIndex].Kind == TrackKind.Audio ? v.Data.ToArray() : []));
         }
     }
 
@@ -280,6 +286,47 @@ return failures == 0 ? 0 : 1;
         catch (Exception e)
         {
             notes.Append($" oneaudio-threw:{e.GetType().Name}");
+        }
+    }
+
+    // MP4Box -info: track ids, timescales and sample counts.
+    if (mp4box is not null)
+    {
+        string info = Run(mp4box, "-info", file);
+        bool fragmented = info.Contains("Fragmented: yes", StringComparison.Ordinal);
+        List<(long Id, long Scale, long Samples)> theirTracks = [];
+        long id = 0, scale = 0;
+        foreach (string raw in info.Split('\n'))
+        {
+            string line = raw.Trim();
+            if (line.StartsWith("# Track ", StringComparison.Ordinal) && line.Contains(" - ID ", StringComparison.Ordinal))
+            {
+                string[] parts = line.Split(' ');
+                id = long.Parse(parts[parts.ToList().IndexOf("ID") + 1], CultureInfo.InvariantCulture);
+                scale = long.Parse(parts[^1], CultureInfo.InvariantCulture);
+            }
+            else if (line.StartsWith("Media Samples: ", StringComparison.Ordinal))
+            {
+                string num = new(line["Media Samples: ".Length..].TakeWhile(char.IsDigit).ToArray());
+                theirTracks.Add((id, scale, long.Parse(num, CultureInfo.InvariantCulture)));
+            }
+            else if (line.StartsWith("Media Type: ", StringComparison.Ordinal) && theirTracks.All(x => x.Id != id))
+            {
+                theirTracks.Add((id, scale, 0));
+            }
+        }
+
+        bool same = theirTracks.Count == tracks.Count;
+        for (int k = 0; same && k < tracks.Count; k++)
+        {
+            same &= theirTracks[k].Id == tracks[k].Id && theirTracks[k].Scale == tracks[k].Timescale && (fragmented || theirTracks[k].Samples == ours[k].Count);
+        }
+
+        notes.Append(same ? " mp4box:agree" : " mp4box:DIFFER");
+        if (!same)
+        {
+            diffs++;
+            notes.Append(" [" + string.Join(';', theirTracks) + "]");
         }
     }
 
