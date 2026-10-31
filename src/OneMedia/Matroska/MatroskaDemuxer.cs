@@ -1,19 +1,25 @@
+using RecursiveAI.OneMedia.Metadata;
+
 namespace RecursiveAI.OneMedia.Matroska;
 
 /// <summary>
 /// Reads Matroska and WebM from a random-access or forward-only source, synchronously. Packets come from the allocation-free
 /// <see cref="TryReadPacket"/>; the bytes of a packet are valid until the next call.
 /// </summary>
-public sealed class MatroskaDemuxer : IDemuxer
+public sealed class MatroskaDemuxer : IDemuxer, IMetadataProvider
 {
     private readonly MatroskaReader _reader;
     private readonly IDisposable? _source;
+    private readonly IMediaSource? _media;
+    private readonly MediaLimits _limits;
 
-    private MatroskaDemuxer(MatroskaReader reader, DefectLog defects, IDisposable? source)
+    private MatroskaDemuxer(MatroskaReader reader, DefectLog defects, IDisposable? source, IMediaSource? media, MediaLimits limits)
     {
         _reader = reader;
         Defects = defects;
         _source = source;
+        _media = media;
+        _limits = limits;
     }
 
     /// <summary>Opens a seekable source: the EBML header, the Segment's SeekHead, Info and Tracks are read; no media data is.</summary>
@@ -29,7 +35,7 @@ public sealed class MatroskaDemuxer : IDemuxer
         ArgumentNullException.ThrowIfNull(source);
         options ??= MediaOpenOptions.Default;
         DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
-        return Create(new SyncSourceInput(source), options, defects, options.LeaveOpen ? null : source, cancellationToken);
+        return Create(new SyncSourceInput(source), options, defects, options.LeaveOpen ? null : source, source, cancellationToken);
     }
 
     /// <summary>
@@ -50,10 +56,10 @@ public sealed class MatroskaDemuxer : IDemuxer
         DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
         SyncForwardInput input = new(source);
         input.StartAt(source.Position);
-        return Create(input, options, defects, options.LeaveOpen ? null : source, cancellationToken);
+        return Create(input, options, defects, options.LeaveOpen ? null : source, null, cancellationToken);
     }
 
-    private static MatroskaDemuxer Create(EbmlInput input, MediaOpenOptions options, DefectLog defects, IDisposable? owned, CancellationToken cancellationToken)
+    private static MatroskaDemuxer Create(EbmlInput input, MediaOpenOptions options, DefectLog defects, IDisposable? owned, IMediaSource? media, CancellationToken cancellationToken)
     {
         MatroskaReader reader = new(input, options.Limits, defects);
         try
@@ -66,7 +72,7 @@ public sealed class MatroskaDemuxer : IDemuxer
             throw;
         }
 
-        return new MatroskaDemuxer(reader, defects, owned);
+        return new MatroskaDemuxer(reader, defects, owned, media, options.Limits);
     }
 
     /// <inheritdoc />
@@ -107,6 +113,16 @@ public sealed class MatroskaDemuxer : IDemuxer
 
     /// <summary>The first Attachments element's range seen before the first Cluster, else <see cref="ByteRange.None"/>.</summary>
     public ByteRange Attachments => _reader.Attachments;
+
+    /// <summary>
+    /// Reads the file's tags, attachments and basic facts (see <see cref="IMetadataProvider"/>). Tags and attachments are found through the
+    /// SeekHead when they follow the Clusters, so the cost is a few header reads and the tag elements themselves, never the Clusters. A
+    /// forward-only source gives the Segment information only (title, writing application, date), because the elements cannot be revisited.
+    /// </summary>
+    /// <param name="cancellationToken">Observed between elements.</param>
+    /// <returns>The metadata; valid while the source is open.</returns>
+    public MediaMetadata ReadMetadata(CancellationToken cancellationToken = default) =>
+        MatroskaMetadataReader.Read(_media, SegmentDataOffset, SeekEntries, Tags, Attachments, Info, Entries, Tracks, Duration, _limits, Defects, cancellationToken);
 
     /// <inheritdoc />
     public void SetTrackEnabled(int trackIndex, bool enabled) => _reader.SetTrackEnabled(trackIndex, enabled);

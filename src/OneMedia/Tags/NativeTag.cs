@@ -19,6 +19,12 @@ public static class TagSystems
     /// <summary>3GPP asset information boxes (<c>titl</c>, <c>auth</c>, <c>loci</c>, … in <c>udta</c>), 3GPP TS 26.244 §8.</summary>
     public const string ThreeGpp = "3gpp";
 
+    /// <summary>Matroska <c>Tags</c>: SimpleTag elements with their targets, and attachments (cover art).</summary>
+    public const string Matroska = "mkv";
+
+    /// <summary>Matroska Segment information: <c>Title</c>, <c>MuxingApp</c>, <c>WritingApp</c> and <c>DateUTC</c>, as text.</summary>
+    public const string MatroskaInfo = "mkv-info";
+
     /// <summary>The XMP packet carried in a <c>uuid</c> or <c>XMP_</c> box.</summary>
     public const string Xmp = "xmp";
 }
@@ -77,7 +83,10 @@ public sealed class NativeTag
     /// </summary>
     public string Key { get; }
 
-    /// <summary>The track the tag belongs to, or 0 for the whole movie.</summary>
+    /// <summary>
+    /// The track the tag belongs to: 0 for the whole movie or file, a track id otherwise. Matroska tags aimed at an edition, chapter or
+    /// attachment, or at a track that cannot be found, have -1.
+    /// </summary>
     public long TrackId { get; }
 
     /// <summary>What the value holds.</summary>
@@ -100,6 +109,9 @@ public sealed class NativeTag
 
     /// <summary>Just the value bytes (after the type and locale fields of a <c>data</c> atom).</summary>
     public ByteRange ValueRange { get; }
+
+    /// <summary>For Matroska tags, the TargetTypeValue of the tag's targets (50 when the file gives none); <c>null</c> in other systems.</summary>
+    public long? TargetTypeValue { get; internal set; }
 
     /// <summary>For <see cref="TagValueKind.Image"/>, the media type (<c>image/jpeg</c>, <c>image/png</c>, <c>image/bmp</c>, <c>image/gif</c>); else <c>null</c>.</summary>
     public string? MimeType { get; internal set; }

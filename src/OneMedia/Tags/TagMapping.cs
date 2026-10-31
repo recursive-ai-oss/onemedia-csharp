@@ -27,11 +27,12 @@ public static class TagMappingTable
     private const string ExifToolKeys = "ExifTool QuickTime Keys tags";
     private const string ExifToolUser = "ExifTool QuickTime UserData tags";
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
+    private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
     private const string Mdta = "com.apple.quicktime.";
 
     private static TagMappingRow Row(CommonField f, string system, string document, string note, params string[] keys) => new(f, system, keys, document, note);
 
-    /// <summary>The rows in precedence order: for each field, iTunes items, then key-table metadata, then QuickTime user data, then 3GPP boxes.</summary>
+    /// <summary>The rows in precedence order: for each field, iTunes items, then key-table metadata, then QuickTime user data, then 3GPP boxes, then Matroska tags.</summary>
     public static IReadOnlyList<TagMappingRow> Rows { get; } =
     [
         Row(CommonField.Title, TagSystems.ITunes, Picard, "", "©nam"),
@@ -107,6 +108,27 @@ public static class TagMappingTable
         Row(CommonField.TrackTotal, TagSystems.ITunes, Picard, "trkn: 16-bit total at byte 4", "trkn"),
         Row(CommonField.DiscNumber, TagSystems.ITunes, Picard, "disk: 16-bit number at byte 2", "disk"),
         Row(CommonField.DiscTotal, TagSystems.ITunes, Picard, "disk: 16-bit total at byte 4", "disk"),
+        Row(CommonField.Title, TagSystems.Matroska, MatroskaDoc, "lowest level of 30 or above first (track before album)", "TITLE"),
+        Row(CommonField.Title, TagSystems.MatroskaInfo, MatroskaDoc, "Segment Info Title, after the tags", "Title"),
+        Row(CommonField.Artist, TagSystems.Matroska, MatroskaDoc, "", "ARTIST", "LEAD_PERFORMER"),
+        Row(CommonField.AlbumArtist, TagSystems.Matroska, MatroskaDoc, "not in the tag list; ffmpeg and others write it", "ALBUM_ARTIST"),
+        Row(CommonField.Album, TagSystems.Matroska, MatroskaDoc, "not in the tag list (an album title is TITLE at level 50); ffmpeg and others write ALBUM", "ALBUM"),
+        Row(CommonField.Composer, TagSystems.Matroska, MatroskaDoc, "", "COMPOSER"),
+        Row(CommonField.Author, TagSystems.Matroska, MatroskaDoc, "", "WRITTEN_BY"),
+        Row(CommonField.Director, TagSystems.Matroska, MatroskaDoc, "", "DIRECTOR"),
+        Row(CommonField.Genre, TagSystems.Matroska, MatroskaDoc, "", "GENRE"),
+        Row(CommonField.Comment, TagSystems.Matroska, MatroskaDoc, "", "COMMENT"),
+        Row(CommonField.Description, TagSystems.Matroska, MatroskaDoc, "", "DESCRIPTION", "SUMMARY", "SYNOPSIS"),
+        Row(CommonField.Date, TagSystems.Matroska, MatroskaDoc, "DATE is written by ffmpeg and others", "DATE_RELEASED", "DATE_RECORDED", "DATE"),
+        Row(CommonField.Copyright, TagSystems.Matroska, MatroskaDoc, "", "COPYRIGHT"),
+        Row(CommonField.Encoder, TagSystems.Matroska, MatroskaDoc, "Info WritingApp last", "ENCODER"),
+        Row(CommonField.Encoder, TagSystems.MatroskaInfo, MatroskaDoc, "", "WritingApp"),
+        Row(CommonField.EncodedBy, TagSystems.Matroska, MatroskaDoc, "", "ENCODED_BY"),
+        Row(CommonField.Lyrics, TagSystems.Matroska, MatroskaDoc, "", "LYRICS"),
+        Row(CommonField.Rating, TagSystems.Matroska, MatroskaDoc, "", "RATING"),
+        Row(CommonField.Keywords, TagSystems.Matroska, MatroskaDoc, "", "KEYWORDS"),
+        Row(CommonField.TrackNumber, TagSystems.Matroska, MatroskaDoc, "part number at the lowest level of 30 or above", "PART_NUMBER"),
+        Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "", "TOTAL_PARTS"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

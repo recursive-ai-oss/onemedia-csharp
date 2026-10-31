@@ -215,13 +215,23 @@ public sealed class CommonTags
 
             foreach (string key in row.Keys)
             {
+                List<CommonValue> found = [];
                 foreach (NativeTag tag in _native)
                 {
-                    if (tag.TrackId == 0 && tag.System == row.System && tag.Key == key && ValueOf(field, tag) is { } text)
+                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
+                    if (tag.TrackId == 0 && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
                     {
-                        list.Add(new CommonValue(field, text, tag));
+                        found.Add(new CommonValue(field, text, tag));
                     }
                 }
+
+                if (row.System == TagSystems.Matroska)
+                {
+                    // Matroska levels: 30 (track) and above are preferred, lowest first, so a track title beats its album's; levels below 30 come last.
+                    found.Sort(static (a, b) => LevelRank(a.Source).CompareTo(LevelRank(b.Source)));
+                }
+
+                list.AddRange(found);
             }
         }
 
@@ -314,13 +324,17 @@ public sealed class CommonTags
             {
                 if (tag.TrackId == 0 && tag.Kind == TagValueKind.Image)
                 {
-                    list.Add(new TagPicture(tag, PictureType.FrontCover, tag.MimeType ?? "application/octet-stream"));
+                    // MP4 and QuickTime do not name the picture's role; Matroska names cover art by file name (cover.jpg, small_cover.png…).
+                    bool cover = tag.System != TagSystems.Matroska || tag.Key.StartsWith("cover", StringComparison.OrdinalIgnoreCase) || tag.Key.StartsWith("small_cover", StringComparison.OrdinalIgnoreCase);
+                    list.Add(new TagPicture(tag, cover ? PictureType.FrontCover : PictureType.Other, tag.MimeType ?? "application/octet-stream"));
                 }
             }
 
             return list;
         }
     }
+
+    private static long LevelRank(NativeTag t) => t.TargetTypeValue is { } v ? (v < 30 ? 1000 + v : v) : 50;
 
     private int? Number(CommonField field)
     {
