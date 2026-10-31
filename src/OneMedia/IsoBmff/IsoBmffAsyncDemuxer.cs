@@ -1,3 +1,5 @@
+using RecursiveAI.OneMedia.Metadata;
+
 namespace RecursiveAI.OneMedia.IsoBmff;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace RecursiveAI.OneMedia.IsoBmff;
 /// The movie box is read once into memory (bounded by <see cref="MediaLimits.MaxAllocationBytes"/>) so sample tables cost no further requests;
 /// each packet then costs one range read, and each movie fragment one read of its header box. Semantics otherwise as <see cref="IsoBmffDemuxer"/>.
 /// </summary>
-public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer
+public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer, IMetadataProvider
 {
     private readonly IAsyncMediaSource _source;
     private readonly bool _leaveOpen;
@@ -64,6 +66,15 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer
 
     /// <summary>The parsed movie box.</summary>
     public IsoMovie Movie => _opened.Movie;
+
+    /// <summary>
+    /// Reads the tags and basic facts held in the movie box, which was fetched when the file was opened, so this makes no further request.
+    /// XMP packets and metadata boxes outside the movie box are not seen.
+    /// </summary>
+    /// <param name="cancellationToken">Observed between boxes.</param>
+    /// <returns>The metadata.</returns>
+    public MediaMetadata ReadMetadata(CancellationToken cancellationToken = default) =>
+        IsoMetadataReader.Read(_opened.TableSource, scanFile: false, _opened.Movie, Tracks, Duration, _limits, Defects, cancellationToken);
 
     /// <inheritdoc />
     public PacketView Current => new(_current, _buffer.AsSpan(0, _current.Size));

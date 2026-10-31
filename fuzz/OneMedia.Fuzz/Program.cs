@@ -14,6 +14,7 @@ Dictionary<string, FuzzTarget> targets = new(StringComparer.OrdinalIgnoreCase)
 {
     ["isobmff"] = IsoBmffTarget.Run,
     ["matroska"] = MatroskaTarget.Run,
+    ["tags"] = TagsTarget.Run,
 };
 CodecFuzz.Register(targets);
 
