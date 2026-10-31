@@ -32,7 +32,7 @@ static int Info(string path)
 {
     MediaFormatRegistry registry = new();
     registry.Add(new IsoBmffFormat());
-    registry.Add(new EbmlSniffer());
+    registry.Add(new MatroskaFormat());
     registry.Add(new WavSniffer());
     registry.Add(new AviSniffer());
     registry.Add(new AsfSniffer());

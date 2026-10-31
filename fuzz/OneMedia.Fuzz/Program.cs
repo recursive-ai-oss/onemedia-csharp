@@ -9,6 +9,7 @@ using SharpFuzz;
 Dictionary<string, Action<ReadOnlySpan<byte>>> targets = new(StringComparer.OrdinalIgnoreCase)
 {
     ["isobmff"] = IsoBmffTarget.Run,
+    ["matroska"] = MatroskaTarget.Run,
 };
 
 string name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET") ?? "isobmff";
