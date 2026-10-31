@@ -39,3 +39,8 @@ isobmff	count	file=h264-movtext	ignore	ours	final-empty-text-sample: the sample 
 isobmff	duration	file=every-frame	ignore	ours	zero-duration-samples and first-audio-run-duration: frag_every_frame writes 0 for the samples it cannot know; ffprobe reports the distance to the next sample (docs/isobmff.md).
 isobmff	duration	file=ismv.ismv	tolerance=1	neither	ten-megahertz-rounding: ffprobe rounds the rescaled duration one tick away from the run's stated 10 MHz value.
 isobmff	duration	file=au30sec	ignore	ours	video-parser-frame-timing: ffprobe takes the video packet duration from the parser's frame timing, a fixed multiple of the table's (docs/isobmff.md).
+matroska	pts	kind=audio	ignore	neither	lace-shared-pts: frames of a lace without BlockDuration or DefaultDuration share the block time; ffprobe spaces them by the duration its codec parser derives (docs/matroska-differential.md).
+matroska	dts	kind=audio	ignore	neither	lace-shared-pts, as for pts.
+matroska	count	file=ticket-a_aac	ignore	ours	attachments-as-streams: ffprobe lists each attachment as a stream with one packet holding the file; attachments are not tracks here.
+matroska	count	file=azumi	ignore	ours	attachments-as-streams.
+matroska	duration	file=nested_tags	tolerance=1000	ours	inexact-timebase: TimestampScale 22674 does not divide 10^9; ffprobe floors the stored DefaultDuration (26122448 ns) to a multiple of the scale (26120448 ns), ours is the stored value.
