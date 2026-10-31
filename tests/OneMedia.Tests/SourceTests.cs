@@ -262,3 +262,33 @@ public class SourceTests
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
+
+public class FileSourceLengthTests
+{
+    // The length is kept between calls, yet a file that grows while it is open is still seen to grow once a read reaches its end.
+    [Fact]
+    public void LengthFollowsAFileThatGrows()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "onemedia-length-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            File.WriteAllBytes(path, new byte[1000]);
+            using FileMediaSource source = FileMediaSource.Open(path);
+            Assert.Equal(1000, source.Length);
+            using (FileStream append = new(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+            {
+                append.Write(new byte[500]);
+            }
+
+            byte[] buffer = new byte[100];
+            Assert.Equal(100, source.Read(0, buffer));
+            Assert.Equal(1000, source.Length); // a read well inside the file does not look again
+            Assert.Equal(100, source.Read(950, buffer)); // this one reaches the old end
+            Assert.Equal(1500, source.Length);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+}
