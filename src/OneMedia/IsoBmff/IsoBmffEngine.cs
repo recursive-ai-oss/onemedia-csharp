@@ -22,6 +22,9 @@ internal sealed class TrackState
     /// <summary>Decode time just past the samples the movie box itself describes: where fragments continue when they carry no <c>tfdt</c> (hybrid files).</summary>
     public long FragmentStartDts { get; set; }
 
+    /// <summary>True for PCM audio, whose table samples are single sample frames that are joined into packets (see <see cref="IsoBmffEngine.TryNextTableSample"/>).</summary>
+    public bool GroupFrames { get; init; }
+
     public bool ReportedRange { get; set; }
 }
 
@@ -31,6 +34,8 @@ internal sealed class TrackState
 /// </summary>
 internal sealed class IsoBmffEngine
 {
+    private const int FramesPerPacket = 1024;
+    private const int MaxFrameBytes = 64;
     private readonly DefectLog _defects;
     private readonly MediaLimits _limits;
     private readonly long _fileLength;
@@ -53,7 +58,7 @@ internal sealed class IsoBmffEngine
             MediaTrack info = BuildTrack(t, movie, qt, sidxDuration, ref gaplessUsed, out long editStart);
             infos[i] = info;
             SampleCursor? cursor = t.HasSampleTable && t.SampleCount > 0 ? new SampleCursor(t.Layout, tableSource, defects, fileLength, movie.Range.Offset) : null;
-            States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart };
+            States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart, GroupFrames = info.Kind == TrackKind.Audio && info.Codec == CodecId.Pcm };
             if (cursor is not null && !cursor.IsValid)
             {
                 States[i].Cursor = null;
@@ -241,7 +246,7 @@ internal sealed class IsoBmffEngine
             Disposition = disposition,
             Audio = audio,
             Video = video,
-            PacketCount = movie.IsFragmented ? -1 : t.SampleCount,
+            PacketCount = movie.IsFragmented || (kind == TrackKind.Audio && codec == CodecId.Pcm) ? -1 : t.SampleCount,
             IsProtected = entry?.IsProtected ?? false,
         };
     }
@@ -405,11 +410,27 @@ internal sealed class IsoBmffEngine
             }
 
             SampleCursor cursor = best.Cursor!;
-            ref readonly TableSample sample = ref cursor.Current;
-            LastDescriptionIndex = sample.DescriptionIndex;
-            bool ok = Describe(best, sample.Offset, sample.Size, sample.Dts, sample.CompositionOffset, sample.Duration, sample.IsSync, sample.IsDisposable, out info);
+            TableSample sample = cursor.Current;
             cursor.MoveNext();
-            if (ok)
+            long duration = sample.Duration;
+            int size = sample.Size;
+            if (best.GroupFrames && size is > 0 and <= MaxFrameBytes)
+            {
+                // PCM is stored one sample frame per table sample (QuickTime sound sample descriptions); a packet of one frame is useless, so the frames
+                // that follow each other in the file are joined, up to 1024 frames per packet, the size most players and tools use.
+                int frames = 1;
+                while (frames < FramesPerPacket && cursor.IsValid && cursor.Current.Offset == sample.Offset + size && cursor.Current.DescriptionIndex == sample.DescriptionIndex
+                    && cursor.Current.Size is > 0 and <= MaxFrameBytes)
+                {
+                    size += cursor.Current.Size;
+                    duration += cursor.Current.Duration;
+                    frames++;
+                    cursor.MoveNext();
+                }
+            }
+
+            LastDescriptionIndex = sample.DescriptionIndex;
+            if (Describe(best, sample.Offset, size, sample.Dts, sample.CompositionOffset, duration, sample.IsSync, sample.IsDisposable, out info))
             {
                 return true;
             }

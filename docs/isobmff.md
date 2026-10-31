@@ -146,6 +146,12 @@ ffmpeg, which MP4Box calls invalid) get an empty configuration.
 Disposition: `Default` is set on the first enabled track of each kind, within its alternate group when it has one; `Disabled` marks tracks whose
 `tkhd` enabled flag is clear.
 
+PCM audio (`sowt`, `twos`, `in24`, `fl32`, `raw `, ...) is stored one sample frame per table sample. The demuxer joins frames that follow each other in the file
+into packets of up to 1024 frames (the packet size ffprobe uses), so a minute of 48 kHz audio is 2,813 packets rather than 2.9 million. The first packet
+after a seek starts at the sample the seek landed on. `MediaTrack.PacketCount` is unknown (-1) for these tracks. Other codecs are never joined: QuickTime
+tracks that store a framed codec as single bytes (observed with MP3 in `multitrack.mov`, 17.6 million one-byte samples) are reported per table sample,
+because finding the frames is codec work.
+
 A track may have several sample descriptions; `IsoBmffDemuxer.SampleDescriptionIndex` is the 1-based index for the packet last returned.
 
 ## Differences from `ffprobe -show_packets` (7.0.2 and 8.0.1), each checked against the files
@@ -159,6 +165,10 @@ adds leading empty edits) and lists the following as explained, never as agreeme
 | Negative composition offsets (`ctts` v1, `trun` v1): ffprobe moves DTS earlier by the largest `dts - pts` for tables in `moov` and moves PTS later for fragments, so DTS never exceeds PTS | We keep `Pts = Dts + offset` as §8.6.1.3 defines it. |
 | First fragment's durations that come from the `tfhd` default: ffprobe prints `N/A` | The box states them; we use them (§8.8.7). |
 | First audio sample of a fragmented file whose run states 3528 for a 1024-sample frame (files written by one muxer): ffprobe shows `N/A` or the frame length | The run states it. |
+| Edit lists with several segments (or one that cuts the media short): ffprobe applies them to its sample index, dropping the samples outside the segments and repeating those several segments use (a 106-segment video track lists 1,164 packets for 1,100 samples) | Edit lists are reported in `TrackEditInfo`, not applied (see Time). Every packet ffprobe lists is one of ours with the same size and position. |
+| Fragment samples whose stated duration is 0 (`frag_every_frame` writes it for the last sample it knows of): ffprobe reports the distance to the next sample | The box states 0; so do we. |
+| A file cut off inside the media data: ffprobe still lists the sample that straddles the cut | We stop before it and record `Truncated` with the offset. |
+| A decoding-time-to-sample delta far above the track's usual one (a gap in the timeline; 35 of 15,294 video samples in one Blender movie, with deltas of 50 to 600 ticks against the usual 25): ffprobe reports the usual duration for the packet while its DTS still advances by the delta | The table states the delta; `Duration` is the delta (§8.6.1.2). |
 | `Discard` on a fragment sample before the edit start: ffprobe flags it only for samples from `moov`'s tables | The edit list applies to fragments too (§8.6.6). |
 | H.264/HEVC keyframes: ffprobe also marks IDR pictures that the sync sample table omits | We use container information only (decode-free); MP4Box's report agrees with the table. |
 | One-frame-per-sample PCM (`sowt`, `twos`): ffprobe regroups samples into ~1000-byte packets | We return the sample table's samples; bytes covered and offsets are identical. |

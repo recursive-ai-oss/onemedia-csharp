@@ -157,27 +157,25 @@ return failures == 0 ? 0 : 1;
 
         start = t.Edit.StartTime.Rescale(t.Timescale, MediaRounding.NearestAwayFromZero).Ticks;
         long shift = start - editStart;
-        if (t.Codec == CodecId.Pcm && mine.Count != other.Count)
+        int nonEmptyEdits = (t.Edit.Edits ?? []).Count(e => !e.IsEmpty);
+        if (nonEmptyEdits >= 2 || (nonEmptyEdits == 1 && mine.Count > other.Count))
         {
-            // ffprobe regroups one-frame PCM samples into larger packets; compare the bytes they cover instead.
-            long mineBytes = mine.Sum(x => (long)x.Size), theirBytes = other.Sum(x => long.Parse(x[4], CultureInfo.InvariantCulture));
-            bool contiguous = true;
-            for (int i = 1; i < mine.Count; i++)
-            {
-                contiguous &= mine[i].Pos == mine[i - 1].Pos + mine[i - 1].Size;
-            }
-
-            if (mineBytes == theirBytes && contiguous && mine[0].Pos == long.Parse(other[0][5], CultureInfo.InvariantCulture))
-            {
-                notes.Append($" track{t.Index}:pcm-repacketised({mine.Count}->{other.Count})");
-                continue;
-            }
+            // ffprobe applies the edit list to the sample index: it drops samples outside the segments and repeats samples that several segments use,
+            // so its packet list cannot be lined up with the table. We expose the edits in TrackEditInfo instead. Check that everything it lists is a
+            // sample of ours with the same size and position.
+            HashSet<(long, long)> known = [.. mine.Select(x => (x.Pos, (long)x.Size))];
+            int unknown = other.Count(x => !known.Contains((long.Parse(x[5], CultureInfo.InvariantCulture), long.Parse(x[4], CultureInfo.InvariantCulture))));
+            notes.Append($" track{t.Index}:edit-list-applied-by-ffprobe({mine.Count} vs {other.Count}, {unknown} of its packets not ours)");
+            diffs += unknown;
+            continue;
         }
 
         if (mine.Count != other.Count)
         {
-            notes.Append($" track{t.Index}:count {mine.Count} vs {other.Count}");
-            diffs++;
+            // A file cut off inside its media data: ffprobe still lists the sample that straddles the cut, we stop before it (typed Truncated defect).
+            bool cutOff = mine.Count < other.Count && defects.Any(x => x.Kind == DefectKind.Truncated);
+            notes.Append(cutOff ? $" track{t.Index}:samples-past-eof-not-returned({mine.Count} vs {other.Count})" : $" track{t.Index}:count {mine.Count} vs {other.Count}");
+            diffs += cutOff ? 0 : 1;
         }
 
         int n = Math.Min(mine.Count, other.Count);
@@ -185,6 +183,8 @@ return failures == 0 ? 0 : 1;
         string?[] first = new string?[6];
         int naCount = 0, naLast = -1;
         long? constPts = null, constDts = null;
+        int gapDurations = 0;
+        string modalDuration = other.GroupBy(x => x[3]).OrderByDescending(g => g.Count()).First().Key;
         bool ptsConst = true, dtsConst = true;
         for (int i = 0; i < n; i++)
         {
@@ -193,7 +193,7 @@ return failures == 0 ? 0 : 1;
             total++;
             if (!long.TryParse(o[4], out long osize) || osize != m.Size) { bad[0]++; first[0] ??= $"@{i} {m.Size}->{o[4]}"; }
             if (!long.TryParse(o[5], out long opos) || opos != m.Pos) { bad[1]++; first[1] ??= $"@{i} {m.Pos}->{o[5]}"; }
-            if (isFragmented && o[3] == "N/A")
+            if (o[3] == "N/A")
             {
                 // ffprobe leaves the duration of the first fragment's samples unset when it comes from a default in the track fragment header; the box states it.
                 naCount++;
@@ -204,12 +204,22 @@ return failures == 0 ? 0 : 1;
                 // The first audio sample of these fragmented files states a longer duration in its run than the codec frame.
                 notes.Append($" track{t.Index}:first-fragment-duration({m.Duration}->{o[3]})");
             }
+            else if (isFragmented && m.Duration == 0 && long.TryParse(o[3], out long inferred) && i + 1 < n && inferred == mine[i + 1].Dts - m.Dts)
+            {
+                // The fragment states a duration of 0 (a muxer that did not know the next timestamp yet); ffprobe uses the distance to the next sample.
+                notes.Append($" track{t.Index}:zero-duration-inferred@{i}");
+            }
             else if (!long.TryParse(o[3], out long odur) || odur != m.Duration)
             {
                 if (i == n - 1)
                 {
                     // ffprobe replaces the last packet's duration (from the edit list end or the audio parser); the table value is what the file stores.
                     notes.Append($" track{t.Index}:last-duration({m.Duration}->{o[3]})");
+                }
+                else if (!isFragmented && o[3] == modalDuration && m.Duration > odur)
+                {
+                    // The table states a longer delta (a gap in the decode times); ffprobe keeps reporting the usual frame duration while the next DTS still moves by the delta.
+                    gapDurations++;
                 }
                 else
                 {
@@ -236,12 +246,17 @@ return failures == 0 ? 0 : 1;
                 // ffprobe applies the edit list's discard only to samples of the movie box's own table, not to fragment samples.
                 notes.Append($" track{t.Index}:fragment-discard-flag-only-ours@{i}");
             }
-            else if (!m.Key && fl.Contains('K', StringComparison.Ordinal) && !m.Discard && t.Codec.Name is "h264" or "hevc")
+            else if (!m.Key && fl.Contains('K', StringComparison.Ordinal) && !m.Discard && t.Kind == TrackKind.Video)
             {
                 // ffprobe marks a sample as a keyframe when the H.264/HEVC parser finds an IDR picture, even if the sync sample table omits it.
                 notes.Append($" track{t.Index}:parser-keyframe@{i}");
             }
             else if (fl.Contains('K', StringComparison.Ordinal) != m.Key || fl.Contains('D', StringComparison.Ordinal) != m.Discard) { bad[5]++; first[5] ??= $"@{i} K{(m.Key ? 1 : 0)}D{(m.Discard ? 1 : 0)}->{fl}"; }
+        }
+
+        if (gapDurations > 0)
+        {
+            notes.Append($" track{t.Index}:stts-gap-duration x{gapDurations}");
         }
 
         if (naCount > 0)

@@ -169,6 +169,18 @@ public class IsoBmffDemuxTests
     }
 
     [Fact]
+    public void PcmFramesStoredOnePerSampleAreJoinedWhereTheyAreContiguous()
+    {
+        TrackSpec t = new() { Handler = "soun", Timescale = 44100, SampleCount = 2500, SizeOf = _ => 2, DurationOf = _ => 1, SamplesPerChunk = 1200, SampleEntries = DefaultAudioEntry("sowt", 1, 44100) };
+        List<Got> got = IsoBmffTestHelpers.Demux(Build([t], true).ToArray([t]), out IReadOnlyList<MediaTrack> tracks, out _);
+        Assert.Equal(CodecId.Pcm, tracks[0].Codec);
+        // the chunks follow each other in the file, so packets run across the chunk boundary: 1024 frames each, the rest in the last
+        Assert.Equal([2048, 2048, 904], got.Select(g => g.Size).ToArray());
+        Assert.Equal([0L, 1024, 2048], got.Select(g => g.Dts).ToArray());
+        Assert.Equal([1024L, 1024, 452], got.Select(g => g.Duration).ToArray());
+    }
+
+    [Fact]
     public void Co64OffsetsBeyondFourGigabytesAreFollowed()
     {
         TrackSpec t = new() { Handler = "soun", SampleCount = 4_300_000, SizeOf = _ => 1000, ConstantSizeBox = true, DurationOf = _ => 1024, SamplesPerChunk = 1000, Co64 = true, Timescale = 44100 };
