@@ -119,6 +119,16 @@ internal static class SmokeRun
         Check("defect log", log2.Count == 1 && log2.HasErrors && log2[0].Offset == 7);
 
         await MatroskaSmoke.RunAsync(Check);
+        // Codec headers: parameter sets, configuration records and the explicit codec tables.
+        byte[] sps = Convert.FromHexString("6764000cacd941419f9f011000000300100000030320f1429960");
+        byte[] pps = Convert.FromHexString("68ebe3cb22c0");
+        Check("codec: h264 sps", RecursiveAI.OneMedia.Codecs.H264.SequenceParameterSet.TryParse(sps, out var avcSps) && avcSps.Width == 320 && avcSps.Height == 180 && avcSps.Rfc6381 == "avc1.64000C");
+        byte[] annexB = [0, 0, 0, 1, .. sps, 0, 0, 0, 1, .. pps];
+        Check("codec: avcC from Annex B", RecursiveAI.OneMedia.Codecs.H264.AvcDecoderConfigurationRecord.TryCreateFromAnnexB(annexB, out var avcC) && avcC!.SequenceParameterSets.Count == 1);
+        var avcWriter = new ArrayBufferWriter<byte>();
+        avcC!.Write(avcWriter);
+        Check("codec: describe avcC", RecursiveAI.OneMedia.Codecs.CodecParameterReader.TryDescribe(CodecId.H264, new CodecConfiguration(avcWriter.WrittenMemory, "avcC"), out var described) && described!.Width == 320);
+        Check("codec: aac config", RecursiveAI.OneMedia.Codecs.Aac.AudioSpecificConfig.TryParse(new byte[] { 0x12, 0x10 }, out var asc) && asc.Channels == 2 && asc.OutputSamplingFrequency == 44100);
 
         log(string.Create(CultureInfo.InvariantCulture, $"failures: {failures}"));
         return failures;
