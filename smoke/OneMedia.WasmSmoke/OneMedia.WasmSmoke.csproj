@@ -16,6 +16,7 @@
     <Using Include="System.Threading" />
     <Using Include="System.Threading.Tasks" />
     <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <Compile Include="../../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
     <WasmExtraFilesToDeploy Include="main.mjs" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
   </ItemGroup>
