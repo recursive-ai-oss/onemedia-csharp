@@ -84,6 +84,11 @@ Across the enabled tracks, the packet with the lowest source offset comes next. 
 a plain read is sequential; for a file whose tracks are stored one after the other (all video, then all audio), it is the same storage order.
 Within a track packets are in decode order. A disabled track costs nothing: its cursor is never advanced and its payload is never read.
 
+Payload reads go through a window that starts at 4 KiB and doubles (to 64 KiB) while reads continue where the last one ended. After a jump (over
+the chunks of a switched-off track, say) the first window is as long as the run that just ended, rounded up by an eighth and to 4 KiB, because the
+next chunk of an interleaved track is about as long as the last: a chunk then costs one read instead of a climb from 4 KiB. Samples over 32 KiB
+bypass the window.
+
 ## Fragmented files
 
 `mvex`/`trex` mark a file as fragmented. Packets of the movie box's own tables come first (usually none: `empty_moov`), then each `moof` in file
@@ -107,9 +112,14 @@ fragments. A file with neither index, or only per-segment `sidx` boxes (CMAF/DAS
 
 ### What a probe reads
 
-- Seekable file: the read-ahead window (32 KiB) at the start of each top-level box on the path to `moov` (`ftyp`, then `mdat` is skipped by size,
-  then `moov`), and the boxes inside `moov` except the table entries. With `moov` at the end this is one seek, not a scan of `mdat`.
-- Table windows: one 4 KiB window per table when a packet cursor is created (at open).
+- Seekable file: the registry's first look at the file (one read of 4 KiB, to recognise it) is handed to the reader, which starts from those bytes
+  instead of reading them again. After that the read-ahead window (32 KiB) serves the start of each top-level box on the path to `moov`
+  (`ftyp`, then `mdat` is skipped by size, then `moov`), and the boxes inside `moov` except the table entries. With `moov` at the end this is
+  one seek, not a scan of `mdat`.
+- A movie box of at most 128 KiB is then read once, whole, into a pooled buffer; it is parsed from there and the sample-table windows below read
+  from it too, so a small file opens with a read for the head, one for the box header and one for the box. A larger movie box is read through the
+  windows as before, so the buffer never grows with the file. Reads outside the box go to the file.
+- Table windows: one 4 KiB window per table when a packet cursor is created (at open); from the buffered movie box when there is one.
 - Fragmented file: `moov`, then the box headers up to the first `moof` or `mdat`, to find `sidx` (served by the same read-ahead window as `moov`).
   The total duration is `mvhd`, else `mehd`, else the sum of `sidx` durations; when none states it, `Duration` is unknown. Knowing it exactly would
   take one read per fragment (what `ffprobe` does), so the probe does not. The `mfra` box at the end is read only on the first seek.

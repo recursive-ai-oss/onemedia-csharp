@@ -62,6 +62,23 @@ fragmented MP4 (done by `run`); `list` shows rows and files. The corpus is `$ONE
 Timings are only comparable between runs on a quiet machine. The published run is one command per machine under the
 exclusive bench queue.
 
+## JIT tiers: what the samples see
+
+Each cell runs in a fresh process: one cold run, one sizing run, then five samples of about 50 ms each. The runtime starts every method in
+unoptimised tier-0 code and promotes hot ones only after a 100 ms quiet period and a background compile, and with dynamic PGO a second, instrumented
+stage follows. A whole cell therefore lasts about as long as the climb, and the samples mostly measure tier-0 or instrumented code. The
+comparators are exposed to the same thing, but a library that does more of its own work per call (our box walk and sample cursor, as opposed to
+calls into the already-optimised base library) pays more for it.
+
+The hot paths of the readers therefore carry `MethodImplOptions.AggressiveOptimization`, which compiles a method fully optimised on its first call and
+skips tiering and instrumentation: the box and element header readers, the movie-box and Tracks/Info parsers, the sample cursor, the payload
+read-ahead and the packet pull methods. The price is a longer first call (the "cold first run" figure) and no profile-guided devirtualisation after
+warm-up, which measured at no cost. Methods that are iterators or `async` cannot carry the attribute (it does not reach the generated state
+machine), so the Matroska reader answers the common buffered case in plain methods and keeps the `async` ones for the case that must wait.
+
+To see both regimes for a cell, run it with `OneMedia.Bench child ROW IMPL REL CORPUS REPS` under `DOTNET_TieredCompilation=0` (every method fully
+optimised: steady state) and under the defaults (`bench run` sets `DOTNET_TieredPGO=1`).
+
 ## Provenance of the comparator calls
 
 Every comparator call was chosen from the package's published README, its package page and its public type and member
