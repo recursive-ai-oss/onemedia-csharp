@@ -60,8 +60,8 @@ internal static class Report
             }
 
             sb.Append(C, $"## {row.Id}: {row.Title}\n\n");
-            sb.Append("| File | Size | Implementation | Median | Ratio | Alloc / run | Alloc / packet | Packets | Payload MiB | Peak MiB | Baseline MiB | Note |\n");
-            sb.Append("|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|\n");
+            sb.Append("| File | Size | Implementation | Median | Ratio | Alloc / run | Alloc / packet | Packets | Payload MiB | Tracks or tags | Peak MiB | Baseline MiB | Note |\n");
+            sb.Append("|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n");
             List<double> ratios = [];
             int oursOk = 0, files = 0;
             foreach (string file in row.Files)
@@ -107,8 +107,9 @@ internal static class Report
                     string alloc = r.Ok ? Bytes(r.AllocPerOp) : "-";
                     string perPacket = r.Ok && r.Packets > 0 ? (r.AllocPerOp / r.Packets).ToString("0.0", C) + " B" : "-";
                     string packets = r.Ok && r.Packets > 0 ? r.Packets.ToString(C) : "-";
+                    string aux = r.Ok && row.Id.EndsWith("probe", StringComparison.Ordinal) ? r.Aux.ToString(C) : "-";
                     string payload = r.Ok && r.Bytes > 0 ? Mb(r.Bytes) : "-";
-                    sb.Append(C, $"| {file} | {size} | {r.Impl} | {time} | {ratio} | {alloc} | {perPacket} | {packets} | {payload} | {Mb(r.PeakRss)} | {Mb(r.BaselineRss)} | {note} |\n");
+                    sb.Append(C, $"| {file} | {size} | {r.Impl} | {time} | {ratio} | {alloc} | {perPacket} | {packets} | {payload} | {aux} | {Mb(r.PeakRss)} | {Mb(r.BaselineRss)} | {note} |\n");
                 }
             }
 
