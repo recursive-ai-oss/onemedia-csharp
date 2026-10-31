@@ -210,15 +210,25 @@ internal static class MiniContainers
     {
         string codecId = "";
         byte[] priv = [];
-        byte[]? frame = null;
-        WalkMkv(f, 0, f.Length, ref codecId, ref priv, ref frame);
-        return frame is null ? null : new MkvTrack(codecId, priv, frame);
+        List<byte[]> frames = [];
+        WalkMkv(f, 0, f.Length, ref codecId, ref priv, frames, firstOnly: true);
+        return frames.Count == 0 ? null : new MkvTrack(codecId, priv, frames[0]);
     }
 
-    private static void WalkMkv(byte[] f, int start, int end, ref string codecId, ref byte[] priv, ref byte[]? frame)
+    /// <summary>Every frame of the single track of a Matroska file, in file order, assuming no lacing.</summary>
+    public static List<byte[]> ReadMkvFrames(byte[] f)
+    {
+        string codecId = "";
+        byte[] priv = [];
+        List<byte[]> frames = [];
+        WalkMkv(f, 0, f.Length, ref codecId, ref priv, frames, firstOnly: false);
+        return frames;
+    }
+
+    private static void WalkMkv(byte[] f, int start, int end, ref string codecId, ref byte[] priv, List<byte[]> frames, bool firstOnly)
     {
         int p = start;
-        while (p < end && frame is null)
+        while (p < end && !(firstOnly && frames.Count > 0))
         {
             (long id, int idn) = VintId(f, p);
             (long size, int sn) = Vint(f, p + idn);
@@ -227,7 +237,7 @@ internal static class MiniContainers
             switch (id)
             {
                 case 0x18538067 or 0x1654ae6b or 0xae or 0x1f43b675 or 0xa0:
-                    WalkMkv(f, body, (int)bodyEnd, ref codecId, ref priv, ref frame);
+                    WalkMkv(f, body, (int)bodyEnd, ref codecId, ref priv, frames, firstOnly);
                     break;
                 case 0x86 when codecId.Length == 0:
                     codecId = System.Text.Encoding.ASCII.GetString(f, body, (int)size);
@@ -237,7 +247,7 @@ internal static class MiniContainers
                     break;
                 case 0xa3 or 0xa1:
                     (long _, int tn) = Vint(f, body);
-                    frame = f.AsSpan(body + tn + 3, (int)(bodyEnd - body - tn - 3)).ToArray();
+                    frames.Add(f.AsSpan(body + tn + 3, (int)(bodyEnd - body - tn - 3)).ToArray());
                     break;
             }
 

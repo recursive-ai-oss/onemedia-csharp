@@ -85,8 +85,8 @@ fi
 # elementary streams
 run h264.annexb $V -c:v libx264 -profile:v high -bf 2 -f h264 "$OUT/h264.h264"
 run hevc.annexb $V -c:v libx265 -x265-params log-level=error -f hevc "$OUT/hevc.hevc"
-run av1.obu $V -c:v libsvtav1 -preset 12 -f obu "$OUT/av1.obu"
-run av1.ivf $V -c:v libsvtav1 -preset 12 -f ivf "$OUT/av1.ivf"
+run av1.obu $V -c:v libaom-av1 -cpu-used 8 -crf 40 -b:v 0 -f obu "$OUT/av1.obu"
+run av1.ivf $V -c:v libaom-av1 -cpu-used 8 -crf 40 -b:v 0 -f ivf "$OUT/av1.ivf"
 run vp9.ivf $V -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -f ivf "$OUT/vp9.ivf"
 run vp8.ivf $V -c:v libvpx -deadline realtime -cpu-used 8 -f ivf "$OUT/vp8.ivf"
 run mpeg2.m2v $V -c:v mpeg2video -bf 2 -f mpeg2video "$OUT/mpeg2.m2v"

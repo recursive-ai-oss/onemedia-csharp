@@ -47,7 +47,11 @@ public static class AacObjectType
 public readonly record struct AudioSpecificConfig
 {
     /// <summary>The AAC sampling frequency table (§1.6.3.4, Table 1.18), indexed by samplingFrequencyIndex.</summary>
-    public static ReadOnlySpan<int> SamplingFrequencies => [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+    // Tables of multi-byte values live in static arrays: a collection expression of ints would allocate on every access.
+    private static readonly int[] s_samplingFrequencies = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+
+    /// <summary>The AAC sampling frequency table (ISO/IEC 14496-3 Table 1.18), indexed by samplingFrequencyIndex 0 to 12.</summary>
+    public static ReadOnlySpan<int> SamplingFrequencies => s_samplingFrequencies;
 
     private static ReadOnlySpan<byte> ChannelCounts => [0, 1, 2, 3, 4, 5, 6, 8, 0, 0, 0, 7, 8, 24, 8, 0];
 

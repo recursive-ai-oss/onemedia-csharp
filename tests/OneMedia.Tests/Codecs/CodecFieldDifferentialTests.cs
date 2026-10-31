@@ -80,6 +80,61 @@ public sealed partial class CodecFieldDifferentialTests
         Assert.True(problems.Count == 0, summary);
     }
 
+    [Fact]
+    public void Rfc6381StringsEqualMp4Box()
+    {
+        string? mp4box = Environment.GetEnvironmentVariable("ONEMEDIA_MP4BOX");
+        if (StreamsDir is null || mp4box is null)
+        {
+            return;
+        }
+
+        List<string> problems = [];
+        StringBuilder log = new();
+        int compared = 0;
+        foreach (string path in Directory.GetFiles(StreamsDir, "*.mp4").OrderBy(p => p, StringComparer.Ordinal))
+        {
+            MiniContainers.Mp4Track? t = MiniContainers.ReadMp4(File.ReadAllBytes(path));
+            string json = RunTool(FfprobePath, $"-v error -show_streams -select_streams 0 -of json \"{path}\"");
+            using JsonDocument doc = JsonDocument.Parse(json);
+            JsonElement s = doc.RootElement.GetProperty("streams")[0];
+            if (t is null || !TryDescribe(path, s, out CodecParameters? ours, out _) || ours!.Rfc6381 is null)
+            {
+                problems.Add($"{Path.GetFileName(path)}: no description");
+                continue;
+            }
+
+            // The prefix of the AVC and HEVC strings is the sample entry type (avc1/avc3, hvc1/hev1); the parameters are what the layer computes.
+            string mine = ours.Rfc6381;
+            if (ours.Codec == CodecId.H264 || ours.Codec == CodecId.Hevc)
+            {
+                mine = t.EntryType + mine[4..];
+            }
+
+            string output = RunTool(mp4box, $"-info \"{path}\"");
+            Match m = Rfc6381Line().Match(output);
+            string theirs = m.Success ? m.Groups[1].Value.Trim() : "(none)";
+            compared++;
+            log.Append(Path.GetFileName(path)).Append(": ours=").Append(mine).Append(" mp4box=").Append(theirs).Append('\n');
+            if (mine != theirs)
+            {
+                problems.Add($"{Path.GetFileName(path)}: ours={mine} mp4box={theirs}");
+            }
+        }
+
+        string summary = $"compared={compared} problems={problems.Count}\n{string.Join('\n', problems)}\n{log}";
+        string? report = Environment.GetEnvironmentVariable("ONEMEDIA_CODEC_REPORT_DIR");
+        if (report is not null)
+        {
+            File.WriteAllText(Path.Combine(report, "mp4box-rfc6381.txt"), summary);
+        }
+
+        Assert.True(problems.Count == 0, summary);
+    }
+
+    [GeneratedRegex(@"RFC6381 Codec Parameters:\s*(\S+)")]
+    private static partial Regex Rfc6381Line();
+
     private static bool TryDescribe(string path, JsonElement ffprobe, out CodecParameters? ours, out string? how)
     {
         ours = null;

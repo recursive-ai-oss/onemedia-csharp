@@ -224,7 +224,7 @@ public sealed class CodecRepackagingTests
         int checkedPairs = 0, problems = 0;
         (string Prefix, CodecId Codec)[] cases =
         [
-            ("h264_high", CodecId.H264), ("hevc_main", CodecId.Hevc), ("av1_svt8", CodecId.Av1), ("aac_lc", CodecId.Aac), ("aac_51", CodecId.Aac),
+            ("h264_high", CodecId.H264), ("hevc_main", CodecId.Hevc), ("av1_aom8", CodecId.Av1), ("aac_lc", CodecId.Aac), ("aac_51", CodecId.Aac),
             ("opus_stereo", CodecId.Opus), ("opus_51", CodecId.Opus), ("flac16", CodecId.Flac), ("flac24", CodecId.Flac), ("ac3", CodecId.Ac3),
             ("eac3", CodecId.Eac3), ("mp3_cbr", CodecId.Mp3), ("vp9_p0", CodecId.Vp9),
         ];

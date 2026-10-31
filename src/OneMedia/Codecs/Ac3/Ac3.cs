@@ -5,9 +5,9 @@ namespace RecursiveAI.OneMedia.Codecs.Ac3;
 /// <summary>A Dolby Digital (AC-3) or Dolby Digital Plus (E-AC-3) syncframe header (ETSI TS 102 366 §4.3 and Annex E).</summary>
 public readonly record struct Ac3SyncFrame
 {
-    private static ReadOnlySpan<int> Rates => [48000, 44100, 32000];
+    private static ReadOnlySpan<int> Rates => Ac3Tables.Rates;
     private static ReadOnlySpan<byte> AcmodChannels => [2, 1, 2, 3, 3, 4, 4, 5];
-    private static ReadOnlySpan<ushort> BitRates => [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640];
+    private static ReadOnlySpan<ushort> BitRates => Ac3Tables.BitRates;
 
     /// <summary>True for E-AC-3 (bsid 11 to 16), false for AC-3 (bsid 8 or less).</summary>
     public bool IsEac3 { get; init; }
@@ -240,9 +240,9 @@ public readonly record struct Ac3SyncFrame
 /// <summary>Parsers for the <c>dac3</c> and <c>dec3</c> boxes (ETSI TS 102 366 Annex F).</summary>
 public static class Ac3Config
 {
-    private static ReadOnlySpan<int> Rates => [48000, 44100, 32000];
+    private static ReadOnlySpan<int> Rates => Ac3Tables.Rates;
     private static ReadOnlySpan<byte> AcmodChannels => [2, 1, 2, 3, 3, 4, 4, 5];
-    private static ReadOnlySpan<ushort> BitRates => [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640];
+    private static ReadOnlySpan<ushort> BitRates => Ac3Tables.BitRates;
 
     /// <summary>Describes an AC-3 stream from a <c>dac3</c> box content.</summary>
     /// <param name="dac3">The three-byte content.</param>
@@ -310,4 +310,12 @@ public static class Ac3Config
         };
         return true;
     }
+}
+
+/// <summary>Shared tables, kept in static arrays so that reading them allocates nothing.</summary>
+internal static class Ac3Tables
+{
+    public static readonly int[] Rates = [48000, 44100, 32000];
+
+    public static readonly ushort[] BitRates = [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640];
 }

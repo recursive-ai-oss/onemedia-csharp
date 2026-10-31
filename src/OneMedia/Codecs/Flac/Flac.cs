@@ -273,5 +273,7 @@ public readonly record struct FlacFrameHeader(bool VariableBlockSize, int BlockS
         return true;
     }
 
-    private static ReadOnlySpan<int> FixedRates => [88200, 176400, 192000, 8000, 16000, 22050, 24000, 32000, 44100, 48000, 96000];
+    private static readonly int[] s_fixedRates = [88200, 176400, 192000, 8000, 16000, 22050, 24000, 32000, 44100, 48000, 96000];
+
+    private static ReadOnlySpan<int> FixedRates => s_fixedRates;
 }

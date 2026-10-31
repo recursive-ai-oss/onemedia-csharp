@@ -362,6 +362,7 @@ public sealed class VorbisModes
 
         // §4.2.4.4 residues
         int residues = b.Read(6) + 1;
+        Span<int> cascade = stackalloc int[64]; // fixed: at most 64 classifications (6-bit count)
         for (int i = 0; i < residues; i++)
         {
             if (b.Read(16) > 2)
@@ -371,15 +372,20 @@ public sealed class VorbisModes
 
             b.Skip(24 + 24 + 24);
             int classifications = b.Read(6) + 1;
-            b.Read(8);
+            b.Read(8); // residue_classbook
             for (int c = 0; c < classifications; c++)
             {
                 int low = b.Read(3);
                 int high = b.Read(1) == 1 ? b.Read(5) : 0;
-                int cascade = (high << 3) | low;
+                cascade[c] = (high << 3) | low;
+            }
+
+            // the books follow all the cascade words, class by class
+            for (int c = 0; c < classifications; c++)
+            {
                 for (int bit = 0; bit < 8; bit++)
                 {
-                    if ((cascade & (1 << bit)) != 0)
+                    if ((cascade[c] & (1 << bit)) != 0)
                     {
                         b.Read(8);
                     }

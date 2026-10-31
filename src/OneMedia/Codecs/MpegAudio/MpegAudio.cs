@@ -5,6 +5,13 @@ namespace RecursiveAI.OneMedia.Codecs.MpegAudio;
 /// <summary>An MPEG audio frame header (ISO/IEC 11172-3 §2.4.1.3 and ISO/IEC 13818-3): Layer I, II or III of MPEG-1, MPEG-2 and MPEG-2.5.</summary>
 public readonly record struct MpegAudioFrameHeader
 {
+    // Bit rates in kbit/s for bit rate indexes 1 to 14 (ISO/IEC 11172-3 §2.4.2.3, ISO/IEC 13818-3). Static arrays: multi-byte span literals allocate.
+    private static readonly ushort[] s_mpeg1Layer1 = [32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448];
+    private static readonly ushort[] s_mpeg1Layer2 = [32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384];
+    private static readonly ushort[] s_mpeg1Layer3 = [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+    private static readonly ushort[] s_mpeg2Layer1 = [32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256];
+    private static readonly ushort[] s_mpeg2Layer23 = [8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+
     private static int BitRateKbps(int version, int layer, int index)
     {
         if (index is < 1 or > 14)
@@ -12,13 +19,13 @@ public readonly record struct MpegAudioFrameHeader
             return 0;
         }
 
-        ReadOnlySpan<ushort> table = (version == 3, layer) switch
+        ushort[] table = (version == 3, layer) switch
         {
-            (true, 1) => [32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448],
-            (true, 2) => [32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384],
-            (true, _) => [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
-            (false, 1) => [32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256],
-            (false, _) => [8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+            (true, 1) => s_mpeg1Layer1,
+            (true, 2) => s_mpeg1Layer2,
+            (true, _) => s_mpeg1Layer3,
+            (false, 1) => s_mpeg2Layer1,
+            (false, _) => s_mpeg2Layer23,
         };
         return table[index - 1];
     }

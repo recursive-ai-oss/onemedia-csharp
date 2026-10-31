@@ -177,24 +177,27 @@ public static class Av1Detection
 
     private static bool LooksAnnexB(ReadOnlySpan<byte> data)
     {
+        // temporal_unit_size, frame_unit_size and obu_length, each a leb128, must nest inside one another and inside the data.
         BitReader r = new(data);
         ulong tuSize = r.ReadLeb128();
-        if (r.Overrun || tuSize == 0 || tuSize > (ulong)(data.Length - (r.BitsConsumed / 8)))
+        long tuStart = r.BitsConsumed / 8;
+        if (r.Overrun || tuSize == 0 || tuSize > (ulong)(data.Length - tuStart))
         {
             return false;
         }
 
-        long tuStart = r.BitsConsumed / 8;
+        long tuEnd = tuStart + (long)tuSize;
         ulong fuSize = r.ReadLeb128();
         long fuStart = r.BitsConsumed / 8;
-        if (r.Overrun || fuSize == 0 || fuSize > tuSize - (ulong)(fuStart - tuStart))
+        if (r.Overrun || fuSize == 0 || fuSize > (ulong)(tuEnd - fuStart) || fuStart > tuEnd)
         {
             return false;
         }
 
+        long fuEnd = fuStart + (long)fuSize;
         ulong obuLen = r.ReadLeb128();
         long obuStart = r.BitsConsumed / 8;
-        if (r.Overrun || obuLen == 0 || obuLen > fuSize - (ulong)(obuStart - fuStart))
+        if (r.Overrun || obuLen == 0 || obuStart > fuEnd || obuLen > (ulong)(fuEnd - obuStart))
         {
             return false;
         }

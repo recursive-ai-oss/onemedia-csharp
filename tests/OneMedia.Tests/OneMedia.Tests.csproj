@@ -25,6 +25,8 @@
   <ItemGroup>
     <!-- A trivial demuxer shared with the smoke apps. -->
     <Compile Include="../../smoke/Shared/FixedPacketDemuxer.cs" Link="Shared/FixedPacketDemuxer.cs" />
+    <!-- The codec fuzz targets double as robustness checks: the tests feed them random, truncated and bit-flipped input. -->
+    <Compile Include="../../fuzz/OneMedia.Fuzz/CodecFuzz.cs" Link="Codecs/CodecFuzz.cs" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
   </ItemGroup>
