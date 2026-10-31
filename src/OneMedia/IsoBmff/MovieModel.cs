@@ -184,6 +184,15 @@ public sealed class SampleEntry
     /// <summary>Audio entries: QuickTime sound version (0, 1 or 2).</summary>
     public int SoundVersion { get; init; }
 
+    /// <summary>QuickTime sound description version 1: audio samples per packet (0 when the entry has no such field).</summary>
+    public int SamplesPerPacket { get; init; }
+
+    /// <summary>QuickTime sound description version 1: compressed bytes per packet.</summary>
+    public int BytesPerPacket { get; init; }
+
+    /// <summary>QuickTime sound description version 1: bytes per frame (all channels), the size of one packet in the file.</summary>
+    public int BytesPerFrame { get; init; }
+
     /// <summary>The boxes after the entry's fixed fields, in file order.</summary>
     public IReadOnlyList<ExtensionBox> Extensions { get; init; } = [];
 

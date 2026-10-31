@@ -50,6 +50,12 @@ public readonly record struct VideoOrientation(int RotationDegrees, bool MirrorH
 /// <param name="DisplayHeight">Presentation height from the track header, after rotation.</param>
 public readonly record struct FrameSize(int CodedWidth, int CodedHeight, int DisplayWidth, int DisplayHeight);
 
+/// <summary>The device facts together: maker, model and software, each with its candidates.</summary>
+/// <param name="Make">The device maker.</param>
+/// <param name="Model">The device model.</param>
+/// <param name="Software">The software that recorded or wrote the file.</param>
+public sealed record DeviceFacts(Fact<string> Make, Fact<string> Model, Fact<string> Software);
+
 /// <summary>
 /// The basic facts a file states about itself: how long, when and where it was captured, on what, and how it is oriented. Each is a
 /// <see cref="Fact{T}"/>: the candidates in the interim precedence order, best first. The interim order for capture time is Apple
@@ -80,6 +86,9 @@ public sealed class MediaFacts
 
     /// <summary>Where the recording was made.</summary>
     public Fact<GeoLocation> Location { get; }
+
+    /// <summary>The device maker, model and software together.</summary>
+    public DeviceFacts Device => new(Make, Model, Software);
 
     /// <summary>The device maker.</summary>
     public Fact<string> Make { get; }

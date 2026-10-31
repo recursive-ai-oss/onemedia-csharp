@@ -28,9 +28,11 @@ How `RecursiveAI.OneMedia.Matroska` reads these files and how the result is comp
   `n × DefaultDuration`; frames are split by cumulative floor so the parts add up to the total.
 - **DTS** is unknown for video (Matroska stores presentation times only) and equals the PTS for audio, subtitles and data.
 - **Keyframe** is the SimpleBlock flag, or a BlockGroup without `ReferenceBlock`. The `invisible` flag becomes `Discard`, `discardable` becomes `Disposable`.
-- **Source range** is the frame's bytes in the file; for laced blocks, the frame's own bytes. One packet differs from its source range: when
-  header stripping (`ContentCompAlgo` 3) is in use, the stripped prefix is put back and the packet is delivered from a buffer. Other frame
-  compression (zlib, bzlib, lzo) is reported as an `Unsupported` defect and the frames are delivered as stored.
+- **Source range** is the frame's bytes in the file; for laced blocks, the frame's own bytes. When header stripping
+  (`ContentCompAlgo` 3) or zlib (`ContentCompAlgo` 0) is in use, the packet is delivered from a buffer (the stripped prefix put back, or the frame
+  inflated with the BCL's `ZLibStream`, never past `MaxPacketBytes`) and the source range still names the stored bytes. A frame that is not valid
+  zlib is delivered as stored with an `InvalidValue` warning. Other compression (bzlib, lzo) and several stacked encodings are reported as an
+  `Unsupported` defect and the frames are delivered as stored. Undoing content compression is container framing, not sample decoding.
 - **Encryption** (`ContentEncryption`) marks the track `IsProtected`; no key handling.
 - **Seeking** by time goes to the Cues entry at or before (or after, for `NextKeyframe`) the target, using the first enabled video track that has cues, otherwise the
   first track with cues. Without Cues the reader walks Cluster headers (one small read per Cluster) from the start; it lands on a Cluster start.
@@ -80,7 +82,8 @@ unexplained; the tool exits non-zero on any unexplained difference.
 | `lace-shared-pts` | Frames of a lace with neither `BlockDuration` nor `DefaultDuration`: ours all carry the block's timestamp (unknown duration); ffprobe spaces them by codec frame length. | Ours (§10.2: a lace has one timestamp). |
 | `inexact-timebase` | `TimestampScale` does not divide 10⁹: ours are exact nanosecond ticks, ffprobe rounds to an integer time base, so values are within one tick. | Ours (exact). |
 | `last-block-duration-differs` | The last block's `BlockDuration` is shorter than the codec's frame; ffprobe reports the frame length, ours the stored value. | Ours (the file's value). |
-| `frame-compression-not-undone` | zlib (or other) frame compression: ours delivers the frames as stored and flags the track; ffprobe sizes are after decompression. | ffprobe (we do not decompress). |
+| `realvideo-timestamps` | RealVideo (`V_REAL/RV40`): ffprobe takes frame times from the RealVideo stream (blocks at 80 and 81 ms are reported at 40 and 80); ours is the Block time. | Ours (the container states it; the stream's own times are codec work). |
+| `realaudio-deinterleave` | RealAudio (`cook`, `ra`) blocks hold interleaved sub-packets; ffprobe de-interleaves them into the codec frames (280 bytes where the block is 1400). Ours delivers the stored block. | Ours (the bytes in the file); de-interleaving is codec work. |
 | `webvtt-block-repacked` | The WebVTT-in-Matroska block (`BlockAdditions` with settings and the cue text): ffprobe repacks it as a `webvtt` packet. Ours is the block's bytes. | Ours (the bytes in the file). |
 | `pos-queue` | `pos` for packets ffprobe holds back when it interleaves audio with video: it reports an earlier position than the block's own. For video, `pos` equals the Block's start, which is the frame's `SourceRange.Offset` minus the 4-byte block header (one-byte track number). | The position of the block in the file is ours; ffprobe's value is a queue artefact. |
 

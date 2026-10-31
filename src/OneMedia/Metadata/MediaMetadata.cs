@@ -21,6 +21,15 @@ public interface IMetadataProvider
     MediaMetadata ReadMetadata(CancellationToken cancellationToken = default);
 }
 
+/// <summary>Implemented by asynchronous demuxers that can describe the metadata of the file they have open.</summary>
+public interface IAsyncMetadataProvider
+{
+    /// <summary>Reads the file's metadata like <see cref="IMetadataProvider.ReadMetadata"/>, fetching what it needs from the ranged source.</summary>
+    /// <param name="cancellationToken">Cancels reading.</param>
+    /// <returns>The metadata.</returns>
+    ValueTask<MediaMetadata> ReadMetadataAsync(CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// What a file says about itself apart from its media: the native tag containers (lossless, with byte ranges), the common view over them,
 /// the basic facts with their candidate lists, and chapters. Deviations found while reading go to <see cref="Defects"/>, which is the

@@ -23,6 +23,7 @@ internal static class Program
               Compare Media.Open (tracks, codecs, sizes, rates, languages, duration) with ffprobe.
           audiodecode [--family F] [--out DIR] [FILES...]
               Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
+          packetset FILES...                   Compare which stored samples (file position and size) ffprobe and we list, ignoring time.
           audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
           meta [--family F] [--out DIR] [FILES...]
               Compare our tags and basic facts with ExifTool and MediaInfo field by field; writes metadata-compare.tsv.
@@ -53,6 +54,7 @@ internal static class Program
             case "io": return Io(o);
             case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
+            case "packetset": return PacketSets.Run(o.Files);
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());

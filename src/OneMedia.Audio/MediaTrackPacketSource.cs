@@ -51,6 +51,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     private bool _pendingMidStream;
     private long _opusEnd = -1;
     private long _opusGranule;
+    private long _opusRun; // frames of Opus audio delivered so far, -1 after a seek
     private bool _disposed;
 
     private MediaTrackPacketSource(IDemuxer demuxer, MediaTrack track, bool ownsDemuxer, global::OneAudio.CodecId codec, byte[][] headers, ReadOnlyMemory<byte> config, int rate, int channels, int priming, long length)
@@ -361,6 +362,12 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             _pendingMidStream = false;
         }
 
+        long runBefore = _opusRun;
+        if (Codec.Name == "opus" && _opusRun >= 0)
+        {
+            _opusRun = OpusToc.TryGetSamples(data, out int packetFrames) ? _opusRun + packetFrames : -1;
+        }
+
         bool padded = info.DiscardPadding.IsKnown && info.DiscardPadding.Ticks != 0;
         if (padded && info.DiscardPadding.Ticks < 0)
         {
@@ -374,8 +381,20 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             {
                 // OneAudio's Opus decoder takes the end of the real audio as a position in 48 kHz frames counted from the start of the
                 // stream including the pre-skip (RFC 7845 §4.4). Matroska has already subtracted CodecDelay from the block time.
-                MediaTime start = info.Pts.Add(_track.Edit.Priming, MediaRounding.NearestAwayFromZero);
-                long startFrames = start.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
+                // Block times are rounded to container ticks (1 ms in most files), so a 6.5 ms CodecDelay cannot be added back exactly. The frames
+                // delivered so far are exact (every packet is a whole number of 48 kHz frames) and, with the pre-skip included, are where this
+                // packet starts. After a seek the running count is lost and the block time is used instead.
+                long startFrames;
+                if (runBefore >= 0)
+                {
+                    startFrames = runBefore;
+                }
+                else
+                {
+                    MediaTime start = info.Pts.Add(_track.Edit.Priming, MediaRounding.NearestAwayFromZero);
+                    startFrames = start.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
+                }
+
                 long padFrames = info.DiscardPadding.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
                 return Math.Max(0, startFrames + samples - padFrames);
             }
@@ -422,6 +441,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 
         int rate = _rate > 0 ? _rate : 48000;
         _nextHeader = _headers.Length;
+        _opusRun = -1;
         _opusGranule = -1; // the running position is lost; the end limit is not applied after a seek
         if (_length >= 0 && frame >= _length)
         {
