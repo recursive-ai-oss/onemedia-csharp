@@ -282,7 +282,7 @@ internal sealed class Runner
         sb.Append(c, $"- Storage of the corpus: {Machine.Storage(_corpus)}; every file is read once before its rows, so it is in the page cache for all of them\n");
         sb.Append(c, $"- .NET: {Environment.Version} ({System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription})\n");
         sb.Append(c, $"- Load average (1 min): before {before:0.00}; during mean {mean:0.00}, max {max:0.00} over {samples} samples at 5 s; after {after:0.00}\n");
-        sb.Append(c, $"- Elapsed: {elapsed.TotalMinutes:0.0} min; repetitions {_reps} (managed), {_nativeReps} (tools); files over 1 GiB are run twice with no warm-up and tools once\n");
+        sb.Append(c, $"- Elapsed: {elapsed.TotalMinutes:0.0} min; repetitions {_reps} (managed), {_nativeReps} (tools); files over 1 GiB get one warm-up run and 3 samples of one run each, and tools once\n");
         sb.Append(c, $"- Packages as restored: {Versions()}\n");
         sb.Append(c, $"- Tools: {ToolVersions()}\n\n");
         return sb.ToString();

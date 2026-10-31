@@ -33,6 +33,25 @@ if (args[0] == "child")
     return 0;
 }
 
+if (args[0] == "once")
+{
+    // once ROW IMPL-INDEX RELATIVE-PATH [CORPUS [TIMES]]: run one cell, for tracing, profiling and I/O counts.
+    Row row = Rows.All.First(r => r.Id == args[1]);
+    Impl impl = row.Impls[int.Parse(args[2], CultureInfo.InvariantCulture)];
+    string corpus = args.Length > 4 ? args[4] : Path.Combine(home, "corpus");
+    string path = Path.IsPathRooted(args[3]) ? args[3] : Path.Combine(corpus, args[3]);
+    int times = args.Length > 5 ? int.Parse(args[5], CultureInfo.InvariantCulture) : 1;
+    Work w = default;
+    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+    for (int i = 0; i < times; i++)
+    {
+        w = impl.Run(path);
+    }
+
+    Console.Out.WriteLine($"{impl.Name}: packets {w.Packets}, bytes {w.Bytes}, aux {w.Aux}; {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds / times:0.000} ms per run over {times}");
+    return 0;
+}
+
 Dictionary<string, string> opt = [];
 HashSet<string> flags = [];
 for (int i = 1; i < args.Length; i++)

@@ -54,12 +54,15 @@ internal static class Child
         bool big = size > BigFile;
         Work work = default;
         int inner = 1;
+        double cold = 0;
         try
         {
+            // The first run pays JIT and type loading and is reported apart as the cold figure; the second sizes the samples.
+            long c0 = Stopwatch.GetTimestamp();
+            work = impl.Run(path);
+            cold = Stopwatch.GetElapsedTime(c0).TotalMilliseconds * 1e6;
             if (!big)
             {
-                // Two untimed runs: the first pays JIT and type loading, the second sizes the sample.
-                work = impl.Run(path);
                 long t0 = Stopwatch.GetTimestamp();
                 work = impl.Run(path);
                 double once = Stopwatch.GetElapsedTime(t0).TotalMilliseconds * 1e6;
@@ -67,7 +70,7 @@ internal static class Child
             }
             else
             {
-                reps = Math.Min(reps, 2);
+                reps = Math.Min(reps, 3);
             }
 
             double[] ns = new double[reps];
@@ -91,7 +94,7 @@ internal static class Child
             Array.Sort(alloc);
             long peak = Process.GetCurrentProcess().PeakWorkingSet64;
             return new Result(row.Id, impl.Name, impl.Role.ToString(), relative, "ok",
-                ns[reps / 2], ns[0], ns[^1], alloc[reps / 2], work.Packets, work.Bytes, work.Aux, peak, baseline, inner, reps, string.Empty);
+                ns[reps / 2], ns[0], ns[^1], alloc[reps / 2], work.Packets, work.Bytes, work.Aux, peak, baseline, inner, reps, "cold first run " + Report.Time(cold));
         }
         catch (NotAvailableException e)
         {
