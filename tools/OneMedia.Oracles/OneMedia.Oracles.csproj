@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
     <!-- Comparator for audio tracks: OneAudio's own MP4 and Ogg packet readers. -->
     <PackageReference Include="RecursiveAI.OneAudio" />
   </ItemGroup>

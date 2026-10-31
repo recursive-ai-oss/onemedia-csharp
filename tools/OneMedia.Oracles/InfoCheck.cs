@@ -1,0 +1,128 @@
+using System.Globalization;
+using System.Text.Json;
+
+namespace RecursiveAI.OneMedia.Oracles;
+
+/// <summary>
+/// Compares what <c>Media.Open</c> reports about a file with <c>ffprobe -show_streams -show_format</c>: the stream list (kind, codec,
+/// dimensions, sample rate, channels, language) and the container duration (within one microsecond, ffprobe's resolution).
+/// </summary>
+internal static class InfoCheck
+{
+    public static int Run(IEnumerable<string> files)
+    {
+        int bad = 0, total = 0;
+        foreach (string file in files)
+        {
+            total++;
+            List<string> problems = [];
+            string name = Path.GetFileName(file);
+            try
+            {
+                using MediaFile media = Media.Open(file);
+                using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
+                // ffprobe lists Matroska attachments (fonts, cover art) as streams; they are not tracks here.
+                List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment")];
+                if (streams.Count != media.Tracks.Count)
+                {
+                    problems.Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}");
+                }
+
+                int i = 0;
+                foreach (JsonElement s in streams)
+                {
+                    if (i >= media.Tracks.Count)
+                    {
+                        break;
+                    }
+
+                    Compare(media.Tracks[i], s, problems);
+                    i++;
+                }
+
+                if (doc.RootElement.GetProperty("format").TryGetProperty("duration", out JsonElement d) && media.ContainerDuration.IsKnown)
+                {
+                    double theirs = double.Parse(d.GetString()!, CultureInfo.InvariantCulture);
+                    long micro = media.ContainerDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
+                    // "Within one tick": one tick of the container's own clock, never finer than ffprobe's microsecond.
+                    long tick = Math.Max(1, 1_000_000 / media.ContainerDuration.Timescale);
+                    if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
+                    {
+                        problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
+                    }
+                }
+                else if (media.ContainerDuration.IsKnown != doc.RootElement.GetProperty("format").TryGetProperty("duration", out _))
+                {
+                    problems.Add("duration known on one side only: ours " + media.ContainerDuration + (media.Native is RecursiveAI.OneMedia.IsoBmff.IsoBmffDemuxer { Movie.IsFragmented: true } ? " (fragmented file without a stated duration)" : ""));
+                }
+            }
+            catch (Exception e) when (e is MediaException or JsonException or IOException or InvalidOperationException or KeyNotFoundException)
+            {
+                problems.Add(e.GetType().Name + ": " + e.Message);
+            }
+
+            bad += problems.Count > 0 ? 1 : 0;
+            Console.WriteLine(problems.Count == 0 ? $"same\t{name}" : $"DIFF\t{name}\t{string.Join("; ", problems)}");
+        }
+
+        Console.WriteLine($"infocheck: {total} files, {bad} with differences");
+        return 0;
+    }
+
+    private static void Compare(MediaTrack t, JsonElement s, List<string> problems)
+    {
+        string kind = s.GetProperty("codec_type").GetString() ?? "";
+        string expectKind = t.Kind switch { TrackKind.Video => "video", TrackKind.Audio => "audio", TrackKind.Subtitle => "subtitle", TrackKind.Data => "data", _ => "" };
+        if (expectKind.Length > 0 && kind != expectKind && !(kind == "attachment" || (kind == "data" && t.Kind == TrackKind.Unknown)))
+        {
+            problems.Add($"#{t.Index} kind {kind} vs {expectKind}");
+        }
+
+        string codec = s.TryGetProperty("codec_name", out JsonElement cn) ? cn.GetString() ?? "" : "";
+        if (Mapped(codec) is { } expected && !t.Codec.IsUnknown && expected != t.Codec.Name)
+        {
+            problems.Add($"#{t.Index} codec {codec} vs {t.Codec.Name}");
+        }
+        else if (Mapped(codec) is not null && t.Codec.IsUnknown)
+        {
+            problems.Add($"#{t.Index} codec {codec} vs unknown ({t.CodecTag})");
+        }
+
+        if (t.Video is { } v && s.TryGetProperty("width", out JsonElement w) && s.TryGetProperty("height", out JsonElement h) && (w.GetInt32() != v.Width || h.GetInt32() != v.Height))
+        {
+            problems.Add($"#{t.Index} size {w.GetInt32()}x{h.GetInt32()} vs {v.Width}x{v.Height}");
+        }
+
+        if (t.Audio is { } a)
+        {
+            if (s.TryGetProperty("sample_rate", out JsonElement r) && int.Parse(r.GetString()!, CultureInfo.InvariantCulture) != a.SampleRate)
+            {
+                problems.Add($"#{t.Index} rate {r.GetString()} vs {a.SampleRate}");
+            }
+
+            if (s.TryGetProperty("channels", out JsonElement c) && c.GetInt32() != a.Channels)
+            {
+                problems.Add($"#{t.Index} channels {c.GetInt32()} vs {a.Channels}");
+            }
+        }
+
+        if (s.TryGetProperty("tags", out JsonElement tags) && tags.TryGetProperty("language", out JsonElement lang) && t.Language is not null && lang.GetString() != t.Language)
+        {
+            problems.Add($"#{t.Index} language {lang.GetString()} vs {t.Language}");
+        }
+    }
+
+    // ffprobe codec names that have a neutral id; null for everything else (not compared).
+    private static string? Mapped(string ffprobe) => ffprobe switch
+    {
+        "h264" or "hevc" or "av1" or "vp8" or "vp9" or "aac" or "mp3" or "opus" or "vorbis" or "flac" or "ac3" or "eac3" or "mjpeg" => ffprobe,
+        "mpeg2video" => "mpeg2video",
+        "amr_nb" => "amr-nb",
+        "amr_wb" => "amr-wb",
+        "mov_text" => "tx3g",
+        "subrip" => "subrip",
+        "webvtt" => "webvtt",
+        var p when p.StartsWith("pcm_", StringComparison.Ordinal) => "pcm",
+        _ => null,
+    };
+}

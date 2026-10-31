@@ -42,7 +42,13 @@ internal static class OneAudioCompare
                 SHA256.HashData(v.Data, digest);
                 PacketRecord m = i < mine.Count ? mine[i] : default;
                 // OneAudio reports decode time and duration in the media timescale; it has no position or sync flag.
+                // OneAudio reports media times; our records are placed on ffprobe's edited timeline, so the same shift is applied here.
                 MediaTime ts = new(v.Timestamp, scale);
+                if (ours.Shifts.Length > track.Index)
+                {
+                    ts = OurReader.Shifted(ts, ours.Shifts[track.Index]);
+                }
+
                 theirs.Add(new PacketRecord(track.Index, ts, ts, new MediaTime(v.Duration, scale), v.Data.Length, m.Pos, m.Key, Convert.ToHexStringLower(digest)));
                 i++;
             }
@@ -106,9 +112,30 @@ internal static class OneAudioCompare
 internal static class StructureCompare
 {
     /// <summary>Structure providers of our readers; add one line per reader as it lands.</summary>
-    public static List<Func<IMediaSource, IStructureNode?>> Providers { get; } = [];
+    public static List<Func<IMediaSource, IStructureNode?>> Providers { get; } = [static source =>
+    {
+        // The tree reads its top-level boxes on first use; ask for them so the root has its children.
+        RecursiveAI.OneMedia.IsoBmff.BoxTree tree = new(source);
+        return new FileNode([.. tree.TopLevel]);
+    }];
 
     internal readonly record struct Entry(int Depth, string Type, long Size);
+
+    // The whole file as one node (type key 0) over the top-level boxes, as the comparison expects.
+    private sealed class FileNode(IReadOnlyList<IStructureNode> children) : IStructureNode
+    {
+        public ulong TypeKey => 0;
+
+        public long Offset => 0;
+
+        public int HeaderSize => 0;
+
+        public long PayloadSize => 0;
+
+        public bool IsSizeInferred => false;
+
+        public IReadOnlyList<IStructureNode> Children => children;
+    }
 
     /// <summary>Box listing from MP4Box: every XML element carrying a <c>Type</c> attribute, in document order.</summary>
     public static List<Entry> Mp4BoxListing(string file)
@@ -177,7 +204,38 @@ internal static class StructureCompare
     /// <summary>Runs the comparison for one ISO file. Returns a message, or null when the trees agree.</summary>
     public static string? CompareIso(string file)
     {
-        List<Entry> theirs = Mp4BoxListing(file);
+        List<Entry> theirs;
+        try
+        {
+            theirs = Mp4BoxListing(file);
+        }
+        catch (XmlException e)
+        {
+            return "MP4Box produced no box listing: " + e.Message;
+        }
+
+        // Sample entries (children of stsd) are read as format-model data here, not as a box tree: leave out what MP4Box lists inside them.
+        int stsdDepth = -1;
+        theirs = [.. theirs.Where(e =>
+        {
+            if (stsdDepth >= 0 && e.Depth <= stsdDepth)
+            {
+                stsdDepth = -1;
+            }
+
+            if (stsdDepth >= 0 && e.Depth > stsdDepth + 1)
+            {
+                return false;
+            }
+
+            if (e.Type == "stsd")
+            {
+                stsdDepth = e.Depth;
+            }
+
+            return true;
+        })];
+
         if (Providers.Count == 0)
         {
             return $"no structure provider registered ({theirs.Count} boxes in MP4Box's listing)";
@@ -215,6 +273,52 @@ internal static class StructureCompare
         }
 
         return "no provider recognised the file";
+    }
+
+    /// <summary>
+    /// Compares every element mkvinfo (<c>-a -P -z -v -v</c>) lists with a position and sizes against our element tree: same offset,
+    /// same total size, same data size. Returns a message, or null when every listed element is found and agrees.
+    /// </summary>
+    public static string? CompareMatroska(string file)
+    {
+        string text = Oracle.Run("mkvinfo", "-a", "-P", "-z", "-v", "-v", file);
+        using FileMediaSource source = FileMediaSource.Open(file);
+        RecursiveAI.OneMedia.Matroska.EbmlDocument doc = RecursiveAI.OneMedia.Matroska.EbmlDocument.Open(source);
+        Dictionary<long, IStructureNode> byOffset = [];
+        foreach (RecursiveAI.OneMedia.Matroska.EbmlElement top in doc.Elements)
+        {
+            foreach ((IStructureNode node, int _) in ((IStructureNode)top).Descendants(new MediaLimits { MaxElementCount = 100_000_000 }))
+            {
+                byOffset[node.Offset] = node;
+            }
+        }
+
+        Regex rx = new(@"at (\d+) size (\d+) data size (\d+)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5));
+        int listed = 0, missing = 0, differing = 0;
+        string? first = null;
+        foreach (string line in text.Split('\n'))
+        {
+            Match m = rx.Match(line);
+            if (!m.Success)
+            {
+                continue;
+            }
+
+            listed++;
+            long at = long.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), size = long.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture), data = long.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+            if (!byOffset.TryGetValue(at, out IStructureNode? e))
+            {
+                missing++;
+                first ??= "missing in tree: " + line.Trim();
+            }
+            else if (e.HeaderSize + e.PayloadSize != size || e.PayloadSize != data)
+            {
+                differing++;
+                first ??= $"differs: {line.Trim()} | ours header={e.HeaderSize} payload={e.PayloadSize}";
+            }
+        }
+
+        return missing + differing == 0 ? (listed == 0 ? "mkvinfo listed no elements" : null) : $"{listed} elements: missing {missing}, differing {differing}; first {first}";
     }
 
     private static string FourCc(ulong key)

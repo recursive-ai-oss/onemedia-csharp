@@ -19,6 +19,11 @@ internal static class Program
           structure [--family F] [FILES...]    Compare box and element listings with MP4Box and mkvinfo.
           io [--family F] [--root DIR] [--out DIR] [--no-http] [--no-strace] [--metadata] [FILES...]
               Bytes read and request counts to probe each file: ffprobe, mediainfo, exiftool and our reader.
+          infocheck [--family F] [FILES...]
+              Compare Media.Open (tracks, codecs, sizes, rates, languages, duration) with ffprobe.
+          audiodecode [--family F] [--out DIR] [FILES...]
+              Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
+          audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
           meta [--family F] [--out DIR] [FILES...]
               Compare our tags and basic facts with ExifTool and MediaInfo field by field; writes metadata-compare.tsv.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
@@ -46,6 +51,9 @@ internal static class Program
             case "diff": return Diff(o);
             case "structure": return Structure(o);
             case "io": return Io(o);
+            case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
+            case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
+            case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
             case "mapping-doc": return MetadataCompare.WriteMappingDoc(o.Out);
@@ -187,6 +195,12 @@ internal static class Program
         });
 
         Console.Write(Reports.Summarize(o.Out));
+        if (o.Audio)
+        {
+            Console.WriteLine("OneAudio comparison:");
+            Console.Write(Reports.Summarize(Path.Combine(o.Out, "oneaudio")));
+        }
+
         Console.WriteLine($"files this run: {done}, left over: {remaining}");
         return remaining > 0 ? 75 : 0;
     }
@@ -246,8 +260,7 @@ internal static class Program
             }
             else
             {
-                List<(StructureCompare.Entry Entry, bool SkipsChildren)> listing = StructureCompare.Mkvinfo(f);
-                message = StructureCompare.Providers.Count == 0 ? $"no structure provider registered ({listing.Count} elements in mkvinfo's listing)" : null;
+                message = StructureCompare.CompareMatroska(f);
             }
 
             Console.WriteLine($"{(message is null ? "same" : "note")} {Path.GetRelativePath(o.Root, f)}{(message is null ? "" : ": " + message)}");

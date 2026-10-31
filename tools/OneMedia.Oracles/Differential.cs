@@ -25,6 +25,9 @@ internal sealed class OurResult
     public string Format { get; init; } = "";
     public List<MediaTrack> Tracks { get; init; } = [];
     public List<PacketRecord> Packets { get; init; } = [];
+
+    /// <summary>Per track, the shift applied to our times to place them where ffprobe puts them (ISO edit lists); empty when none was applied.</summary>
+    public MediaTime[] Shifts { get; init; } = [];
 }
 
 /// <summary>Reads a file through the registry and reduces every packet to a <see cref="PacketRecord"/>.</summary>
@@ -36,12 +39,19 @@ internal static class OurReader
         {
             using FileMediaSource source = FileMediaSource.Open(path);
             using IDemuxer demuxer = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
-            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks] };
+            MediaTime[] shift = demuxer.Format == MediaFormatId.IsoBmff ? [.. demuxer.Tracks.Select(EditShift)] : [];
+            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift };
             Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
             while (demuxer.TryReadPacket(out PacketView view))
             {
                 SHA256.HashData(view.Data, digest);
                 PacketInfo i = view.Info;
+                if (shift.Length > 0)
+                {
+                    MediaTime s = shift[i.TrackIndex];
+                    i = i with { Pts = Shifted(i.Pts, s), Dts = Shifted(i.Dts, s) };
+                }
+
                 result.Packets.Add(new PacketRecord(i.TrackIndex, i.Pts, i.Dts, i.Duration, view.Data.Length, i.SourceRange.IsNone ? -1 : i.SourceRange.Offset, i.IsKeyframe, Convert.ToHexStringLower(digest)));
             }
 
@@ -56,6 +66,28 @@ internal static class OurReader
             return new OurResult { Status = "error", Message = e.GetType().Name + ": " + e.Message };
         }
     }
+
+    // ffprobe places ISO samples on the edited timeline: it subtracts the first non-empty edit's start and adds the leading empty edits.
+    // Our packets keep the media timeline (edit lists are reported, not applied), so the comparison applies ffprobe's shift to ours.
+    private static MediaTime EditShift(MediaTrack track)
+    {
+        MediaTime start = MediaTime.Zero;
+        foreach (EditSegment e in track.Edit.Edits ?? [])
+        {
+            if (!e.IsEmpty)
+            {
+                start = e.MediaStart;
+                break;
+            }
+        }
+
+        MediaTime lead = track.Edit.StartTime.IsKnown ? track.Edit.StartTime : MediaTime.Zero;
+        // In the track's own timescale, so the shift is exact for the media times it is added to.
+        return lead.Rescale(track.Timescale, MediaRounding.NearestAwayFromZero).Subtract(start, MediaRounding.NearestAwayFromZero);
+    }
+
+    internal static MediaTime Shifted(MediaTime t, MediaTime shift) =>
+        t.IsKnown && !shift.IsZero ? t.Add(shift, MediaRounding.NearestAwayFromZero) : t;
 }
 
 /// <summary>
@@ -95,11 +127,11 @@ internal sealed class Exceptions
     }
 
     /// <summary>The rule excusing this difference, or null.</summary>
-    public Rule? Match(string format, string field, string file, MediaTrack? track, string codecName, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta)
+    public Rule? Match(string format, string field, string file, MediaTrack? track, string codecName, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta, bool isLast = false)
     {
         foreach (Rule r in _rules)
         {
-            if ((r.Format != "*" && r.Format != format) || (r.Field != "*" && r.Field != field) || !ScopeMatches(r.Scope, file, track, codecName))
+            if ((r.Format != "*" && r.Format != format) || (r.Field != "*" && r.Field != field) || !ScopeMatches(r.Scope, file, track, codecName, isLast))
             {
                 continue;
             }
@@ -118,11 +150,16 @@ internal sealed class Exceptions
         return null;
     }
 
-    private static bool ScopeMatches(string scope, string file, MediaTrack? track, string codecName)
+    private static bool ScopeMatches(string scope, string file, MediaTrack? track, string codecName, bool isLast)
     {
         if (scope == "*")
         {
             return true;
+        }
+
+        if (scope == "last")
+        {
+            return isLast;
         }
 
         int eq = scope.IndexOf('=', StringComparison.Ordinal);
@@ -177,37 +214,38 @@ internal static class Comparer
         {
             List<PacketRecord> x = a.GetValueOrDefault(track) ?? [], y = b.GetValueOrDefault(track) ?? [];
             report.PacketCounts[track] = (x.Count, y.Count);
+            long last = Math.Min(x.Count, y.Count) - 1;
             MediaTrack? t = ours.Tracks.FirstOrDefault(q => q.Index == track);
             string codec = streams.FirstOrDefault(s => s.Index == track)?.CodecName ?? "";
             if (x.Count != y.Count)
             {
-                Note(report, shown, exceptions, ours.Format, file, t, codec, track, -1, "count", x.Count.ToString(CultureInfo.InvariantCulture), y.Count.ToString(CultureInfo.InvariantCulture), false, false, 0);
+                Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, -1, "count", x.Count.ToString(CultureInfo.InvariantCulture), y.Count.ToString(CultureInfo.InvariantCulture), false, false, 0);
             }
 
             for (int i = 0; i < Math.Min(x.Count, y.Count); i++)
             {
                 PacketRecord p = x[i], q = y[i];
-                CompareTime(report, shown, exceptions, ours.Format, file, t, codec, track, i, "pts", p.Pts, q.Pts);
-                CompareTime(report, shown, exceptions, ours.Format, file, t, codec, track, i, "dts", p.Dts, q.Dts);
-                CompareTime(report, shown, exceptions, ours.Format, file, t, codec, track, i, "duration", p.Duration, q.Duration);
+                CompareTime(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "pts", p.Pts, q.Pts);
+                CompareTime(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "dts", p.Dts, q.Dts);
+                CompareTime(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "duration", p.Duration, q.Duration);
                 if (p.Size != q.Size)
                 {
-                    Note(report, shown, exceptions, ours.Format, file, t, codec, track, i, "size", p.Size.ToString(CultureInfo.InvariantCulture), q.Size.ToString(CultureInfo.InvariantCulture), false, false, p.Size - q.Size);
+                    Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "size", p.Size.ToString(CultureInfo.InvariantCulture), q.Size.ToString(CultureInfo.InvariantCulture), false, false, p.Size - q.Size);
                 }
 
                 if (p.Pos != q.Pos)
                 {
-                    Note(report, shown, exceptions, ours.Format, file, t, codec, track, i, "pos", p.Pos.ToString(CultureInfo.InvariantCulture), q.Pos.ToString(CultureInfo.InvariantCulture), p.Pos < 0, q.Pos < 0, p.Pos - q.Pos);
+                    Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "pos", p.Pos.ToString(CultureInfo.InvariantCulture), q.Pos.ToString(CultureInfo.InvariantCulture), p.Pos < 0, q.Pos < 0, p.Pos - q.Pos);
                 }
 
                 if (p.Key != q.Key)
                 {
-                    Note(report, shown, exceptions, ours.Format, file, t, codec, track, i, "key", p.Key.ToString(), q.Key.ToString(), false, false, 0);
+                    Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "key", p.Key.ToString(), q.Key.ToString(), false, false, 0);
                 }
 
                 if (p.Hash != q.Hash)
                 {
-                    Note(report, shown, exceptions, ours.Format, file, t, codec, track, i, "hash", p.Hash, q.Hash, false, false, 0);
+                    Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, i, "hash", p.Hash, q.Hash, false, false, 0);
                 }
             }
         }
@@ -232,7 +270,7 @@ internal static class Comparer
         return d;
     }
 
-    private static void CompareTime(FileReport r, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, int track, long index, string field, MediaTime theirs, MediaTime ours)
+    private static void CompareTime(FileReport r, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, long last, int track, long index, string field, MediaTime theirs, MediaTime ours)
     {
         if (theirs.IsKnown != ours.IsKnown || (theirs.IsKnown && theirs != ours))
         {
@@ -243,13 +281,13 @@ internal static class Comparer
                 delta = ours.Rescale(theirs.Timescale, MediaRounding.NearestAwayFromZero).Ticks - theirs.Ticks;
             }
 
-            Note(r, shown, ex, format, file, t, codec, track, index, field, theirs.ToString(), ours.ToString(), !theirs.IsKnown, !ours.IsKnown, delta);
+            Note(r, shown, ex, format, file, t, codec, last, track, index, field, theirs.ToString(), ours.ToString(), !theirs.IsKnown, !ours.IsKnown, delta);
         }
     }
 
-    private static void Note(FileReport r, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, int track, long index, string field, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta)
+    private static void Note(FileReport r, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, long last, int track, long index, string field, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta)
     {
-        Exceptions.Rule? rule = ex.Match(format, field, file, t, codec, theirs, ours, theirsUnknown, oursUnknown, delta);
+        Exceptions.Rule? rule = ex.Match(format, field, file, t, codec, theirs, ours, theirsUnknown, oursUnknown, delta, index >= 0 && index == last);
         Dictionary<string, long> bucket = rule is null ? r.Differences : r.Excepted;
         bucket[field] = bucket.GetValueOrDefault(field) + 1;
         if (rule is not null)

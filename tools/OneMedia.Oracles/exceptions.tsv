@@ -6,3 +6,41 @@
 # follows: which side follows the specification (ours, ffprobe, neither), or n/a when it is a definition choice.
 # A rule only excuses a difference; it is counted separately in the reports. Add rules with the experiment that justifies them.
 matroska	pos	*	ignore	neither	ffprobe reports the start of the Block element (id and size included); we report the start of the frame payload, as the packet's source range must be the bytes handed to the codec.
+isobmff	duration	last	ignore	ours	The last packet's duration: ffprobe replaces it (parser frame length for MP3/AC-3/AAC, or the edit's end); the sample table states the value we report (docs/isobmff.md).
+matroska	duration	kind=audio	ours-na	neither	duration-from-codec: ffprobe derives a duration the file does not store from the codec's frame length; ours stays unknown (docs/matroska-differential.md).
+matroska	duration	last	ignore	ours	last-block-duration-differs: the last block's stored BlockDuration is shorter than the codec's frame; ffprobe reports the frame length (docs/matroska-differential.md).
+matroska	pts	*	tolerance=1	ours	inexact-timebase: when TimestampScale does not divide 10^9 ours are exact nanosecond ticks and ffprobe's integer time base rounds (docs/matroska-differential.md).
+matroska	dts	kind=video	ours-na	neither	dts-unknown-for-video: Matroska stores presentation times only; ffprobe prints the pts as the dts (docs/matroska-differential.md).
+matroska	dts	*	tolerance=1	ours	inexact-timebase, as for pts.
+matroska	duration	*	tolerance=1	ours	inexact-timebase, as for pts.
+matroska	size	file=compression	ignore	ffprobe	frame-compression-not-undone: ours delivers zlib-compressed frames as stored; ffprobe sizes are after decompression.
+matroska	hash	file=compression	ignore	ffprobe	frame-compression-not-undone, as for size.
+matroska	duration	codec=webvtt	ignore	ours	webvtt-block-repacked: ffprobe repacks the WebVTT-in-Matroska block.
+matroska	size	codec=webvtt	ignore	ours	webvtt-block-repacked.
+matroska	hash	codec=webvtt	ignore	ours	webvtt-block-repacked.
+isobmff	duration	*	ffprobe-na	ours	first-fragment-duration: a fragment sample whose duration comes from the tfhd default, or states 0, prints N/A in ffprobe; the box states it (docs/isobmff.md).
+isobmff	duration	file=frag-duration-500ms	ignore	ours	first-audio-run-duration: the first run states 3200 for a 1024-sample frame; ffprobe shows the frame length (docs/isobmff.md).
+isobmff	duration	file=BigBuckBunny_640x360	ignore	ours	zero-duration-samples and first-audio-run-duration (docs/isobmff.md).
+isobmff	duration	file=elephantsdream-	ignore	ours	timeline-gap-deltas: 35 of 15,294 video samples have a delta far above the usual 25; ffprobe reports the usual duration (docs/isobmff.md).
+isobmff	dts	file=elephantsdream-	ignore	ours	negative-cts-dts-shift (docs/isobmff.md).
+isobmff	duration	file=cat-two-parts	ignore	ours	timeline-gap-deltas: the join of two parts has a delta above the usual one (docs/isobmff.md).
+isobmff	dts	file=big_buck_bunny_	ignore	ours	negative-cts-dts-shift: ffprobe moves DTS earlier by the largest dts - pts; we keep Pts = Dts + offset (ISO/IEC 14496-12 8.6.1.3).
+isobmff	dts	file=h264-aac-negative-cts	ignore	ours	negative-cts-dts-shift.
+isobmff	dts	file=/quicktime.mov	ignore	ours	negative-cts-dts-shift.
+isobmff	pts	file=/quicktime.mov	ignore	ours	negative-cts-dts-shift.
+isobmff	pts	file=negative-cts.mp4	ignore	ours	negative-cts-pts-shift: for fragments ffprobe moves PTS later.
+isobmff	pts	file=cmaf-flag	ignore	ours	negative-cts-pts-shift.
+isobmff	pts	file=ismv.ismv	ignore	ours	negative-cts-pts-shift.
+isobmff	key	file=BigBuckBunny_640x360	ignore	ours	idr-not-in-sync-table: ffprobe also marks IDR pictures the sync sample table omits; we use container information only.
+isobmff	key	file=hevc-new	ignore	ours	idr-not-in-sync-table.
+isobmff	key	file=/video.mp4	ignore	ours	hint-track-keyframes: ffprobe marks every RTP hint packet a key frame; we report the sync table.
+isobmff	key	file=test_qcif_200_aac_64	ignore	ours	hint-track-keyframes.
+isobmff	count	file=h264-movtext	ignore	ours	final-empty-text-sample: the sample table ends with a zero-duration text sample (5 samples); ffprobe lists 4 (docs/isobmff.md, 3GPP TS 26.245 leaves empty samples valid).
+isobmff	duration	file=every-frame	ignore	ours	zero-duration-samples and first-audio-run-duration: frag_every_frame writes 0 for the samples it cannot know; ffprobe reports the distance to the next sample (docs/isobmff.md).
+isobmff	duration	file=ismv.ismv	tolerance=1	neither	ten-megahertz-rounding: ffprobe rounds the rescaled duration one tick away from the run's stated 10 MHz value.
+isobmff	duration	file=au30sec	ignore	ours	video-parser-frame-timing: ffprobe takes the video packet duration from the parser's frame timing, a fixed multiple of the table's (docs/isobmff.md).
+matroska	pts	kind=audio	ignore	neither	lace-shared-pts: frames of a lace without BlockDuration or DefaultDuration share the block time; ffprobe spaces them by the duration its codec parser derives (docs/matroska-differential.md).
+matroska	dts	kind=audio	ignore	neither	lace-shared-pts, as for pts.
+matroska	count	file=ticket-a_aac	ignore	ours	attachments-as-streams: ffprobe lists each attachment as a stream with one packet holding the file; attachments are not tracks here.
+matroska	count	file=azumi	ignore	ours	attachments-as-streams.
+matroska	duration	file=nested_tags	tolerance=1000	ours	inexact-timebase: TimestampScale 22674 does not divide 10^9; ffprobe floors the stored DefaultDuration (26122448 ns) to a multiple of the scale (26120448 ns), ours is the stored value.
