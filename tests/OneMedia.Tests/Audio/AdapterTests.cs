@@ -100,6 +100,18 @@ public class AdapterTests
         Assert.True(ours.AsSpan().SequenceEqual(theirs.AsSpan(0, ours.Length)));
     }
 
+    [Theory]
+    [InlineData("opus.mka")]
+    [InlineData("opus.webm")]
+    public void OpusLengthIsBlockTimeMinusPreSkipAndDiscardPadding(string file)
+    {
+        // 21 packets of 960 frames, less the 312-frame pre-skip (CodecDelay) and 648 frames of DiscardPadding on the last block: 19,200 mono frames,
+        // the length a reference decoder produces. The block times are in whole milliseconds, so the 6.5 ms delay must not leak into the end position.
+        (float[] ours, AudioFormat f) = ReadAll(AudioDecoder.OpenFile(Fixture(file), MediaAudioExtensions.CreateRegistry()));
+        Assert.Equal(1, f.Channels);
+        Assert.Equal(19200, ours.Length);
+    }
+
     [Fact]
     public void AacDropsTheCodecDelayTheMatroskaFileDeclares()
     {
