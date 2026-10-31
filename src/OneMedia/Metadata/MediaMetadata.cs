@@ -28,7 +28,7 @@ public interface IMetadataProvider
 /// </summary>
 public sealed class MediaMetadata
 {
-    internal MediaMetadata(IReadOnlyList<ITagContainer> containers, IReadOnlyList<Chapter> chapters, MediaFacts facts, DefectLog defects)
+    internal MediaMetadata(IReadOnlyList<ITagContainer> containers, IReadOnlyList<Chapter> chapters, MediaFacts facts, DefectLog defects, bool singleTrack = false)
     {
         Containers = containers;
         Chapters = chapters;
@@ -41,7 +41,7 @@ public sealed class MediaMetadata
         }
 
         NativeTags = all;
-        Tags = new CommonTags(all);
+        Tags = new CommonTags(all, singleTrack);
     }
 
     /// <summary>The tag containers in file order: each <c>udta</c>, <c>meta</c> and XMP packet, movie-level and track-level.</summary>

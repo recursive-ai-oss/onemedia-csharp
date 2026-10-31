@@ -168,11 +168,16 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer
     private readonly MatroskaReader _reader;
     private readonly IAsyncDisposable? _source;
 
-    private MatroskaAsyncDemuxer(MatroskaReader reader, DefectLog defects, IAsyncDisposable? source)
+    private readonly IAsyncMediaSource? _ranged;
+    private readonly MediaLimits _limits;
+
+    private MatroskaAsyncDemuxer(MatroskaReader reader, DefectLog defects, IAsyncDisposable? source, IAsyncMediaSource? ranged, MediaLimits limits)
     {
         _reader = reader;
         Defects = defects;
         _source = source;
+        _ranged = ranged;
+        _limits = limits;
     }
 
     /// <summary>Opens a ranged source; like <see cref="MatroskaDemuxer.Open(IMediaSource, MediaOpenOptions?, CancellationToken)"/> it reads only the header and the Segment's structural elements.</summary>
@@ -187,7 +192,7 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer
         ArgumentNullException.ThrowIfNull(source);
         options ??= MediaOpenOptions.Default;
         DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
-        return await CreateAsync(new AsyncSourceInput(source), options, defects, options.LeaveOpen ? null : source, cancellationToken).ConfigureAwait(false);
+        return await CreateAsync(new AsyncSourceInput(source), options, defects, options.LeaveOpen ? null : source, source, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Opens a forward-only source asynchronously.</summary>
@@ -204,10 +209,10 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer
         DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
         AsyncForwardInput input = new(source);
         input.StartAt(source.Position);
-        return await CreateAsync(input, options, defects, options.LeaveOpen ? null : source, cancellationToken).ConfigureAwait(false);
+        return await CreateAsync(input, options, defects, options.LeaveOpen ? null : source, null, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask<MatroskaAsyncDemuxer> CreateAsync(EbmlInput input, MediaOpenOptions options, DefectLog defects, IAsyncDisposable? owned, CancellationToken cancellationToken)
+    private static async ValueTask<MatroskaAsyncDemuxer> CreateAsync(EbmlInput input, MediaOpenOptions options, DefectLog defects, IAsyncDisposable? owned, IAsyncMediaSource? ranged, CancellationToken cancellationToken)
     {
         MatroskaReader reader = new(input, options.Limits, defects);
         try
@@ -224,7 +229,7 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer
             throw;
         }
 
-        return new MatroskaAsyncDemuxer(reader, defects, owned);
+        return new MatroskaAsyncDemuxer(reader, defects, owned, ranged, options.Limits);
     }
 
     /// <inheritdoc />
@@ -253,6 +258,23 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer
 
     /// <inheritdoc />
     public PacketView Current => new(_reader.CurrentInfo, _reader.CurrentData);
+
+    /// <summary>
+    /// Reads the file's tags, attachments and basic facts like <see cref="MatroskaDemuxer.ReadMetadata"/>, with header-sized range reads to find
+    /// the elements and one read per element to fetch it. Elements larger than <see cref="MediaLimits.MaxAttachmentBytes"/> are not fetched and
+    /// are reported as a defect. A forward-only source has no Tags to look back for: only the Segment information gives facts.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels reading.</param>
+    /// <returns>The metadata; the tag values are held in memory, so it stays valid after the source closes.</returns>
+    public async ValueTask<MediaMetadata> ReadMetadataAsync(CancellationToken cancellationToken = default)
+    {
+        if (_ranged is null)
+        {
+            return MatroskaMetadataReader.Read(null, _reader.SegmentStart, _reader.SeekEntries, _reader.Tags, _reader.Attachments, _reader.Info, _reader.Entries, _reader.Tracks, Duration, _limits, Defects, cancellationToken);
+        }
+
+        return await MatroskaMetadataReader.ReadAsync(_ranged, _reader.SegmentStart, _reader.SeekEntries, _reader.Tags, _reader.Attachments, _reader.Info, _reader.Entries, _reader.Tracks, Duration, _limits, Defects, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public void SetTrackEnabled(int trackIndex, bool enabled) => _reader.SetTrackEnabled(trackIndex, enabled);

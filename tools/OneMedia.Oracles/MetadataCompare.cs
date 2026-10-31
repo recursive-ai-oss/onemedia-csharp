@@ -17,7 +17,11 @@ namespace RecursiveAI.OneMedia.Oracles;
 /// </summary>
 internal static partial class MetadataCompare
 {
-    private sealed record Row(string File, string Kind, string Field, string Ours, string ExifTool, string MediaInfo, string Verdict);
+    /// <summary>One compared field. <c>EtState</c> and <c>MiState</c> say what each oracle did: <c>agree</c> (its value is ours, or one of our candidates for the fact),
+    /// <c>disagree</c> (it reports the field with another value) or <c>none</c> (it does not report the field).</summary>
+    private sealed record Row(string File, string Kind, string Field, string Ours, string ExifTool, string MediaInfo, string Verdict, string EtState = "none", string MiState = "none");
+
+    private static string State(bool reported, bool agrees) => !reported ? "none" : agrees ? "agree" : "disagree";
 
     public static int Run(IReadOnlyList<string> files, string outDir)
     {
@@ -39,16 +43,84 @@ internal static partial class MetadataCompare
         }
 
         using StreamWriter w = new(Path.Combine(outDir, "metadata-compare.tsv"), false, new UTF8Encoding(false));
-        w.WriteLine("file\tkind\tfield\tours\texiftool\tmediainfo\tverdict");
+        w.WriteLine("file\tkind\tfield\tours\texiftool\tmediainfo\tverdict\tet_state\tmi_state");
         foreach (Row r in rows)
         {
-            w.WriteLine(string.Join('\t', r.File, r.Kind, r.Field, Clean(r.Ours), Clean(r.ExifTool), Clean(r.MediaInfo), r.Verdict));
+            w.WriteLine(string.Join('\t', r.File, r.Kind, r.Field, Clean(r.Ours), Clean(r.ExifTool), Clean(r.MediaInfo), r.Verdict, r.EtState, r.MiState));
         }
 
         Console.WriteLine($"files {files.Count}");
         foreach (IGrouping<(string, string), Row> g in rows.GroupBy(r => (r.Kind, r.Verdict)).OrderBy(g => g.Key))
         {
             Console.WriteLine($"{g.Key.Item1,-8} {g.Key.Item2,-22} {g.Count()}");
+        }
+
+        return 0;
+    }
+
+    /// <summary>Writes docs/tag-mapping.md (the intro text and the rendered table) into the directory given.</summary>
+    public static int WriteMappingDoc(string dir)
+    {
+        const string intro = """
+            # Tag mapping
+
+            How the common tag view picks values from the native tag systems. The table is the one the code reads (`TagMappingTable.Rows`); this page is
+            generated from it, and a test fails when they differ.
+
+            - Rows of one field are tried in table order, and within a row the keys in the order listed. The first value is the field's value;
+              the others stay reachable through `CommonTags.Values`.
+            - Native keys are spelled as the system spells them: four-character atom codes for `ilst` and `udta` (`©nam`), reverse-DNS names for
+              key-table metadata (`com.apple.quicktime.title`), `namespace#property` for XMP, upper-case names for Matroska (nested SimpleTags as
+              `PARENT/CHILD`). Matroska names are matched case-insensitively.
+            - Matroska: only tags that target the file (no track, edition, chapter or attachment UID) feed the view, plus the tags of the only
+              track of a single-track file (except `ENCODER`, which names the stream's encoder). Within a key the lowest target level of 30 or above
+              comes first, then levels below 30; tags with no language or `und` come before language-specific ones; tags of the file itself
+              come before tags of the only track.
+            - 3GPP boxes and QuickTime user-data atoms share four-character codes with different layouts; the reader tells them apart as described in `docs/tags.md`.
+            - Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime tag documentation (read as tables of facts), the Matroska
+              tag-name list, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
+
+
+            """;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "tag-mapping.md"), intro + TagMappingTable.RenderMarkdown(), new UTF8Encoding(false));
+        return 0;
+    }
+
+    /// <summary>Prints every native tag and the common view of each file, for looking at a difference.</summary>
+    public static int Dump(IReadOnlyList<string> files)
+    {
+        MediaFormatRegistry registry = new();
+        registry.Add(new IsoBmffFormat());
+        registry.Add(new MatroskaFormat());
+        foreach (string file in files)
+        {
+            using IDemuxer demuxer = registry.Open(FileMediaSource.Open(file));
+            MediaMetadata m = ((IMetadataProvider)demuxer).ReadMetadata();
+            Console.WriteLine(file);
+            foreach (NativeTag t in m.NativeTags)
+            {
+                string text = t.Text ?? "";
+                Console.WriteLine($"  {t.System}:{t.Key} track={t.TrackId} level={t.TargetTypeValue} lang={t.Language} kind={t.Kind} = {(text.Length > 60 ? text[..60] : text)}");
+            }
+
+            foreach (CommonField f in Enum.GetValues<CommonField>())
+            {
+                if (m.Tags.First(f) is { } v)
+                {
+                    Console.WriteLine($"  common {f} = {v}");
+                }
+            }
+
+            foreach (Chapter ch in m.Chapters)
+            {
+                Console.WriteLine($"  chapter {ch.Start} {ch.Title}");
+            }
+
+            foreach (MediaDefect d in m.Defects)
+            {
+                Console.WriteLine($"  defect {d.Code} @{d.Offset}: {d.Message}");
+            }
         }
 
         return 0;
@@ -86,6 +158,12 @@ internal static partial class MetadataCompare
                 continue;
             }
 
+            // Positions are compared by the Location fact, as numbers: the oracles print degrees, minutes and seconds or decimals.
+            if (t.Key.EndsWith("#GPSLatitude", StringComparison.Ordinal) || t.Key.EndsWith("#GPSLongitude", StringComparison.Ordinal) || t is { System: TagSystems.ThreeGpp, Key: "loci" })
+            {
+                continue;
+            }
+
             string[] groups = t.System switch
             {
                 TagSystems.ITunes => ["ItemList"],
@@ -102,32 +180,44 @@ internal static partial class MetadataCompare
                 bool parsed = GeoLocation.TryParseIso6709(text, out GeoLocation g);
                 bool e = parsed && Coordinates(etn, ["GPSCoordinates", "GPSPosition", "LocationISO6709"], ["GPSLatitude", "GPSLongitude"]).Exists(p => Math.Abs(p.Item1 - g.Latitude) < 1e-3 && Math.Abs(p.Item2 - g.Longitude) < 1e-3);
                 bool x = parsed && Coordinates(mi, ["Recorded_Location", "Location"], []).Exists(p => Math.Abs(p.Item1 - g.Latitude) < 1e-3 && Math.Abs(p.Item2 - g.Longitude) < 1e-3);
-                rows.Add(new Row(name, "native", $"{t.System}:{t.Key}", text, e ? "same" : "absent", x ? "same" : "absent", e ? (x ? "match" : "match-et") : x ? "match-mi" : parsed ? "differs" : "unparsed"));
+                rows.Add(new Row(name, "native", $"{t.System}:{t.Key}", text, e ? "same" : "absent", x ? "same" : "absent", e ? (x ? "match" : "match-et") : x ? "match-mi" : parsed ? "differs" : "unparsed",
+                    State(parsed && Coordinates(etn, ["GPSCoordinates", "GPSPosition", "LocationISO6709"], ["GPSLatitude", "GPSLongitude"]).Count > 0, e),
+                    State(parsed && Coordinates(mi, ["Recorded_Location", "Location"], []).Count > 0, x)));
                 continue;
             }
 
             bool inEt = etVals.Exists(v => Same(v, text));
             bool inMi = miAll.Contains(Norm(text)) || mi.Values.SelectMany(v => v).Any(v => Same(v, text));
-            rows.Add(new Row(name, "native", $"{t.System}:{t.Key}", text, inEt ? "same" : etVals.Count == 0 ? "-" : "absent", inMi ? "same" : "absent",
-                inEt ? (inMi ? "match" : "match-et") : etVals.Count == 0 ? (inMi ? "match-mi" : "unreported") : (inMi ? "match-mi" : "differs")));
+            string verdict = inEt ? (inMi ? "match" : "match-et") : etVals.Count == 0 ? (inMi ? "match-mi" : "unreported") : (inMi ? "match-mi" : "differs");
+            // ExifTool keeps one value per tag name and group: a name repeated at another level, or by a later track (ExifTool files every track's tags under one Track group), shows only once.
+            if (verdict == "differs" && t.System == TagSystems.Matroska && (t.TrackId > 1 || m.NativeTags.Any(o => o != t && o.System == t.System && o.Key == t.Key && o.TrackId == t.TrackId)))
+            {
+                verdict = "explained-et-collapse";
+            }
+
+            rows.Add(new Row(name, "native", $"{t.System}:{t.Key}", text, inEt ? "same" : etVals.Count == 0 ? "-" : "absent", inMi ? "same" : "absent", verdict, State(etVals.Count > 0, inEt), State(inMi, inMi)));
         }
 
         // Container track properties ("TrackNumber", "Encoder" of a track) are not tags of the movie.
         Dictionary<string, List<string>> etMovie = et.Where(kv => !kv.Key.StartsWith("Track", StringComparison.Ordinal)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-        // common view
+        // common view (MediaInfo: the General section only; its other sections describe single streams)
+        Dictionary<string, List<string>> miGeneral = mi.Where(kv => kv.Key.StartsWith("General:", StringComparison.Ordinal)).ToDictionary(kv => kv.Key, kv => kv.Value);
         CommonTags c = m.Tags;
-        Common(rows, name, "Title", c.Title, etMovie, ["Title"], mi, ["Title", "Movie"]);
-        Common(rows, name, "Artist", c.Artist, etMovie, ["Artist", "Performer"], mi, ["Performer"]);
-        Common(rows, name, "Album", c.Album, etMovie, ["Album"], mi, ["Album"]);
-        Common(rows, name, "Genre", c.Genre, etMovie, ["Genre"], mi, ["Genre"]);
-        Common(rows, name, "Comment", c.Comment, etMovie, ["Comment"], mi, ["Comment"]);
-        Common(rows, name, "Description", c.Description, etMovie, ["Description"], mi, ["Description"]);
-        Common(rows, name, "Copyright", c.Copyright, etMovie, ["Copyright"], mi, ["Copyright"]);
-        Common(rows, name, "Composer", c.Composer, etMovie, ["Composer"], mi, ["Composer"]);
-        Common(rows, name, "Encoder", c.Encoder, etMovie, ["Encoder", "Software", "WritingApp"], mi, ["Encoded_Application", "Writing_Library"]);
-        Common(rows, name, "TrackNumber", c.TrackNumber?.ToString(CultureInfo.InvariantCulture), etMovie, ["TrackNumber"], mi, ["Track_Position"], leadingNumber: true);
-        Common(rows, name, "Cover", c.Pictures.Count > 0 ? "yes" : null, etMovie, ["CoverArt", "Picture"], mi, ["Cover"], presence: true);
+        MediaFacts f0 = m.Facts;
+        Common(rows, name, "Title", c.Title, etMovie, ["Title"], miGeneral, ["Title", "Movie"]);
+        // QuickTime names the writer "author"; MediaInfo calls it Performer, like the artist.
+        Common(rows, name, "Artist", c.Artist ?? c.Author, etMovie, ["Artist", "Performer", "Author"], miGeneral, ["Performer"]);
+        Common(rows, name, "Album", c.Album, etMovie, ["Album"], miGeneral, ["Album"]);
+        Common(rows, name, "Genre", c.Genre, etMovie, ["Genre"], miGeneral, ["Genre"]);
+        Common(rows, name, "Comment", c.Comment, etMovie, ["Comment"], miGeneral, ["Comment"]);
+        Common(rows, name, "Description", c.Description, etMovie, ["Description"], miGeneral, ["Description"]);
+        Common(rows, name, "Copyright", c.Copyright, etMovie, ["Copyright"], miGeneral, ["Copyright"]);
+        Common(rows, name, "Composer", c.Composer, etMovie, ["Composer"], miGeneral, ["Composer"]);
+        // MediaInfo's "Writing application" also carries the QuickTime software atom, which is our Software fact rather than the Encoder field.
+        Common(rows, name, "Encoder", c.Encoder ?? (f0.Software.Best is { } sw && sw.Source.EndsWith("©swr", StringComparison.Ordinal) ? sw.Value : null), etMovie, ["Encoder", "Software", "WritingApp"], miGeneral, ["Encoded_Application", "Writing_Library"]);
+        Common(rows, name, "TrackNumber", c.TrackNumber?.ToString(CultureInfo.InvariantCulture), etMovie, ["TrackNumber"], miGeneral, ["Track_Position"], leadingNumber: true);
+        Common(rows, name, "Cover", c.Pictures.Count > 0 ? "yes" : null, etMovie, ["CoverArt", "Picture"], miGeneral, ["Cover"], presence: true);
 
         // facts
         MediaFacts f = m.Facts;
@@ -135,8 +225,8 @@ internal static partial class MetadataCompare
         {
             double ours = (double)d.Value.Ticks / d.Value.Timescale;
             double? e = FirstNumber(etn, "Duration"), x = FirstNumber(mi, "Duration");
-            rows.Add(new Row(name, "fact", "Duration", ours.ToString("0.000", CultureInfo.InvariantCulture), e?.ToString("0.000", CultureInfo.InvariantCulture) ?? "-", x is null ? "-" : (x.Value / 1000).ToString("0.000", CultureInfo.InvariantCulture),
-                Verdict(ours, e, x is null ? null : x / 1000, 0.002)));
+            rows.Add(new Row(name, "fact", "Duration", ours.ToString("0.000", CultureInfo.InvariantCulture), e?.ToString("0.000", CultureInfo.InvariantCulture) ?? "-", x is null ? "-" : x.Value.ToString("0.000", CultureInfo.InvariantCulture),
+                DurationVerdict(ours, e, x), State(e is not null, e is not null && Math.Abs(e.Value - ours) <= 0.002), State(x is not null, x is not null && Math.Abs(x.Value - ours) <= 0.002)));
         }
 
         if (f.FrameSize.Best is { } fs)
@@ -144,7 +234,7 @@ internal static partial class MetadataCompare
             double? w = FirstNumber(mi, "Width", "Video"), h = FirstNumber(mi, "Height", "Video");
             string miv = w is null ? "-" : $"{w}x{h}";
             string ours = $"{fs.Value.CodedWidth}x{fs.Value.CodedHeight}";
-            rows.Add(new Row(name, "fact", "FrameSize.Coded", ours, "-", miv, miv == "-" ? "unreported" : miv == ours ? "match" : "differs"));
+            rows.Add(new Row(name, "fact", "FrameSize.Coded", ours, "-", miv, miv == "-" ? "unreported" : miv == ours ? "match" : "differs", "none", State(miv != "-", miv == ours)));
         }
 
         if (f.Orientation.Best is { } o)
@@ -152,7 +242,7 @@ internal static partial class MetadataCompare
             double? r = FirstNumber(etn, "Rotation"), x = FirstNumber(mi, "Rotation");
             double ours = o.Value.RotationDegrees;
             string verdict = (r is null && x is null) ? (ours == 0 ? "match-absent" : "unreported") : Verdict(ours, r is null ? null : Mod360(r.Value), x is null ? null : Mod360(x.Value), 0.5);
-            rows.Add(new Row(name, "fact", "Rotation", ours.ToString(CultureInfo.InvariantCulture) + (o.Value.MirrorHorizontal ? "+mirror" : ""), r?.ToString(CultureInfo.InvariantCulture) ?? "-", x?.ToString(CultureInfo.InvariantCulture) ?? "-", verdict));
+            rows.Add(new Row(name, "fact", "Rotation", ours.ToString(CultureInfo.InvariantCulture) + (o.Value.MirrorHorizontal ? "+mirror" : ""), r?.ToString(CultureInfo.InvariantCulture) ?? "-", x?.ToString(CultureInfo.InvariantCulture) ?? "-", verdict, State(r is not null, r is not null && Math.Abs(Mod360(r.Value) - ours) <= 0.5), State(x is not null, x is not null && Math.Abs(Mod360(x.Value) - ours) <= 0.5)));
         }
 
         if (f.CaptureTime.HasValue)
@@ -165,7 +255,8 @@ internal static partial class MetadataCompare
             bool inMi = miDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
             bool anyEt = f.CaptureTime.Candidates.Any(cand => etDates.Exists(x => Math.Abs((x - Instant(cand.Value)).TotalSeconds) < 1 || Math.Abs((x - cand.Value.Value).TotalSeconds) < 1));
             rows.Add(new Row(name, "fact", "CaptureTime", $"{best.Value} [{best.Source}] ({f.CaptureTime.Candidates.Count} candidates)", inEt ? "same" : etDates.Count == 0 ? "-" : anyEt ? "other-candidate" : "absent",
-                inMi ? "same" : miDates.Count == 0 ? "-" : "absent", inEt || inMi ? "match" : etDates.Count + miDates.Count == 0 ? "unreported" : anyEt ? "match-other-candidate" : "differs"));
+                inMi ? "same" : miDates.Count == 0 ? "-" : "absent", inEt || inMi ? "match" : etDates.Count + miDates.Count == 0 ? "unreported" : anyEt ? "match-other-candidate" : "differs",
+                State(etDates.Count > 0, inEt || anyEt), State(miDates.Count > 0, inMi)));
         }
 
         if (f.Location.Best is { } loc)
@@ -175,12 +266,12 @@ internal static partial class MetadataCompare
             bool Close((double, double) p) => Math.Abs(p.Item1 - loc.Value.Latitude) < 1e-3 && Math.Abs(p.Item2 - loc.Value.Longitude) < 1e-3;
             bool inEt = etLoc.Exists(Close), inMi = miLoc.Exists(Close);
             rows.Add(new Row(name, "fact", "Location", $"{loc.Value.Latitude:0.######} {loc.Value.Longitude:0.######} [{loc.Source}]", etLoc.Count == 0 ? "-" : inEt ? "same" : "absent", miLoc.Count == 0 ? "-" : inMi ? "same" : "absent",
-                inEt || inMi ? "match" : etLoc.Count + miLoc.Count == 0 ? "unreported" : "differs"));
+                inEt || inMi ? "match" : etLoc.Count + miLoc.Count == 0 ? "unreported" : "differs", State(etLoc.Count > 0, inEt), State(miLoc.Count > 0, inMi)));
         }
 
-        Device(rows, name, "Make", f.Make, etMovie, ["Make", "Manufacturer"]);
-        Device(rows, name, "Model", f.Model, etMovie, ["Model"]);
-        Device(rows, name, "Software", f.Software, etMovie, ["Software", "CreatorTool", "WritingApp", "MuxingApp", "Encoder"]);
+        Device(rows, name, "Make", f.Make, etMovie, ["Make", "Manufacturer", "AndroidMake"]);
+        Device(rows, name, "Model", f.Model, etMovie, ["Model", "AndroidModel"]);
+        Device(rows, name, "Software", f.Software, etMovie, ["Software", "SoftwareVersion", "AndroidVersion", "CreatorTool", "WritingApp", "MuxingApp"]);
     }
 
     private static void Device(List<Row> rows, string file, string field, Fact<string> fact, Dictionary<string, List<string>> et, string[] keys)
@@ -195,7 +286,7 @@ internal static partial class MetadataCompare
         bool same = fact.Best is not null && vals.Exists(v => Same(v, ours));
         bool other = fact.Candidates.Any(cd => vals.Exists(v => Same(v, cd.Value)));
         rows.Add(new Row(file, "fact", field, ours, vals.Count == 0 ? "-" : string.Join(" | ", vals.Distinct()), "n/a",
-            same ? "match" : fact.Best is null ? "ours-missing" : vals.Count == 0 ? "unreported" : other ? "match-other-candidate" : "differs"));
+            same ? "match" : fact.Best is null ? "ours-missing" : vals.Count == 0 ? "unreported" : other ? "match-other-candidate" : "differs", State(vals.Count > 0, same || other)));
     }
 
     private static void Common(List<Row> rows, string file, string field, string? ours, Dictionary<string, List<string>> et, string[] etKeys, Dictionary<string, List<string>> mi, string[] miKeys,
@@ -210,7 +301,7 @@ internal static partial class MetadataCompare
         bool Eq(string a) => presence || (leadingNumber ? LeadingNumber(a) == ours : ours is not null && Same(a, ours));
         bool inEt = ours is not null && e.Exists(Eq), inMi = ours is not null && x.Exists(Eq);
         string verdict = ours is null ? "ours-missing" : inEt || inMi ? ((e.Count > 0 && !inEt) || (x.Count > 0 && !inMi) ? "match-partial" : "match") : e.Count + x.Count == 0 ? "unreported" : "differs";
-        rows.Add(new Row(file, "common", field, ours ?? "-", e.Count == 0 ? "-" : string.Join(" | ", e.Distinct()), x.Count == 0 ? "-" : string.Join(" | ", x.Distinct()), verdict));
+        rows.Add(new Row(file, "common", field, ours ?? "-", e.Count == 0 ? "-" : string.Join(" | ", e.Distinct()), x.Count == 0 ? "-" : string.Join(" | ", x.Distinct()), verdict, State(e.Count > 0 && ours is not null, inEt), State(x.Count > 0 && ours is not null, inMi)));
     }
 
     private static string LeadingNumber(string s)
@@ -228,6 +319,13 @@ internal static partial class MetadataCompare
 
         bool ok = (a is null || Math.Abs(a.Value - ours) <= tolerance) && (b is null || Math.Abs(b.Value - ours) <= tolerance);
         return ok ? "match" : "differs";
+    }
+
+    // MediaInfo derives the duration from the streams where ExifTool and we report the movie header's, so an ExifTool match with another MediaInfo value is explained.
+    private static string DurationVerdict(double ours, double? et, double? mi)
+    {
+        string v = Verdict(ours, et, mi, 0.002);
+        return v == "differs" && et is { } e && Math.Abs(e - ours) <= 0.002 && mi is not null ? "match-et-mi-stream-based" : v;
     }
 
     private static double Mod360(double v) => ((v % 360) + 360) % 360;
@@ -259,8 +357,8 @@ internal static partial class MetadataCompare
         {
             instant = d;
             Match m = DateRegex().Match(v);
-            wall = new DateTime(int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture),
-                int.Parse(m.Groups[4].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[5].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[6].Value, CultureInfo.InvariantCulture));
+            int G(int i) => m.Groups[i].Success ? int.Parse(m.Groups[i].Value, CultureInfo.InvariantCulture) : 0;
+            wall = new DateTime(G(1), G(2), G(3), G(4), G(5), G(6));
             return true;
         }
 
@@ -304,7 +402,7 @@ internal static partial class MetadataCompare
             Match m = DateRegex().Match(v);
             if (m.Success)
             {
-                int[] p = [.. Enumerable.Range(1, 6).Select(i => int.Parse(m.Groups[i].Value, CultureInfo.InvariantCulture))];
+                int[] p = [.. Enumerable.Range(1, 6).Select(i => m.Groups[i].Success ? int.Parse(m.Groups[i].Value, CultureInfo.InvariantCulture) : 0)];
                 if (p[0] < 1 || p[1] is < 1 or > 12 || p[2] < 1 || p[2] > DateTime.DaysInMonth(p[0], p[1]) || p[3] > 23 || p[4] > 59 || p[5] > 59)
                 {
                     continue; // an unset date such as 0000:00:00 00:00:00
@@ -331,6 +429,16 @@ internal static partial class MetadataCompare
             if (GeoLocation.TryParseIso6709(v, out GeoLocation g))
             {
                 list.Add((g.Latitude, g.Longitude));
+                continue;
+            }
+
+            // MediaInfo writes hemispheres as letters ("37.7749°N 122.4194°W").
+            Match hemi = HemisphereRegex().Match(v);
+            if (hemi.Success)
+            {
+                double la = double.Parse(hemi.Groups[1].Value, CultureInfo.InvariantCulture) * (hemi.Groups[2].Value == "S" ? -1 : 1);
+                double lo = double.Parse(hemi.Groups[3].Value, CultureInfo.InvariantCulture) * (hemi.Groups[4].Value == "W" ? -1 : 1);
+                list.Add((la, lo));
                 continue;
             }
 
@@ -408,7 +516,7 @@ internal static partial class MetadataCompare
         }
     }
 
-    [GeneratedRegex(@"(\d{4})[-:](\d\d)[-:](\d\d)[ T](\d\d):(\d\d):(\d\d)")]
+    [GeneratedRegex(@"(\d{4})[-:](\d\d)[-:](\d\d)(?:[ T](\d\d):(\d\d):(\d\d))?")]
     private static partial Regex DateRegex();
 
     [GeneratedRegex(@"^(?:\.\d+)?\s*(?:UTC|Z)?\s*([+-])(\d\d):?(\d\d)")]
@@ -416,6 +524,9 @@ internal static partial class MetadataCompare
 
     [GeneratedRegex(@"-?\d+(?:\.\d+)?")]
     private static partial Regex NumberRegex();
+
+    [GeneratedRegex(@"(\d+(?:\.\d+)?)\u00b0?\s*([NS])\s+(\d+(?:\.\d+)?)\u00b0?\s*([EW])")]
+    private static partial Regex HemisphereRegex();
 
     [GeneratedRegex(@"^\d+")]
     private static partial Regex DigitsRegex();

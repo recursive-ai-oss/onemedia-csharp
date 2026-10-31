@@ -136,8 +136,10 @@ public static class TagMappingTable
         Row(CommonField.Lyrics, TagSystems.Matroska, MatroskaDoc, "", "LYRICS"),
         Row(CommonField.Rating, TagSystems.Matroska, MatroskaDoc, "", "RATING"),
         Row(CommonField.Keywords, TagSystems.Matroska, MatroskaDoc, "", "KEYWORDS"),
-        Row(CommonField.TrackNumber, TagSystems.Matroska, MatroskaDoc, "part number at the lowest level of 30 or above", "PART_NUMBER"),
-        Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "", "TOTAL_PARTS"),
+        Row(CommonField.TrackNumber, TagSystems.Matroska, MatroskaDoc, "part number at the lowest level of 30 or above; ffmpeg writes TRACK, optionally as number/total", "PART_NUMBER", "TRACK"),
+        Row(CommonField.DiscNumber, TagSystems.Matroska, MatroskaDoc, "ffmpeg writes DISC, optionally as number/total", "DISC"),
+        Row(CommonField.DiscTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of DISC", "DISC"),
+        Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of TRACK when TOTAL_PARTS is absent", "TOTAL_PARTS", "TRACK"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

@@ -149,7 +149,8 @@ internal static class ItemListParser
                 DataTypes.DecodeNumber(type, bytes, tag);
             }
         }
-        else if (kind == TagValueKind.Binary && type is 21 or 22 or 23 or 24 or 65 or 66 or 67 or 74 or 75 or 76 or 77 or 78)
+        // trkn and disk hold a number/total pair, and some writers label it with an integer type; that is not a length error.
+        else if (kind == TagValueKind.Binary && type is 21 or 22 or 23 or 24 or 65 or 66 or 67 or 74 or 75 or 76 or 77 or 78 && key is not ("trkn" or "disk"))
         {
             io.Defects.Add(DefectKind.InvalidSize, DefectSeverity.Warning, value.Offset, $"The numeric value of '{key}' has an impossible length.", "tags.int-length");
         }

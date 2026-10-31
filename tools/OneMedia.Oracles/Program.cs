@@ -47,6 +47,8 @@ internal static class Program
             case "structure": return Structure(o);
             case "io": return Io(o);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
+            case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
+            case "mapping-doc": return MetadataCompare.WriteMappingDoc(o.Out);
             case "rangeserver": return Serve(o);
             case "selftest": return SelfTest.Run(o.Files.Count > 0 ? o.Files : Select(o, "isobmff").Take(3).Concat(Select(o, "matroska").Take(3)).ToList());
             case "list":

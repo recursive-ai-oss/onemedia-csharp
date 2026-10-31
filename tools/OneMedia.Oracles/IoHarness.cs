@@ -322,7 +322,20 @@ internal static class IoHarness
         }
 
         await using IAsyncDemuxer demuxer = await format.OpenAsync(source, new MediaOpenOptions { LeaveOpen = true }).ConfigureAwait(false);
-        return "opened " + match.Format.Id + ", " + demuxer.Tracks.Count + " tracks" + MetadataNote(demuxer);
+        return "opened " + match.Format.Id + ", " + demuxer.Tracks.Count + " tracks" + await MetadataNoteAsync(demuxer).ConfigureAwait(false);
+    }
+
+    private static async Task<string> MetadataNoteAsync(IAsyncDemuxer demuxer)
+    {
+        if (ReadMetadata && demuxer is RecursiveAI.OneMedia.Matroska.MatroskaAsyncDemuxer mkv)
+        {
+            RecursiveAI.OneMedia.Metadata.MediaMetadata m = await mkv.ReadMetadataAsync().ConfigureAwait(false);
+            _ = m.Tags.Title;
+            _ = m.Facts.CaptureTime.Best;
+            return ", metadata: " + m.NativeTags.Count + " native tags";
+        }
+
+        return MetadataNote(demuxer);
     }
 
     private static (int Exit, string StdOut, string StdErr, bool TimedOut) RunTool(string exe, IEnumerable<string> args)

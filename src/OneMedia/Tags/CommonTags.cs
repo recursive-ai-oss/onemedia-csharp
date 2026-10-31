@@ -181,15 +181,28 @@ public sealed class TagPicture
 public sealed class CommonTags
 {
     private readonly IReadOnlyList<NativeTag> _native;
+    private readonly bool _singleTrack;
     private readonly Dictionary<CommonField, List<CommonValue>> _cache = [];
 
     /// <summary>Builds the view over native tags.</summary>
     /// <param name="nativeTags">The native tags of the movie (track-level tags are ignored).</param>
     /// <exception cref="ArgumentNullException"><paramref name="nativeTags"/> is null.</exception>
-    public CommonTags(IReadOnlyList<NativeTag> nativeTags)
+    public CommonTags(IReadOnlyList<NativeTag> nativeTags) : this(nativeTags, false)
+    {
+    }
+
+    /// <summary>Builds the view over native tags, optionally treating the tags of a file's only track as the file's own.</summary>
+    /// <param name="nativeTags">The native tags.</param>
+    /// <param name="singleTrack">
+    /// True when the file has exactly one track: Matroska tags that target that track (an audio file tagged per track, say) then feed the view,
+    /// as ExifTool and MediaInfo show them. With several tracks they stay on the native list.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="nativeTags"/> is null.</exception>
+    public CommonTags(IReadOnlyList<NativeTag> nativeTags, bool singleTrack)
     {
         ArgumentNullException.ThrowIfNull(nativeTags);
         _native = nativeTags;
+        _singleTrack = singleTrack;
     }
 
     /// <summary>
@@ -219,7 +232,7 @@ public sealed class CommonTags
                 foreach (NativeTag tag in _native)
                 {
                     bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
-                    if (tag.TrackId == 0 && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
+                    if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
                     {
                         found.Add(new CommonValue(field, text, tag));
                     }
@@ -228,7 +241,8 @@ public sealed class CommonTags
                 if (row.System == TagSystems.Matroska)
                 {
                     // Matroska levels: 30 (track) and above are preferred, lowest first, so a track title beats its album's; levels below 30 come last.
-                    found.Sort(static (a, b) => LevelRank(a.Source).CompareTo(LevelRank(b.Source)));
+                    // Within a level, a value with no language or "und" comes before the language-specific ones (stable order).
+                    SortStable(found);
                 }
 
                 list.AddRange(found);
@@ -322,7 +336,7 @@ public sealed class CommonTags
             List<TagPicture> list = [];
             foreach (NativeTag tag in _native)
             {
-                if (tag.TrackId == 0 && tag.Kind == TagValueKind.Image)
+                if (IsFileLevel(tag, null) && tag.Kind == TagValueKind.Image)
                 {
                     // MP4 and QuickTime do not name the picture's role; Matroska names cover art by file name (cover.jpg, small_cover.png…).
                     bool cover = tag.System != TagSystems.Matroska || tag.Key.StartsWith("cover", StringComparison.OrdinalIgnoreCase) || tag.Key.StartsWith("small_cover", StringComparison.OrdinalIgnoreCase);
@@ -333,6 +347,33 @@ public sealed class CommonTags
             return list;
         }
     }
+
+    // Insertion sort: stable, and the lists are a handful of entries.
+    private static void SortStable(List<CommonValue> list)
+    {
+        for (int i = 1; i < list.Count; i++)
+        {
+            CommonValue item = list[i];
+            (int scope, long level, int language) = (ScopeRank(item.Source), LevelRank(item.Source), LanguageRank(item.Source));
+            int j = i - 1;
+            while (j >= 0 && (ScopeRank(list[j].Source), LevelRank(list[j].Source), LanguageRank(list[j].Source)).CompareTo((scope, level, language)) > 0)
+            {
+                list[j + 1] = list[j];
+                j--;
+            }
+
+            list[j + 1] = item;
+        }
+    }
+
+    // A track's tags count as the file's own only for a single-track Matroska file.
+    // The encoder tag of a track names that stream's encoder, not the file's, so it never stands in for the file's.
+    private bool IsFileLevel(NativeTag t, CommonField? field) => t.TrackId == 0 || (_singleTrack && t.TrackId > 0 && t.System == TagSystems.Matroska && field != CommonField.Encoder);
+
+    // Tags of the file itself come before tags of its only track.
+    private static int ScopeRank(NativeTag t) => t.TrackId == 0 ? 0 : 1;
+
+    private static int LanguageRank(NativeTag t) => string.IsNullOrEmpty(t.Language) || t.Language == "und" ? 0 : t.Language is "eng" or "en" ? 1 : 2;
 
     private static long LevelRank(NativeTag t) => t.TargetTypeValue is { } v ? (v < 30 ? 1000 + v : v) : 50;
 
@@ -396,6 +437,15 @@ public sealed class CommonTags
         if (tag.System == TagSystems.ThreeGpp)
         {
             return tag.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System == TagSystems.Matroska)
+        {
+            // Matroska writes the number as text, sometimes as "3/12" (ffmpeg's track tag); the total fields read the number after the slash or the whole text.
+            string t = tag.Text ?? "";
+            int slash = t.IndexOf('/', StringComparison.Ordinal);
+            string part = field is CommonField.TrackNumber or CommonField.DiscNumber ? (slash < 0 ? t : t[..slash]) : (slash >= 0 ? t[(slash + 1)..] : tag.Key.Contains("TOTAL", StringComparison.OrdinalIgnoreCase) ? t : "");
+            return int.TryParse(part.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int value) && value > 0 ? value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
         }
 
         if (tag.Kind != TagValueKind.Binary || tag.ValueRange.Length < 6)

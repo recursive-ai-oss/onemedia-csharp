@@ -59,7 +59,8 @@ public sealed record MovieHeader(uint Timescale, ulong Duration, ulong CreationS
 
     internal static DateTimeOffset? FromMacSeconds(ulong seconds)
     {
-        if (seconds == 0 || seconds > 300_000_000_000UL)
+        // DateTimeOffset ends in the year 9999, 255 billion seconds after 1904; larger values come from damaged headers.
+        if (seconds == 0 || seconds > 250_000_000_000UL)
         {
             return null;
         }
