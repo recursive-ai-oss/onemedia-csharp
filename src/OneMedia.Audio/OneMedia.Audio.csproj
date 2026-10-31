@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>$(PackagePrefix)OneMedia.Audio</AssemblyName>
+    <RootNamespace>RecursiveAI.OneMedia.Audio</RootNamespace>
+    <PackageId>$(PackagePrefix)OneMedia.Audio</PackageId>
+    <Description>Adapter between RecursiveAI.OneMedia and RecursiveAI.OneAudio: exposes audio tracks of any container OneMedia reads as OneAudio packet sources. Containers, metadata, subtitles; no decoding in the core package. Unaffiliated with other products or companies named OneMedia.</Description>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RecursiveAI.OneAudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>
