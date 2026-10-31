@@ -33,6 +33,19 @@ if (args[0] == "child")
     return 0;
 }
 
+if (args[0] == "pullalloc")
+{
+    // pullalloc RELATIVE-PATH...: bytes allocated per packet by the second half of a pull, on a warm demuxer.
+    foreach (string rel in args.Skip(1))
+    {
+        string path = Path.IsPathRooted(rel) ? rel : Path.Combine(home, "corpus", rel);
+        (long packets, long bytes) = Impls.PullAllocation(path);
+        Console.WriteLine($"{rel}: {packets} packets, {bytes} bytes allocated, {(packets == 0 ? 0 : (double)bytes / packets):0.000} B per packet");
+    }
+
+    return 0;
+}
+
 if (args[0] == "once")
 {
     // once ROW IMPL-INDEX RELATIVE-PATH [CORPUS [TIMES]]: run one cell, for tracing, profiling and I/O counts.

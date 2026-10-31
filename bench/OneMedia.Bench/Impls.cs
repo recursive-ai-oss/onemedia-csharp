@@ -120,6 +120,31 @@ internal static class Impls
         return new Work(packets, bytes, touch & 1);
     }
 
+    /// <summary>
+    /// Bytes the pull path allocates per packet once warm: reads the first half of the packets, then measures the second half on the
+    /// same demuxer. A file with the movie box at the end or an all-track pull both go through the same call.
+    /// </summary>
+    public static (long Packets, long Bytes) PullAllocation(string path)
+    {
+        long total = OursDemux(path).Packets;
+        using IDemuxer d = OpenOurs(path);
+        long half = total / 2;
+        long n = 0;
+        while (n < half && d.TryReadPacket(out _))
+        {
+            n++;
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        long measured = 0;
+        while (d.TryReadPacket(out _))
+        {
+            measured++;
+        }
+
+        return (measured, GC.GetAllocatedBytesForCurrentThread() - before);
+    }
+
     public static Work OursProbe(string path)
     {
         using IDemuxer d = OpenOurs(path);
