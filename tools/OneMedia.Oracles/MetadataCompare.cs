@@ -66,6 +66,18 @@ internal static partial class MetadataCompare
         Dictionary<string, List<string>> mi = MediaInfoValues(file);
 
         // native: every text tag's value among the oracle's values of the corresponding groups
+        foreach (string k in mi.Keys.ToList())
+        {
+            // MediaInfo joins the distinct values of a repeated field with " / ".
+            foreach (string v in mi[k].ToList())
+            {
+                if (v.Contains(" / ", StringComparison.Ordinal))
+                {
+                    mi[k].AddRange(v.Split(" / "));
+                }
+            }
+        }
+
         HashSet<string> miAll = new(mi.Values.SelectMany(v => v).Select(Norm));
         foreach (NativeTag t in m.NativeTags)
         {
@@ -80,9 +92,20 @@ internal static partial class MetadataCompare
                 TagSystems.QuickTimeKeys => ["Keys", "ItemList"],
                 TagSystems.QuickTimeUserData or TagSystems.ThreeGpp => ["UserData"],
                 TagSystems.Xmp => ["XMP-x", "XMP-xmp", "XMP-dc", "XMP-exif", "XMP-tiff", "XMP-photoshop"],
-                _ => ["Matroska"],
+                TagSystems.MatroskaInfo => ["Info", "Matroska"],
+                _ => t.TrackId > 0 ? ["Track"] : ["Matroska"],
             };
             List<string> etVals = [.. et.Where(kv => groups.Any(g => kv.Key.StartsWith(g, StringComparison.Ordinal))).SelectMany(kv => kv.Value)];
+            if (t.Key is "com.apple.quicktime.location.ISO6709" or "©xyz")
+            {
+                // The position is compared as numbers: the oracles print it in their own formats.
+                bool parsed = GeoLocation.TryParseIso6709(text, out GeoLocation g);
+                bool e = parsed && Coordinates(etn, ["GPSCoordinates", "GPSPosition", "LocationISO6709"], ["GPSLatitude", "GPSLongitude"]).Exists(p => Math.Abs(p.Item1 - g.Latitude) < 1e-3 && Math.Abs(p.Item2 - g.Longitude) < 1e-3);
+                bool x = parsed && Coordinates(mi, ["Recorded_Location", "Location"], []).Exists(p => Math.Abs(p.Item1 - g.Latitude) < 1e-3 && Math.Abs(p.Item2 - g.Longitude) < 1e-3);
+                rows.Add(new Row(name, "native", $"{t.System}:{t.Key}", text, e ? "same" : "absent", x ? "same" : "absent", e ? (x ? "match" : "match-et") : x ? "match-mi" : parsed ? "differs" : "unparsed"));
+                continue;
+            }
+
             bool inEt = etVals.Exists(v => Same(v, text));
             bool inMi = miAll.Contains(Norm(text)) || mi.Values.SelectMany(v => v).Any(v => Same(v, text));
             rows.Add(new Row(name, "native", $"{t.System}:{t.Key}", text, inEt ? "same" : etVals.Count == 0 ? "-" : "absent", inMi ? "same" : "absent",

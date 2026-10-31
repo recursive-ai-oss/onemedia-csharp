@@ -328,16 +328,16 @@ public static class MatroskaTagReader
                     type = System.Text.Encoding.UTF8.GetString(p).TrimEnd('\0');
                     break;
                 case TagTrackUidId when Ebml.TryReadUnsigned(p, out ulong u):
-                    tracks.Add((long)Math.Min(u, long.MaxValue));
+                    tracks.Add(unchecked((long)u));
                     break;
                 case TagEditionUidId when Ebml.TryReadUnsigned(p, out ulong u):
-                    editions.Add((long)Math.Min(u, long.MaxValue));
+                    editions.Add(unchecked((long)u));
                     break;
                 case TagChapterUidId when Ebml.TryReadUnsigned(p, out ulong u):
-                    chapters.Add((long)Math.Min(u, long.MaxValue));
+                    chapters.Add(unchecked((long)u));
                     break;
                 case TagAttachmentUidId when Ebml.TryReadUnsigned(p, out ulong u):
-                    attachments.Add((long)Math.Min(u, long.MaxValue));
+                    attachments.Add(unchecked((long)u));
                     break;
             }
         }
