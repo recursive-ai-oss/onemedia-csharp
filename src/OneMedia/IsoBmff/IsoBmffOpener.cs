@@ -77,6 +77,9 @@ internal sealed class OpenedMovie
     /// <summary>Total duration from segment index boxes ahead of the first fragment, or unknown.</summary>
     public MediaTime SidxDuration { get; init; } = MediaTime.Unknown;
 
+    /// <summary>Segment index boxes found between the movie box and the first fragment.</summary>
+    public IReadOnlyList<SegmentIndexBox> SegmentIndexes { get; init; } = [];
+
     public required long Length { get; init; }
 
     public bool MediaDataPrecededMovie { get; init; }
@@ -117,13 +120,8 @@ internal static class IsoBmffOpener
         }
 
         IsoMovie movie = MovieReader.Read(moov, source, limits, defects, ftyp?.IsQuickTime ?? false);
-        MediaTime sidx = MediaTime.Unknown;
-        if (movie.IsFragmented && movie.Header.Duration == 0 && movie.FragmentDuration <= 0)
-        {
-            sidx = ScanSegmentIndex(source, moov.Header.End, length, limits, defects, cancellationToken);
-        }
-
-        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = rawSource, MoovEnd = moov.Header.End, SidxDuration = sidx, Length = length };
+        List<SegmentIndexBox> sidx = movie.IsFragmented ? ScanSegmentIndex(source, moov.Header.End, length, limits, defects, cancellationToken) : [];
+        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = rawSource, MoovEnd = moov.Header.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length };
     }
 
     public static async ValueTask<OpenedMovie> OpenAsync(IAsyncMediaSource source, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
@@ -176,13 +174,8 @@ internal static class IsoBmffOpener
         RangeMemorySource memory = new(bytes, read, moovHeader.Offset, length);
         BoxTree tree = new(memory, limits, defects);
         IsoMovie movie = MovieReader.Read(tree.CreateNode(moovHeader), memory, limits, defects, ftyp?.IsQuickTime ?? false);
-        MediaTime sidx = MediaTime.Unknown;
-        if (movie.IsFragmented && movie.Header.Duration == 0 && movie.FragmentDuration <= 0)
-        {
-            sidx = await ScanSegmentIndexAsync(source, moovHeader.End, length, limits, defects, cancellationToken).ConfigureAwait(false);
-        }
-
-        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = memory, MoovEnd = moovHeader.End, SidxDuration = sidx, Length = length };
+        List<SegmentIndexBox> sidx = movie.IsFragmented ? await ScanSegmentIndexAsync(source, moovHeader.End, length, limits, defects, cancellationToken).ConfigureAwait(false) : [];
+        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = memory, MoovEnd = moovHeader.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length };
     }
 
     /// <summary>Reads a forward-only source up to and including the movie box.</summary>
@@ -238,9 +231,21 @@ internal static class IsoBmffOpener
         throw new MediaFormatException(new MediaDefect(DefectKind.MissingRequired, DefectSeverity.Error, source.Position, "The data has no movie box.", "isobmff.no-moov"));
     }
 
-    private static MediaTime ScanSegmentIndex(ReadAheadSource source, long position, long length, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
+    private static MediaTime TotalDuration(List<SegmentIndexBox> indexes)
     {
         MediaTime best = MediaTime.Unknown;
+        foreach (SegmentIndexBox b in indexes)
+        {
+            MediaTime d = b.TotalDuration;
+            best = !best.IsKnown ? d : !d.IsKnown ? best : MediaTime.Max(best, d);
+        }
+
+        return best;
+    }
+
+    private static List<SegmentIndexBox> ScanSegmentIndex(ReadAheadSource source, long position, long length, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
+    {
+        List<SegmentIndexBox> found = [];
         for (int i = 0; i < 64 && position < length && BoxReader.TryRead(source, position, length, true, defects, out BoxHeader h, cancellationToken); i++)
         {
             if (h.Type is BoxTypes.Moof or BoxTypes.Mdat)
@@ -252,18 +257,21 @@ internal static class IsoBmffOpener
             {
                 byte[] p = new byte[h.PayloadSize];
                 int n = source.Read(h.PayloadOffset, p, cancellationToken);
-                best = Longer(best, SegmentIndex.TotalDuration(p.AsSpan(0, n)));
+                if (SegmentIndexBox.TryParse(p.AsSpan(0, n), h.Offset, h.End, out SegmentIndexBox? box))
+                {
+                    found.Add(box!);
+                }
             }
 
             position = h.End;
         }
 
-        return best;
+        return found;
     }
 
-    private static async ValueTask<MediaTime> ScanSegmentIndexAsync(IAsyncMediaSource source, long position, long length, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
+    private static async ValueTask<List<SegmentIndexBox>> ScanSegmentIndexAsync(IAsyncMediaSource source, long position, long length, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
     {
-        MediaTime best = MediaTime.Unknown;
+        List<SegmentIndexBox> found = [];
         byte[] head = new byte[BoxReader.MaxHeaderBytes];
         for (int i = 0; i < 64 && position < length; i++)
         {
@@ -277,46 +285,16 @@ internal static class IsoBmffOpener
             {
                 byte[] p = new byte[h.PayloadSize];
                 int got = await source.ReadAsync(h.PayloadOffset, p, cancellationToken).ConfigureAwait(false);
-                best = Longer(best, SegmentIndex.TotalDuration(p.AsSpan(0, got)));
+                if (SegmentIndexBox.TryParse(p.AsSpan(0, got), h.Offset, h.End, out SegmentIndexBox? box))
+                {
+                    found.Add(box!);
+                }
             }
 
             position = h.End;
         }
 
-        return best;
-    }
-
-    private static MediaTime Longer(MediaTime a, MediaTime b) => !a.IsKnown ? b : !b.IsKnown ? a : MediaTime.Max(a, b);
-}
-
-/// <summary>The segment index box (ISO/IEC 14496-12 §8.16.3), read only for the total duration it declares.</summary>
-internal static class SegmentIndex
-{
-    public static MediaTime TotalDuration(ReadOnlySpan<byte> payload)
-    {
-        if (payload.Length < 12)
-        {
-            return MediaTime.Unknown;
-        }
-
-        bool v1 = payload[0] == 1;
-        uint timescale = Be.U32(payload, 8);
-        int pos = 12 + (v1 ? 16 : 8);
-        pos += 2; // reserved
-        uint count = Be.U16(payload, pos);
-        pos += 2;
-        if (timescale == 0)
-        {
-            return MediaTime.Unknown;
-        }
-
-        long total = 0;
-        for (uint i = 0; i < count && pos + 12 <= payload.Length; i++, pos += 12)
-        {
-            total += Be.U32(payload, pos + 4);
-        }
-
-        return new MediaTime(total, timescale);
+        return found;
     }
 }
 

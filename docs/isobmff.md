@@ -90,18 +90,29 @@ Within a track packets are in decode order. A disabled track costs nothing: its 
 order. A fragment is held in memory only while it is read. Defaults inherit per §8.8.7 and §8.8.8: `tfhd`, then `trex`; `first_sample_flags`
 override the first sample; the base data offset is the explicit `base_data_offset`, else the start of the `moof` (`default-base-is-moof` and the
 common case), else the end of the previous track fragment's data; a `trun` without `data_offset` continues after the previous run. A missing
-`tfdt` continues the track's previous decode time. Non-sync samples have bit 16 of the sample flags set.
+`tfdt` continues the track's previous decode time; for the first fragment that is the end of the samples the movie box itself describes (a hybrid
+file, zero for `empty_moov`). Non-sync samples have bit 16 of the sample flags set.
 
-Seeking in a fragmented file reads one movie fragment box per fragment from the start until the target is passed (no media data), then
-reloads the landing fragment. It uses no index (`mfra`, `sidx`); that is a known cost, not a correctness issue.
+Seeking in a fragmented file whose movie box holds no samples picks the first enabled video track (else the first enabled track) and scans movie
+fragment headers (never media data) until the target is passed, then reloads the landing fragment. The scan starts from an index when there is
+one, so the cost is a few header reads instead of one per fragment:
+
+1. the movie fragment random access box (`mfra`, §8.8.9), found through the `mfro` box that closes the file: two reads at the first seek (16 bytes,
+   then the box), used when its `tfra` for the track has an entry at or before the target;
+2. else the segment index boxes (`sidx`, §8.16.3) between `moov` and the first fragment, read at open, when they are not hierarchical.
+
+The index only names where to start: the scan begins one entry before the best one, and an index is ignored (scan from the first fragment) if its offset
+is not a `moof` or that fragment does not state a `tfdt` for every track fragment, because the running decode times are unknown without the earlier
+fragments. A file with neither index, or only per-segment `sidx` boxes (CMAF/DASH live segments), pays the full header scan.
 
 ### What a probe reads
 
 - Seekable file: the read-ahead window (32 KiB) at the start of each top-level box on the path to `moov` (`ftyp`, then `mdat` is skipped by size,
   then `moov`), and the boxes inside `moov` except the table entries. With `moov` at the end this is one seek, not a scan of `mdat`.
 - Table windows: one 4 KiB window per table when a packet cursor is created (at open).
-- Fragmented file: `moov`, then the box headers up to the first `moof` or `mdat`, to find `sidx`. The total duration is `mvhd`, else `mehd`, else the
-  sum of `sidx` durations; when none states it, `Duration` is unknown. Knowing it exactly would take one read per fragment (what `ffprobe` does).
+- Fragmented file: `moov`, then the box headers up to the first `moof` or `mdat`, to find `sidx` (served by the same read-ahead window as `moov`).
+  The total duration is `mvhd`, else `mehd`, else the sum of `sidx` durations; when none states it, `Duration` is unknown. Knowing it exactly would
+  take one read per fragment (what `ffprobe` does), so the probe does not. The `mfra` box at the end is read only on the first seek.
 - Ranged sources (`IsoBmffAsyncDemuxer`): `moov` is fetched in one request and parsed from memory; each packet is one request, each fragment one
   request for its header box.
 
@@ -128,6 +139,12 @@ QuickTime PCM codes → `pcm`, `tx3g`, `wvtt`, `stpp → ttml`. Anything else ma
 
 Language: the media header's 15-bit packed ISO-639-2/T code, or, for values below 0x400, the QuickTime Macintosh language code mapped to
 ISO-639-2/T (0 = `eng`).
+
+AMR-WB (`sawb`) carries the same `damr` setup box as AMR-NB (3GPP TS 26.244). Files whose `sawb` entry has no such box (observed in files written by
+ffmpeg, which MP4Box calls invalid) get an empty configuration.
+
+Disposition: `Default` is set on the first enabled track of each kind, within its alternate group when it has one; `Disabled` marks tracks whose
+`tkhd` enabled flag is clear.
 
 A track may have several sample descriptions; `IsoBmffDemuxer.SampleDescriptionIndex` is the 1-based index for the packet last returned.
 

@@ -101,32 +101,12 @@ internal static class FragmentSizing
 /// </summary>
 internal static class FragmentSeeker
 {
-    public static async ValueTask<MediaTime> SeekAsync(IsoBmffEngine engine, IFragmentLoader loader, long firstFragmentPosition, MediaTime target, SeekMode mode,
+    public static async ValueTask<MediaTime> SeekAsync(IsoBmffEngine engine, IFragmentLoader loader, long firstFragmentPosition, FragmentIndex? index, MediaTime target, SeekMode mode,
         Action<long> setNextPosition, CancellationToken cancellationToken)
     {
         TrackState[] states = engine.States;
-        TrackState? primary = null;
-        foreach (TrackState s in states)
-        {
-            if (!s.Enabled)
-            {
-                continue;
-            }
-
-            if (s.Info.Kind == TrackKind.Video)
-            {
-                primary = s;
-                break;
-            }
-
-            primary ??= s;
-        }
-
-        foreach (TrackState s in states)
-        {
-            s.NextFragmentDts = 0;
-        }
-
+        TrackState? primary = engine.PrimaryTrack();
+        engine.ResetFragmentTimes();
         if (primary is null)
         {
             return MediaTime.Unknown;
@@ -137,6 +117,24 @@ internal static class FragmentSeeker
         long bestMoof = -1, bestOffset = -1;
         MediaTime bestPts = MediaTime.Unknown;
         long position = firstFragmentPosition;
+        if (index is { IsEmpty: false })
+        {
+            // Start at the fragment the index names, when it is a real fragment that states its own decode times; otherwise scan from the first.
+            long hint = index.FindStart(primary.Track.Header.TrackId, target, primary.Info.Timescale);
+            if (hint > firstFragmentPosition)
+            {
+                FragmentLocation at = await loader.LoadNextAsync(hint, engine.Fragment, cancellationToken).ConfigureAwait(false);
+                if (!at.IsNone && at.Offset == hint)
+                {
+                    engine.BeginFragment(hint);
+                    if (engine.Fragment.AllHaveBaseDts)
+                    {
+                        position = hint;
+                    }
+                }
+            }
+        }
+
         bool done = false;
         while (!done)
         {

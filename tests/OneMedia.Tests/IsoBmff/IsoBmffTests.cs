@@ -153,6 +153,22 @@ public class IsoBmffDemuxTests
     }
 
     [Fact]
+    public void PacketsReportTheSampleDescriptionTheirChunkUses()
+    {
+        byte[] entries = Cat(DefaultVideoEntry("avc1", 64, 48), DefaultVideoEntry("hvc1", 128, 96));
+        TrackSpec t = new() { SampleCount = 10, SizeOf = _ => 17, SamplesPerChunk = 2, SampleEntries = entries, EntryCount = 2, DescriptionOfChunk = c => c < 2 ? 1 : 2 };
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(Build([t], true).ToArray([t])));
+        List<int> seen = [];
+        while (d.TryReadPacket(out _))
+        {
+            seen.Add(d.SampleDescriptionIndex);
+        }
+
+        Assert.Equal([1, 1, 1, 1, 2, 2, 2, 2, 2, 2], seen);
+        Assert.Equal("hvc1", d.Movie.Tracks[0].SampleEntries[seen[^1] - 1].Format);
+    }
+
+    [Fact]
     public void Co64OffsetsBeyondFourGigabytesAreFollowed()
     {
         TrackSpec t = new() { Handler = "soun", SampleCount = 4_300_000, SizeOf = _ => 1000, ConstantSizeBox = true, DurationOf = _ => 1024, SamplesPerChunk = 1000, Co64 = true, Timescale = 44100 };
@@ -383,9 +399,87 @@ public class IsoBmffDemuxTests
         {
             Assert.Equal("damr", d.Tracks[0].Configuration.Format);
         }
-        // TODO(handoff): the AMR-WB entry has no damr box; find which box carries its setup (inspect the file with MP4Box -diso).
+        else
+        {
+            // Observed: ffmpeg writes this entry without a setup box and MP4Box calls such a file invalid ("Config not present"); no tool writes another box for it.
+            Assert.True(d.Tracks[0].Configuration.IsEmpty);
+        }
+
         Assert.Equal(TrackKind.Audio, d.Tracks[0].Kind);
         Assert.Equal(150, IsoBmffTestHelpers.Demux(d).Count);
+    }
+
+    [Fact]
+    public void AmrWbSetupBoxIsTheSameDamrBoxAsAmrNb()
+    {
+        // 3GPP TS 26.244: the sample entries samr, sawb and sawp all carry an AMRSpecificBox of type damr.
+        byte[] damr = Box("damr", "ABCD"u8.ToArray(), [0x80, 0x00, 0x00, 0x01, 0x00]);
+        byte[] entry = Box("sawb", new byte[6], U16(1), new byte[8], U16(1), U16(16), U16(0), U16(0), U32(16000u << 16), damr);
+        TrackSpec t = new() { Handler = "soun", Timescale = 16000, SampleCount = 3, SizeOf = _ => 61, DurationOf = _ => 320, SampleEntries = entry };
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(Build([t], true, "3gp5").ToArray([t])));
+        Assert.Equal(CodecId.AmrWb, d.Tracks[0].Codec);
+        Assert.Equal("damr", d.Tracks[0].Configuration.Format);
+        Assert.Equal(9, d.Tracks[0].Configuration.Data.Length);
+    }
+
+    [Fact]
+    public void OnlyTheFirstEnabledTrackOfAKindIsDefault()
+    {
+        TrackSpec v = new() { Id = 1 };
+        TrackSpec a1 = new() { Id = 2, Handler = "soun" };
+        TrackSpec a2 = new() { Id = 3, Handler = "soun" };
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(Build([v, a1, a2], true).ToArray([v, a1, a2])));
+        Assert.Equal([true, true, false], d.Tracks.Select(t => (t.Disposition & TrackDisposition.Default) != 0).ToArray());
+    }
+
+    [Fact]
+    public void FragmentWithoutDecodeTimeContinuesAfterTheMovieSamples()
+    {
+        // A file whose movie box already holds 5 samples of 40 ticks and is followed by a fragment without tfdt: the fragment starts at tick 200.
+        TrackSpec v = new() { Id = 1, SampleCount = 5, SizeOf = _ => 10, DurationOf = _ => 40 };
+        byte[] mvex = Box("mvex", Full("trex", 0, 0, U32(1, 1, 0, 0, 0)));
+        byte[] head = Build([v], true, "isom", mvex).ToArray([v]);
+        byte[] Moof(int dataOffset) => Box("moof", Full("mfhd", 0, 0, U32(1)),
+            Box("traf", Full("tfhd", 0, 0x20000, U32(1)), Full("trun", 0, 0x301, U32(2), U32((uint)dataOffset), U32(40, 7, 40, 7))));
+        int moofSize = Moof(0).Length;
+        byte[] file = Cat(head, Moof(moofSize + 8), Box("mdat", new byte[14]));
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(file));
+        List<Got> got = IsoBmffTestHelpers.Demux(d);
+        Assert.Equal([0L, 40, 80, 120, 160, 200, 240], got.Select(g => g.Dts).ToArray());
+        Assert.Equal(7, got[^1].Size);
+        d.Seek(MediaTime.Zero);
+        Assert.Equal(7, IsoBmffTestHelpers.Demux(d).Count);
+        Assert.Equal(240, IsoBmffTestHelpers.Demux(file, out _, out _)[^1].Dts);
+    }
+
+    [Fact]
+    public void RandomAccessBoxOfAFragmentedFileIsReadAndPointsAtFragments()
+    {
+        byte[] file = File.ReadAllBytes(IsoBmffTestHelpers.Path("frag.mp4"));
+        Assert.True(MovieFragmentRandomAccessBox.TryReadTrailer(file.AsSpan(file.Length - 16), file.Length, out long offset, out long size));
+        Assert.True(MovieFragmentRandomAccessBox.TryParse(file.AsSpan((int)offset, (int)size), offset, new MediaLimits(), out MovieFragmentRandomAccessBox? mfra));
+        Assert.NotEmpty(mfra!.Tracks);
+        foreach (TrackFragmentRandomAccessBox t in mfra.Tracks)
+        {
+            Assert.NotEmpty(t.Entries);
+            Assert.All(t.Entries, e => Assert.Equal("moof", System.Text.Encoding.ASCII.GetString(file, (int)e.MoofOffset + 4, 4)));
+        }
+    }
+
+    [Fact]
+    public void SegmentIndexIsParsedAndUsedToFindSubsegments()
+    {
+        // version 0 sidx: track 1, timescale 1000, earliest time 0, first offset 0, three media references of 100 bytes and 2000 ticks
+        byte[] refs = Cat(U32(100, 2000, 0x90000000), U32(100, 2000, 0x90000000), U32(100, 2000, 0x90000000));
+        byte[] payload = Cat(U32(0, 1, 1000, 0, 0), U16(0), U16(3), refs);
+        Assert.True(SegmentIndexBox.TryParse(payload, 1000, 1044, out SegmentIndexBox? sidx));
+        Assert.Equal(3, sidx!.References.Count);
+        Assert.Equal(new MediaTime(6000, 1000), sidx.TotalDuration);
+        Assert.True(sidx.References[0].StartsWithSap);
+        Assert.Equal(1, sidx.References[0].SapType);
+        Assert.True(sidx.TryFindSubsegment(new MediaTime(3, 1), out long at, out int n));
+        Assert.Equal((1144L, 1), (at, n));
+        Assert.False(SegmentIndexBox.TryParse(new byte[5], 0, 0, out _));
     }
 
     [Fact]

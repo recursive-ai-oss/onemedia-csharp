@@ -15,6 +15,8 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer
     private byte[] _buffer = new byte[64 * 1024];
     private PacketInfo _current;
     private long _nextFragmentPosition;
+    private FragmentIndex? _fragmentIndex;
+    private readonly MediaLimits _limits;
     private bool _ended;
     private bool _disposed;
 
@@ -22,6 +24,7 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer
     {
         _source = source;
         _opened = opened;
+        _limits = options.Limits;
         _leaveOpen = options.LeaveOpen;
         Defects = defects;
         _engine = new IsoBmffEngine(opened.Movie, opened.FileType, opened.TableSource, opened.Length, options.Limits, defects, opened.SidxDuration);
@@ -140,6 +143,7 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer
         _ended = false;
         _engine.Fragment.Clear();
         MediaTime landing = _engine.SeekTables(target, mode);
+        _engine.ResetFragmentTimes();
         _nextFragmentPosition = _opened.MoovEnd;
         bool anyTable = false;
         foreach (TrackState s in _engine.States)
@@ -149,7 +153,12 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer
 
         if (_engine.IsFragmented && !anyTable)
         {
-            landing = await FragmentSeeker.SeekAsync(_engine, _loader, _opened.MoovEnd, target, mode, p => _nextFragmentPosition = p, cancellationToken).ConfigureAwait(false);
+            _fragmentIndex ??= new FragmentIndex
+            {
+                SegmentIndexes = _opened.SegmentIndexes,
+                RandomAccess = await FragmentIndex.ReadRandomAccessAsync(_source, _limits, cancellationToken).ConfigureAwait(false),
+            };
+            landing = await FragmentSeeker.SeekAsync(_engine, _loader, _opened.MoovEnd, _fragmentIndex, target, mode, p => _nextFragmentPosition = p, cancellationToken).ConfigureAwait(false);
         }
 
         return landing;

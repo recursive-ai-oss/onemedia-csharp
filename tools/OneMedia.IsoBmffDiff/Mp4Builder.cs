@@ -77,6 +77,9 @@ public static class Mp4Builder
         public int EntryCount { get; set; } = 1;
         public (uint SegmentDuration, int MediaTime)[] Edits { get; set; } = [];
         public byte[]? ExtraStblBoxes { get; set; }
+
+        /// <summary>1-based sample description index for each chunk (default: 1 for all).</summary>
+        public Func<int, int>? DescriptionOfChunk { get; set; }
     }
 
     public static byte[] DefaultVideoEntry(string format = "avc1", int width = 64, int height = 48) =>
@@ -117,7 +120,7 @@ public static class Mp4Builder
     /// Lays out <c>ftyp</c>, the media data and the movie box (before the data when <paramref name="moovFirst"/>, else after), interleaving the tracks chunk by chunk.
     /// The media data box uses a 64-bit size when the payload needs it.
     /// </summary>
-    public static Layout Build(IReadOnlyList<TrackSpec> tracks, bool moovFirst, string brand = "isom")
+    public static Layout Build(IReadOnlyList<TrackSpec> tracks, bool moovFirst, string brand = "isom", byte[]? extraMoovBoxes = null)
     {
         byte[] ftyp = Box("ftyp", Encoding.Latin1.GetBytes(brand), U32(512), Encoding.Latin1.GetBytes(brand), Encoding.Latin1.GetBytes("mp41"));
         // chunk order: round robin over the tracks
@@ -170,10 +173,10 @@ public static class Mp4Builder
 
         long mdatPayload = pos;
         int mdatHeader = mdatPayload + 8 > uint.MaxValue ? 16 : 8;
-        byte[] moovProbe = BuildMoov(tracks, chunkRel, 0);
+        byte[] moovProbe = BuildMoov(tracks, chunkRel, 0, extraMoovBoxes);
         long mdatStart = moovFirst ? ftyp.Length + moovProbe.Length : ftyp.Length;
         long payloadStart = mdatStart + mdatHeader;
-        byte[] moov = BuildMoov(tracks, chunkRel, payloadStart);
+        byte[] moov = BuildMoov(tracks, chunkRel, payloadStart, extraMoovBoxes);
         byte[] mdatHead = mdatHeader == 16
             ? Cat(U32(1), Encoding.Latin1.GetBytes("mdat"), U64((ulong)(mdatPayload + 16)))
             : Cat(U32((uint)(mdatPayload + 8)), Encoding.Latin1.GetBytes("mdat"));
@@ -191,12 +194,17 @@ public static class Mp4Builder
         return new Layout(head, payloadStart, mdatPayload, moovFirst ? [] : moov, abs);
     }
 
-    private static byte[] BuildMoov(IReadOnlyList<TrackSpec> tracks, long[][] chunkRel, long payloadStart)
+    private static byte[] BuildMoov(IReadOnlyList<TrackSpec> tracks, long[][] chunkRel, long payloadStart, byte[]? extra)
     {
         List<byte[]> parts = [Full("mvhd", 0, 0, U32(0, 0, 1000, 10000, 0x00010000), [0, 1, 0, 0], new byte[10], U32(0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000), new byte[24], U32((uint)tracks.Count + 1))];
         for (int t = 0; t < tracks.Count; t++)
         {
             parts.Add(BuildTrak(tracks[t], chunkRel[t], payloadStart));
+        }
+
+        if (extra is not null)
+        {
+            parts.Add(extra);
         }
 
         return Box("moov", [.. parts]);
@@ -311,18 +319,19 @@ public static class Mp4Builder
             stszBox = Full("stsz", 0, 0, U32(0, (uint)s.SampleCount), U32(sizes));
         }
 
-        int fullChunks = s.SampleCount / s.SamplesPerChunk;
-        int remainder = s.SampleCount % s.SamplesPerChunk;
-        List<byte> sc = [.. U32(1, (uint)s.SamplesPerChunk, 1)];
-        uint scEntries = 1;
-        if (remainder > 0 && fullChunks > 0)
+        List<byte> sc = [];
+        uint scEntries = 0;
+        int chunkTotal = (s.SampleCount + s.SamplesPerChunk - 1) / s.SamplesPerChunk;
+        (int Spc, int Desc) previous = (-1, -1);
+        for (int c = 0; c < chunkTotal; c++)
         {
-            sc.AddRange(U32((uint)fullChunks + 1, (uint)remainder, 1));
-            scEntries++;
-        }
-        else if (remainder > 0)
-        {
-            sc = [.. U32(1, (uint)remainder, 1)];
+            (int Spc, int Desc) now = (Math.Min(s.SamplesPerChunk, s.SampleCount - (c * s.SamplesPerChunk)), s.DescriptionOfChunk?.Invoke(c) ?? 1);
+            if (now != previous)
+            {
+                sc.AddRange(U32((uint)c + 1, (uint)now.Spc, (uint)now.Desc));
+                scEntries++;
+                previous = now;
+            }
         }
 
         byte[] stscBox = Full("stsc", 0, 0, U32(scEntries), [.. sc]);

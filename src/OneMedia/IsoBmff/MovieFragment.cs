@@ -59,6 +59,23 @@ internal sealed class MovieFragment
 
     public int TrafCount => _trafCount;
 
+    /// <summary>True when the fragment has track fragments and every one declares its decode time (<c>tfdt</c>), so reading can start here without the earlier fragments.</summary>
+    public bool AllHaveBaseDts
+    {
+        get
+        {
+            for (int i = 0; i < _trafCount; i++)
+            {
+                if (!_trafs[i].HasBaseDts)
+                {
+                    return false;
+                }
+            }
+
+            return _trafCount > 0;
+        }
+    }
+
     /// <summary>Forgets the loaded fragment, so no samples are produced until the next one is parsed.</summary>
     public void Clear() => _trafCount = 0;
 

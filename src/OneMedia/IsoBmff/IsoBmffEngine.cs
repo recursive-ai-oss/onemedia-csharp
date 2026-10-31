@@ -19,6 +19,9 @@ internal sealed class TrackState
     /// <summary>The media time of the first edit's start, in media units: packets that end at or before it are flagged as discardable.</summary>
     public long EditStartTicks { get; init; }
 
+    /// <summary>Decode time just past the samples the movie box itself describes: where fragments continue when they carry no <c>tfdt</c> (hybrid files).</summary>
+    public long FragmentStartDts { get; set; }
+
     public bool ReportedRange { get; set; }
 }
 
@@ -59,9 +62,62 @@ internal sealed class IsoBmffEngine
 
         Tracks = infos;
         Duration = ComputeDuration(movie, infos, sidxDuration);
+        FindFragmentStarts();
+        ResetFragmentTimes();
     }
 
     public IsoMovie Movie { get; }
+
+    /// <summary>
+    /// Sets every track's running fragment decode time to the end of the samples in the movie box (zero for a file with none).
+    /// A fragment without <c>tfdt</c> continues from there (§8.8.12: the decode time of a track fragment without one follows the previous sample).
+    /// </summary>
+    public void ResetFragmentTimes()
+    {
+        foreach (TrackState s in States)
+        {
+            s.NextFragmentDts = s.FragmentStartDts;
+        }
+    }
+
+    private void FindFragmentStarts()
+    {
+        if (!_fragmentedFileAllowed)
+        {
+            return;
+        }
+
+        foreach (TrackState s in States)
+        {
+            if (s.Cursor is { IsValid: true } c && c.SampleCount > 0 && c.SeekToSample(c.SampleCount - 1))
+            {
+                s.FragmentStartDts = c.Current.Dts + c.Current.Duration;
+                c.SeekToSample(0);
+            }
+        }
+    }
+
+    /// <summary>The track a seek is measured on: the first enabled video track, else the first enabled track.</summary>
+    public TrackState? PrimaryTrack()
+    {
+        TrackState? primary = null;
+        foreach (TrackState s in States)
+        {
+            if (!s.Enabled)
+            {
+                continue;
+            }
+
+            if (s.Info.Kind == TrackKind.Video)
+            {
+                return s;
+            }
+
+            primary ??= s;
+        }
+
+        return primary;
+    }
 
     public TrackState[] States { get; }
 
@@ -158,12 +214,13 @@ internal sealed class IsoBmffEngine
             video = new VideoTrackInfo(w, h, t.Header.RotationDegrees, pn, pd, fn, fd);
         }
 
+        // Default: the first enabled track of its kind (within its alternate group when it has one); disabled tracks are marked as such.
         TrackDisposition disposition = TrackDisposition.None;
         if (!t.Header.IsEnabled)
         {
             disposition |= TrackDisposition.Disabled;
         }
-        else
+        else if (IsFirstEnabledOfKind(t, movie, kind))
         {
             disposition |= TrackDisposition.Default;
         }
@@ -188,6 +245,34 @@ internal sealed class IsoBmffEngine
             IsProtected = entry?.IsProtected ?? false,
         };
     }
+
+    // §8.3.1: tracks of one alternate group are alternatives of each other (only one plays); QuickTime players pick the first enabled.
+    private static bool IsFirstEnabledOfKind(IsoTrack t, IsoMovie movie, TrackKind kind)
+    {
+        int group = t.Header.AlternateGroup;
+        foreach (IsoTrack other in movie.Tracks)
+        {
+            if (other.Index >= t.Index)
+            {
+                break;
+            }
+
+            if (other.Header.IsEnabled && KindOf(other.HandlerType) == kind && (group == 0 || other.Header.AlternateGroup == group))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static TrackKind KindOf(string handler) => handler switch
+    {
+        "vide" => TrackKind.Video,
+        "soun" => TrackKind.Audio,
+        "text" or "sbtl" or "subt" or "clcp" or "subp" => TrackKind.Subtitle,
+        _ => TrackKind.Unknown,
+    };
 
     private static (int Numerator, int Denominator) FrameRate(IsoTrack t, long timescale, MediaTime duration)
     {

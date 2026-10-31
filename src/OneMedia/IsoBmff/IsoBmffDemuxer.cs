@@ -32,6 +32,7 @@ public sealed class IsoBmffDemuxer : IDemuxer
     private bool _ended;
     private bool _disposed;
     private bool _reportedOrder;
+    private FragmentIndex? _fragmentIndex;
 
     private IsoBmffDemuxer(IMediaSource? source, IForwardMediaSource? forward, OpenedMovie opened, MediaOpenOptions options, DefectLog defects, CancellationToken cancellationToken)
     {
@@ -343,6 +344,7 @@ public sealed class IsoBmffDemuxer : IDemuxer
         _ended = false;
         _engine.Fragment.Clear();
         MediaTime landing = _engine.SeekTables(target, mode);
+        _engine.ResetFragmentTimes();
         _nextFragmentPosition = _opened.MoovEnd;
         bool anyTable = false;
         foreach (TrackState s in _engine.States)
@@ -352,11 +354,18 @@ public sealed class IsoBmffDemuxer : IDemuxer
 
         if (_engine.IsFragmented && !anyTable)
         {
-            landing = FragmentSeeker.SeekAsync(_engine, _loader!, _opened.MoovEnd, target, mode, p => _nextFragmentPosition = p, _cancellation).AsTask().GetAwaiter().GetResult();
+            landing = FragmentSeeker.SeekAsync(_engine, _loader!, _opened.MoovEnd, GetFragmentIndex(), target, mode, p => _nextFragmentPosition = p, _cancellation).AsTask().GetAwaiter().GetResult();
         }
 
         return landing;
     }
+
+    // The indexes a seek can use: segment indexes read at open and the random access box at the end of the file (two reads, once).
+    private FragmentIndex GetFragmentIndex() => _fragmentIndex ??= new FragmentIndex
+    {
+        SegmentIndexes = _opened.SegmentIndexes,
+        RandomAccess = FragmentIndex.ReadRandomAccess(_source!, _limits, _cancellation),
+    };
 
     /// <inheritdoc />
     public void Dispose()
