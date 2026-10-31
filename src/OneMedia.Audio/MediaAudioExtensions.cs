@@ -11,7 +11,7 @@ public static class MediaAudioExtensions
     /// </summary>
     /// <returns>A new registry.</returns>
     public static global::OneAudio.AudioCodecRegistry CreateRegistry() =>
-        new global::OneAudio.AudioCodecRegistry().AddOneMedia().AddAac().AddOpus().AddVorbis().AddFlac().AddAmrNb().AddAmrWb();
+        new global::OneAudio.AudioCodecRegistry().AddOneMedia().AddAac().AddOpus().AddVorbis().AddFlac().AddAmrNb().AddAmrWb().AddMp3();
 
     /// <summary>
     /// Decodes an audio track of the file. The decoder reads through the file's own demuxer, so the file must stay open while the decoder

@@ -59,6 +59,19 @@ public abstract class OneMediaContainerFormat : global::OneAudio.IContainerForma
         try
         {
             MediaTrack track = PickTrack(demuxer, registry);
+            if (track.Codec == CodecId.Mp3)
+            {
+                // OneAudio reads MP3 from a byte stream only, so the track's frames are handed over as one.
+                global::OneAudio.IContainerFormat mp3 = registry.Detect(Mp3Probe)!;
+                global::OneAudio.IAudioDecoder mp3Decoder = mp3.Open(new PacketConcatenationStream(demuxer, track.Index), registry, limits, false, cancellationToken);
+                if (!leaveOpen)
+                {
+                    stream.Dispose();
+                }
+
+                return mp3Decoder;
+            }
+
             MediaTrackPacketSource source = MediaTrackPacketSource.Create(demuxer, track, ownsDemuxer: true);
             global::OneAudio.IAudioDecoder decoder = registry.GetCodec(source.Codec).CreateDecoder(source, limits);
             if (!leaveOpen)
@@ -75,6 +88,19 @@ public abstract class OneMediaContainerFormat : global::OneAudio.IContainerForma
         }
     }
 
+    // OneAudio offers no way to ask whether MP3 is registered, so the registry is asked to recognise two valid back-to-back MPEG-1 Layer III
+    // frame headers (128 kbit/s, 44.1 kHz, 417-byte frames).
+    private static readonly byte[] Mp3Probe = BuildMp3Probe();
+
+    private static byte[] BuildMp3Probe()
+    {
+        byte[] head = new byte[512];
+        byte[] header = [0xFF, 0xFB, 0x90, 0x00];
+        header.CopyTo(head, 0);
+        header.CopyTo(head, 417);
+        return head;
+    }
+
     private static MediaTrack PickTrack(IDemuxer demuxer, global::OneAudio.AudioCodecRegistry registry)
     {
         MediaTrack? best = null;
@@ -86,6 +112,12 @@ public abstract class OneMediaContainerFormat : global::OneAudio.IContainerForma
                 if (t.Kind != TrackKind.Audio || ((t.Disposition & TrackDisposition.Default) != 0) != defaults)
                 {
                     continue;
+                }
+
+                if (t.Codec == CodecId.Mp3 && registry.Detect(Mp3Probe) is not null)
+                {
+                    best = t;
+                    break;
                 }
 
                 if (!MediaTrackPacketSource.IsSupported(t.Codec))

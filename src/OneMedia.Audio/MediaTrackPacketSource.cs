@@ -317,7 +317,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             {
                 // OneAudio's Opus decoder takes the end of the real audio as a position in 48 kHz frames counted from the start of the
                 // stream including the pre-skip (RFC 7845 §4.4). Matroska has already subtracted CodecDelay from the block time.
-                MediaTime start = info.Pts + _track.Edit.Priming;
+                MediaTime start = info.Pts.Add(_track.Edit.Priming, MediaRounding.NearestAwayFromZero);
                 long startFrames = start.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
                 long padFrames = info.DiscardPadding.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
                 return Math.Max(0, startFrames + samples - padFrames);
@@ -331,7 +331,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 
         if (_length >= 0 && _rate > 0 && _primingInTimestamps && Codec.Name is "aac" or "amr-nb" or "amr-wb")
         {
-            MediaTime endTime = info.Pts + info.Duration;
+            MediaTime endTime = info.Pts.Add(info.Duration, MediaRounding.NearestAwayFromZero);
             if (endTime.IsKnown)
             {
                 long frames = endTime.Rescale(_rate, MediaRounding.NearestAwayFromZero).Ticks - _priming;

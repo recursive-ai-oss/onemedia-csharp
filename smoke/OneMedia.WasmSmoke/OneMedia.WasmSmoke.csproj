@@ -19,6 +19,9 @@
     <Compile Include="../../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
     <WasmExtraFilesToDeploy Include="main.mjs" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+    <EmbeddedResource Include="../../testdata/audio/opus.webm" LogicalName="opus.webm" />
+    <EmbeddedResource Include="../../testdata/audio/aac.m4a" LogicalName="aac.m4a" />
   </ItemGroup>
 
 </Project>
