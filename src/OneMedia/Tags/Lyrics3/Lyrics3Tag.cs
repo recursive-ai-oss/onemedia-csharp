@@ -91,7 +91,15 @@ public sealed class Lyrics3Tag : ITagContainer
             long start = end - window + at;
             ByteRange range = new(start, end - start);
             Lyrics3Tag t = new(range, 1);
-            t._tags.Add(new NativeTag(io, TagSystems.Lyrics3, "LYRICS", 0, TagValueKind.Binary, 0, 0, null, range, new ByteRange(start + Begin, range.Length - Begin - 9)));
+            // Version 1 is one block of Latin-1 lyrics text between the markers.
+            ByteRange text = new(start + Begin, range.Length - Begin - 9);
+            NativeTag lyrics = new(io, TagSystems.Lyrics3, "LYRICS", 0, TagValueKind.Text, 1, 0, null, range, text) { Encoding = TagTextEncoding.Latin1 };
+            if (text.Length <= 64 * 1024)
+            {
+                lyrics.SetText(Encoding.Latin1.GetString(io.Read(text)).TrimEnd('\0'));
+            }
+
+            t._tags.Add(lyrics);
             tag = t;
             return true;
         }

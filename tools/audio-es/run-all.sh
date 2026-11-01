@@ -70,7 +70,7 @@ fi
 if want tags; then
   dotnet build bench/OneMedia.Bench/OneMedia.Bench.csproj -c Release -v q -clp:NoSummary 2>&1 | tail -3
   BN="$ART/bin/OneMedia.Bench/release/OneMedia.Bench.dll"
-  dotnet "$BN" tagcompare "$OUT/tagcompare.tsv" $(find "$G/tagged" "$G/tagged-info" "$G/tagged-exiftool" "$G/mp3" "$G/aac" -type f \( -name '*.mp3' -o -name '*.aac' \) | sort) | head -80
+  dotnet "$BN" tagcompare "$OUT/tagcompare.tsv" $(find "$G/tagged" "$G/tagged-info" "$G/tagged-ext" "$G/mp3" "$G/aac" -type f \( -name '*.mp3' -o -name '*.aac' \) | sort) | head -80
 fi
 
 if want io; then

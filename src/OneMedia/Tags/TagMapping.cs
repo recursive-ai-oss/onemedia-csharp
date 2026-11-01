@@ -169,15 +169,6 @@ public static class TagMappingTable
         Row(CommonField.ReplayGainAlbumGain, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_ALBUM_GAIN", "TXX:REPLAYGAIN_ALBUM_GAIN"),
         Row(CommonField.ReplayGainAlbumPeak, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_ALBUM_PEAK", "TXX:REPLAYGAIN_ALBUM_PEAK"),
 
-        // ID3v1 and v1.1: the fixed fields.
-        Row(CommonField.Title, TagSystems.Id3v1, Id3v1Doc, "", "title"),
-        Row(CommonField.Artist, TagSystems.Id3v1, Id3v1Doc, "", "artist"),
-        Row(CommonField.Album, TagSystems.Id3v1, Id3v1Doc, "", "album"),
-        Row(CommonField.Comment, TagSystems.Id3v1, Id3v1Doc, "", "comment"),
-        Row(CommonField.Date, TagSystems.Id3v1, Id3v1Doc, "the year", "year"),
-        Row(CommonField.Genre, TagSystems.Id3v1, Id3v1Doc, "the genre number, resolved through the ID3v1 list with the Winamp extensions", "genre"),
-        Row(CommonField.TrackNumber, TagSystems.Id3v1, Id3v1Doc, "ID3v1.1 only", "track"),
-
         // APEv2. Keys are compared without regard to case, as the specification recommends for readers.
         Row(CommonField.Title, TagSystems.Ape, PicardApe, "", "Title"),
         Row(CommonField.Artist, TagSystems.Ape, PicardApe, "", "Artist"),
@@ -200,11 +191,20 @@ public static class TagMappingTable
         Row(CommonField.ReplayGainAlbumGain, TagSystems.Ape, PicardApe, "", "REPLAYGAIN_ALBUM_GAIN"),
         Row(CommonField.ReplayGainAlbumPeak, TagSystems.Ape, PicardApe, "", "REPLAYGAIN_ALBUM_PEAK"),
 
+        // ID3v1 and v1.1: the fixed fields. After APEv2, so that its longer, untruncated values win when both tags are present.
+        Row(CommonField.Title, TagSystems.Id3v1, Id3v1Doc, "", "title"),
+        Row(CommonField.Artist, TagSystems.Id3v1, Id3v1Doc, "", "artist"),
+        Row(CommonField.Album, TagSystems.Id3v1, Id3v1Doc, "", "album"),
+        Row(CommonField.Comment, TagSystems.Id3v1, Id3v1Doc, "", "comment"),
+        Row(CommonField.Date, TagSystems.Id3v1, Id3v1Doc, "the year", "year"),
+        Row(CommonField.Genre, TagSystems.Id3v1, Id3v1Doc, "the genre number, resolved through the ID3v1 list with the Winamp extensions", "genre"),
+        Row(CommonField.TrackNumber, TagSystems.Id3v1, Id3v1Doc, "ID3v1.1 only", "track"),
+
         // Lyrics3 v2.00 fields.
         Row(CommonField.Title, TagSystems.Lyrics3, Lyrics3Doc, "extended title", "ETT"),
         Row(CommonField.Artist, TagSystems.Lyrics3, Lyrics3Doc, "extended artist", "EAR"),
         Row(CommonField.Album, TagSystems.Lyrics3, Lyrics3Doc, "extended album", "EAL"),
-        Row(CommonField.Lyrics, TagSystems.Lyrics3, Lyrics3Doc, "", "LYR"),
+        Row(CommonField.Lyrics, TagSystems.Lyrics3, Lyrics3Doc, "version 2.00 field LYR; the whole block in version 1", "LYR", "LYRICS"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

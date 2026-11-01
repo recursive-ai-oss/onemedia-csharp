@@ -21,6 +21,13 @@ internal static class InfoCheck
             {
                 using MediaFile media = Media.Open(file);
                 using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
+                if (!doc.RootElement.TryGetProperty("streams", out _))
+                {
+                    // ffprobe cannot open the file (free-format MPEG audio); the packets are checked against the constant-bit-rate twin by the unit tests.
+                    Console.WriteLine("  skipped (ffprobe lists no streams): " + file);
+                    continue;
+                }
+
                 // ffprobe lists Matroska attachments (fonts, cover art) as streams; they are not tracks here.
                 List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment" && !IsAttachedPicture(e))];
                 if (streams.Count != media.Tracks.Count)
@@ -52,6 +59,20 @@ internal static class InfoCheck
                     if (estimated)
                     {
                         tick = Math.Max(tick, (long)(micro * 0.02));
+                    }
+
+                    // ffprobe counts every frame of a LAME/Info stream; ours drops the encoder delay and padding the tag states (gapless length).
+                    if (media.Tracks.Count > 0)
+                    {
+                        TrackEditInfo e = media.Tracks[0].Edit;
+                        tick += (e.Priming.IsKnown ? e.Priming.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks : 0) +
+                                (e.EndPadding.IsKnown ? e.EndPadding.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks : 0);
+                    }
+
+                    // ffprobe divides the file size by the bit rate of the first AMR frame header and counts the magic bytes; ours counts frames.
+                    if (media.Format == MediaFormatId.Amr)
+                    {
+                        tick = Math.Max(tick, (long)(micro * 0.06));
                     }
 
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)

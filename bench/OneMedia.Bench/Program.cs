@@ -41,7 +41,7 @@ if (args[0] == "tagcompare")
 
 if (args[0] == "pullalloc")
 {
-    // pullalloc RELATIVE-PATH...: bytes allocated per packet by the second half of a pull, on a warm demuxer.
+    // pullalloc RELATIVE-PATH...: bytes allocated per packet by a second full pass (after Seek to the start), or by the second half of a pull when the source cannot seek.
     foreach (string rel in args.Skip(1))
     {
         string path = Path.IsPathRooted(rel) ? rel : Path.Combine(home, "corpus", rel);

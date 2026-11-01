@@ -102,11 +102,13 @@ a place already read, or the whole distance the first time a position beyond wha
   Text values with several entries are zero-separated and are joined with `"; "`. Cover art (`Cover Art (Front)`, …) is a binary item: file name, zero byte, image; it becomes an image tag with MIME sniffed from the image.
   Keys are compared case-insensitively by the common view; the file keeps their case.
   *Sources and the one conflict.* Two public descriptions of the APEv2 layout were compared item by item (the mutagen-specs page and the Hydrogenaudio wiki pages, archived copies): layout, sizes, item
-  format, key alphabet and item-flag bits agree. They disagree on bit 30 (mutagen-specs: 1 = *no* footer; Hydrogenaudio: 1 = footer). Real files settle it: a tag written by ExifTool 13.60 has a footer with
-  flags `0x80000000` and a header with `0xA0000000`, so bit 30 is clear when there is a footer. We follow that; the bit is used only to decide whether a tag read from its header has a footer.
+  format, key alphabet and item-flag bits agree. They disagree on bit 30 (mutagen-specs: 1 = *no* footer; Hydrogenaudio: 1 = footer). Real files settle it. ExifTool 13.60 cannot write APE tags
+  ("isn't writable"), so the writers observed are mp3gain 1.6.2 (MP3, `mp3gain -s a`) and WavPack 5.9.0 (`wvtag`, a `.wv` file): both write a header with flags `0xA0000000` and a footer with
+  `0x80000000`. With a footer present, bit 30 is clear, which is the mutagen-specs reading ("1 = no footer"); the Hydrogenaudio reading would have set it. ExifTool reads the mp3gain file
+  (`Replaygain Track Gain`, `Mp 3gain Minmax`, …) and so do we (fixture `testdata/audio-es/ape-mp3gain.mp3`, a test). We follow mutagen-specs; the bit is used only to decide whether a tag read from its header has a footer.
   A key with characters outside 0x20–0x7E is kept and reported (`ape.key-chars`); a key shorter than two characters or unterminated stops the tag (`ape.key`).
-- **Lyrics3.** v2.00 (`LYRICSBEGIN` … 6-digit size … `LYRICS200`; the size counts `LYRICSBEGIN` and the fields) is split into its three-letter fields with five-digit sizes; v1 (`LYRICSBEGIN` … `LYRICSEND`, ≤ 5100 bytes) is one binary item.
-  Both are native tags in system `lyrics3` and are kept out of the audio. Lyrics3 is not part of the common view.
+- **Lyrics3.** v2.00 (`LYRICSBEGIN` … 6-digit size … `LYRICS200`; the size counts `LYRICSBEGIN` and the fields) is split into its three-letter fields with five-digit sizes; v1 (`LYRICSBEGIN` … `LYRICSEND`, ≤ 5100 bytes) is one Latin-1 text item `LYRICS`.
+  Both are native tags in system `lyrics3` and are kept out of the audio. The common view takes `ETT`/`EAR`/`EAL` as title/artist/album and `LYR` (or the v1 block) as lyrics, after ID3v2 and APE.
 
 ## Defect catalogue
 
@@ -154,13 +156,40 @@ stream that starts with the Xing/Info frame, so OneAudio's own gapless handling 
 ## Differential method
 
 `tools/audio-es/run-all.sh` runs on the worker: `generate.sh` writes the corpus (ffmpeg 7.0.2 static build for the MP3/MP2/AAC/AC-3/E-AC-3/AMR files; `make_tags.py` for ID3v2.2/2.3/2.4/APE/Lyrics3 layouts that no
-encoder writes; ExifTool 13.60 for independently written ID3v1/ID3v2/APE), then compares packets (`diff`), stream facts (`infocheck`), decoded length (`audiodecode`), tags (`tagcompare` in the bench project) and I/O (`io`).
+encoder writes; mp3gain and id3lib's id3v2 as independent writers of APEv2 and ID3v1/ID3v2 (ExifTool cannot write MP3 files)), then compares packets (`diff`), stream facts (`infocheck`), decoded length (`audiodecode`), tags (`tagcompare` in the bench project) and I/O (`io`).
 Documented differences from ffprobe, each with its rule in `tools/OneMedia.Oracles/exceptions.tsv`:
 
 | Difference | Reason |
 |---|---|
 | ID3/APE pictures are a video stream in ffprobe | pictures are tags here |
 | ffprobe's duration for a file without a frame count | both sides estimate; they must agree within 2% (bytes over bit rate, with the tags weighed differently) |
-| AC-3/E-AC-3 times differ by one tick | ffprobe's 1/90000 base rounds |
+| AC-3/E-AC-3 times differ by up to one tick per packet | ffprobe truncates every packet duration to its 1/90000 base and adds them up, so its times drift from the exact n × 1536 / rate (rule `drift=1`) |
+| duration of a file with a LAME/Info tag | ffprobe counts every frame; ours is the gapless length (frames minus the stated encoder delay and padding); the check allows exactly that difference |
+| duration of an AMR file | ffprobe divides the file size by the bit rate of the first frame header and counts the magic bytes; ours counts frames (6% allowed) |
+| an APEv1, footer-only APEv2 or Lyrics3 block at the end with no ID3v1 behind it | ffprobe lists it as one more packet; ours ends at the last frame and reports the tag |
 | packets after junk | ffprobe folds junk into the next packet |
 | free-format MP3 | ffprobe cannot open it |
+
+## Results (worker, Linux x64; oracles ffprobe/ffmpeg 7.0.2, ExifTool 13.60, MediaInfo 26.10)
+
+- **Packets vs ffprobe 7.0.2** (`diff`): 132 generated files (MP3/MP2 including MPEG-2.5, CBR/ABR/VBR, with and without Xing/Info/LAME and with ID3v1/v2.2/2.3/2.4, APEv1/v2 and Lyrics3 tags, 2 free-format;
+  ADTS LC and Main in 8–96 kHz and up to 6 channels; AC-3 and E-AC-3; AMR-NB and -WB at every mode). 130 equal (size, hash, pts, dts, duration, key flag); the 2 others are the free-format files, which ffprobe cannot open.
+  The free-format files give the same packets as their constant-bit-rate twins (116 packets / 48,483 bytes and 117 / 24,450). Every difference seen on the way is a rule in `exceptions.tsv` (table above).
+- **Stream facts vs ffprobe** (`infocheck`): 129 files, 0 differences (free-format files skipped).
+- **Decoded length** (`media.Decode()` through the adapter, against `ffmpeg -f s16le`): 107 files with a decoder in OneAudio (MP3 with and without LAME gapless data, ADTS LC, AMR-NB/-WB), all equal to the frame.
+  OneAudio's own reader on the whole file differs where the file has no Info frame (it drops 529 frames of decoder delay that ffmpeg keeps) and where a block that is not ID3v1 trails the audio (APEv1, footer-only APEv2,
+  Lyrics3: it decodes the tag bytes); through the adapter neither happens. AAC with more than two channels and AC-3/E-AC-3 are not decoded by OneAudio.
+- **Tags** (`tagcompare`, 69 files, 497 field readings, ExifTool 13.60, ATL.NET 7.19.0, TagLib# 2.3.0): ours agree with all three on 404 readings. The rest, each explained: ATL.NET puts the file name in Title when there is no tag
+  (41); TagLib# returns nothing for frames with a data-length indicator (ExifTool and ours read them); ATL.NET shows compressed frame bytes
+  and does not undo v2.3 unsynchronisation inside frames; ID3v2.4 `TDRC` is kept as the ISO 8601 string where ExifTool rewrites it as `2019:05:17 10:30:00` and ATL.NET/TagLib# keep the year; with an ID3v1 and an APE tag present
+  the APE value wins (TagLib#'s order; ID3v1 truncates at 30 characters).
+  Writers behind the fixtures: ffmpeg 7.0.2 (ID3v2.3/2.4, Info), our generator for layouts no encoder writes, mp3gain 1.6.2 (APEv2), id3lib's `id3v2` 0.1.12 (ID3v2.3, ID3v1). ExifTool cannot write MP3 files.
+- **I/O, probe plus metadata** (`io`; bytes / read calls; HTTP = ranged requests to the local range server, strace = `read`/`pread64`): the 2.2 GB MP3 with and without Xing frame: ours 282,624 B / 4 requests over HTTP and
+  151,783 B / 12 reads locally; ffprobe 360,576 B / 3 and 163,968 B / 5; MediaInfo 180,384–196,768 B / 3 and 147,616 B / 4; ExifTool 96,159 B / 16. Without a Xing frame the duration is the documented estimate and nothing is scanned.
+  Short files are read whole by every tool (the clips are 3–60 s); the tables are in `docs/io-results.txt` style in the worker's results directory.
+- **Allocation, pull path** (Release, a second full pass after `Seek` to the start, the 2.2 GB file included): 0 bytes over 5,263,848 packets; MP3, AAC, AC-3 and AMR 0 B per packet. The first pass allocates the seek index
+  (two lists, one entry per 256 packets, 512 KiB at 2.2 GB). Peak resident memory of the whole 2.2 GB pull: 35 MB.
+- **Fuzz** (SharpFuzz under libFuzzer, 601 s each, one process, 0 crashes): `id3` 4,013,702 runs (one crash found earlier, a zlib failure inside a compressed frame, fixed and kept as `testdata/fuzz/id3/`), `ape` 12,973,686,
+  `mpa-es` 4,049,038, `adts-ac3-amr-es` 5,742,026.
+- **Release suite** (worker, `dotnet test -c Release`): 403 tests pass, none skipped. **NativeAOT** publish of the smoke app (`linux-x64`, warnings as errors): 0 trim or AOT warnings, the app runs and its audio-stream checks
+  pass. **WebAssembly** smoke app under node: 0 failures.

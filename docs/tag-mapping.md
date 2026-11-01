@@ -124,13 +124,6 @@ generated from it, and a test fails when they differ.
 | ReplayGainTrackPeak | id3v2 | `TXXX:REPLAYGAIN_TRACK_PEAK`, `TXX:REPLAYGAIN_TRACK_PEAK` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | ReplayGainAlbumGain | id3v2 | `TXXX:REPLAYGAIN_ALBUM_GAIN`, `TXX:REPLAYGAIN_ALBUM_GAIN` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | ReplayGainAlbumPeak | id3v2 | `TXXX:REPLAYGAIN_ALBUM_PEAK`, `TXX:REPLAYGAIN_ALBUM_PEAK` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
-| Title | id3v1 | `title` | ID3v1 and v1.1 (id3.org) |  |
-| Artist | id3v1 | `artist` | ID3v1 and v1.1 (id3.org) |  |
-| Album | id3v1 | `album` | ID3v1 and v1.1 (id3.org) |  |
-| Comment | id3v1 | `comment` | ID3v1 and v1.1 (id3.org) |  |
-| Date | id3v1 | `year` | ID3v1 and v1.1 (id3.org) | the year |
-| Genre | id3v1 | `genre` | ID3v1 and v1.1 (id3.org) | the genre number, resolved through the ID3v1 list with the Winamp extensions |
-| TrackNumber | id3v1 | `track` | ID3v1 and v1.1 (id3.org) | ID3v1.1 only |
 | Title | ape | `Title` | Picard tag map, APEv2 column (CC0) |  |
 | Artist | ape | `Artist` | Picard tag map, APEv2 column (CC0) |  |
 | AlbumArtist | ape | `Album Artist`, `AlbumArtist` | Picard tag map, APEv2 column (CC0) |  |
@@ -151,7 +144,14 @@ generated from it, and a test fails when they differ.
 | ReplayGainTrackPeak | ape | `REPLAYGAIN_TRACK_PEAK` | Picard tag map, APEv2 column (CC0) |  |
 | ReplayGainAlbumGain | ape | `REPLAYGAIN_ALBUM_GAIN` | Picard tag map, APEv2 column (CC0) |  |
 | ReplayGainAlbumPeak | ape | `REPLAYGAIN_ALBUM_PEAK` | Picard tag map, APEv2 column (CC0) |  |
+| Title | id3v1 | `title` | ID3v1 and v1.1 (id3.org) |  |
+| Artist | id3v1 | `artist` | ID3v1 and v1.1 (id3.org) |  |
+| Album | id3v1 | `album` | ID3v1 and v1.1 (id3.org) |  |
+| Comment | id3v1 | `comment` | ID3v1 and v1.1 (id3.org) |  |
+| Date | id3v1 | `year` | ID3v1 and v1.1 (id3.org) | the year |
+| Genre | id3v1 | `genre` | ID3v1 and v1.1 (id3.org) | the genre number, resolved through the ID3v1 list with the Winamp extensions |
+| TrackNumber | id3v1 | `track` | ID3v1 and v1.1 (id3.org) | ID3v1.1 only |
 | Title | lyrics3 | `ETT` | Lyrics3 v2.00 (id3.org) | extended title |
 | Artist | lyrics3 | `EAR` | Lyrics3 v2.00 (id3.org) | extended artist |
 | Album | lyrics3 | `EAL` | Lyrics3 v2.00 (id3.org) | extended album |
-| Lyrics | lyrics3 | `LYR` | Lyrics3 v2.00 (id3.org) |  |
+| Lyrics | lyrics3 | `LYR`, `LYRICS` | Lyrics3 v2.00 (id3.org) | version 2.00 field LYR; the whole block in version 1 |

@@ -63,6 +63,29 @@ public class AudioStreamFixtureTests
     }
 
     [Fact]
+    public void AnApeTagWrittenByAnotherToolIsReadWithItsHeaderAndFooter()
+    {
+        // mp3gain writes an APEv2 tag with both a header (flags 0xA0000000) and a footer (0x80000000): bit 30 stays clear when a footer exists.
+        using MediaFile media = Media.Open(Path("ext-ape-mp3gain.mp3"));
+        Assert.Equal(3, media.Metadata.NativeTags.Count(t => t.System == TagSystems.Ape));
+        Assert.DoesNotContain(media.Defects, d => d.Severity >= DefectSeverity.Warning);
+        Assert.Equal(CodecId.Mp3, media.Tracks[0].Codec);
+    }
+
+    [Fact]
+    public void TagsWrittenByAnotherToolAreRead()
+    {
+        // id3lib's id3v2 wrote an ID3v2.3 tag (Latin-1 text) and, in the second file, an ID3v1 tag behind the audio.
+        using MediaFile v2 = Media.Open(Path("ext-id3lib-v2.mp3"));
+        Assert.Equal("Eté title", v2.Tags.Title);
+        Assert.Equal("Artist One", v2.Tags.Artist);
+        using MediaFile both = Media.Open(Path("ext-id3lib-v1v2.mp3"));
+        Assert.Equal("Eté title", both.Tags.Title);
+        Assert.Contains(both.Metadata.NativeTags, t => t.System == TagSystems.Id3v1);
+        Assert.Equal(CountPackets(Path("ext-id3lib-v2.mp3")), CountPackets(Path("ext-id3lib-v1v2.mp3")));
+    }
+
+    [Fact]
     public void ReadingTagsNeverNeedsTheMediaBytes()
     {
         foreach (string file in Directory.GetFiles(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "audio-es", "tagged"), "*.mp3"))

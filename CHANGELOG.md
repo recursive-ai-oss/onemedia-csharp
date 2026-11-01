@@ -12,6 +12,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Added
 
+- Audio elementary streams: MPEG audio (MP1/MP2/MP3, MPEG-2.5; Xing, Info, LAME and VBRI tags, free-format frames, resynchronisation with typed defects), ADTS AAC, AC-3/E-AC-3 and AMR/AMR-WB files, with `OpenAsync` over ranged sources and the MP3 encoder delay and padding as priming and end trim. `media.Decode()` plays them through OneAudio with ffmpeg's length.
+- `Tags.Id3` (ID3v1/1.1, ID3v2.2–2.4 with unsynchronisation, extended header, footer, compressed frames; public `Id3Tag.Read` for other containers), `Tags.Ape` (APEv1/v2) and Lyrics3 as native tags with common-view rows, including ReplayGain and cover art.
 - `MediaFile.Tags`, `CaptureTime`, `Location`, `Device`, `Rotation`, `Native[...]` and `ReadMetadataAsync`, and tags and facts in `onemedia info` (text and `--json`).
 - `MediaFile.ContainerDuration`, `TracksDuration` and `ExactDuration`; `Duration` is the container's figure unless a track without an edit list is longer.
 - Matroska: zlib-compressed frames are inflated on read; `OutputSamplingFrequency` is the audio rate; `V_MS/VFW/FOURCC` tracks are named by their FourCC.

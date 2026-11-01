@@ -205,6 +205,24 @@ internal static class Impls
     {
         long total = OursDemux(path).Packets;
         using IDemuxer d = OpenOurs(path);
+        if (d.CanSeek)
+        {
+            // Steady state: a whole first pass lets index lists and buffers reach their size; the second pass from the start is measured.
+            while (d.TryReadPacket(out _))
+            {
+            }
+
+            d.Seek(MediaTime.Zero);
+            long all = 0;
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            while (d.TryReadPacket(out _))
+            {
+                all++;
+            }
+
+            return (all, GC.GetAllocatedBytesForCurrentThread() - start);
+        }
+
         long half = total / 2;
         long n = 0;
         while (n < half && d.TryReadPacket(out _))
