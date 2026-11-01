@@ -12,6 +12,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - Audio elementary streams: MPEG audio (MP1/MP2/MP3, MPEG-2.5; Xing, Info, LAME and VBRI tags, free-format frames, resynchronisation with typed defects), ADTS AAC, AC-3/E-AC-3 and AMR/AMR-WB files, with `OpenAsync` over ranged sources and the MP3 encoder delay and padding as priming and end trim. `media.Decode()` plays them through OneAudio with ffmpeg's length.
 - `Tags.Id3` (ID3v1/1.1, ID3v2.2–2.4 with unsynchronisation, extended header, footer, compressed frames; public `Id3Tag.Read` for other containers), `Tags.Ape` (APEv1/v2) and Lyrics3 as native tags with common-view rows, including ReplayGain and cover art.
 - ID3v2 tags embedded in other containers are read as `id3v2` native tags: an ASF `ID3` attribute (the attribute stays as a binary tag) and `ID32` boxes in an MP4 `meta` box.
+- Ogg (Vorbis, Opus, FLAC, Theora, Speex; all logical streams, chained files, forward-only and ranged sources), native FLAC, and FLV (`RecursiveAI.OneMedia.Ogg`, `.Flac`, `.Flv`, `Tags.VorbisComment`; `docs/ogg.md`, `docs/flac.md`, `docs/flv.md`, `docs/vorbis-comment.md`): packets, seeks, Vorbis comments and FLAC blocks as native tags in the common view, `onMetaData` as `flv` tags.
+- WAVE (WAV, BWF, RF64, Wave64), AIFF/AIFC and CAF reading (`RecursiveAI.OneMedia.Riff`, `.Aiff`, `.Caf`, `Tags.Riff`; `docs/pcm-files.md`): PCM and compressed-in-WAVE packetization, `LIST INFO`, `bext`, `iXML`, `axml`, `cart`, AIFF text chunks and CAF `info` as native tags, cue points as chapters.
+- ID3v2 tags in a WAVE or AIFF `id3 `/`ID3 ` chunk and in front of a FLAC or Ogg stream are read as `id3v2` native tags beside the raw block. In FLAC and Ogg the stream's Vorbis comments come before ID3 in the common view; in WAVE and AIFF ID3 comes before `LIST INFO`. A FLAC or Ogg file behind an ID3 tag longer than the sniffed head now opens as its own format on a seekable source.
 
 ### Fixed
 

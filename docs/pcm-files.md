@@ -12,7 +12,7 @@ online). ExifTool's RIFF and AIFF tag pages are read as tables of facts.
 | Chunk structure | `ChunkFile`, `ChunkNode`, `ChunkLayout` | Little-endian RIFF, RF64/BW64 (with `ds64`), Wave64 (GUID chunks, 8-byte alignment, sizes that include the 24-byte header) and big-endian IFF `FORM`. Lazy tree of ranges; unknown chunks are kept. CAF has its own tiny reader (`CafReader`, `CafChunk`). |
 | Format model | `WaveFormat` (+ `WaveCodecs`), `WaveChunkReader` (cue/adtl, smpl, inst), `AiffCommon`, `CafAudioDescription`, `CafPacketTableHeader` | `fmt ` incl. WAVE_FORMAT_EXTENSIBLE with channel mask and sub-format GUID; `COMM` with the 80-bit rate; `desc`, `pakt`, `kuki`, `chan`, `info`. |
 | Neutral demux | `WavDemuxer`, `AiffDemuxer`, `CafDemuxer` (sync, seekable and forward-only), `AudioFileAsyncDemuxer` (ranged) | One audio track, timescale = sample rate, every packet a keyframe. |
-| Tags | `RiffTagReader` → `ChunkTagSet` | `LIST INFO`, `bext` v0–2, `iXML`, `axml`, `cart`, ID3 chunks (raw until the ID3 layer is wired), AIFF `NAME AUTH (c)  ANNO COMT`, CAF `info`. |
+| Tags | `RiffTagReader` → `ChunkTagSet` | `LIST INFO`, `bext` v0–2, `iXML`, `axml`, `cart`, ID3 chunks (kept raw, and their frames read as `id3v2` tags), AIFF `NAME AUTH (c)  ANNO COMT`, CAF `info`. |
 
 ## Packets
 
@@ -57,7 +57,7 @@ playing costs one request per 64 KiB; memory is constant. Tags (`ReadMetadataAsy
 
 ## Tags
 
-Native systems: `riff-info`, `bext`, `ixml`, `axml`, `cart`, `aiff`, `caf-info`, `id3-chunk` (raw bytes with ranges). The common view maps through
+Native systems: `riff-info`, `bext`, `ixml`, `axml`, `cart`, `aiff`, `caf-info`, `id3-chunk` (raw bytes with ranges, beside the `id3v2` frames read from them; a chunk that holds no tag, or a tag longer than its chunk, is a defect and stays raw). The common view maps through
 `TagMappingTable` (generated page: `tag-mapping.md`). The BWF origination date and time is a capture-time candidate with the zone unknown (rank 35,
 below offset-bearing vendor times). iXML is read with `XmlReader` (no DTD, no entity expansion) and keeps its whole payload as the range.
 
@@ -97,7 +97,7 @@ packets), 0 bytes allocated per packet in steady state, peak working set 38–41
 
 **Tags** against ExifTool 13.60 and MediaInfo 26.10 on 219 files (`meta`): see `tags.md` for the method. Differences are explained: MediaInfo's CAF durations are
 wrong for PCM (ffprobe and we agree); ExifTool computes ADPCM durations from the average data rate; both show mojibake for UTF-8 in INFO strings where we decode UTF-8;
-the `id3 ` chunk of AIFF/WAVE is kept as raw bytes until the ID3 reader is connected (artist, album, genre from it are "ours-missing"). ATL.NET (7.19, `bench tagcompare`):
+the `id3 ` chunk of AIFF/WAVE was kept as raw bytes when this comparison was made; its frames are read now (artist, album, genre were "ours-missing" then). In the common view ID3 comes before `LIST INFO`. ATL.NET (7.19, `bench tagcompare`):
 99 of 120 field comparisons equal; the others are ATL's file-name title fallback, its `0001-01-01` placeholder date, ID3 chunks, joined AIFF comments, and CAF comments it does not read.
 
 ## Durations against ExifTool 13.60 and MediaInfo 26.10, field by field

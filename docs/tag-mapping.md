@@ -127,6 +127,27 @@ generated from it, and a test fails when they differ.
 | Title | mpegts | `event_name`, `service_name` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's name first, then the service name |
 | Description | mpegts | `event_text` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's short text |
 | Date | mdpm | `DateTimeOriginal` | ExifTool H264 tags (MDPM) | the camera clock in AVCHD; local time of unknown zone |
+| Title | vorbis | `TITLE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Artist | vorbis | `ARTIST`, `PERFORMER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | PERFORMER is the spec's name for the performing artist |
+| AlbumArtist | vorbis | `ALBUMARTIST`, `ALBUM ARTIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Album | vorbis | `ALBUM` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Composer | vorbis | `COMPOSER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Author | vorbis | `LYRICIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | lyricist |
+| Director | vorbis | `DIRECTOR` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Genre | vorbis | `GENRE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Comment | vorbis | `COMMENT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Description | vorbis | `DESCRIPTION` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's short description of the contents |
+| Date | vorbis | `DATE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | a year or an ISO 8601 date, as written |
+| Copyright | vorbis | `COPYRIGHT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Encoder | vorbis | `ENCODER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| EncodedBy | vorbis | `ENCODEDBY`, `ENCODED-BY` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Grouping | vorbis | `GROUPING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Lyrics | vorbis | `LYRICS`, `UNSYNCEDLYRICS` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Rating | vorbis | `RATING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| TrackNumber | vorbis | `TRACKNUMBER`, `TRACK` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's TRACKNUMBER may read number/total |
+| TrackTotal | vorbis | `TRACKTOTAL`, `TOTALTRACKS`, `TRACKNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER |
+| DiscNumber | vorbis | `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | may read number/total |
+| DiscTotal | vorbis | `DISCTOTAL`, `TOTALDISCS`, `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER |
 | Title | id3v2 | `TIT2`, `TT2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | Artist | id3v2 | `TPE1`, `TP1` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | AlbumArtist | id3v2 | `TPE2`, `TP2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
@@ -179,27 +200,6 @@ generated from it, and a test fails when they differ.
 | Artist | lyrics3 | `EAR` | Lyrics3 v2.00 (id3.org) | extended artist |
 | Album | lyrics3 | `EAL` | Lyrics3 v2.00 (id3.org) | extended album |
 | Lyrics | lyrics3 | `LYR`, `LYRICS` | Lyrics3 v2.00 (id3.org) | version 2.00 field LYR; the whole block in version 1 |
-| Title | vorbis | `TITLE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Artist | vorbis | `ARTIST`, `PERFORMER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | PERFORMER is the spec's name for the performing artist |
-| AlbumArtist | vorbis | `ALBUMARTIST`, `ALBUM ARTIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Album | vorbis | `ALBUM` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Composer | vorbis | `COMPOSER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Author | vorbis | `LYRICIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | lyricist |
-| Director | vorbis | `DIRECTOR` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Genre | vorbis | `GENRE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Comment | vorbis | `COMMENT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Description | vorbis | `DESCRIPTION` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's short description of the contents |
-| Date | vorbis | `DATE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | a year or an ISO 8601 date, as written |
-| Copyright | vorbis | `COPYRIGHT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Encoder | vorbis | `ENCODER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| EncodedBy | vorbis | `ENCODEDBY`, `ENCODED-BY` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Grouping | vorbis | `GROUPING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Lyrics | vorbis | `LYRICS`, `UNSYNCEDLYRICS` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| Rating | vorbis | `RATING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
-| TrackNumber | vorbis | `TRACKNUMBER`, `TRACK` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's TRACKNUMBER may read number/total |
-| TrackTotal | vorbis | `TRACKTOTAL`, `TOTALTRACKS`, `TRACKNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER |
-| DiscNumber | vorbis | `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | may read number/total |
-| DiscTotal | vorbis | `DISCTOTAL`, `TOTALDISCS`, `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER |
 | Title | flv | `title` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
 | Artist | flv | `artist` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
 | Author | flv | `author` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |

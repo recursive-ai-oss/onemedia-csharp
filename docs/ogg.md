@@ -46,7 +46,7 @@ that governs the target and drops packets until a keyframe.
 
 Every stream with a comment header gives one `VorbisCommentBlock` (see [vorbis-comment.md](vorbis-comment.md)). The first stream with comments is the
 file's tags (track id 0), the others carry their serial number. An ID3v2 tag in front of the first page is skipped and exposed as the raw binary tag
-`id3:ID3v2` (`RawId3Prefix`). Facts: the duration, the Theora picture size, `DATE` and `ENCODER` as evidence.
+`id3:ID3v2` (`RawId3Prefix`); its frames are read as `id3v2` native tags beside it. The stream's Vorbis comments come first in the common view, so the ID3 tag only fills fields the comments leave empty. Facts: the duration, the Theora picture size, `DATE` and `ENCODER` as evidence.
 
 ## I/O
 
