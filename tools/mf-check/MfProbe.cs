@@ -461,7 +461,7 @@ namespace MfCheck
         [DllImport("mf.dll")] public static extern int MFCreateSourceResolver(out IMFSourceResolver resolver);
         [DllImport("mfreadwrite.dll")] public static extern int MFCreateSourceReaderFromMediaSource(IMFMediaSource source, IMFAttributes attrs, out IMFSourceReader reader);
         [DllImport("mfreadwrite.dll", CharSet = CharSet.Unicode)] public static extern int MFCreateSourceReaderFromURL(string url, IMFAttributes attrs, out IMFSourceReader reader);
-        [DllImport("mfplat.dll")] public static extern int MFCreateASFContentInfo(out IMFASFContentInfo info);
+        [DllImport("mf.dll")] public static extern int MFCreateASFContentInfo(out IMFASFContentInfo info);
         [DllImport("ole32.dll")] public static extern int PropVariantClear(ref PV pv);
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SHCreateItemFromParsingName(string path, IntPtr bc, [In, MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IShellItemImageFactory item);
         [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
