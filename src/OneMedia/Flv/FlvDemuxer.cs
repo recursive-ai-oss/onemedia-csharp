@@ -1205,4 +1205,8 @@ public sealed class FlvFormat : IMediaFormat, IHeadSeededFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => FlvDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await BlockingAsyncDemuxer.OpenAsync(source, options, static (s, o, ct) => FlvDemuxer.Open(s, o, ct), cancellationToken).ConfigureAwait(false);
 }

@@ -108,6 +108,7 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
     private FlacStreamInfo _info;
     private long _audioStart;
     private ByteRange _id3 = ByteRange.None;
+    private ReadOnlyMemory<byte> _id3Bytes;
     private ByteRange _comment = ByteRange.None;
 
     // Frame reading state: _frame[0.._length) holds bytes from file offset _frameOffset.
@@ -324,7 +325,19 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
             }
 
             _id3 = new ByteRange(0, size);
-            SkipBytes(size - 10, ct);
+            if (size <= _limits.MaxTagBytes)
+            {
+                // The tag is kept so that it can be handed out as a binary tag without reading the source again.
+                byte[] tag = new byte[size];
+                hdr[..10].CopyTo(tag);
+                int got = Take(tag.AsSpan(10), ct);
+                _id3Bytes = tag.AsMemory(0, 10 + got);
+            }
+            else
+            {
+                SkipBytes(size - 10, ct);
+            }
+
             if (Take(hdr[..4], ct) < 4)
             {
                 throw new MediaFormatException("The data ends after the ID3v2 tag.") { Kind = DefectKind.Truncated, Offset = size };
@@ -479,10 +492,9 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
         }
 
         _audioStart = _input.Position;
-        if (!_id3.IsNone)
+        if (!_id3Bytes.IsEmpty)
         {
-            io ??= new TagIo(TagSourceFor(), _limits, Defects);
-            _containers.Add(new NativeTagHolder(_id3, new NativeTag(io, RawId3Prefix.SystemName, "ID3v2", 0, TagValueKind.Binary, 0, 0, null, _id3, _id3)));
+            _containers.Add(RawId3Prefix.Make(_id3Bytes, _limits, Defects));
         }
 
         if (comment is not null)
@@ -1031,4 +1043,8 @@ public sealed class FlacFormat : IMediaFormat, IHeadSeededFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => FlacDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await BlockingAsyncDemuxer.OpenAsync(source, options, static (s, o, ct) => FlacDemuxer.Open(s, o, ct), cancellationToken).ConfigureAwait(false);
 }

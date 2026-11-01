@@ -1,3 +1,5 @@
+using RecursiveAI.OneMedia.Metadata;
+
 namespace RecursiveAI.OneMedia.Input;
 
 /// <summary>The common shape of the sequential readers (Ogg, FLAC, FLV): asynchronous at the bottom, so one engine serves the synchronous and the asynchronous demuxer.</summary>

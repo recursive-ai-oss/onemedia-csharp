@@ -235,6 +235,30 @@ internal sealed class SequentialInput : IDisposable
         return skipped;
     }
 
+    /// <summary>Synchronous <see cref="ReadAsync"/> for readers that are written synchronously; waits when the source does.</summary>
+    public int Read(Span<byte> destination, CancellationToken ct = default)
+    {
+        if (destination.IsEmpty)
+        {
+            return 0;
+        }
+
+        byte[] scratch = ArrayPool<byte>.Shared.Rent(destination.Length);
+        try
+        {
+            int n = EngineHost.Wait(ReadAsync(scratch.AsMemory(0, destination.Length), ct));
+            scratch.AsSpan(0, n).CopyTo(destination);
+            return n;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(scratch);
+        }
+    }
+
+    /// <summary>Synchronous <see cref="SkipAsync"/>.</summary>
+    public long Skip(long count, CancellationToken ct = default) => EngineHost.Wait(SkipAsync(count, ct));
+
     public void Dispose()
     {
         if (_window is not null)

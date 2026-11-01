@@ -55,6 +55,7 @@ internal sealed class OggEngine : ISequentialEngine
     private OggPageHeader _current;
     private bool _disposed;
     private Queued _currentPacket;
+    private ReadOnlyMemory<byte> _id3Bytes;
 
     public OggEngine(SequentialInput input, MediaOpenOptions options, DefectLog defects)
     {
@@ -86,6 +87,14 @@ internal sealed class OggEngine : ISequentialEngine
         }
 
         Id3Prefix = new ByteRange(0, size);
+        if (size <= _limits.MaxTagBytes)
+        {
+            byte[] bytes = new byte[size];
+            int got = await _input.ReadAsync(bytes, ct).ConfigureAwait(false);
+            _id3Bytes = bytes.AsMemory(0, got);
+            return;
+        }
+
         await _input.SkipAsync(size, ct).ConfigureAwait(false);
     }
 
@@ -969,6 +978,7 @@ internal sealed class OggEngine : ISequentialEngine
     /// </summary>
     /// <param name="target">The time to seek to.</param>
     /// <param name="mode"><see cref="SeekMode.PreviousKeyframe"/> lands at or before the target, <see cref="SeekMode.NextKeyframe"/> at the first page boundary after it.</param>
+    /// <param name="ct">Observed while pages are read.</param>
     /// <returns>The time of the first packet that will be read, or <see cref="MediaTime.Zero"/> at the start.</returns>
     /// <exception cref="NotSupportedException">The source cannot seek.</exception>
     public async ValueTask<MediaTime> SeekAsync(MediaTime target, SeekMode mode, CancellationToken ct)
@@ -1150,13 +1160,17 @@ internal sealed class OggEngine : ISequentialEngine
     /// the tags are relative to the start of the comment packet (a packet can span pages); the container range is the pages that hold it.
     /// The first stream with comments describes the file (track id 0); the others carry their track id.
     /// </summary>
-    /// <param name="cancellationToken">Not used; the call does no I/O.</param>
     /// <returns>The tags, with duration and, where the comments say, capture time and software as facts.</returns>
     public MediaMetadata ReadMetadata()
     {
         List<ITagContainer> containers = [];
         bool fileLevelTaken = false;
         DefectLog defects = new(_limits);
+        if (!_id3Bytes.IsEmpty)
+        {
+            containers.Add(RawId3Prefix.Make(_id3Bytes, _limits, defects));
+        }
+
         foreach (OggLogicalBitstream s in _streams)
         {
             if (s.TrackIndex < 0 || CommentBody(s, out ReadOnlyMemory<byte> body) is not { } range)
@@ -1407,7 +1421,7 @@ public sealed class OggAsyncDemuxer : IAsyncDemuxer, IAsyncMetadataProvider
     public ValueTask<MediaTime> SeekAsync(MediaTime target, SeekMode mode = SeekMode.PreviousKeyframe, CancellationToken cancellationToken = default) => _engine.SeekAsync(target, mode, cancellationToken);
 
     /// <inheritdoc />
-    public ValueTask<MediaMetadata> ReadMetadataAsync() => new(_engine.ReadMetadata());
+    public ValueTask<MediaMetadata> ReadMetadataAsync(CancellationToken cancellationToken = default) => new(_engine.ReadMetadata());
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
