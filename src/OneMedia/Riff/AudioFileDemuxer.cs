@@ -308,6 +308,21 @@ internal sealed class FramedPlan(IMediaSource source, long dataStart, long dataE
 
     public override bool Next(long remaining, out int bytes, out long frames)
     {
+        // A ranged source can stop this step to fetch bytes and ask for it again; the search starts over from where this call began.
+        long start = _pos;
+        try
+        {
+            return Find(out bytes, out frames);
+        }
+        catch (NotSupportedException)
+        {
+            _pos = start;
+            throw;
+        }
+    }
+
+    private bool Find(out int bytes, out long frames)
+    {
         bytes = 0;
         frames = 0;
         _skip = 0;

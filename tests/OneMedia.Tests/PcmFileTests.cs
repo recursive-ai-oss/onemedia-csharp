@@ -372,4 +372,28 @@ public class PcmFileTests
 
         Assert.False(d.TryReadPacket(out _));
     }
+
+    [Fact]
+    public async Task FramedStreamsGiveTheSamePacketsOverRangedSources()
+    {
+        // Found by fuzzing: resynchronising over junk in MPEG-audio-in-WAVE restarted wrongly when a ranged read stopped the step half-way.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "riff-wav", "framed-ranged-retry.bin"))[1..];
+        long plain = 0;
+        using (WavDemuxer d = WavDemuxer.Open(new MemoryMediaSource(input)))
+        {
+            while (d.TryReadPacket(out PacketView p))
+            {
+                plain += p.Data.Length;
+            }
+        }
+
+        long ranged = 0;
+        await using IAsyncDemuxer a = await new WavFileFormat().OpenAsync(new MemoryMediaSource(input), MediaOpenOptions.Default);
+        while (await a.ReadPacketAsync())
+        {
+            ranged += a.Current.Data.Length;
+        }
+
+        Assert.Equal(plain, ranged);
+    }
 }
