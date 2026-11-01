@@ -719,6 +719,12 @@ internal sealed class AviReader : IDisposable
     private bool TryResync(long headerAt, out long found)
     {
         found = -1;
+        if (_resyncExhausted)
+        {
+            // An earlier scan found no chunk header anywhere after its start, so a later one cannot either; this keeps the total work linear.
+            return false;
+        }
+
         long length = _input.Length;
         const int Block = 64 * 1024;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(Block + 16);
@@ -730,6 +736,13 @@ internal sealed class AviReader : IDisposable
             for (long block = start; block < stop; block += Block)
             {
                 _cancellation.ThrowIfCancellationRequested();
+                if (_resyncScanned >= MaxResyncTotalBytes)
+                {
+                    _resyncExhausted = true;
+                    return false;
+                }
+
+                _resyncScanned += Block;
                 _input.Seek(block);
                 int got = _input.Read(buffer.AsSpan(0, Block + 16));
                 for (int i = 0; i + 8 <= got && block + i < stop; i++)
@@ -777,6 +790,7 @@ internal sealed class AviReader : IDisposable
                 }
             }
 
+            _resyncExhausted = length >= 0 && stop >= length;
             return false;
         }
         finally
@@ -784,6 +798,10 @@ internal sealed class AviReader : IDisposable
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
+
+    private bool _resyncExhausted;
+    private long _resyncScanned;
+    private const long MaxResyncTotalBytes = 64L * 1024 * 1024; // all scans together, per open file
 
     // Moves to the next 'movi' list after the current one: past idx1 and other trailing chunks, into a following RIFF AVIX.
     private bool EnterNextSection()
