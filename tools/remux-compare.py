@@ -296,14 +296,14 @@ def main():
             sm += sd
             sd = 0
             sf = []
-        if (count_diff or sc.get("size") or sc.get("hash")) and modes.get(o, "none") == "none" and concat_hash(ffprobe, src, i) == concat_hash(ffprobe, dst, o) is not None:
+        if (count_diff or sc.get("size") or sc.get("hash") or sc.get("pts")) and modes.get(o, "none") == "none" and concat_hash(ffprobe, src, i) == concat_hash(ffprobe, dst, o) is not None:
             # ffprobe's parser cut the stream into packets differently from the container's own framing (or the reverse), but the bytes of the
             # stream are the same: the difference is framing only.
             if count_kind:
                 del classes[count_kind]
                 diff -= count_diff
             sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
-            sc["explained:framing-only"] += sd + count_diff
+            sc["explained:framing-only" if not (sc.get("pts") and not sc.get("size") and not sc.get("hash") and not count_diff) else "explained:framing-and-timing"] += sd + count_diff
             sm += sd
             sd = 0
             sf = []
