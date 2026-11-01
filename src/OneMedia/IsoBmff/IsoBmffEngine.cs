@@ -130,7 +130,6 @@ internal sealed class IsoBmffEngine
     /// Sets every track's running fragment decode time to the end of the samples in the movie box (zero for a file with none).
     /// A fragment without <c>tfdt</c> continues from there (§8.8.12: the decode time of a track fragment without one follows the previous sample).
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void ResetFragmentTimes()
     {
         foreach (TrackState s in States)
@@ -139,7 +138,6 @@ internal sealed class IsoBmffEngine
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void FindFragmentStarts()
     {
         if (!_fragmentedFileAllowed)
@@ -192,7 +190,6 @@ internal sealed class IsoBmffEngine
     /// <summary>Description index (1-based) of the sample last returned, for files with several sample descriptions per track.</summary>
     public int LastDescriptionIndex { get; private set; }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MediaTime ComputeDuration(IsoMovie movie, MediaTrack[] tracks, MediaTime sidx)
     {
         uint ts = movie.Header.Timescale;
@@ -223,7 +220,6 @@ internal sealed class IsoBmffEngine
         return best;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MediaTrack BuildTrack(IsoTrack t, IsoMovie movie, bool quickTime, MediaTime sidxDuration, ref bool gaplessUsed, out long editStart)
     {
         TrackKind kind = t.HandlerType switch
@@ -331,7 +327,6 @@ internal sealed class IsoBmffEngine
     }
 
     // §8.3.1: tracks of one alternate group are alternatives of each other (only one plays); QuickTime players pick the first enabled.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static bool IsFirstEnabledOfKind(IsoTrack t, IsoMovie movie, TrackKind kind)
     {
         int group = t.Header.AlternateGroup;
@@ -468,7 +463,6 @@ internal sealed class IsoBmffEngine
     }
 
     /// <summary>Takes the next sample (lowest file offset) from the sample tables of the enabled tracks.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryNextTableSample(out PacketInfo info)
     {
         while (true)
@@ -559,7 +553,6 @@ internal sealed class IsoBmffEngine
         return false;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool Describe(TrackState s, long offset, int size, long dts, long cto, long duration, bool sync, bool disposable, out PacketInfo info)
     {
         info = default;

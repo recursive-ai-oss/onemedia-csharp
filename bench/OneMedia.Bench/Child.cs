@@ -46,23 +46,35 @@ internal static class Child
 {
     private const long BigFile = 1L << 30;
     private const double TargetSampleNs = 50e6;
+    private const double WarmNs = 1.5e9;
+    private const int WarmRuns = 30;
 
     public static Result Run(Row row, Impl impl, string path, string relative, int reps)
     {
         long baseline = Process.GetCurrentProcess().WorkingSet64;
         long size = new FileInfo(path).Length;
-        bool big = size > BigFile;
+        // Probe work does not grow with the file, so probe rows are sampled in loops whatever the size; only demux-style rows
+        // that read the whole file get single-run samples when the file is huge.
+        bool big = size > BigFile && !row.Id.EndsWith("-probe", StringComparison.Ordinal);
         Work work = default;
         int inner = 1;
         double cold = 0;
         try
         {
-            // The first run pays JIT and type loading and is reported apart as the cold figure; the second sizes the samples.
+            // The first run pays JIT and type loading and is reported apart as the cold figure; after the warm-up one run sizes the samples.
             long c0 = Stopwatch.GetTimestamp();
             work = impl.Run(path);
             cold = Stopwatch.GetElapsedTime(c0).TotalMilliseconds * 1e6;
             if (!big)
             {
+                // Warm up until the runtime has promoted the hot methods of every implementation alike: tier-0, then the instrumented
+                // stage, then optimised code, each behind a 100 ms quiet timer. Run for at least WarmNs and WarmRuns.
+                long w0 = Stopwatch.GetTimestamp();
+                for (int w = 0; w < WarmRuns || Stopwatch.GetElapsedTime(w0).TotalMilliseconds * 1e6 < WarmNs; w++)
+                {
+                    work = impl.Run(path);
+                }
+
                 long t0 = Stopwatch.GetTimestamp();
                 work = impl.Run(path);
                 double once = Stopwatch.GetElapsedTime(t0).TotalMilliseconds * 1e6;

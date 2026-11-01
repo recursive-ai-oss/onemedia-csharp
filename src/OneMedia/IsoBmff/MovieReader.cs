@@ -17,7 +17,6 @@ public static class MovieReader
     /// <param name="isQuickTime">True when the file's major brand is <c>qt  </c>, which changes the audio sample-entry layout.</param>
     /// <returns>The movie.</returns>
     /// <exception cref="MediaLimitExceededException">More tracks than <see cref="MediaLimits.MaxTracks"/>, or a box larger than the allocation limit.</exception>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static IsoMovie Read(BoxNode moov, IMediaSource source, MediaLimits limits, DefectLog defects, bool isQuickTime)
     {
         ArgumentNullException.ThrowIfNull(moov);
@@ -106,7 +105,6 @@ public static class MovieReader
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MovieHeader ReadMovieHeader(BoxNode node, DefectLog defects)
     {
         byte[] p = node.ReadPayload(128);
@@ -124,7 +122,6 @@ public static class MovieReader
             : new MovieHeader(Be.U32(p, 12), Be.U32(p, 16) == uint.MaxValue ? ulong.MaxValue : Be.U32(p, 16), Be.U32(p, 4), Be.U32(p, 8), Be.U32(p, next));
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static IsoTrack? ReadTrack(BoxNode trak, int index, IMediaSource source, MediaLimits limits, DefectLog defects, bool isQuickTime)
     {
         TrackHeader? tkhd = null;
@@ -204,7 +201,6 @@ public static class MovieReader
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static string ReadHandlerName(byte[] p)
     {
         if (p.Length <= 24)
@@ -228,7 +224,6 @@ public static class MovieReader
         return Encoding.UTF8.GetString(name);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static TrackHeader? ReadTrackHeader(BoxNode node, DefectLog defects)
     {
         byte[] p = node.ReadPayload(256);
@@ -258,7 +253,6 @@ public static class MovieReader
             (short)Be.U16(p, v1 ? 44 : 32));
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MediaHeader? ReadMediaHeader(BoxNode node, DefectLog defects)
     {
         byte[] p = node.ReadPayload(64);
@@ -273,7 +267,6 @@ public static class MovieReader
         return new MediaHeader(v1 ? Be.U32(p, 20) : Be.U32(p, 12), duration, LanguageCodes.Decode(Be.U16(p, v1 ? 32 : 20)), v1 ? Be.U64(p, 4) : Be.U32(p, 4));
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ReadEditList(BoxNode node, List<EditListEntry> edits, MediaLimits limits, DefectLog defects)
     {
         byte[] head = node.ReadPayload(8);
@@ -304,7 +297,6 @@ public static class MovieReader
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ReadSampleTable(BoxNode stbl, SampleTableLayout t, List<SampleEntry> entries, List<ByteRange> groups, string handler, bool isQuickTime,
         IMediaSource source, MediaLimits limits, DefectLog defects)
     {
@@ -351,7 +343,6 @@ public static class MovieReader
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static TableRef LocateTable(BoxNode box, IMediaSource source, Span<byte> head, int entriesAt, int entrySize, MediaLimits limits, DefectLog defects)
     {
         if (box.PayloadSize < entriesAt || source.Read(box.Header.PayloadOffset, head[..8]) < 8)
@@ -373,7 +364,6 @@ public static class MovieReader
         return new TableRef(box.Header.PayloadOffset + entriesAt, declared);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void LocateSizes(BoxNode box, SampleTableLayout t, IMediaSource source, Span<byte> head, int fieldBits, MediaLimits limits, DefectLog defects)
     {
         if (box.PayloadSize < 12 || source.Read(box.Header.PayloadOffset, head[..12]) < 12)
@@ -422,7 +412,6 @@ public static class MovieReader
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ReadSampleDescriptions(BoxNode stsd, List<SampleEntry> entries, string handler, bool isQuickTime, MediaLimits limits, DefectLog defects)
     {
         foreach (BoxNode entry in stsd.EnumerateChildren())
@@ -439,7 +428,6 @@ public static class MovieReader
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static SampleEntry ParseSampleEntry(BoxNode entry, byte[] p, string handler, bool isQuickTime, MediaLimits limits, DefectLog defects)
     {
         string format = entry.TypeName;
@@ -609,7 +597,6 @@ public static class MovieReader
     };
 
     // Child boxes of a sample entry. QuickTime puts the codec boxes inside a 'wave' atom; they are surfaced too.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ReadExtensions(byte[] p, int start, long payloadFileOffset, List<ExtensionBox> into, int depth, MediaLimits limits, DefectLog defects)
     {
         int pos = start;

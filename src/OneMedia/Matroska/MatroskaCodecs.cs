@@ -9,7 +9,6 @@ internal static class MatroskaCodecs
     /// <see cref="CodecConfiguration.Format"/> documents: <c>avcC</c>, <c>hvcC</c>, <c>vvcC</c>, <c>av1C</c>, <c>asc</c>, <c>OpusHead</c>,
     /// <c>xiph-lacing</c> (Vorbis and Theora headers), <c>flac-header</c>, <c>bitmapinfoheader</c> and <c>waveformatex</c>.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void Map(string matroskaId, out CodecId codec, out string? configFormat, out string? tag)
     {
         configFormat = null;
@@ -91,7 +90,6 @@ internal static class MatroskaCodecs
     /// Names the codec of a <c>V_MS/VFW/FOURCC</c> track from the <c>biCompression</c> field of the BITMAPINFOHEADER that is its CodecPrivate (Matroska codec
     /// mapping; Microsoft BITMAPINFOHEADER layout: biSize at 0, biCompression at 16). The FourCC is returned as the codec tag even when it is not recognised.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryFromBitmapInfoHeader(ReadOnlySpan<byte> codecPrivate, out CodecId codec, out string? fourcc)
     {
         codec = CodecId.Unknown;
@@ -133,7 +131,6 @@ internal static class MatroskaCodecs
         return true;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static TrackKind KindOf(long trackType) => trackType switch
     {
         1 => TrackKind.Video,

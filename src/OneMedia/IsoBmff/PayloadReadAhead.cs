@@ -34,7 +34,6 @@ internal sealed class PayloadReadAhead
     /// <param name="offset">Where the sample starts.</param>
     /// <param name="destination">Receives the sample.</param>
     /// <param name="cancellationToken">Observed by the underlying read.</param>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public int Read(IMediaSource source, long offset, Span<byte> destination, CancellationToken cancellationToken)
     {
         if (destination.Length > MaxWindow / 2 || _released)

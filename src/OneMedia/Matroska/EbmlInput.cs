@@ -37,7 +37,6 @@ internal abstract class EbmlInput
 
     /// <summary>Buffers at least <paramref name="count"/> bytes from the current position (or as many as remain).</summary>
     /// <returns>True when <paramref name="count"/> bytes are buffered.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public ValueTask<bool> EnsureAsync(int count, CancellationToken cancellationToken)
     {
         if (_bufLen - _bufPos >= count)
@@ -81,7 +80,6 @@ internal abstract class EbmlInput
     /// Consumes bytes the caller has already ensured. Should a caller ask for more than is buffered (a header peeked before the buffer was
     /// dropped by a seek), the position still moves exactly that far and the buffer is emptied, so it never goes out of step with the file.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Advance(int count)
     {
         count = Math.Max(0, count);
@@ -97,7 +95,6 @@ internal abstract class EbmlInput
     }
 
     /// <summary>Moves forward by <paramref name="count"/> bytes on a seekable input: a buffer adjustment or a jump, with no read.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void SkipSeekable(long count)
     {
         long buffered = _bufLen - _bufPos;
@@ -154,7 +151,6 @@ internal abstract class EbmlInput
     }
 
     /// <summary>Fills the buffer with the first bytes of a source that is still at its start, so the first read of them is not made again.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Seed(ReadOnlySpan<byte> head)
     {
         if (_bufLen != 0 || _bufStart != 0 || _bufPos != 0)
@@ -176,7 +172,6 @@ internal abstract class EbmlInput
     }
 
     /// <summary>Moves to an absolute position on a seekable source.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void SeekTo(long position)
     {
         if (!CanSeek)

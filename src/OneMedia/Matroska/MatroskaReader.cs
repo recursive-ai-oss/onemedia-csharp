@@ -122,7 +122,6 @@ internal sealed class MatroskaReader
     // Element headers
 
     // Almost always the next header is already buffered, and then there is nothing to wait for: answer without an asynchronous method.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private ValueTask<ElementHeader> PeekHeaderAsync(CancellationToken ct)
     {
         if (_in.Buffered.Length >= MaxHeaderBytes)
@@ -140,7 +139,6 @@ internal sealed class MatroskaReader
         return ParseHeader(_in.Buffered, offset);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static ElementHeader ParseHeader(ReadOnlySpan<byte> window, long offset)
     {
         if (window.IsEmpty)
@@ -160,7 +158,6 @@ internal sealed class MatroskaReader
     /// Reads a master element's payload into memory. On damage it logs a defect and returns null, having moved past the element (or to
     /// the end of the data when it claims more than is left), so that callers walking the file always make progress.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private ValueTask<byte[]?> ReadPayloadAsync(ElementHeader h, string what, CancellationToken ct)
     {
         // The element, header and payload, is already buffered: copy it out without an asynchronous method.
@@ -206,7 +203,6 @@ internal sealed class MatroskaReader
         return data;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private ValueTask SkipElementAsync(ElementHeader h, CancellationToken ct)
     {
         // An empty element, or one whose payload is buffered or can be seeked past, is skipped without an asynchronous method.
@@ -456,7 +452,6 @@ internal sealed class MatroskaReader
     }
 
     /// <summary>Notes where the Cues are from the SeekHead entries read so far.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void ApplyCuesEntry()
     {
         if (_cuesPos >= 0)
@@ -582,7 +577,6 @@ internal sealed class MatroskaReader
         return h;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void BuildTracks()
     {
         Clock = MatroskaClock.FromTimestampScale(Info.TimestampScale);
@@ -679,7 +673,6 @@ internal sealed class MatroskaReader
         return n <= int.MaxValue && d <= int.MaxValue ? ((int)n, (int)d) : (0, 0);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static long Gcd(long a, long b)
     {
         while (b != 0)

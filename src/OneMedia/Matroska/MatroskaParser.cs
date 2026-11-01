@@ -77,7 +77,6 @@ internal ref struct EbmlChildren
     /// <summary>Absolute file offset of the current child's payload.</summary>
     public long PayloadOffset { get; private set; }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool MoveNext()
     {
         if (_pos >= _data.Length)
@@ -124,7 +123,6 @@ internal static class MatroskaParser
     /// RFC 8794 §11.3.1: when a master element's first child is a CRC-32 element, it holds the CRC-32 of everything after it in the
     /// master. A mismatch is a defect; the data is still used.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void VerifyCrc(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects, string name)
     {
         if (payload.Length < 6 || payload[0] != MatroskaIds.Crc32 || payload[1] != 0x84)
@@ -140,7 +138,6 @@ internal static class MatroskaParser
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static string ReadString(ReadOnlySpan<byte> payload)
     {
         int nul = payload.IndexOf((byte)0);
@@ -152,7 +149,6 @@ internal static class MatroskaParser
         return Utf8.GetString(payload);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static long Unsigned(ReadOnlySpan<byte> payload, long fallback, DefectLog defects, long offset)
     {
         if (Ebml.TryReadUnsigned(payload, out ulong v) && v <= long.MaxValue)
@@ -167,7 +163,6 @@ internal static class MatroskaParser
     // UIDs are random 64-bit numbers (RFC 9559 §5.1.4.1.2): values above 2^63 are normal and are kept bit for bit.
     private static long UidBits(ReadOnlySpan<byte> payload) => Ebml.TryReadUnsigned(payload, out ulong v) ? unchecked((long)v) : 0;
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static long Signed(ReadOnlySpan<byte> payload, long fallback, DefectLog defects, long offset)
     {
         if (Ebml.TryReadSigned(payload, out long v))
@@ -179,7 +174,6 @@ internal static class MatroskaParser
         return fallback;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static long Float(ReadOnlySpan<byte> payload, long fallback, DefectLog defects, long offset)
     {
         if (Ebml.TryReadFloatRounded(payload, out long v))
@@ -191,7 +185,6 @@ internal static class MatroskaParser
         return fallback;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static MatroskaHeader ParseHeader(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects)
     {
         long version = 1, readVersion = 1, maxId = 4, maxSize = 8, docVersion = 1, docRead = 1;
@@ -224,7 +217,6 @@ internal static class MatroskaParser
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static MatroskaInfo ParseInfo(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects)
     {
         long scale = 1_000_000;
@@ -294,7 +286,6 @@ internal static class MatroskaParser
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static List<MatroskaTrackEntry> ParseTracks(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects, MediaLimits limits)
     {
         List<MatroskaTrackEntry> entries = [];
@@ -313,7 +304,6 @@ internal static class MatroskaParser
         return entries;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MatroskaTrackEntry ParseTrackEntry(ReadOnlySpan<byte> payload, long offset, long payloadOffset, DefectLog defects, MediaLimits limits)
     {
         long number = 0, uid = 0, type = 0, defaultDuration = 0, delay = 0, preRoll = 0;
@@ -444,7 +434,6 @@ internal static class MatroskaParser
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MatroskaVideo ParseVideo(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects)
     {
         long w = 0, h = 0, dw = 0, dh = 0, unit = 0, interlaced = 0, stereo = 0;
@@ -467,7 +456,6 @@ internal static class MatroskaParser
         return new MatroskaVideo(w, h, dw, dh, unit, interlaced, stereo);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static MatroskaAudio ParseAudio(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects)
     {
         long rate = 8000, outRate = -1, channels = 1, depth = 0;
@@ -487,7 +475,6 @@ internal static class MatroskaParser
         return new MatroskaAudio(rate, outRate < 0 ? rate : outRate, channels, depth);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ParseContentEncodings(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects, MediaLimits limits, List<MatroskaContentEncoding> into)
     {
         EbmlChildren c = new(payload, payloadOffset, defects);
@@ -534,7 +521,6 @@ internal static class MatroskaParser
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static List<MatroskaSeekEntry> ParseSeekHead(ReadOnlySpan<byte> payload, long payloadOffset, DefectLog defects, MediaLimits limits)
     {
         List<MatroskaSeekEntry> entries = [];

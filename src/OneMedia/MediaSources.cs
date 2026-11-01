@@ -96,7 +96,6 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
     }
 
     // Forgets the remembered length when a read may have reached the end of the data it describes.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void NoteRead(long offset, int requested, int returned)
     {
         long known = Volatile.Read(ref _length);
@@ -107,7 +106,6 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
     }
 
     /// <inheritdoc />
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public int Read(long offset, Span<byte> destination, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(offset);

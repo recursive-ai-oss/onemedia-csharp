@@ -168,7 +168,6 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
     public void SetTrackEnabled(int trackIndex, bool enabled) => _engine.SetTrackEnabled(trackIndex, enabled);
 
     /// <inheritdoc />
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryReadPacket(out PacketView packet)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -333,7 +332,6 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool ReadPayload(in PacketInfo info)
     {
         int size = info.Size;
