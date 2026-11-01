@@ -33,6 +33,38 @@ if (args[0] == "child")
     return 0;
 }
 
+if (args[0] == "tagcompare")
+{
+    // Tags and duration of each file as OneMedia and ATL.NET read them, side by side (tab separated).
+    Console.WriteLine("file\tfield\tOneMedia\tATL.NET\tverdict");
+    foreach (string path in args.Skip(1))
+    {
+        using RecursiveAI.OneMedia.IDemuxer d = Impls.OurRegistry()!.Open(RecursiveAI.OneMedia.FileMediaSource.Open(path));
+        RecursiveAI.OneMedia.Metadata.MediaMetadata m = ((RecursiveAI.OneMedia.Metadata.IMetadataProvider)d).ReadMetadata();
+        ATL.Track t = new(path);
+        (string, string?, string?)[] rows =
+        [
+            ("Title", m.Tags.Title, t.Title),
+            ("Artist", m.Tags.Artist, t.Artist),
+            ("Album", m.Tags.Album, t.Album),
+            ("Genre", m.Tags.Genre, t.Genre),
+            ("Comment", m.Tags.Comment, t.Comment),
+            ("Date", m.Tags.Date, t.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+            ("Copyright", m.Tags.Copyright, t.Copyright),
+            ("Duration", d.Duration.IsKnown ? d.Duration.Rescale(1000, RecursiveAI.OneMedia.MediaRounding.NearestAwayFromZero).Ticks.ToString(CultureInfo.InvariantCulture) : "", ((long)Math.Round(t.DurationMs)).ToString(CultureInfo.InvariantCulture)),
+        ];
+        foreach ((string field, string? ours0, string? atl0) in rows)
+        {
+            string ours = ours0 ?? "";
+            string atl = atl0 ?? "";
+            string verdict = ours == atl ? "match" : (ours.Length == 0 ? "ours-missing" : atl.Length == 0 ? "atl-missing" : "differs");
+            Console.WriteLine($"{Path.GetFileName(path)}\t{field}\t{ours}\t{atl}\t{verdict}");
+        }
+    }
+
+    return 0;
+}
+
 if (args[0] == "pullalloc")
 {
     // pullalloc RELATIVE-PATH...: bytes allocated per packet by the second half of a pull, on a warm demuxer.
