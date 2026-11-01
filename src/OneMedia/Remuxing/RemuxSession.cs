@@ -62,6 +62,20 @@ public sealed class RemuxSession : IDisposable
 
         public MediaTime NextPts { get; set; } = MediaTime.Unknown;
 
+        public List<RemuxSession.Pending> Queue { get; } = [];
+
+        public List<long> Sorted { get; } = [];
+
+        public long QueueBytes { get; set; }
+
+        public long TimeScale { get; set; }
+
+        public long Lag { get; set; }
+
+        public bool LagKnown { get; set; }
+
+        public bool ReportedDerivedDts { get; set; }
+
         public bool ReportedRetime { get; set; }
     }
 
@@ -545,7 +559,111 @@ public sealed class RemuxSession : IDisposable
         return declared;
     }
 
+    // Matroska stores presentation times only, so its video packets arrive without decode times. The muxers need them, and with reordered
+    // frames they are not the presentation times. A decode time is taken from the packets' presentation order: the k-th packet in decode
+    // order gets the k-th smallest presentation time, moved back by one constant lag so that no packet decodes after it is due. Both are
+    // judged over a short window of packets, which is held back; the lag is fixed from the first window.
+    private const int ReorderWindow = 24;
+    private const long ReorderByteCap = 32L << 20;
+
+    internal sealed class Pending(PacketInfo info, byte[] data, int length)
+    {
+        public PacketInfo Info { get; } = info;
+
+        public byte[] Data { get; } = data;
+
+        public int Length { get; } = length;
+    }
+
     private void Emit(TrackState s, in PacketInfo info, ReadOnlySpan<byte> data, CancellationToken cancellationToken)
+    {
+        if (s.Input.Kind != TrackKind.Video || info.Dts.IsKnown || !info.Pts.IsKnown)
+        {
+            EmitNow(s, info, data, cancellationToken);
+            return;
+        }
+
+        byte[] copy = ArrayPool<byte>.Shared.Rent(Math.Max(data.Length, 1));
+        data.CopyTo(copy);
+        s.Queue.Add(new Pending(info, copy, data.Length));
+        s.QueueBytes += data.Length;
+        long pts = info.Pts.Ticks;
+        if (s.TimeScale == 0)
+        {
+            s.TimeScale = info.Pts.Timescale;
+        }
+
+        if (info.Pts.Timescale != s.TimeScale)
+        {
+            pts = info.Pts.Rescale(s.TimeScale, MediaRounding.NearestAwayFromZero).Ticks;
+        }
+
+        int at = s.Sorted.BinarySearch(pts);
+        s.Sorted.Insert(at < 0 ? ~at : at, pts);
+        if (!s.LagKnown && (s.Queue.Count >= ReorderWindow || s.QueueBytes > ReorderByteCap))
+        {
+            FixLag(s);
+        }
+
+        while (s.LagKnown && (s.Queue.Count >= ReorderWindow || s.QueueBytes > ReorderByteCap) && s.Queue.Count > 0)
+        {
+            PopReordered(s, cancellationToken);
+        }
+    }
+
+    private static void FixLag(TrackState s)
+    {
+        long lag = 0;
+        for (int k = 0; k < s.Queue.Count; k++)
+        {
+            long pts = s.Queue[k].Info.Pts.Timescale == s.TimeScale ? s.Queue[k].Info.Pts.Ticks : s.Queue[k].Info.Pts.Rescale(s.TimeScale, MediaRounding.NearestAwayFromZero).Ticks;
+            lag = Math.Max(lag, s.Sorted[k] - pts);
+        }
+
+        s.Lag = lag;
+        s.LagKnown = true;
+    }
+
+    private void PopReordered(TrackState s, CancellationToken cancellationToken)
+    {
+        Pending head = s.Queue[0];
+        s.Queue.RemoveAt(0);
+        long dts = s.Sorted[0] - s.Lag;
+        s.Sorted.RemoveAt(0);
+        s.QueueBytes -= head.Length;
+        if (!s.ReportedDerivedDts)
+        {
+            s.ReportedDerivedDts = true;
+            _changes.Add($"Track {s.Input.Index}: decode times were derived from the order of the presentation times, because the input stores none; presentation lags decoding by {s.Lag} of {s.TimeScale} s at most.");
+        }
+
+        try
+        {
+            EmitNow(s, head.Info with { Dts = new MediaTime(dts, s.TimeScale) }, head.Data.AsSpan(0, head.Length), cancellationToken);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(head.Data);
+        }
+    }
+
+    private void DrainReordered(CancellationToken cancellationToken)
+    {
+        foreach (TrackState s in _tracks)
+        {
+            if (s.Queue.Count > 0 && !s.LagKnown)
+            {
+                FixLag(s);
+            }
+
+            while (s.Queue.Count > 0)
+            {
+                PopReordered(s, cancellationToken);
+            }
+        }
+    }
+
+    private void EmitNow(TrackState s, in PacketInfo info, ReadOnlySpan<byte> data, CancellationToken cancellationToken)
     {
         ReadOnlySpan<byte> payload = data;
         switch (s.Mode)
@@ -687,6 +805,7 @@ public sealed class RemuxSession : IDisposable
             Start(cancellationToken);
         }
 
+        DrainReordered(cancellationToken);
         _finished = true;
         if (!_tracks.Exists(t => t.Out >= 0))
         {

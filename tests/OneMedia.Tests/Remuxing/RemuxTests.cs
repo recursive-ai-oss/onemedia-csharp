@@ -378,6 +378,41 @@ public class RemuxTests
     }
 
     [Fact]
+    public void VideoWithoutDecodeTimesGetsThemFromTheOrderOfPresentation()
+    {
+        // What a Matroska reader delivers: reordered frames with presentation times only.
+        using MediaFile source = Media.Open(Data("isobmff", "bframes_aac.mp4"));
+        int video = source.Video!.Index;
+        List<Pkt> input = ReadAll(source).Where(p => p.Track == video).ToList();
+        Assert.Contains(input.Zip(input.Skip(1)), pair => pair.Second.Pts < pair.First.Pts); // it does reorder
+        using MediaFile again = Media.Open(Data("isobmff", "bframes_aac.mp4"));
+        using MemoryStream ms = new();
+        using (RemuxSession session = new(again.Tracks, ms, RemuxFormat.Mp4))
+        {
+            IDemuxer d = again.Demuxer!;
+            while (d.TryReadPacket(out PacketView v))
+            {
+                if (v.Info.TrackIndex == video)
+                {
+                    session.WritePacket(v.Info with { Dts = MediaTime.Unknown }, v.Data);
+                }
+            }
+
+            RemuxReport report = session.Finish();
+            Assert.Contains(report.Changes, c => c.Contains("decode times were derived", StringComparison.Ordinal));
+        }
+
+        using MediaFile result = Media.Open(ms.ToArray());
+        List<Pkt> output = ReadAll(result).Where(p => p.Track == result.Video!.Index).ToList();
+        Assert.Equal(input.Count, output.Count);
+        for (int i = 0; i < input.Count; i++)
+        {
+            Assert.True(input[i].Data.AsSpan().SequenceEqual(output[i].Data));
+            Assert.Equal(input[i].Pts - input[0].Pts, output[i].Pts - output[0].Pts);
+        }
+    }
+
+    [Fact]
     public void PacketsOfAnUndeclaredTrackAreSkippedAndReportedOnce()
     {
         using MediaFile input = Media.Open(Data("audio-es", "lc.aac"));
