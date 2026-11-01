@@ -620,7 +620,8 @@ internal sealed class MatroskaReader
                 CodecTag = tag,
                 Configuration = e.CodecPrivate.IsEmpty && format is null ? default : new CodecConfiguration(e.CodecPrivate, format),
                 Timescale = Clock.Timescale,
-                Edit = e.CodecDelayNs > 0 ? new TrackEditInfo(Priming: new MediaTime(e.CodecDelayNs, MatroskaClock.NanosecondsPerSecond)) : default,
+                // Block timestamps already have CodecDelay taken off (below), so presentation time must not subtract the priming again.
+                Edit = e.CodecDelayNs > 0 ? new TrackEditInfo(Priming: new MediaTime(e.CodecDelayNs, MatroskaClock.NanosecondsPerSecond)) { PacketTimesIncludePriming = true } : default,
                 Language = e.LanguageBcp47 ?? e.Language,
                 Name = e.Name,
                 Disposition = disposition,
