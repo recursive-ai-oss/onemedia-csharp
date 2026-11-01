@@ -61,6 +61,9 @@ public readonly record struct SequenceParameterSet
     /// <summary>max_num_ref_frames.</summary>
     public int MaxNumRefFrames { get; init; }
 
+    /// <summary>log2_max_frame_num_minus4 + 4: the width in bits of frame_num in slice headers.</summary>
+    public int Log2MaxFrameNum { get; init; }
+
     /// <summary>frame_mbs_only_flag: false for streams that may code fields.</summary>
     public bool FrameMbsOnly { get; init; }
 
@@ -274,6 +277,7 @@ public readonly record struct SequenceParameterSet
             BitDepthLuma = bdLuma,
             BitDepthChroma = bdChroma,
             MaxNumRefFrames = (int)refFrames,
+            Log2MaxFrameNum = (int)log2MaxFrameNum + 4,
             FrameMbsOnly = frameMbsOnly,
             MbAdaptiveFrameField = mbaff,
             CodedWidth = (int)codedW,

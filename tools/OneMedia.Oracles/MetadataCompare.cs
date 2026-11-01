@@ -27,10 +27,7 @@ internal static partial class MetadataCompare
     {
         Directory.CreateDirectory(outDir);
         List<Row> rows = [];
-        MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffFormat());
-        registry.Add(new MatroskaFormat());
-        registry.Add(new RecursiveAI.OneMedia.Asf.AsfFormat());
+        MediaFormatRegistry registry = MediaFormats.Create();
         foreach (string file in files)
         {
             try
@@ -91,10 +88,7 @@ internal static partial class MetadataCompare
     /// <summary>Prints every native tag and the common view of each file, for looking at a difference.</summary>
     public static int Dump(IReadOnlyList<string> files)
     {
-        MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffFormat());
-        registry.Add(new MatroskaFormat());
-        registry.Add(new RecursiveAI.OneMedia.Asf.AsfFormat());
+        MediaFormatRegistry registry = MediaFormats.Create();
         foreach (string file in files)
         {
             using IDemuxer demuxer = registry.Open(FileMediaSource.Open(file));
@@ -174,6 +168,8 @@ internal static partial class MetadataCompare
                 TagSystems.Xmp => ["XMP-x", "XMP-xmp", "XMP-dc", "XMP-exif", "XMP-tiff", "XMP-photoshop"],
                 TagSystems.MatroskaInfo => ["Info", "Matroska"],
                 TagSystems.Asf => ["ASF"],
+                RecursiveAI.OneMedia.MpegTs.MpegTsTagSystems.CameraData => ["H264"],
+                RecursiveAI.OneMedia.MpegTs.MpegTsTagSystems.ServiceInformation => ["M2TS"],
                 _ => t.TrackId > 0 ? ["Track"] : ["Matroska"],
             };
             List<string> etVals = [.. et.Where(kv => groups.Any(g => kv.Key.StartsWith(g, StringComparison.Ordinal))).SelectMany(kv => kv.Value)];

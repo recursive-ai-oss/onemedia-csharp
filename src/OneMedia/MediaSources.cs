@@ -61,7 +61,14 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
     private readonly SafeFileHandle _handle;
     private long _length = -1; // remembered size, or -1 when it must be read
 
-    private FileMediaSource(SafeFileHandle handle) => _handle = handle;
+    private FileMediaSource(SafeFileHandle handle, string path)
+    {
+        _handle = handle;
+        Path = path;
+    }
+
+    /// <summary>The path the source was opened from, as given to <see cref="Open"/>. Readers use it to find files stored beside the media.</summary>
+    public string Path { get; }
 
     /// <summary>Opens <paramref name="path"/> for reading.</summary>
     /// <param name="path">The file.</param>
@@ -71,7 +78,7 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
     public static FileMediaSource Open(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        return new FileMediaSource(File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, FileOptions.RandomAccess | FileOptions.Asynchronous));
+        return new FileMediaSource(File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, FileOptions.RandomAccess | FileOptions.Asynchronous), path);
     }
 
     /// <summary>

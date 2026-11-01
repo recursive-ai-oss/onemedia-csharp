@@ -28,6 +28,8 @@ public static class TagMappingTable
     private const string ExifToolUser = "ExifTool QuickTime UserData tags";
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
+    private const string DvbDoc = "ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor)";
+    private const string ExifToolH264 = "ExifTool H264 tags (MDPM)";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string AsfDoc = "ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
@@ -160,6 +162,10 @@ public static class TagMappingTable
         Row(CommonField.TrackTotal, TagSystems.Asf, AsfDoc, "the part after the slash of WM/TrackNumber", "WM/TrackNumber"),
         Row(CommonField.DiscNumber, TagSystems.Asf, AsfDoc, "WM/PartOfSet, optionally written as number/total", "WM/PartOfSet"),
         Row(CommonField.DiscTotal, TagSystems.Asf, AsfDoc, "the part after the slash of WM/PartOfSet", "WM/PartOfSet"),
+
+        Row(CommonField.Title, MpegTs.MpegTsTagSystems.ServiceInformation, DvbDoc, "the present event's name first, then the service name", "event_name", "service_name"),
+        Row(CommonField.Description, MpegTs.MpegTsTagSystems.ServiceInformation, DvbDoc, "the present event's short text", "event_text"),
+        Row(CommonField.Date, MpegTs.MpegTsTagSystems.CameraData, ExifToolH264, "the camera clock in AVCHD; local time of unknown zone", "DateTimeOriginal"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

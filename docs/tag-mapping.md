@@ -122,3 +122,6 @@ generated from it, and a test fails when they differ.
 | TrackTotal | asf | `WM/TrackNumber` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | the part after the slash of WM/TrackNumber |
 | DiscNumber | asf | `WM/PartOfSet` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/PartOfSet, optionally written as number/total |
 | DiscTotal | asf | `WM/PartOfSet` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | the part after the slash of WM/PartOfSet |
+| Title | mpegts | `event_name`, `service_name` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's name first, then the service name |
+| Description | mpegts | `event_text` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's short text |
+| Date | mdpm | `DateTimeOriginal` | ExifTool H264 tags (MDPM) | the camera clock in AVCHD; local time of unknown zone |

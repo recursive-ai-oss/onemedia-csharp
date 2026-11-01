@@ -23,6 +23,11 @@
     <EmbeddedResource Include="../../testdata/audio/opus.webm" LogicalName="opus.webm" />
     <EmbeddedResource Include="../../testdata/audio/aac.m4a" LogicalName="aac.m4a" />
     <EmbeddedResource Include="../../testdata/asf/wmav2-tagged.wma" LogicalName="wmav2-tagged.wma" />
+    <EmbeddedResource Include="../../testdata/mpeg/h264-aac.ts" LogicalName="h264-aac.ts" />
+    <EmbeddedResource Include="../../testdata/mpeg/h264-aac.m2ts" LogicalName="h264-aac.m2ts" />
+    <EmbeddedResource Include="../../testdata/mpeg/mpeg2-mp2.vob" LogicalName="mpeg2-mp2.vob" />
+    <EmbeddedResource Include="../../testdata/mpeg/h264.264" LogicalName="h264.264" />
+    <EmbeddedResource Include="../../testdata/mpeg/vp8.ivf" LogicalName="vp8.ivf" />
   </ItemGroup>
 
 </Project>

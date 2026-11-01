@@ -117,6 +117,16 @@ packets are counted (edit-list repeats, split or joined PCM packets) can be told
 before `mdat` in some large files; mkvinfo prints declared sizes where our tree clamps at the end of a truncated file. These
 are reported as notes, not differences.
 
+### MPEG (transport, program and elementary streams)
+
+- `tools/run-mpeg-sweep.sh [OUT]` (worker): builds the harness, strips the SDT from the generated transport streams, runs `diff`, `infocheck` and `meta` over the generated and published
+  MPEG files and writes `summary.txt`, `infocheck.log` and `metadata-compare.tsv` into OUT. `tools/run-mpeg-large.sh` generates the 2.3 GB transport stream and measures `io --metadata` and `drain`.
+  `tools/run-mpeg-checks.sh` runs the test suite, the NativeAOT publish (warnings are errors) and the WebAssembly smoke app under node.
+- **The pinned ffprobe 7.0.2 crashes on the SDT that ffmpeg writes**, so transport streams are compared as `ts_tools.py stripsdt` copies.
+- Extra rule fields for `exceptions.tsv`: `leading` (ffprobe lists the broken start of a stream as 1–3 packets; the harness drops the number that pairs the packets best, preferring none when the surplus is at
+  the end), `open` (a file the oracle itself cannot open), and for `infocheck` `info-duration`, `info-streams`, `info-codec`, `info-open`.
+- `drain FILE` pulls every packet and prints the packet count, bytes, allocation after warm-up and peak working set.
+
 ### Known ffprobe conventions
 
 - Matroska `pos` is the start of the Block element, not of the frame payload.
