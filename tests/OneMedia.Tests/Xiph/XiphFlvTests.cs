@@ -328,3 +328,43 @@ public class XiphFlvTests
         return used;
     }
 }
+
+/// <summary>Inputs the fuzz targets found; the first byte is the target's mode byte (bit 0 forward-only, bit 1 seek around), the rest is the file.</summary>
+public class XiphFlvFuzzRegressionTests
+{
+    private static readonly MediaLimits Limits = new() { MaxAllocationBytes = 4 << 20, MaxElementCount = 100_000, MaxStructureDepth = 24, MaxPacketBytes = 1 << 20, MaxTagBytes = 1 << 20, MaxAttachmentBytes = 1 << 20 };
+
+    private static void Run(string name, Func<MemoryMediaSource, MediaOpenOptions, IDemuxer> open)
+    {
+        byte[] input = File.ReadAllBytes(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "xiph-flv", name));
+        bool seek = (input[0] & 2) != 0;
+        MediaOpenOptions options = new() { Limits = Limits };
+        try
+        {
+            using IDemuxer d = open(new MemoryMediaSource(input.AsSpan(1).ToArray()), options);
+            while (d.TryReadPacket(out _))
+            {
+            }
+
+            if (seek && d.CanSeek)
+            {
+                foreach (long ms in new long[] { 0, 500, 1500, 60_000 })
+                {
+                    d.Seek(new MediaTime(ms, 1000));
+                    for (int i = 0; i < 200 && d.TryReadPacket(out _); i++)
+                    {
+                    }
+                }
+            }
+        }
+        catch (MediaException)
+        {
+        }
+    }
+
+    [Fact]
+    public void OggPacketAfterAnEmptyQueueHasNoCurrentPacketOutOfRange() => Run("ogg-current-range.bin", (s, o) => OggDemuxer.Open(s, o));
+
+    [Fact]
+    public void FlacFrameBufferNeverReadsAtANegativeOffset() => Run("flac-offset-overflow.bin", (s, o) => FlacDemuxer.Open(s, o));
+}

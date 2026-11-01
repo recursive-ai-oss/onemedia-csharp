@@ -164,6 +164,15 @@ internal sealed class OggEngine : ISequentialEngine
         if (_current.TotalSize > 0)
         {
             _dataStart = _current.Offset + _current.TotalSize;
+            if (_queue.Count > 0)
+            {
+                // RFC 3533 §6 / Vorbis I §A.2: header pages hold no audio. A page that does: its packets point into a page body that the tail read
+                // and later seeks replace, so drop them and read that page again as the first data page.
+                Defects.Add(DefectKind.Inconsistent, DefectSeverity.Warning, _current.Offset, "A header page also holds data packets.", "ogg.data-in-header-page");
+                _queue.Clear();
+                _head = 0;
+                _dataStart = _current.Offset;
+            }
         }
     }
 

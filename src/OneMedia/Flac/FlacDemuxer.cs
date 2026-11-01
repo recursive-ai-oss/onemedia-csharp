@@ -891,6 +891,12 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
                     break;
                 }
 
+                // A seek point is only a hint: one that points outside the file (a damaged table) is skipped rather than followed.
+                if (p.Offset < 0 || (_input.Length >= 0 && p.Offset > _input.Length - _audioStart))
+                {
+                    continue;
+                }
+
                 offset = _audioStart + p.Offset;
                 at = p.SampleNumber;
             }

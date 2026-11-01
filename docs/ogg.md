@@ -10,7 +10,7 @@ forward-only source); the synchronous demuxer completes the same code without wa
   no reflection, no final XOR) is checked on every page. A page that fails the check is still used and reported (`ChecksumMismatch`, code
   `ogg.crc`); bytes that are not a page are skipped up to the next `OggS` that has a plausible header (`ogg.skipped`, `UnaccountedBytes`).
 - A packet that spans pages is assembled from the lacing values; a continued-packet flag with nothing to continue, a sequence-number gap, a page after the
-  end-of-stream page and pages with no first page each raise a defect (`ogg.continuation-orphan`, `ogg.continuation-missing`, `ogg.sequence-gap`, `ogg.after-eos`, `ogg.orphan`) and reading goes on.
+  end-of-stream page and pages with no first page each raise a defect (`ogg.continuation-orphan`, `ogg.continuation-missing`, `ogg.sequence-gap`, `ogg.after-eos`, `ogg.orphan`) and reading goes on. A header page that also carries data packets (`ogg.data-in-header-page`) is read again from its start as the first data page.
 - Logical bitstreams are told apart by serial number. Multiplexed streams become one track each in the order of their first pages. A chained file
   (a first page that follows the last page of every earlier stream) appends the tracks of the next link as the reader reaches it; times continue after the
   earlier links, so the timeline is the concatenation.
@@ -57,6 +57,12 @@ Opening reads the pages of the header packets (one or two reads of 64 KiB) and o
 Checked on the generated files, the Xiph/Blender samples and the OneAudio-readable files (see the results in the unit report).
 
 - **`pos`.** ffprobe prints the offset of the page that ends the packet; ours is the range of the packet's own payload, which can start on an earlier page.
-- **Chained files.** ffprobe 7.0.2 lists only the first link's packets; ours also lists the later links' tracks and packets. `count` is excepted.
+- **Chained files.** ffprobe 7.0.2 merges a later link of the same codec into stream 0 (and counts that link's header packets), and ignores a link of another
+  codec; ours makes each link's streams tracks of their own, with times continuing. `count` is excepted for the chained fixtures.
+- **Vorbis, the packet that ends a page.** The sum of a stream's packet lengths, with the page granule at each page end, is consistent here (no `ogg.granule-mismatch`).
+  ffprobe gives that packet the length of its predecessor and times it at granule minus that, which leaves a gap before the next packet (observed: the
+  packets at 5374 and 7346 in a 48 kHz file are 16 ticks apart from the sum of the lengths). Differences stay below one block (≤ 4096 ticks) and only on page-ending packets; `pts`, `dts`, `duration` are excepted with that tolerance for Vorbis.
+- **Duration of Speex.** ffprobe counts from the first packet, which starts before 0 by the encoder lookahead (−40 samples at 8 kHz, −143 at 16 kHz; `start_time=-0.005`), so
+  its duration is the last granule plus that; ours is the last granule (3.995 s against 4.000 s). Reported by `infocheck`, not a packet difference.
 - **Duration of Opus.** ffprobe takes the last granule as the duration (it includes the pre-skip, 6.5 ms for 312 samples); ours is the playable length.
 - **Duration of chained files** is unknown here, known to ffprobe.

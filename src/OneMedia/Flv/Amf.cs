@@ -531,7 +531,7 @@ public static class AmfReader
 
                         t.Objects++;
                         List<string> names;
-                        bool dynamic;
+                        bool isDynamic;
                         if ((h & 2) == 0)
                         {
                             int idx = h >> 2;
@@ -541,7 +541,7 @@ public static class AmfReader
                                 return;
                             }
 
-                            (dynamic, names) = t.Traits[idx];
+                            (isDynamic, names) = t.Traits[idx];
                         }
                         else
                         {
@@ -551,7 +551,7 @@ public static class AmfReader
                                 return;
                             }
 
-                            dynamic = (h & 8) != 0;
+                            isDynamic = (h & 8) != 0;
                             int sealedCount = h >> 4;
                             c.Limits.CheckElementCount(c.Count + sealedCount, c.Base + c.Pos);
                             _ = Str(ref c, t); // class name
@@ -561,7 +561,7 @@ public static class AmfReader
                                 names.Add(Str(ref c, t) ?? string.Empty);
                             }
 
-                            t.Traits.Add((dynamic, names));
+                            t.Traits.Add((isDynamic, names));
                         }
 
                         foreach (string n in names)
@@ -574,7 +574,7 @@ public static class AmfReader
                             Value(ref c, Join(key, n), into, depth + 1, t);
                         }
 
-                        if (dynamic)
+                        if (isDynamic)
                         {
                             while (!c.Failed)
                             {

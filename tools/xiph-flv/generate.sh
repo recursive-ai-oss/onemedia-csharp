@@ -188,8 +188,8 @@ ffo tagvar/flv-basic.flv "${VID[@]}" "${SINE44[@]}" "${V_H264[@]}" "${A_AAC[@]}"
 
 
 if [ "${LARGE:-0}" = 1 ]; then
-  # About 2.2 GB of incompressible FLAC audio: noise in a 24-bit stereo stream.
-  ffo large/noise-2gb.flac -f lavfi -i "anoisesrc=seed=3:amplitude=0.5:sample_rate=96000:duration=2700" -ac 2 -c:a flac -sample_fmt s32 -bits_per_raw_sample 24
+  # Over 2 GB of incompressible FLAC audio: 8000 s of noise in a 24-bit stereo stream (about 0.27 MB per second).
+  ffo large/noise-2gb.flac -f lavfi -i "anoisesrc=seed=3:amplitude=0.5:sample_rate=96000:duration=8000" -ac 2 -c:a flac -sample_fmt s32 -bits_per_raw_sample 24
   if [ -s "$G/large/noise-2gb.flac" ]; then
     ffo large/noise-2gb.oga -i "$G/large/noise-2gb.flac" -c copy -f ogg
   fi
