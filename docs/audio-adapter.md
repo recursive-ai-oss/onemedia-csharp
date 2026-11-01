@@ -39,6 +39,7 @@ Collected while packets are read, so a host can see what OneAudio's packet inter
 - `LeadingDiscardPadding`: a block asked to cut audio from its start; the audio is kept.
 - `MidStreamDiscardPadding`: DiscardPadding on a block that is not the track's last. Opus receives it as an end position; other codecs keep the audio.
 - `EndPaddingNotApplied`: the track ends with DiscardPadding for a codec whose OneAudio decoder takes no end position from a non-Ogg source (Vorbis). The last packet decodes in full.
+- `SbrNotApplied` / `PsNotApplied`: the track is HE-AAC (SBR, and parametric stereo for HE-AACv2). OneAudio has no SBR or PS decoder, so the PCM is the core coder's: at the core sampling rate (typically half the signalled output rate), without the high band and, with PS, one channel instead of two. Set when the track is created, not while reading.
 
 ## Comparison with OneAudio's own paths (`audiodecode`)
 
@@ -63,6 +64,18 @@ differences (the adapter follows the container, the other side follows what its 
 2. An MP3 codec over packets (today MP3 needs a byte stream).
 3. Decoders and `CodecId`s for AC-3, E-AC-3, PCM variants and ALAC (typed `Unsupported` today).
 4. The AAC frame-length probe.
-5. HE-AAC with explicit SBR/PS and more than two channels.
+5. HE-AAC (SBR and PS). OneAudio 1.4.0 refuses configurations that signal SBR or PS (typed exception) and decodes the core only when the signalling is in the stream and the configuration is plain AAC-LC. See "HE-AAC" below.
 6. AMR samples that hold several frames (`damr` frames per sample above 1): `AmrStreamDecoder` takes one frame per packet and throws
    "frame type 7 needs 31 payload bytes, found 127" on a four-frame sample; OneAudio's own MP4 reader fails the same way.
+
+## HE-AAC
+
+What the file says and what the decode delivers differ for HE-AAC, so both are reported and never left to guesswork:
+
+- **Core** (`RecursiveAI.OneMedia`): `MediaTrack.DescribeCodec()` returns `CodecParameters` with `SampleRate` (the output rate a full HE-AAC decoder produces), `CoreSampleRate`, `Channels` (output channels; two with PS), `SbrPresent` and `PsPresent` from the AudioSpecificConfig (ISO/IEC 14496-3 §1.6.2.1: explicit signalling with object type 5 or 29 first, or the backward-compatible extension after the core configuration), and the `mp4a.40.5` / `mp4a.40.29` codec string. A tolerance observed in files written by MP4Box: an explicit configuration cut one bit short of the GASpecificConfig's last flag still reads.
+- **Implied SBR** (`SbrImplied`): the oldest convention signals SBR only inside the stream, leaving a plain AAC-LC configuration. The only hint outside the stream is a container that declares twice the configuration's rate; `SbrImplied` is set then, `SbrPresent` stays false, and it is a guess.
+- **Decode** (`RecursiveAI.OneMedia.Audio`): `MediaFile.Decode(out AudioDecodeReport report)` and `MediaFile.DescribeDecode()` give `DecodedSampleRate` and `DecodedChannels` (what the PCM really is), `SignalledSampleRate` and `SignalledChannels` (what the file asks for, zero when equal), and `Limitations` with `SbrNotApplied` / `PsNotApplied`; `IsCoreOnly` is true when either is set. `MediaTrackPacketSource.SampleRate` is the decoded rate, so priming and lengths are counted in core frames. `Decode()` without the report still works for HE-AAC with implied SBR and returns core-only audio; its documentation says so.
+- `decoder.SbrDataIgnored()` (extension) reads OneAudio's `AacDecoder.SbrDataIgnored`: true once SBR data in a plain-LC stream has been skipped. That is the only certain evidence for SBR signalled inside the stream, and it is known only after reading; before that, `SbrImplied` and `IsCoreOnly` are a guess from the declared rate.
+- OneAudio 1.4.0 throws the typed `UnsupportedAudioFormatException` when the configuration itself signals SBR or PS (explicit object type 5/29 or the extension sync); `DescribeDecode()` still answers for such a track.
+
+The test files are in `testdata/heaac` (`tools/gen-heaac-testdata.sh`): plain AAC-LC frames from a synthetic sine, with MP4Box rewriting only the signalling, because no encoder available here writes real SBR.

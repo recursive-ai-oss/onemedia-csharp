@@ -1,4 +1,6 @@
 using OneAudio;
+using RecursiveAI.OneMedia.Codecs;
+using RecursiveAI.OneMedia.Codecs.Aac;
 using RecursiveAI.OneMedia.Audio;
 
 namespace RecursiveAI.OneMedia.Tests.Audio;
@@ -144,6 +146,98 @@ public class AdapterTests
         (float[] b, _) = ReadAll(AudioDecoder.OpenFile(IsoFixture("bframes_aac.mp4"), native));
         Assert.Equal(b.Length, a.Length);
         Assert.True(a.AsSpan().SequenceEqual(b));
+    }
+
+    private static string HeAacFixture(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "heaac", name);
+
+    // The fixtures hold plain AAC-LC frames at 22.05 kHz whose configuration or sample entry says HE-AAC, the way HE-AAC files do.
+    // See tools/gen-heaac-testdata.sh.
+    [Theory]
+    [InlineData("sbr-compatible.m4a", false, "mp4a.40.5")]
+    [InlineData("sbr-explicit.m4a", false, "mp4a.40.5")]
+    [InlineData("sbrps-explicit.m4a", true, "mp4a.40.29")]
+    public void CoreReportsTheSignalledOutputRateAndSbrAndPs(string file, bool ps, string rfc6381)
+    {
+        using MediaFile media = Media.Open(HeAacFixture(file));
+        CodecParameters p = media.Audio!.DescribeCodec()!;
+        Assert.True(p.SbrPresent);
+        Assert.False(p.SbrImplied);
+        Assert.Equal(ps, p.PsPresent);
+        Assert.Equal(44100, p.SampleRate);
+        Assert.Equal(22050, p.CoreSampleRate);
+        Assert.Equal(ps ? 2 : 1, p.Channels);
+        Assert.Equal(rfc6381, p.Rfc6381);
+    }
+
+    [Fact]
+    public void CoreSeesSbrImpliedByTheDeclaredRateWhenTheConfigurationShowsNone()
+    {
+        using MediaFile media = Media.Open(HeAacFixture("sbr-implied.m4a"));
+        Assert.Equal(44100, media.Audio!.Audio!.Value.SampleRate);
+        CodecParameters p = media.Audio.DescribeCodec()!;
+        Assert.False(p.SbrPresent);
+        Assert.True(p.SbrImplied);
+        Assert.Equal(44100, p.SampleRate);
+        Assert.Equal(22050, p.CoreSampleRate);
+    }
+
+    [Fact]
+    public void PlainAacIsNotSbr()
+    {
+        using MediaFile media = Media.Open(IsoFixture("bframes_aac.mp4"));
+        CodecParameters p = media.Audio!.DescribeCodec()!;
+        Assert.False(p.SbrPresent);
+        Assert.False(p.SbrImplied);
+        Assert.False(p.PsPresent);
+        using IAudioDecoder d = media.Decode(out AudioDecodeReport report);
+        Assert.False(report.IsCoreOnly);
+        Assert.Equal(AudioSeamLimitations.None, report.Limitations);
+        Assert.Equal(0, report.SignalledSampleRate);
+        Assert.Equal(media.Audio.Audio!.Value.SampleRate, report.DecodedSampleRate);
+    }
+
+    [Fact]
+    public void ImpliedHeAacDecodesAsTheCoreAndSaysSo()
+    {
+        using MediaFile media = Media.Open(HeAacFixture("sbr-implied.m4a"));
+        (float[] samples, AudioFormat format) = ReadAll(media.Decode(out AudioDecodeReport report));
+        Assert.True(report.IsCoreOnly);
+        Assert.True(report.Limitations.HasFlag(AudioSeamLimitations.SbrNotApplied));
+        Assert.False(report.Limitations.HasFlag(AudioSeamLimitations.PsNotApplied));
+        Assert.Equal(44100, report.SignalledSampleRate);
+        // The PCM really is at the core rate, and the report says so.
+        Assert.Equal(22050, format.SampleRate);
+        Assert.Equal(22050, report.DecodedSampleRate);
+        Assert.Equal(format.Channels, report.DecodedChannels);
+        Assert.Equal(0, report.SignalledChannels);
+        // The fixture's frames hold no SBR data, so the stream itself never confirms the guess.
+        IAudioDecoder again = media.Decode();
+        using (again)
+        {
+            Assert.False(again.SbrDataIgnored());
+        }
+
+        // About half a second at the core rate; at the signalled rate it would be twice as many frames.
+        Assert.InRange(samples.Length / format.Channels, 10000, 12500);
+    }
+
+    [Theory]
+    [InlineData("sbr-compatible.m4a", false)]
+    [InlineData("sbr-explicit.m4a", false)]
+    [InlineData("sbrps-explicit.m4a", true)]
+    public void SignalledHeAacIsRefusedByOneAudioButStillReported(string file, bool ps)
+    {
+        using MediaFile media = Media.Open(HeAacFixture(file));
+        // OneAudio 1.4.0 refuses configurations that signal SBR or PS with a typed exception rather than decoding the core (the explicit
+        // fixtures also end one bit early, as MP4Box wrote them, which its stricter parser reports as an invalid configuration).
+        Assert.ThrowsAny<AudioFormatException>(() => media.Decode(out _));
+        AudioDecodeReport report = media.DescribeDecode();
+        Assert.True(report.IsCoreOnly);
+        Assert.Equal(ps, report.Limitations.HasFlag(AudioSeamLimitations.PsNotApplied));
+        Assert.Equal(44100, report.SignalledSampleRate);
+        Assert.Equal(22050, report.DecodedSampleRate);
+        Assert.Equal(1, report.DecodedChannels);
+        Assert.Equal(ps ? 2 : 0, report.SignalledChannels);
     }
 
     [Fact]
