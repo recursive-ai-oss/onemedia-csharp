@@ -82,8 +82,9 @@ internal static class AviTracks
         int height = (int)Math.Min(headers.Main.Height, int.MaxValue);
         if (BitmapInfoHeader.TryParse(s.Format, out BitmapInfoHeader bmp))
         {
-            width = Math.Abs(bmp.Width);
-            height = Math.Abs(bmp.Height);
+            // A negative biHeight means top-down rows; the magnitude of int.MinValue does not fit, so it is clamped.
+            width = bmp.Width == int.MinValue ? int.MaxValue : Math.Abs(bmp.Width);
+            height = bmp.Height == int.MinValue ? int.MaxValue : Math.Abs(bmp.Height);
             uint comp = bmp.Compression;
             string text = bmp.CompressionText;
             if (comp == 0 || comp == 3)
