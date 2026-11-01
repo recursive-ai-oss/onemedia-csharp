@@ -254,6 +254,61 @@ public class RemuxTests
     }
 
     [Fact]
+    public async Task AnAsynchronousSourceRemuxesToTheSameBytes()
+    {
+        string path = Data("mpeg", "h264-aac.ts");
+        (byte[] expected, _) = Remux(path);
+        await using MediaFile input = await MediaFile.OpenAsync(new MemoryMediaSource(File.ReadAllBytes(path)));
+        using MemoryStream ms = new();
+        await Remuxer.RemuxAsync(input, ms, RemuxFormat.Mp4);
+        Assert.True(ms.ToArray().AsSpan().SequenceEqual(expected));
+    }
+
+    private sealed class ForwardOnly(byte[] data) : MemoryStream(data)
+    {
+        public override bool CanSeek => false;
+    }
+
+    [Fact]
+    public void AForwardOnlyStreamRemuxes()
+    {
+        string path = Data("xiph-flv", "h264-aac.flv");
+        (byte[] expected, _) = Remux(path);
+        using MediaFile input = Media.Open(new ForwardOnly(File.ReadAllBytes(path)));
+        using MemoryStream ms = new();
+        Remuxer.Remux(input, ms, RemuxFormat.Mp4);
+        Assert.Equal(expected.Length, ms.Length);
+    }
+
+    [Fact]
+    public void ACancelledPathRemuxLeavesNoFile()
+    {
+        string output = Path.Combine(Path.GetTempPath(), "remux-cancel-" + Guid.NewGuid().ToString("N") + ".mp4");
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() => Remuxer.Remux(Data("mpeg", "h264-aac.ts"), output, RemuxFormat.Mp4, null, cts.Token));
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public void AnExistingOutputIsRefusedUnlessOverwriteIsSet()
+    {
+        string output = Path.Combine(Path.GetTempPath(), "remux-exists-" + Guid.NewGuid().ToString("N") + ".mp4");
+        try
+        {
+            File.WriteAllText(output, "x");
+            Assert.Throws<IOException>(() => Remuxer.Remux(Data("audio-es", "lc.aac"), output));
+            Assert.Equal("x", File.ReadAllText(output));
+            _ = Remuxer.Remux(Data("audio-es", "lc.aac"), output, new RemuxOptions { Overwrite = true });
+            Assert.True(new FileInfo(output).Length > 100);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
     public void CancellationStopsTheRemux()
     {
         using MediaFile input = Media.Open(Data("mpeg", "h264-aac.ts"));
