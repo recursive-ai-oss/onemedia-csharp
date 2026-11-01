@@ -8,6 +8,7 @@
 # Environment:
 #   ONEMEDIA_FUZZ_HOME  tools and working directories (default ~/.cache/onemedia-fuzz)
 #   FUZZ_MAX_LEN        longest input in bytes (default 262144)
+#   FUZZ_PREBUILT       directory with bin/ and bin-plain/ from an earlier build, reused instead of building per target
 # Needs the .NET SDK on PATH, curl and sha256sum. The libFuzzer driver comes as a pinned release binary (a fuzzing driver only; nothing here ships).
 # Crashing and hanging inputs land in $ONEMEDIA_FUZZ_HOME/work/<target>/crashes; minimise them into testdata/fuzz with a regression test.
 set -euo pipefail
@@ -169,6 +170,10 @@ seed() {
 build() {
   local work="$1"
   rm -rf "$work/bin" "$work/bin-plain"
+  # FUZZ_PREBUILT: a directory holding bin/ and bin-plain/ built once, so parallel targets share one build.
+  if [ -n "${FUZZ_PREBUILT:-}" ] && [ -d "$FUZZ_PREBUILT/bin" ]; then
+    cp -r "$FUZZ_PREBUILT/bin" "$work/bin"; cp -r "$FUZZ_PREBUILT/bin-plain" "$work/bin-plain"; return
+  fi
   dotnet publish "$here/fuzz/OneMedia.Fuzz/OneMedia.Fuzz.csproj" -c Release -o "$work/bin-plain" -v quiet -clp:NoSummary >/dev/null
   cp -r "$work/bin-plain" "$work/bin"
   "$sharpfuzz" "$work/bin/RecursiveAI.OneMedia.dll" >/dev/null

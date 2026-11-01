@@ -111,3 +111,9 @@ flags, default duration, video/audio fields) are compared field by field.
 Open-time `ToArray()` copies are of CodecPrivate, the SegmentUUID, compression settings and the header-stripping prefix. Each is a slice of a master element
 (Info, Tracks, SeekHead, Cues) that was itself checked against `MediaLimits.MaxAllocationBytes` before it was read, so the copies are bounded by that limit and by the number
 of tracks: the memory taken at open does not grow with the size of the file.
+
+## Stream differences from `ffprobe -show_streams` (`infocheck`)
+
+On the 92-file Matroska corpus one difference remains and is scoped in `tools/OneMedia.Oracles/exceptions.tsv`: `atlantis405-test.mkv` has an AC-3 track whose
+track header states 2 channels while the bitstream is 5.1; ffprobe reads the bitstream, ours is the header (the reader does not parse audio payload on open).
+The earlier classes (attachment streams listed by ffprobe, Matroska `LanguageBCP47`, the SBR output rate, VobSub naming, VFW/ACM codec ids) are handled in `infocheck` or by rules.
