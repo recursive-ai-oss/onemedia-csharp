@@ -12,7 +12,7 @@ namespace RecursiveAI.OneMedia.Tags;
 /// </summary>
 /// <remarks>
 /// Supported: MP4/MOV/3GP (iTunes item list, QuickTime key-table metadata, © atoms), Matroska/WebM (SimpleTags, Segment title, cover attachments),
-/// MP3 (ID3v2.3/2.4, ID3v1, APEv2), FLAC, Ogg Vorbis/Opus/FLAC, WAVE/RF64 (LIST INFO, bext, ID3 chunk) AIFF (text chunks, ID3 chunk) and ASF/WMA/WMV (Content Description, Extended Content Description).
+/// MP3 (ID3v2.3/2.4, ID3v1, APEv2), FLAC, Ogg Vorbis/Opus/FLAC, WAVE/RF64 (LIST INFO, bext, ID3 chunk) AIFF (text chunks, ID3 chunk) ASF/WMA/WMV (Content Description, Extended Content Description), XMP packets in ISO BMFF <c>uuid</c> boxes and the WAVE <c>iXML</c> chunk (native edits by element path).
 /// Other formats raise <see cref="UnsupportedMediaException"/>.
 /// </remarks>
 public static class TagWriter
