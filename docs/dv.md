@@ -64,5 +64,12 @@ embedded audio shows one deviation class in the differential, `dv-embedded-audio
 
 ## Deviations from ffprobe 7.0.2
 
-`dv-embedded-audio` (audio streams not exposed) and `truncated-last-frame` (ffprobe lists an empty packet, we return the bytes present with
-`Corrupt`). Everything else (frame sizes, positions, payload hashes, times, stream parameters) agrees on the corpus.
+- `dv-embedded-audio`: ffprobe adds one `pcm_s16le` stream, with one packet per frame, for each audio channel pair it finds in the frame, so it
+  lists 1 + N streams and N + 1 packets per frame where we list 1 and 1 (N is 1 or 2 on the corpus: ffprobe shows 2 or 3 streams). The
+  harness accepts a stream-count or packet-count difference only when every extra stream is `pcm_s16le` and the first track is `dvvideo`; all
+  other fields of the video track still have to match. De-shuffling the sound is not implemented and is a documented gap.
+- `truncated-last-frame`: ffprobe lists an empty packet, we return the bytes present with `Corrupt`.
+- `dv-frame-start`: a raw file that does not start at a frame boundary is opened by ffprobe (it searches for the next header); sniffing here
+  looks at the head of the file only, so the file is not recognised.
+
+Everything else (frame sizes, positions, payload hashes, times, stream parameters) agrees on the corpus.
