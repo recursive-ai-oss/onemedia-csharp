@@ -20,8 +20,33 @@ internal static class InfoCheck
             string name = Path.GetFileName(file);
             try
             {
-                using MediaFile media = Media.Open(file);
                 using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
+                MediaFile? opened = null;
+                try
+                {
+                    opened = Media.Open(file);
+                }
+                catch (UnsupportedMediaException) when (doc.RootElement.TryGetProperty("streams", out JsonElement first) && first.GetArrayLength() > 0 && first[0].TryGetProperty("codec_name", out JsonElement fc) && fc.GetString() == "dvvideo")
+                {
+                    // ffprobe looks for the next DIF header; content sniffing here looks at the head of the file only (docs/dv.md).
+                    explained.Add("raw DV that does not start at a frame boundary is not recognised (dv-frame-start)");
+                }
+
+                if (opened is null)
+                {
+                    Console.WriteLine($"explained	{name}	{string.Join("; ", explained)}");
+                    continue;
+                }
+
+                using MediaFile media = opened;
+                if (!doc.RootElement.TryGetProperty("streams", out _))
+                {
+                    // ffprobe refuses the file (a header cut short); the tolerant reader opens it, which the packet sweep covers.
+                    explained.Add("ffprobe rejects the file (ffprobe-rejects)");
+                    Console.WriteLine($"explained	{name}	{string.Join("; ", explained)}");
+                    continue;
+                }
+
                 // ffprobe lists Matroska attachments (fonts, cover art) as streams; they are not tracks here.
                 List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment")];
                 if (streams.Count != media.Tracks.Count)
@@ -58,6 +83,11 @@ internal static class InfoCheck
                         {
                             // A file cut short: ffprobe estimates the length from the data present, ours is the length the headers state.
                             explained.Add(text + " (truncated-estimate)");
+                        }
+                        else if (!media.Tracks.Any(t => t.Kind == TrackKind.Video) && theirs > micro / 1e6)
+                        {
+                            // Without a video stream ffprobe takes the length from the file size and the average rate, which includes the index and padding.
+                            explained.Add(text + " (audio-only-size-estimate)");
                         }
                         else if (audioWithoutDuration && Math.Abs((micro / 1e6) - theirs) < 0.5)
                         {
