@@ -210,6 +210,13 @@ public class AdapterTests
         Assert.Equal(22050, report.DecodedSampleRate);
         Assert.Equal(format.Channels, report.DecodedChannels);
         Assert.Equal(0, report.SignalledChannels);
+        // The fixture's frames hold no SBR data, so the stream itself never confirms the guess.
+        IAudioDecoder again = media.Decode();
+        using (again)
+        {
+            Assert.False(again.SbrDataIgnored());
+        }
+
         // About half a second at the core rate; at the signalled rate it would be twice as many frames.
         Assert.InRange(samples.Length / format.Channels, 10000, 12500);
     }

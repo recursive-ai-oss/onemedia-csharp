@@ -39,6 +39,19 @@ public static class MediaAudioExtensions
     }
 
     /// <summary>
+    /// True when a decoder returned by <c>Decode</c> has skipped spectral-band-replication data: the stream carries SBR (HE-AAC signalled only
+    /// inside the stream) and the PCM is the core coder's audio at the core rate. Unlike <see cref="AudioDecodeReport"/> this cannot be known
+    /// before the data is reached, so ask again after reading; a false answer before the end of the stream proves nothing.
+    /// </summary>
+    /// <param name="decoder">A decoder from <c>Decode</c>.</param>
+    /// <returns>True when OneAudio's AAC decoder reports that it ignored SBR data; false for other decoders.</returns>
+    public static bool SbrDataIgnored(this global::OneAudio.IAudioDecoder decoder)
+    {
+        ArgumentNullException.ThrowIfNull(decoder);
+        return decoder is global::OneAudio.Aac.AacDecoder aac && aac.SbrDataIgnored;
+    }
+
+    /// <summary>
     /// Says what decoding an audio track will not do, without decoding. For HE-AAC this works even when OneAudio refuses to build a decoder
     /// for the track (explicit or backward-compatible SBR/PS signalling), so the reason can be shown.
     /// </summary>
@@ -61,7 +74,7 @@ public static class MediaAudioExtensions
     /// </summary>
     /// <remarks>
     /// HE-AAC (SBR, and parametric stereo where present) is returned as the core coder's audio only: OneAudio has no SBR or PS decoder, so a
-    /// 44.1 kHz HE-AAC track comes out as 22.05 kHz PCM without the high band. Check <see cref="AudioDecodeReport.IsCoreOnly"/>, and read the
+    /// 44.1 kHz HE-AAC track comes out as 22.05 kHz PCM without the high band. Check <see cref="AudioDecodeReport.IsCoreOnly"/> (SBR/PS signalled by the file or implied by its declared rate), <see cref="SbrDataIgnored"/> (SBR data met in the stream, known only after reading), and read the
     /// true PCM rate from the decoder or <see cref="AudioDecodeReport.DecodedSampleRate"/>, not from <see cref="AudioTrackInfo.SampleRate"/>.
     /// </remarks>
     /// <param name="media">The file, opened from a seekable source.</param>
