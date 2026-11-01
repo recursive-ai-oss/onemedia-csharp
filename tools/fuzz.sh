@@ -48,6 +48,14 @@ seed() {
                { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
              done ;;
+    riff-wav|aiff|caf) # The first byte picks the path (bit 0: forward-only, 1: seeks, 2: ranged async, 3: metadata); the rest is the file.
+             case "$target" in riff-wav) pat="*.wav";; aiff) pat="*.aif*";; caf) pat="*.caf";; esac
+             for f in "$here"/testdata/pcm/$pat; do
+               [ -f "$f" ] || continue
+               { printf '\012'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+               { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+               { printf '\014'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
+             done ;;
     tags) # The first byte picks the path (bit 0: Matroska rather than ISO BMFF; bit 1: the asynchronous reader); the rest is the file.
           for f in "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mov "$here"/testdata/metadata/*.m4a "$here"/testdata/metadata/*.3gp "$here"/testdata/isobmff/*.mp4; do
             [ -f "$f" ] || continue

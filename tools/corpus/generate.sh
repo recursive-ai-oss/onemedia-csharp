@@ -318,7 +318,6 @@ ff "pcm/caf-mulaw-8k.caf" "${TONE8[@]}" -ac 1 -c:a pcm_mulaw -f caf
 ff "pcm/caf-alaw-8k.caf" "${TONE8[@]}" -ac 1 -c:a pcm_alaw -f caf
 ff "pcm/caf-alac-stereo48k.caf" "${TONE[@]}" -ac 2 "${A_ALAC[@]}" -f caf
 ff "pcm/caf-alac-mono44k.caf" "${TONE44[@]}" -ac 1 "${A_ALAC[@]}" -f caf
-ff "pcm/caf-aac-stereo48k.caf" "${TONE[@]}" -ac 2 "${A_AAC[@]}" -f caf
 ff "pcm/caf-opus-stereo48k.caf" "${TONE[@]}" -ac 2 "${A_OPUS[@]}" -f caf
 ff "pcm/caf-ima4-stereo.caf" "${TONE44[@]}" -ac 2 -c:a adpcm_ima_qt -f caf
 # Tagged variants: the metadata options of the muxers (INFO, bext, ID3, AIFF text chunks, the CAF info chunk).
