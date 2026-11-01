@@ -11,6 +11,7 @@ public sealed class TagWriteTests
     [
         "audio-es/plain.mp3", "audio-es/tagged/id3v23-basic.mp3", "audio-es/tagged/id3v22-basic.mp3", "audio-es/tagged/id3v1-only.mp3", "audio-es/tagged/apev2-only.mp3",
         "audio/aac.m4a", "audio/aac.mka", "audio/opus.mka", "audio/flac.flac", "audio/opus.ogg", "pcm/aiff-id3.aiff", "pcm/bwf-v0.wav",
+        "asf/wmav2-tagged.wma", "asf/mp3.wma", "asf/wmv2-wmav2.wmv",
     ];
 
     private static byte[] Apply(string fixture, TagEdits edits, TagWriteOptions? options = null) => Apply(File.ReadAllBytes(WriterTestSupport.Fixture(fixture)), edits, options);
@@ -43,17 +44,18 @@ public sealed class TagWriteTests
     [MemberData(nameof(Files))]
     public void EditsReadBackAndThePayloadIsUnchanged(string fixture)
     {
+        bool asf = fixture.StartsWith("asf/", StringComparison.Ordinal);
         TagEdits e = new();
         e.Set(CommonField.Title, "New title \u00e9\u4e2d");
         e.Set(CommonField.Artist, "New artist");
-        e.Set(CommonField.Comment, "A comment");
+        e.Set(asf ? CommonField.Description : CommonField.Comment, "A comment");
         e.SetPicture(Png, "image/png");
         byte[] result = Apply(fixture, e);
         using MemoryMediaSource src = new(result);
         using MediaFile m = MediaFile.Open(src);
         Assert.Equal("New title \u00e9\u4e2d", m.Tags.Title);
         Assert.Equal("New artist", m.Tags.Artist);
-        Assert.Equal("A comment", m.Tags.Comment);
+        Assert.Equal("A comment", asf ? m.Tags.Description : m.Tags.Comment);
         Assert.Contains(m.Tags.Pictures, p => p.Length == Png.Length && p.ReadData().AsSpan().SequenceEqual(Png));
     }
 
@@ -193,5 +195,64 @@ public sealed class TagWriteTests
         e.Set(CommonField.Title, "x");
         using MemoryMediaSource src = new(new byte[64]);
         Assert.Throws<UnsupportedMediaException>(() => TagWriter.Plan(src, e));
+    }
+
+    [Theory]
+    [InlineData("asf/wmav2-tagged.wma")]
+    [InlineData("asf/wmv2-wmav2.wmv")]
+    public void AsfDescriptionsKeepOtherAttributesAndTheFileSizeStaysTrue(string fixture)
+    {
+        byte[] input = File.ReadAllBytes(WriterTestSupport.Fixture(fixture));
+        TagEdits e = new();
+        e.Set(CommonField.Album, "An album");
+        e.Set(CommonField.Rating, "50");
+        e.Set(CommonField.TrackNumber, 3);
+        e.Set(CommonField.TrackTotal, 9);
+        byte[] result = Apply(input, e);
+        using MemoryMediaSource src = new(result);
+        using MediaFile m = MediaFile.Open(src);
+        Assert.Equal("An album", m.Tags.Album);
+        Assert.Equal(3, m.Tags.TrackNumber);
+        Assert.Equal(9, m.Tags.TrackTotal);
+        // The File Properties object states the file size; it follows the header.
+        Assert.Equal(result.Length, BitConverter.ToInt64(result, 30 + 24 + 16));
+    }
+
+    [Fact]
+    public void AsfSaveInPlaceUsesThePaddingOrRefuses()
+    {
+        byte[] input = File.ReadAllBytes(WriterTestSupport.Fixture("asf/wmav2-tagged.wma"));
+        string path = Path.Combine(Path.GetTempPath(), "asf-inplace-" + Guid.NewGuid().ToString("N") + ".wma");
+        File.WriteAllBytes(path, input);
+        try
+        {
+            TagEdits grow = new();
+            grow.Set(CommonField.Description, new string('c', 5000));
+            try
+            {
+                TagWriter.SaveInPlace(path, grow);
+                Assert.Equal(input.Length, new FileInfo(path).Length);
+            }
+            catch (PaddingRequiredException ex)
+            {
+                Assert.True(ex.Required > 0);
+                Assert.Equal(input, File.ReadAllBytes(path));
+            }
+
+            TagWriter.Save(path, grow);
+            // The growing save left padding in the Header Extension: a smaller edit now fits without moving a byte.
+            long size = new FileInfo(path).Length;
+            TagEdits small = new();
+            small.Set(CommonField.Description, "short");
+            TagWriter.SaveInPlace(path, small);
+            Assert.Equal(size, new FileInfo(path).Length);
+            using FileMediaSource fs = FileMediaSource.Open(path);
+            using MediaFile m = MediaFile.Open(fs);
+            Assert.Equal("short", m.Tags.Description);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }

@@ -132,6 +132,17 @@ public sealed class ChunkEditor
             }
         }
 
+        // A chunk appended inside something that is replaced or removed would vanish with it; refuse instead of losing it silently.
+        foreach (Request other in _requests)
+        {
+            (ChunkNode replaced, ChunkNode appendedTo) = request.Kind == RequestKind.Append ? (other.Node, request.Node) : (request.Node, other.Node);
+            bool pair = request.Kind == RequestKind.Append ? other.Kind != RequestKind.Append : other.Kind == RequestKind.Append;
+            if (pair && (replaced.Offset == appendedTo.Offset || IsAncestor(replaced, appendedTo)))
+            {
+                throw new ArgumentException("A chunk cannot be added inside a chunk that is replaced or removed by another edit.");
+            }
+        }
+
         _requests.Add(request);
     }
 

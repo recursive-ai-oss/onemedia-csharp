@@ -71,7 +71,7 @@ def validity(path, ext):
     msgs = []
     rc, _, err = run(["ffprobe", "-v", "error", path])
     msgs.append(len([l for l in err.splitlines() if l.strip()]))
-    if ext in (".mp3", ".flac", ".ogg", ".opus", ".wav", ".aiff", ".aif", ".m4a", ".mp4", ".mov", ".mkv", ".webm", ".mka"):
+    if ext in (".mp3", ".flac", ".ogg", ".opus", ".wav", ".aiff", ".aif", ".m4a", ".mp4", ".mov", ".mkv", ".webm", ".mka", ".wma", ".wmv", ".asf"):
         rc, _, err = run(["ffmpeg", "-v", "error", "-i", path, "-f", "null", "-"], 600)
         msgs.append(len([l for l in err.splitlines() if l.strip()]))
     else:

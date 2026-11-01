@@ -3,7 +3,7 @@
 # and in-place saves within padding.
 #
 #   tools/run-tagwrite-checks.sh build
-#   tools/run-tagwrite-checks.sh edit    <family> [corpus-dir]     family: iso mkv mp3 flac ogg wav aiff
+#   tools/run-tagwrite-checks.sh edit    <family> [corpus-dir]     family: iso mkv mp3 flac ogg wav aiff asf
 #   tools/run-tagwrite-checks.sh inplace <family> [corpus-dir]
 #   tools/run-tagwrite-checks.sh large   <file>...                 one big file each: edit with peak memory
 #
@@ -31,6 +31,7 @@ exts() {
     ogg) echo "ogg opus oga" ;;
     wav) echo "wav" ;;
     aiff) echo "aif aiff aifc" ;;
+    asf) echo "wma wmv asf" ;;
   esac
 }
 list_files() {

@@ -88,13 +88,18 @@ internal static class Checker
         return null;
     }
 
+    // ASF has no comment field: its Content Description's "description" is the closest, and the mapping table calls it Description.
+    private static CommonField CommentField(string path) => Path.GetExtension(path).ToLowerInvariant() is ".wma" or ".wmv" or ".asf" ? CommonField.Description : CommonField.Comment;
+
+    private static string? CommentOf(MediaFile m, string path) => CommentField(path) == CommonField.Description ? m.Tags.Description : m.Tags.Comment;
+
     private static string Edit(string input, string output)
     {
         CommonField? remove = Environment.GetEnvironmentVariable("TAGCHECK_NOREMOVE") == "1" ? null : RemovableField(input);
         TagEdits e = new();
         e.Set(CommonField.Title, Environment.GetEnvironmentVariable("TAGCHECK_TITLE") ?? "Edited Title \u00fc");
         e.Set(CommonField.Artist, "Edited Artist");
-        e.Set(CommonField.Comment, "An edited comment");
+        e.Set(CommentField(input), "An edited comment");
         e.SetPicture(Png, "image/png");
         if (remove is { } r)
         {
@@ -110,7 +115,7 @@ internal static class Checker
         string after = Hash(output);
         using MemoryMediaSource mem = new(File.ReadAllBytes(output));
         using MediaFile m = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1" ? MediaFile.Open(mem) : Media.Open(output);
-        string readBack = $"title={Flag(m.Tags.Title == "Edited Title \u00fc")} artist={Flag(m.Tags.Artist == "Edited Artist")} comment={Flag(m.Tags.Comment == "An edited comment")} picture={Flag(m.Tags.Pictures.Any(p => p.Length == Png.Length))} removed={(remove is { } rr ? Flag(m.Tags.First(rr) is null) + ":" + rr : "none")}";
+        string readBack = $"title={Flag(m.Tags.Title == "Edited Title \u00fc")} artist={Flag(m.Tags.Artist == "Edited Artist")} comment={Flag(CommentOf(m, input) == "An edited comment")} picture={Flag(m.Tags.Pictures.Any(p => p.Length == Png.Length))} removed={(remove is { } rr ? Flag(m.Tags.First(rr) is null) + ":" + rr : "none")}";
         long changed = plan.Plan.Pieces.Where(p => p.Kind != OutputPieceKind.Copy).Sum(p => p.Length);
         string systems = string.Join(",", plan.Report.Systems.Select(s => s.System + (s.Created ? "+" : "")));
         string notRep = string.Join(",", plan.Report.Systems.SelectMany(s => s.NotRepresentable.Select(n => s.System + ":" + n.Field)));
@@ -206,7 +211,7 @@ internal static class Checker
         {
             TagEdits small = new();
             small.Set(CommonField.Title, "T");
-            small.Set(CommonField.Comment, "c");
+            small.Set(CommentField(input), "c");
             TagWriteReport r = TagWriter.SaveInPlace(copy, small);
             result = "small=ok(" + r.Write!.BytesWritten + "B)";
         }
@@ -223,7 +228,7 @@ internal static class Checker
         try
         {
             TagEdits big = new();
-            big.Set(CommonField.Comment, new string('x', 3 * 1024 * 1024));
+            big.Set(CommentField(input), new string('x', 3 * 1024 * 1024));
             TagWriter.SaveInPlace(copy, big);
             result += "\tbig=ok(!)";
         }

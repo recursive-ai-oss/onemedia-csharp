@@ -12,7 +12,7 @@ namespace RecursiveAI.OneMedia.Tags;
 /// </summary>
 /// <remarks>
 /// Supported: MP4/MOV/3GP (iTunes item list, QuickTime key-table metadata, © atoms), Matroska/WebM (SimpleTags, Segment title, cover attachments),
-/// MP3 (ID3v2.3/2.4, ID3v1, APEv2), FLAC, Ogg Vorbis/Opus/FLAC, WAVE/RF64 (LIST INFO, bext, ID3 chunk) and AIFF (text chunks, ID3 chunk).
+/// MP3 (ID3v2.3/2.4, ID3v1, APEv2), FLAC, Ogg Vorbis/Opus/FLAC, WAVE/RF64 (LIST INFO, bext, ID3 chunk) AIFF (text chunks, ID3 chunk) and ASF/WMA/WMV (Content Description, Extended Content Description).
 /// Other formats raise <see cref="UnsupportedMediaException"/>.
 /// </remarks>
 public static class TagWriter
@@ -53,7 +53,7 @@ public static class TagWriter
             TagFamily.Ogg => OggTagWriter.Plan(source, edits, options, limits, cancellationToken),
             TagFamily.Flac => FlacTagWriter.Plan(source, audioStart, edits, options, limits, cancellationToken),
             TagFamily.Mp3 => Mp3TagWriter.Plan(source, edits, options, limits, cancellationToken),
-            TagFamily.Asf => throw new UnsupportedMediaException("Tag writing in ASF files is not implemented yet."),
+            TagFamily.Asf => AsfTagWriter.Plan(source, edits, options, limits, cancellationToken),
             _ => throw new UnsupportedMediaException("Tag writing is not supported for this format."),
         };
     }
