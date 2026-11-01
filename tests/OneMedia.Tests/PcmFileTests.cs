@@ -121,7 +121,6 @@ public class PcmFileTests
         var packets = Drain(d, out byte[] all);
         Assert.Contains(d.Defects, x => x.Kind == DefectKind.SizeExceedsFile && x.Offset == 36);
         Assert.Equal(all.Length, packets.Sum(p => p.Size));
-        Assert.True(all.Length % 4 == 0);
     }
 
     [Fact]

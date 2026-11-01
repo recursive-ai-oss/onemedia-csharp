@@ -167,7 +167,14 @@ public sealed class WavDemuxer : AudioFileDemuxer
             long dataStart = data is null ? Math.Max(0, media.Length) : data.Offset + data.HeaderSize;
             long dataEnd = data is null ? dataStart : dataStart + data.PayloadSize;
             bool guess = forward is not null && data is { IsSizeInferred: true };
-            (PacketPlan plan, long frames) = MakePlan(format, pcm, codec, dataStart, data is null ? 0 : data.PayloadSize, guess, chunks, media, defects, fmt.Offset);
+            if (data is { PayloadSize: 0 } && forward is null && media.Length > dataStart + format.BlockAlign && !LooksLikeChunk(media, dataStart))
+            {
+                // A streaming writer that never came back to fill in the size: the sample data runs to the end of the file.
+                defects.Add(DefectKind.InvalidSize, DefectSeverity.Warning, data.Offset, "The 'data' chunk states a size of 0 but sample data follows it; the data is taken to run to the end of the file.", "wav.data-size-zero");
+                dataEnd = media.Length;
+            }
+
+            (PacketPlan plan, long frames) = MakePlan(format, pcm, codec, dataStart, dataEnd - dataStart, guess, chunks, media, defects, fmt.Offset);
             MediaTrack track = new()
             {
                 Index = 0,
@@ -191,6 +198,26 @@ public sealed class WavDemuxer : AudioFileDemuxer
             owner?.Dispose();
             throw;
         }
+    }
+
+    // Four printable characters in a row start a chunk header; sample data seldom does.
+    private static bool LooksLikeChunk(IMediaSource media, long at)
+    {
+        Span<byte> id = stackalloc byte[4]; // the four bytes that would be a chunk id
+        if (media.Read(at, id) < 4)
+        {
+            return false;
+        }
+
+        foreach (byte b in id)
+        {
+            if (b < 0x20 || b > 0x7E)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // How big a packet is: see the class remarks. Returns the plan and the total frames (-1 when the data length is not known).
@@ -261,17 +288,18 @@ public sealed class WavDemuxer : AudioFileDemuxer
         }
 
         long perBlock = SamplesPerBlock(f);
-        if (perBlock <= 0 && f.AverageBytesPerSecond > 0)
-        {
-            perBlock = Math.Max(1, ((long)unit * f.SampleRate) + (f.AverageBytesPerSecond / 2)) / f.AverageBytesPerSecond;
-        }
-
+        bool blocks = perBlock > 0;
         if (perBlock <= 0)
         {
             perBlock = 1;
         }
 
-        frames = unknownLength ? -1 : dataBytes / unit * perBlock;
+        frames = unknownLength ? -1 : (dataBytes / unit * perBlock) + (dataBytes % unit * perBlock / unit);
+        if (!blocks && f.AverageBytesPerSecond > 0 && !unknownLength)
+        {
+            // No block structure known: the length follows from the average data rate.
+            frames = dataBytes * f.SampleRate / f.AverageBytesPerSecond;
+        }
         foreach (ChunkNode c in chunks)
         {
             if (c.Id == "fact" && c.PayloadSize >= 4 && !unknownLength)
@@ -286,16 +314,21 @@ public sealed class WavDemuxer : AudioFileDemuxer
             }
         }
 
-        // Observed: packets hold as many whole blocks as fit the same time span, measured in bytes with the average data rate.
-        long targetBytes = f.AverageBytesPerSecond > 0 ? targetFrames * f.AverageBytesPerSecond / f.SampleRate : unit;
-        int units = (int)Math.Clamp(targetBytes / unit, 1, 1 << 16);
+        if (!blocks)
+        {
+            // G.726 comes in 512-byte packets in the reference tool's output; everything else unknown in 4096-byte ones.
+            return (new ProportionalPlan(dataBytes, Math.Max(frames, 0), f.EffectiveTag is 0x0040 or 0x0045 or 0x0064 ? 512 : 4096), frames);
+        }
+
+        // Observed: packets hold as many whole blocks as fit the same number of frames as a PCM packet (at least one); GSM 06.10 keeps one block per packet.
+        int units = f.EffectiveTag == 0x0031 ? 1 : (int)Math.Clamp(targetFrames / perBlock, 1, 1 << 16);
         return (new FixedPlan(unit, perBlock, units), frames);
     }
 
     // The frames in one block of the ADPCM formats that state it in the format's extra bytes (Microsoft's WAVEFORMATEX extensions).
     private static long SamplesPerBlock(WaveFormat f)
     {
-        if (f.EffectiveTag is 0x0002 or 0x0011 && f.Extra.Length >= 2)
+        if (f.EffectiveTag is 0x0002 or 0x0011 or 0x0031 && f.Extra.Length >= 2)
         {
             return BinaryPrimitives.ReadUInt16LittleEndian(f.Extra.Span);
         }

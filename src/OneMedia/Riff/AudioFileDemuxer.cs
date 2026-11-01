@@ -11,6 +11,9 @@ internal abstract class PacketPlan
     /// <summary>True when <see cref="SeekTo"/> works.</summary>
     public virtual bool CanSeek => false;
 
+    /// <summary>The size of one indivisible unit in bytes (a PCM frame or a codec block); 0 when packets are not made of equal units.</summary>
+    public virtual int Unit => 0;
+
     /// <summary>Gives the next packet's size and duration. <paramref name="remaining"/> is the bytes left in the data.</summary>
     public abstract bool Next(long remaining, out int bytes, out long frames);
 
@@ -31,9 +34,13 @@ internal sealed class FixedPlan(int unitBytes, long unitFrames, int unitsPerPack
 
     public override bool CanSeek => true;
 
+    public override int Unit => unitBytes;
+
     public override bool Next(long remaining, out int bytes, out long frames)
     {
-        long n = Math.Min(_packetBytes, remaining / unitBytes * unitBytes);
+        // The last packet takes every byte that is left, including a part-unit tail: the reference tool delivers those bytes, and a decoder can
+        // decide what to do with them. The frames counted are those of the whole units plus the tail's share of a unit.
+        long n = Math.Min(_packetBytes, remaining);
         if (n <= 0)
         {
             bytes = 0;
@@ -42,7 +49,7 @@ internal sealed class FixedPlan(int unitBytes, long unitFrames, int unitsPerPack
         }
 
         bytes = (int)n;
-        frames = n / unitBytes * unitFrames;
+        frames = (n / unitBytes * unitFrames) + (n % unitBytes * unitFrames / unitBytes);
         return true;
     }
 
@@ -51,6 +58,33 @@ internal sealed class FixedPlan(int unitBytes, long unitFrames, int unitsPerPack
         long perPacket = unitsPerPacket * unitFrames;
         long packet = (Math.Max(0, frame) + (next ? perPacket - 1 : 0)) / perPacket;
         return (packet * unitsPerPacket * unitFrames, packet * _packetBytes);
+    }
+}
+
+/// <summary>
+/// A plan for data whose codec has no block structure the demuxer knows: packets of at most <c>maxPacketBytes</c>, each holding its share of the
+/// total frames. The shares add up to exactly the total, however the bytes divide.
+/// </summary>
+internal sealed class ProportionalPlan(long totalBytes, long totalFrames, int maxPacketBytes) : PacketPlan
+{
+    private long _consumed;
+
+    public override bool Next(long remaining, out int bytes, out long frames)
+    {
+        long n = Math.Min(maxPacketBytes, remaining);
+        if (n <= 0)
+        {
+            bytes = 0;
+            frames = 0;
+            return false;
+        }
+
+        bytes = (int)n;
+        long before = totalBytes > 0 ? _consumed * totalFrames / totalBytes : 0;
+        _consumed += n;
+        long after = totalBytes > 0 ? Math.Min(_consumed, totalBytes) * totalFrames / totalBytes : 0;
+        frames = Math.Max(0, after - before);
+        return true;
     }
 }
 
@@ -171,6 +205,11 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
             }
 
             skip = _plan.Skip;
+            if (_plan.Unit > 0 && size % _plan.Unit != 0 && !_endIsGuess)
+            {
+                Defects.Add(DefectKind.UnaccountedBytes, DefectSeverity.Info, _dataStart + _offset, $"The last {size % _plan.Unit} byte(s) of the sample data do not fill a whole frame or block; they are delivered in the last packet.", "audio.partial-unit");
+            }
+
             // Remembered so that a read which has to be retried (ranged sources) does not cut the packet twice.
             _planned = true;
             _plannedSize = size;

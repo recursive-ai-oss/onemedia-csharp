@@ -242,6 +242,14 @@ internal static class ChunkWalker
         long available = end - payloadStart;
         bool inferred = unbounded;
         long payload = size;
+        if (size > available && !unbounded && depth == 2 && c.Length > 0 && payloadStart + size <= c.Length)
+        {
+            // The outer size is too small (some writers leave out the last bytes) but this chunk fits the file: its own size is believed.
+            c.Defects.Add(DefectKind.SizeExceedsParent, DefectSeverity.Warning, pos,
+                $"The chunk '{ChunkNode.FourCc(key)}' states {size} bytes and ends after the outer chunk does; the outer size is too small and the chunk is read in full.", "riff.size-exceeds-parent");
+            available = size;
+        }
+
         if (size > available)
         {
             if (!unbounded)

@@ -25,10 +25,13 @@ public sealed record AiffCommon(int Channels, long FrameCount, int SampleSize, i
     public static bool TryParse(ReadOnlySpan<byte> data, bool isAifc, out AiffCommon? common)
     {
         common = null;
-        if (data.Length < (isAifc ? 22 : 18))
+        if (data.Length < 18)
         {
             return false;
         }
+
+        // A form of type AIFC whose COMM stops after the 18 fixed bytes names no compression: the data is taken as uncompressed.
+        isAifc &= data.Length >= 22;
 
         string type = "NONE", name = string.Empty;
         if (isAifc)
@@ -233,35 +236,36 @@ public sealed class AiffDemuxer : AudioFileDemuxer
             bool guess = forward is not null && ssnd is { IsSizeInferred: true };
             int frameBytes = Math.Max(1, common.Channels * ((common.SampleSize + 7) / 8));
             long bytes = dataEnd - dataStart;
-            FixedPlan plan;
+            PacketPlan plan;
             long frames;
             if (pcm is not null)
             {
                 int unit = pcm.Value.Encoding is PcmEncoding.ALaw or PcmEncoding.MuLaw ? common.Channels : frameBytes;
                 plan = new FixedPlan(unit, 1, Math.Max(1, 4096 / unit));
                 frames = bytes / unit;
-                if (common.FrameCount > 0 && !guess)
+                if (common.FrameCount > 0 && !guess && common.FrameCount != frames)
                 {
-                    // The stated frame count wins when it is shorter than the chunk (padding or trailing data inside SSND).
-                    long stated = common.FrameCount * unit;
-                    if (stated < bytes)
-                    {
-                        dataEnd = dataStart + stated;
-                        frames = common.FrameCount;
-                    }
-                    else if (stated != bytes)
-                    {
-                        defects.Add(DefectKind.Inconsistent, DefectSeverity.Info, comm.Offset, $"The 'COMM' chunk states {common.FrameCount} frames but the sound data holds {frames}.", "aiff.frame-count");
-                    }
+                    // The sound data decides: the reference tool plays what the SSND chunk holds whatever the stated count says, and so do we.
+                    defects.Add(DefectKind.Inconsistent, DefectSeverity.Info, comm.Offset, $"The 'COMM' chunk states {common.FrameCount} frames but the sound data holds {frames}.", "aiff.frame-count");
                 }
+            }
+            else if (codec == CodecId.AdpcmImaQt)
+            {
+                // ima4: 34 bytes per channel hold 64 frames.
+                plan = new FixedPlan(34 * common.Channels, 64, 1);
+                frames = bytes / (34 * common.Channels) * 64;
+            }
+            else if (common.CompressionType == "GSM ")
+            {
+                // GSM 06.10: 33 bytes hold 160 frames, one block per packet.
+                plan = new FixedPlan(33 * common.Channels, 160, 1);
+                frames = bytes / (33 * common.Channels) * 160;
             }
             else
             {
-                // ima4: 34 bytes per channel hold 64 frames.
-                int unit = codec == CodecId.AdpcmImaQt ? 34 * common.Channels : frameBytes;
-                long perUnit = codec == CodecId.AdpcmImaQt ? 64 : 1;
-                plan = new FixedPlan(unit, perUnit, 1);
-                frames = bytes / unit * perUnit;
+                // A compression the demuxer has no block structure for: the stated frame count is spread over the bytes.
+                frames = common.FrameCount > 0 ? common.FrameCount : bytes / frameBytes;
+                plan = new ProportionalPlan(bytes, frames, 4096);
             }
 
             MediaTrack track = new()
