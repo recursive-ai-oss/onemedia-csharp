@@ -33,6 +33,12 @@ if (args[0] == "child")
     return 0;
 }
 
+if (args[0] == "tagcompare")
+{
+    // tagcompare OUT.tsv FILE...: our common tag view next to ExifTool, ATL.NET and TagLib# (tools under $ONEMEDIA_HOME/oracles/bin).
+    return TagCompare.Run([.. args.Skip(2)], Path.Combine(home, "oracles", "bin", "exiftool"), args[1]);
+}
+
 if (args[0] == "pullalloc")
 {
     // pullalloc RELATIVE-PATH...: bytes allocated per packet by the second half of a pull, on a warm demuxer.

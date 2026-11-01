@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RecursiveAI.OneMedia.Metadata;
+using RecursiveAI.OneMedia.Tags;
 using Atl = ATL;
 using Oa = global::OneAudio;
 using OaMp4 = global::OneAudio.Mp4;
@@ -55,6 +57,11 @@ internal static class Impls
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Id3AudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.MpegAudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AdtsFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Ac3Format());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AmrFormat());
         foreach (IMediaFormatSniffer s in registry.Formats)
         {
             if (s is IMediaFormat)
@@ -306,6 +313,58 @@ internal static class Impls
         _ = t.Duration;
         _ = t.Title;
         _ = t.Artist;
+        return new Work(0, 0, t.AdditionalFields.Count);
+    }
+
+    // ---- Tag reads of audio files ------------------------------------------------------------------------------------------
+
+    // The same eight fields from every reader: what a library user asks of a tagged MP3.
+    public static Work OursTags(string path)
+    {
+        using IDemuxer d = OpenOurs(path);
+        MediaMetadata m = ((IMetadataProvider)d).ReadMetadata();
+        long n = 0;
+        foreach (NativeTag t in m.NativeTags)
+        {
+            _ = t.Text;
+            n++;
+        }
+
+        CommonTags c = m.Tags;
+        _ = c.Title;
+        _ = c.Artist;
+        _ = c.Album;
+        _ = c.Date;
+        _ = c.Comment;
+        _ = c.Genre;
+        _ = c.TrackNumber;
+        return new Work(0, 0, n);
+    }
+
+    public static Work TagLibTags(string path)
+    {
+        using TagLib.File f = TagLib.File.Create(path);
+        TagLib.Tag t = f.Tag;
+        _ = t.Title;
+        _ = t.FirstPerformer;
+        _ = t.Album;
+        _ = t.Year;
+        _ = t.Comment;
+        _ = t.FirstGenre;
+        _ = t.Track;
+        return new Work(0, 0, t.Pictures.Length);
+    }
+
+    public static Work AtlTags(string path)
+    {
+        Atl.Track t = new(path);
+        _ = t.Title;
+        _ = t.Artist;
+        _ = t.Album;
+        _ = t.Year;
+        _ = t.Comment;
+        _ = t.Genre;
+        _ = t.TrackNumber;
         return new Work(0, 0, t.AdditionalFields.Count);
     }
 
