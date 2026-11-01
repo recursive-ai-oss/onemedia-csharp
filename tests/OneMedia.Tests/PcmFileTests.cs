@@ -358,4 +358,18 @@ public class PcmFileTests
 
         Assert.True(opened >= 24, $"{opened} fixtures opened");
     }
+
+    [Fact]
+    public void SeekFarBeyondTheEndDoesNotOverflow()
+    {
+        // Found by fuzzing: a header with a huge rate made the seek arithmetic wrap around.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "riff-wav", "seek-overflow.bin"));
+        using WavDemuxer d = WavDemuxer.Open(new MemoryMediaSource(input.AsMemory(1)));
+        if (d.CanSeek)
+        {
+            d.Seek(new MediaTime(60_000, 1000));
+        }
+
+        Assert.False(d.TryReadPacket(out _));
+    }
 }

@@ -56,7 +56,10 @@ internal sealed class FixedPlan(int unitBytes, long unitFrames, int unitsPerPack
     public override (long Frame, long Offset) SeekTo(long frame, bool next)
     {
         long perPacket = unitsPerPacket * unitFrames;
-        long packet = (Math.Max(0, frame) + (next ? perPacket - 1 : 0)) / perPacket;
+        // A target far beyond any file is held at a point past every packet, so the products below cannot overflow.
+        frame = Math.Clamp(frame, 0, 1L << 40);
+        long packet = (frame + (next ? perPacket - 1 : 0)) / perPacket;
+        packet = Math.Min(packet, long.MaxValue / Math.Max(1, _packetBytes) / Math.Max(1, perPacket));
         return (packet * unitsPerPacket * unitFrames, packet * _packetBytes);
     }
 }
@@ -270,7 +273,7 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
         (long f, long o) = _plan.SeekTo(frame, mode == SeekMode.NextKeyframe);
         _planned = false;
         _frame = f;
-        _offset = Math.Min(o, _dataEnd - _dataStart);
+        _offset = Math.Clamp(o, 0, _dataEnd - _dataStart);
         _finished = _offset >= _dataEnd - _dataStart;
         return _finished ? MediaTime.Unknown : new MediaTime(_frame, _timescale);
     }
