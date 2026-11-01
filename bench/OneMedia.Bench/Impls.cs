@@ -226,6 +226,17 @@ internal static class Impls
         return new Work(0, 0, tracks);
     }
 
+    /// <summary>Open, then the tags and the first title and artist, as the comparators' own probes do.</summary>
+    public static Work OursTags(string path)
+    {
+        using IDemuxer d = OpenOurs(path);
+        RecursiveAI.OneMedia.Metadata.MediaMetadata m = ((RecursiveAI.OneMedia.Metadata.IMetadataProvider)d).ReadMetadata();
+        _ = m.Tags.Title;
+        _ = m.Tags.Artist;
+        _ = d.Duration;
+        return new Work(0, 0, m.NativeTags.Count);
+    }
+
     // ---- SharpMP4 ---------------------------------------------------------------------------------------------------------
 
     public static Work SharpMp4Demux(string path)

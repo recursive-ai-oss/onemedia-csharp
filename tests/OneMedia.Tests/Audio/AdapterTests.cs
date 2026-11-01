@@ -172,4 +172,30 @@ public class AdapterTests
         Assert.True(source.TryReadPacket(out OneAudio.PacketView first));
         Assert.False(first.IsHeader);
     }
+
+    [Fact]
+    public void PcmFilesAreOpenedByOneMediaButOneAudioHasNoPacketDecoderForThem()
+    {
+        // WAVE, AIFF and CAF files open and demux in OneMedia; OneAudio decodes WAVE with its own whole-file reader and has no PCM or ALAC
+        // codec that takes packets, so the adapter refuses the track with a typed error instead of guessing.
+        byte[] wav = new byte[44 + 400];
+        "RIFF"u8.CopyTo(wav);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(4), (uint)(wav.Length - 8));
+        "WAVEfmt "u8.CopyTo(wav.AsSpan(8));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(16), 16);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(20), 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(22), 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(24), 8000);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(28), 16000);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(32), 2);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(34), 16);
+        "data"u8.CopyTo(wav.AsSpan(36));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(40), 400);
+        using MemoryStream ms = new(wav);
+        using MediaFile media = MediaFile.Open(new StreamMediaSource(ms, leaveOpen: true));
+        Assert.Equal(CodecId.Pcm, media.Audio!.Codec);
+        Assert.False(MediaTrackPacketSource.IsSupported(CodecId.Pcm));
+        Assert.False(MediaTrackPacketSource.IsSupported(CodecId.Alac));
+        Assert.Throws<global::OneAudio.UnsupportedAudioFormatException>(() => media.Decode());
+    }
 }
