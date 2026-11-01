@@ -27,5 +27,10 @@ PY=${PYTHON:-python3}
 $PY "$HERE/matroska-discard-padding.py" opus.mka opus-midpad.mka 5=10000000 12=5000000 -1=13500000
 $PY "$HERE/matroska-discard-padding.py" vorbis.mka vorbis-midpad.mka 3=1000000 7=2500000 -1=3125000
 $PY "$HERE/matroska-discard-padding.py" aac.mka aac-midpad.mka 3=4000000 -1=1000000
+# Two audio tracks of different pitch, for reading one track and then the other from the same open file.
+B="-f lavfi -i sine=frequency=660:sample_rate=16000:duration=0.4"
+for ext in mp4 mkv; do
+  $FF $Q $A $B -map 0:a -map 1:a -c:a aac -b:a 24k two-audio.$ext
+done
 { "$FF" -version | head -1; } > VERSIONS.txt
 ls -l

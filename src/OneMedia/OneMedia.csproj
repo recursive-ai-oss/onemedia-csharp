@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="$(PackagePrefix)OneMedia.Tests" />
+    <InternalsVisibleTo Include="$(PackagePrefix)OneMedia.Audio" />
     <InternalsVisibleTo Include="$(PackagePrefix)OneMedia.Fuzz" />
   </ItemGroup>
 

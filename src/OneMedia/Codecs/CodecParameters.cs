@@ -100,12 +100,23 @@ public sealed record CodecParameters
     /// <summary>True when the AAC configuration signals spectral band replication (HE-AAC), explicitly or by the backward-compatible extension. A decoder that only handles the core coder outputs <see cref="CoreSampleRate"/> instead of <see cref="SampleRate"/>.</summary>
     public bool SbrPresent { get; init; }
 
+    /// <summary>How <see cref="SbrPresent"/> is signalled; <see cref="SbrSignalling.None"/> when it is not.</summary>
+    public SbrSignalling SbrSignalling { get; init; }
+
     /// <summary>
-    /// True when the AAC configuration itself shows no SBR, but the container declares an output rate of exactly twice the configuration's:
-    /// the sign of HE-AAC that signals SBR only inside the stream. Only <see cref="MediaTrack.DescribeCodec"/> sets it, since it needs the
-    /// container's rate. A guess, not a reading: the stream may carry no SBR. <see cref="SbrPresent"/> stays false.
+    /// True when the AAC configuration itself shows no SBR, but the container declares an output rate of exactly twice the configuration's.
+    /// Only <see cref="MediaTrack.DescribeCodec"/> sets it, since it needs the container's rate. <see cref="SbrPresent"/> stays false and
+    /// <see cref="SbrSignalling"/> is <see cref="SbrSignalling.ContainerRate"/>.
     /// </summary>
-    public bool SbrImplied { get; init; }
+    /// <remarks>
+    /// A hint, not evidence: some muxers write the doubled output rate (Matroska OutputSamplingFrequency) for streams that carry no SBR at all, and
+    /// the rate alone cannot tell the two apart. Only SBR data found in the stream proves SBR, and that is known after reading.
+    /// </remarks>
+    public bool ContainerDeclaresDoubleRate { get; init; }
+
+    /// <summary>The same as <see cref="ContainerDeclaresDoubleRate"/>, under its first name; it only ever was a hint.</summary>
+    [Obsolete("Renamed ContainerDeclaresDoubleRate: the container's doubled rate is a hint, not evidence of SBR.")]
+    public bool SbrImplied { get => ContainerDeclaresDoubleRate; init => ContainerDeclaresDoubleRate = value; }
 
     /// <summary>True when the AAC configuration signals parametric stereo (HE-AACv2): the coded channel count is one less than the output's.</summary>
     public bool PsPresent { get; init; }
@@ -121,4 +132,20 @@ public sealed record CodecParameters
 
     /// <summary>Average or nominal bit rate in bits per second when the header carries one; 0 otherwise.</summary>
     public int BitRate { get; init; }
+}
+
+/// <summary>How an AAC stream's use of spectral band replication (HE-AAC) is signalled.</summary>
+public enum SbrSignalling
+{
+    /// <summary>Nothing signals SBR.</summary>
+    None = 0,
+
+    /// <summary>Explicit hierarchical signalling: the AudioSpecificConfig starts with audio object type 5 (SBR) or 29 (PS), ISO/IEC 14496-3 §1.6.2.1.</summary>
+    Explicit,
+
+    /// <summary>Backward-compatible signalling: a sync extension (0x2b7) after the core configuration, which a core-only decoder ignores.</summary>
+    BackwardCompatible,
+
+    /// <summary>Only the container's declared rate, twice the configuration's, suggests SBR (a hint, see <see cref="CodecParameters.ContainerDeclaresDoubleRate"/>).</summary>
+    ContainerRate,
 }

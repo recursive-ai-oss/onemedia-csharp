@@ -114,9 +114,10 @@ static void WriteText(MediaFile media)
         if (t.Audio is { } a)
         {
             sb.Append(CultureInfo.InvariantCulture, $" {a.SampleRate} Hz {a.Channels} ch");
-            if (t.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.SbrImplied))
+            if (t.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.ContainerDeclaresDoubleRate))
             {
-                string kind = heaac.PsPresent ? "SBR+PS" : heaac.SbrImplied ? "SBR implied by the declared rate" : "SBR";
+                string how = heaac.SbrSignalling == RecursiveAI.OneMedia.Codecs.SbrSignalling.Explicit ? "explicit" : "backward-compatible";
+                string kind = heaac.SbrPresent ? $"{(heaac.PsPresent ? "SBR+PS" : "SBR")}, {how} signalling" : "container declares twice the core rate";
                 sb.Append(CultureInfo.InvariantCulture, $" [{kind}: output {heaac.SampleRate} Hz, core {heaac.CoreSampleRate} Hz]");
             }
         }

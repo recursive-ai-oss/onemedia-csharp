@@ -219,7 +219,7 @@ public class AdapterTests
         using MediaFile media = Media.Open(HeAacFixture(file));
         CodecParameters p = media.Audio!.DescribeCodec()!;
         Assert.True(p.SbrPresent);
-        Assert.False(p.SbrImplied);
+        Assert.False(p.ContainerDeclaresDoubleRate);
         Assert.Equal(ps, p.PsPresent);
         Assert.Equal(44100, p.SampleRate);
         Assert.Equal(22050, p.CoreSampleRate);
@@ -228,13 +228,13 @@ public class AdapterTests
     }
 
     [Fact]
-    public void CoreSeesSbrImpliedByTheDeclaredRateWhenTheConfigurationShowsNone()
+    public void CoreFlagsAContainerRateTwiceTheConfigurationsWhenItShowsNoSbr()
     {
         using MediaFile media = Media.Open(HeAacFixture("sbr-implied.m4a"));
         Assert.Equal(44100, media.Audio!.Audio!.Value.SampleRate);
         CodecParameters p = media.Audio.DescribeCodec()!;
         Assert.False(p.SbrPresent);
-        Assert.True(p.SbrImplied);
+        Assert.True(p.ContainerDeclaresDoubleRate);
         Assert.Equal(44100, p.SampleRate);
         Assert.Equal(22050, p.CoreSampleRate);
     }
@@ -245,7 +245,7 @@ public class AdapterTests
         using MediaFile media = Media.Open(IsoFixture("bframes_aac.mp4"));
         CodecParameters p = media.Audio!.DescribeCodec()!;
         Assert.False(p.SbrPresent);
-        Assert.False(p.SbrImplied);
+        Assert.False(p.ContainerDeclaresDoubleRate);
         Assert.False(p.PsPresent);
         using IAudioDecoder d = media.Decode(out AudioDecodeReport report);
         Assert.False(report.IsCoreOnly);

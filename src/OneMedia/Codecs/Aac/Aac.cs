@@ -316,6 +316,7 @@ public readonly record struct AudioSpecificConfig
         SampleRate = OutputSamplingFrequency,
         CoreSampleRate = SamplingFrequency,
         SbrPresent = SbrPresent,
+        SbrSignalling = !SbrPresent ? SbrSignalling.None : ExplicitSignalling ? SbrSignalling.Explicit : SbrSignalling.BackwardCompatible,
         PsPresent = PsPresent,
         Channels = Channels,
         SamplesPerFrame = (FrameLength960 ? 960 : 1024) * (SbrPresent ? 2 : 1),
