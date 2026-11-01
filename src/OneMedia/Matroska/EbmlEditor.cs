@@ -220,9 +220,17 @@ public sealed class EbmlEditor
 
     // A Void whose stated size was cut down to fit (a damaged file) may hide real elements inside the bytes it claims; it is not padding to reuse.
     // A Void that a SeekHead entry points into hides an element the reader reaches by that entry, so it is no padding either.
-    private bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred && !SeekTargets().Any(t => t >= e.Offset && t < e.Range.End);
+    private bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred && !SeekHeadHides(e);
 
     private List<long>? _seekTargets;
+    private bool _seekHeadDamaged;
+
+    // A SeekHead with a damaged entry cannot say where everything is, so no Void is trusted to be empty then.
+    private bool SeekHeadHides(EbmlElement voidElement)
+    {
+        List<long> targets = SeekTargets();
+        return _seekHeadDamaged || targets.Any(t => t >= voidElement.Offset && t < voidElement.Range.End);
+    }
 
     private List<long> SeekTargets()
     {
@@ -237,6 +245,7 @@ public sealed class EbmlEditor
             long segStart = seg.Offset + seg.HeaderSize;
             foreach (EbmlElement head in seg.ChildElements.Where(x => x.Id == MatroskaIds.SeekHead))
             {
+                _seekHeadDamaged |= HasInferredSize(head);
                 bool changed = false;
                 // Rebuilding with an identity map reads every position in the SeekHead and changes nothing.
                 EbmlPositions.Rebuild(ReadElement(head), rel =>

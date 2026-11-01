@@ -36,6 +36,13 @@ internal static class MatroskaTagWriter
         List<SystemWriteReport> reports = [];
         IReadOnlyList<EbmlElement> children = seg.ChildElements;
 
+        // Bytes that no element accounts for (the reader found its way past them by searching) or a SeekHead whose entries were cut back leave the reader's picture of the
+        // file resting on luck; moving anything could change what it finds. Such a file is repaired first, not edited.
+        if (doc.Defects.Any(d => d.Kind == DefectKind.UnaccountedBytes && d.Offset >= seg.Offset) || children.Any(c => c.Id == 0x114D9B74 && HasCutBackSize(c)))
+        {
+            throw new UnsupportedMediaException("The Segment has bytes that no element accounts for, or a damaged SeekHead; repair the file before editing its tags.");
+        }
+
         List<EbmlElement> fileTags = [];
         foreach (EbmlElement tagsEl in children.Where(c => c.Id == Tags))
         {
@@ -220,6 +227,8 @@ internal static class MatroskaTagWriter
             editor.AppendChild(seg, x);
         }
     }
+
+    private static bool HasCutBackSize(EbmlElement e) => e.IsSizeInferred || e.ChildElements.Any(HasCutBackSize);
 
     private static long TopOf(EbmlElement e, EbmlElement seg)
     {
