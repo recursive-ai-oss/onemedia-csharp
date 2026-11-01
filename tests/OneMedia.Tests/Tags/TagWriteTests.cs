@@ -400,4 +400,21 @@ public sealed class TagWriteTests
         Assert.Equal("new", m.Tags.Title);
         Assert.Contains(m.Tags.Pictures, p => p.Length == Png.Length);
     }
+
+    [Fact]
+    public void AWebMFileGetsNoAttachmentAndTheReportSaysSo()
+    {
+        TagEdits e = new();
+        e.Set(CommonField.Title, "T");
+        e.SetPicture(Png, "image/png");
+        using MemoryMediaSource src = new(File.ReadAllBytes(WriterTestSupport.Fixture("audio/opus.webm")));
+        TagWritePlan plan = TagWriter.Plan(src, e);
+        Assert.Contains(plan.Report.Systems.SelectMany(x => x.Conversions), c => c.Contains("WebM", StringComparison.Ordinal));
+        using MemoryStream output = new();
+        SafeWriter.Write(plan.Plan, src, output);
+        using MemoryMediaSource back = new(output.ToArray());
+        using MediaFile m = MediaFile.Open(back);
+        Assert.Equal("T", m.Tags.Title);
+        Assert.Empty(m.Tags.Pictures);
+    }
 }
