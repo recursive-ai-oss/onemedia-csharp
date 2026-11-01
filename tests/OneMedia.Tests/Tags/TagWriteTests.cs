@@ -361,4 +361,43 @@ public sealed class TagWriteTests
         using MediaFile m = MediaFile.Open(src);
         Assert.Single(m.Tags.Pictures);
     }
+
+    [Fact]
+    public void ACoverIsWrittenBesideKeyTableMetadataAndBesideQuickTimeTextAtoms()
+    {
+        // A movie whose only tags are © atoms in udta: the cover goes to a new item list in the same udta, and the text edit still lands.
+        byte[] name = BoxBuilder.Create(BoxTypes.Make("\u00a9nam"), [0, 3, 0, 0, (byte)'o', (byte)'l', (byte)'d']);
+        byte[] udta = BoxBuilder.Create(BoxTypes.Udta, name);
+        byte[] file = [.. BoxBuilder.Create(BoxTypes.Make("ftyp"), "qt  \0\0\0\0qt  "u8), .. BoxBuilder.Create(BoxTypes.Moov, udta)];
+        TagEdits e = new();
+        e.Set(CommonField.Title, "new");
+        e.SetPicture(Png, "image/png");
+        byte[] result = Apply(file, e);
+        using MemoryMediaSource src = new(result);
+        using MediaFile m = MediaFile.Open(src);
+        Assert.Equal("new", m.Tags.Title);
+        Assert.Contains(m.Tags.Pictures, p => p.Length == Png.Length);
+    }
+
+    [Fact]
+    public void ACoverIsWrittenBesideQuickTimeKeyTableMetadata()
+    {
+        byte[] key = "com.apple.quicktime.title"u8.ToArray();
+        byte[] keyEntry = [.. BitConverter.GetBytes(System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(8 + key.Length)), .. "mdta"u8, .. key];
+        byte[] keys = BoxBuilder.CreateFull(BoxTypes.Make("keys"), 0, 0, [0, 0, 0, 1, .. keyEntry]);
+        byte[] data = BoxBuilder.Create(BoxTypes.Make("data"), [0, 0, 0, 1, 0, 0, 0, 0, (byte)'o', (byte)'l', (byte)'d']);
+        byte[] item = BoxBuilder.Create(0x00000001, data);
+        byte[] ilst = BoxBuilder.Create(BoxTypes.Ilst, item);
+        byte[] hdlr = BoxBuilder.CreateFull(BoxTypes.Hdlr, 0, 0, [.. new byte[4], .. "mdta"u8, .. new byte[12]]);
+        byte[] meta = BoxBuilder.CreateFull(BoxTypes.Meta, 0, 0, [.. hdlr, .. keys, .. ilst]);
+        byte[] file = [.. BoxBuilder.Create(BoxTypes.Make("ftyp"), "qt  \0\0\0\0qt  "u8), .. BoxBuilder.Create(BoxTypes.Moov, meta)];
+        TagEdits e = new();
+        e.Set(CommonField.Title, "new");
+        e.SetPicture(Png, "image/png");
+        byte[] result = Apply(file, e);
+        using MemoryMediaSource src = new(result);
+        using MediaFile m = MediaFile.Open(src);
+        Assert.Equal("new", m.Tags.Title);
+        Assert.Contains(m.Tags.Pictures, p => p.Length == Png.Length);
+    }
 }

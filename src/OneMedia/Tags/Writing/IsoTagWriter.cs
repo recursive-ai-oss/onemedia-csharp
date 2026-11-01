@@ -91,10 +91,11 @@ internal static class IsoTagWriter
             }
         }
 
-        if (!didIlst && !didMdta && (!(anyUdtaText || didMdta) || edits.PictureEdits.Any()) && options.Wants(TagSystems.ITunes))
+        bool wroteText = anyUdtaText || didMdta;
+        if (!didIlst && options.Wants(TagSystems.ITunes) && (!wroteText || edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture)))
         {
-            // Pictures cannot live in udta: with only © atoms in the file, an item list is created for them alone.
-            TagEdits forList = anyUdtaText || didMdta ? PicturesOnly(edits) : edits;
+            // Pictures cannot live in udta or in key-table metadata: with only those in the file, an item list is created for them alone.
+            TagEdits forList = wroteText ? PicturesOnly(edits) : edits;
             SystemWriteReport created = CreateItunes(src, moov, udta, forList, editor, limits);
             reports.Add(created);
         }
