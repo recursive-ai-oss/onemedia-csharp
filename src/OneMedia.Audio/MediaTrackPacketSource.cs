@@ -346,7 +346,15 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             long ts = stamp.IsKnown ? stamp.Rescale(_timeScale, MediaRounding.NearestAwayFromZero).Ticks : 0;
             long dur = info.Duration.IsKnown ? info.Duration.Rescale(_timeScale, MediaRounding.NearestAwayFromZero).Ticks : 0;
             long end = EndFrameOf(info, view.Data);
-            packet = new global::OneAudio.PacketView(view.Data, end, false, ts, dur);
+            ReadOnlySpan<byte> payload = view.Data;
+            if (_demuxer.Format == MediaFormatId.Adts && payload.Length > 7)
+            {
+                // The ADTS demuxer delivers frames as stored; the decoder is configured by the AudioSpecificConfig, so it gets the raw data block
+                // (ISO/IEC 13818-7 §6.2: 7-byte header, 9 with the CRC when protection_absent is 0).
+                payload = payload[((payload[1] & 1) == 0 ? 9 : 7)..];
+            }
+
+            packet = new global::OneAudio.PacketView(payload, end, false, ts, dur);
             return true;
         }
 

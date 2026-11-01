@@ -158,7 +158,7 @@ public class AdapterTests
     [Fact]
     public void UnsupportedCodecsAreTypedResults()
     {
-        using MediaFile media = Media.Open(Fixture("mp3.mka"));
+        using MediaFile media = Media.Open(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "audio-es", "ac3.ac3"));
         Assert.Throws<UnsupportedAudioFormatException>(() => media.Decode());
     }
 
@@ -171,5 +171,20 @@ public class AdapterTests
         Assert.InRange(start, 8000 - 1024, 8000);
         Assert.True(source.TryReadPacket(out OneAudio.PacketView first));
         Assert.False(first.IsHeader);
+    }
+
+    // Frame counts are what ffmpeg 8.0.1 decodes from the same files (-f f32le): a LAME file is trimmed to its gapless length, the others are whole frames.
+    [Theory]
+    [InlineData("lame-info.mp3", 13230)]
+    [InlineData("plain.mp3", 14976)]
+    [InlineData("mpeg2-mono.mp3", 6615)]
+    [InlineData("lc.aac", 14336)]
+    [InlineData("nb.amr", 6400)]
+    [InlineData("wb.awb", 12800)]
+    public void ElementaryStreamsDecodeToTheLengthFfmpegGives(string name, int frames)
+    {
+        using MediaFile media = Media.Open(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "audio-es", name));
+        (float[] samples, AudioFormat format) = ReadAll(media.Decode());
+        Assert.Equal(frames, samples.Length / format.Channels);
     }
 }
