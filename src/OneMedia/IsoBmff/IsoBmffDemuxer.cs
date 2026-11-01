@@ -31,6 +31,7 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
     private readonly SeekableFragmentLoader? _loader;
     private const int MinPayloadBuffer = 64 * 1024;
     private readonly PayloadReadAhead _readAhead = new();
+    private byte[]? _skipScratch; // forward-only skips read into this one buffer, allocated at the first skip
     private byte[] _buffer = []; // taken by the first packet, so opening just to probe costs none of it
     private bool _bufferRented;
     private long _nextFragmentPosition;
@@ -243,7 +244,7 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
     private bool LoadNextFragmentForward()
     {
         IForwardMediaSource fwd = _forward!;
-        if (_mdatEnd > fwd.Position && !ForwardBoxes.SkipPayload(fwd, _mdatEnd - fwd.Position, _cancellation))
+        if (_mdatEnd > fwd.Position && !ForwardBoxes.SkipPayload(fwd, _mdatEnd - fwd.Position, ref _skipScratch, _cancellation))
         {
             return false;
         }
@@ -267,7 +268,7 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
                 break;
             }
 
-            if (h.IsSizeInferred || !ForwardBoxes.SkipPayload(fwd, h.PayloadSize, _cancellation))
+            if (h.IsSizeInferred || !ForwardBoxes.SkipPayload(fwd, h.PayloadSize, ref _skipScratch, _cancellation))
             {
                 return false;
             }
@@ -297,7 +298,7 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
                 break;
             }
 
-            if (next.IsSizeInferred || !ForwardBoxes.SkipPayload(fwd, next.PayloadSize, _cancellation))
+            if (next.IsSizeInferred || !ForwardBoxes.SkipPayload(fwd, next.PayloadSize, ref _skipScratch, _cancellation))
             {
                 break;
             }
@@ -365,7 +366,7 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
             return false;
         }
 
-        if (offset > position && !ForwardBoxes.SkipPayload(fwd, offset - position, _cancellation))
+        if (offset > position && !ForwardBoxes.SkipPayload(fwd, offset - position, ref _skipScratch, _cancellation))
         {
             _ended = true;
             return false;
