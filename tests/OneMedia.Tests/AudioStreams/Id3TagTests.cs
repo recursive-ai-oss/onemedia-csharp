@@ -41,6 +41,17 @@ public class Id3TagTests
         Assert.Equal("Album", common.Album);
     }
 
+    // ffmpeg and other writers keep a description in TXXX with the description "description"; any case.
+    [Theory]
+    [InlineData("description")]
+    [InlineData("DESCRIPTION")]
+    public void UserTextFrameNamedDescriptionIsTheCommonDescription(string name)
+    {
+        byte[] body = Concat([3], Encoding.UTF8.GetBytes(name), [0], Encoding.UTF8.GetBytes("A short synopsis"));
+        Id3Tag tag = Read(Id3Bytes(3, Frame(3, "TXXX", body)));
+        Assert.Equal("A short synopsis", new CommonTags(tag.Tags).Description);
+    }
+
     [Fact]
     public void V24UsesSynchsafeSizesAndMultipleValues()
     {

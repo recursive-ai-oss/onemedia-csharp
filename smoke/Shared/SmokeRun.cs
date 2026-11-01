@@ -129,6 +129,7 @@ internal static class SmokeRun
         await AviSmoke.RunAsync(Check);
         PlaybackSmoke.Run(Check);
         WriterSmoke.Run(Check);
+        MatroskaMuxSmoke.Run(Check);
         MuxSmoke.Run(Check);
         RemuxSmoke.Run(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.

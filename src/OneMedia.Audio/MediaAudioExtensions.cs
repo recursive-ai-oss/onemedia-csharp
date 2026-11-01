@@ -22,15 +22,15 @@ public static class MediaAudioExtensions
     /// </summary>
     /// <remarks>
     /// HE-AAC (SBR, and parametric stereo where present) decodes at the full output rate; <c>decoder.Format</c> is the truth for rate and
-    /// channels. OneAudio still refuses a few configurations (64-96 kHz with bs_start_freq other than 9, dual-mono SBR, unrestricted PS,
-    /// multichannel AAC) with its typed unsupported error. Use the overload with an <see cref="AudioDecodeReport"/> for the signalling.
+    /// channels. OneAudio still refuses a few configurations (dual-mono SBR, SBR output at 64-96 kHz with bs_start_freq other than 9,
+    /// multichannel AAC, 960-sample frames, ER/scalable object types) with its typed unsupported error; unrestricted parametric stereo is decoded in the baseline profile. Use the overload with an <see cref="AudioDecodeReport"/> for the signalling.
     /// </remarks>
     /// <param name="media">The file, opened from a seekable source.</param>
     /// <param name="track">The audio track; <see cref="MediaFile.Audio"/> when null.</param>
     /// <param name="registry">Codecs to use; <see cref="CreateRegistry"/> when null.</param>
     /// <param name="limits">Limits for untrusted input; <see cref="global::OneAudio.AudioLimits.Default"/> when null.</param>
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
-    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration is one OneAudio still refuses (64-96 kHz HE-AAC with bs_start_freq other than 9, dual-mono SBR, unrestricted PS, multichannel AAC); its message says why.</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration is one OneAudio refuses (dual-mono SBR, SBR output at 64-96 kHz with bs_start_freq other than 9, multichannel AAC, 960-sample frames, or ER/scalable object types); its message says why. Unrestricted HE-AAC v2 parametric stereo is decoded in the baseline profile.</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
     /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
@@ -62,12 +62,17 @@ public static class MediaAudioExtensions
     }
 
     /// <summary>
-    /// Says what decoding an audio track will not do, without decoding, and how the file signals SBR. The decoded rate and channels are those
-    /// the file declares (the HE-AAC output); <see cref="AudioDecodeReport.AfterReading"/> settles them from the decoder.
+    /// Says what decoding an audio track will not do, and how the file signals SBR, in the same terms as <c>Decode(out report)</c>.
     /// </summary>
+    /// <remarks>
+    /// The rate and channels are the decoder's own, which only OneAudio can settle (a container hint of SBR or parametric stereo that the stream
+    /// does not bear out decodes at the core rate), so this opens the decoder as <see cref="Decode(MediaFile, out AudioDecodeReport, MediaTrack?, global::OneAudio.AudioCodecRegistry?, global::OneAudio.AudioLimits?)"/>
+    /// does, reading the first access units, and disposes it. It therefore rewinds the file like a decode does and supersedes an earlier decoder.
+    /// A configuration OneAudio refuses does not throw here: the report then holds what the file declares, and <c>Decode</c> throws.
+    /// </remarks>
     /// <param name="media">The file, opened from a seekable source.</param>
     /// <param name="track">The audio track; <see cref="MediaFile.Audio"/> when null.</param>
-    /// <returns>The report.</returns>
+    /// <returns>The report, equal to the one <c>Decode</c> returns for the same track.</returns>
     /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, or its codec cannot be presented.</exception>
     /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static AudioDecodeReport DescribeDecode(this MediaFile media, MediaTrack? track = null)
@@ -75,8 +80,16 @@ public static class MediaAudioExtensions
         ArgumentNullException.ThrowIfNull(media);
         IDemuxer demuxer = media.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "Describing a decode needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
-        MediaTrackPacketSource source = MediaTrackPacketSource.Create(demuxer, track);
-        return ReportOf(source);
+        try
+        {
+            using global::OneAudio.IAudioDecoder decoder = Decode(media, out AudioDecodeReport report, track);
+            return report;
+        }
+        catch (global::OneAudio.UnsupportedAudioFormatException) when (track.Codec.Name == "aac")
+        {
+            // A refused AAC configuration still has a declared rate and channel count to report.
+            return ReportOf(MediaTrackPacketSource.Create(demuxer, track));
+        }
     }
 
     /// <summary>
@@ -94,7 +107,7 @@ public static class MediaAudioExtensions
     /// <param name="registry">Codecs to use; <see cref="CreateRegistry"/> when null.</param>
     /// <param name="limits">Limits for untrusted input; <see cref="global::OneAudio.AudioLimits.Default"/> when null.</param>
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
-    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration is one OneAudio still refuses (64-96 kHz HE-AAC with bs_start_freq other than 9, dual-mono SBR, unrestricted PS, multichannel AAC); its message says why.</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration is one OneAudio refuses (dual-mono SBR, SBR output at 64-96 kHz with bs_start_freq other than 9, multichannel AAC, 960-sample frames, or ER/scalable object types); its message says why. Unrestricted HE-AAC v2 parametric stereo is decoded in the baseline profile.</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
     /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, out AudioDecodeReport report, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)

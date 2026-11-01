@@ -227,6 +227,41 @@ public class MpegTests
     }
 
     [Fact]
+    public void H264InTransportStreamGetsItsRfc6381StringFromTheStream()
+    {
+        using MpegTsDemuxer d = MpegTsDemuxer.Open(new MemoryMediaSource(File.ReadAllBytes(Path("h264-aac.ts"))));
+        Assert.StartsWith("avc1.", d.Tracks.First(t => t.Kind == TrackKind.Video).Rfc6381Codec(), StringComparison.Ordinal);
+    }
+
+    // At open only the front of the stream has been read, which must not stand for the whole: the figure comes from the length and the
+    // duration, and agrees with the program clock figure once every packet has been read.
+    [Fact]
+    public void BitRateAtOpenIsTheWholeStreamsAndNotTheFrontsAlone()
+    {
+        byte[] bytes = File.ReadAllBytes(Path("h264-aac.ts"));
+        using MpegTsDemuxer d = MpegTsDemuxer.Open(new MemoryMediaSource(bytes));
+        long atOpen = d.BitRate;
+        Assert.InRange(atOpen, 1, long.MaxValue);
+        Assert.Equal(bytes.Length * 8L * d.Duration.Timescale / d.Duration.Ticks, atOpen);
+        while (d.TryReadPacket(out _))
+        {
+        }
+
+        Assert.InRange(d.BitRate, atOpen * 8 / 10, atOpen * 12 / 10);
+    }
+
+    // ffmpeg writes the SDT ahead of the PAT and PMT, so the service is described before its program is known.
+    [Fact]
+    public void ServiceNamesFromAnSdtThatPrecedesThePatAreKept()
+    {
+        using MpegTsDemuxer d = MpegTsDemuxer.Open(new MemoryMediaSource(File.ReadAllBytes(Path("h264-aac.ts"))));
+        TransportStreamProgram program = Assert.Single(d.Programs);
+        Assert.Equal("Service01", program.ServiceName);
+        Assert.Equal("FFmpeg", program.ServiceProvider);
+        Assert.Contains(d.ReadMetadata().NativeTags, t => t.Key == "service_name");
+    }
+
+    [Fact]
     public void AvchdSidecarsBesideTheStreamAreListed()
     {
         string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onemedia-avchd-" + Guid.NewGuid().ToString("N"));
