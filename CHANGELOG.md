@@ -13,6 +13,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - `Tags.Id3` (ID3v1/1.1, ID3v2.2–2.4 with unsynchronisation, extended header, footer, compressed frames; public `Id3Tag.Read` for other containers), `Tags.Ape` (APEv1/v2) and Lyrics3 as native tags with common-view rows, including ReplayGain and cover art.
 - ID3v2 tags embedded in other containers are read as `id3v2` native tags: an ASF `ID3` attribute (the attribute stays as a binary tag) and `ID32` boxes in an MP4 `meta` box.
 
+### Fixed
+
+- Raw AV1 streams: an OBU whose size field was close to `int.MaxValue` overflowed the end-of-OBU test and threw `ArgumentOutOfRangeException`; it is now a malformed unit.
+- Format sniffing: the Annex B video sniffer read past the end of a head that ended right after a start code.
+
 ### Changed
 
 - `Decode()` on an AAC track that signals SBR or PS now passes OneAudio 1.5.1's own `UnsupportedAudioFormatException` through (it also covers the MP4Box form missing its trailing extension flag, and no longer calls a backward-compatible signal "explicit"). `AudioDecodeReport.Signalling` and `CodecParameters.SbrSignalling` still say how the file signals it. `RecursiveAI.OneAudio` is 1.5.1.

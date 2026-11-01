@@ -108,6 +108,11 @@ public sealed class VideoStreamFormat : IMediaFormat
                 return SniffResult.None;
             }
 
+            if (pos + 1 >= head.Length)
+            {
+                break; // the start code is the last thing in the head
+            }
+
             nals++;
             byte b0 = head[pos], b1 = head[pos + 1];
             if ((b0 & 0x80) == 0)

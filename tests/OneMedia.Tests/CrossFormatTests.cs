@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using RecursiveAI.OneMedia.ElementaryStreams;
 using RecursiveAI.OneMedia.Tags;
 using RecursiveAI.OneMedia.Tests.AudioStreams;
 using static RecursiveAI.OneMedia.Tests.AsfBuilder;
@@ -106,5 +107,42 @@ public class CrossFormatTests
         Assert.Equal("Deposition, day 2", media.Native[TagSystems.Id3v2, "TIT2"]?.Text);
         Assert.Equal("Deposition, day 2", media.Tags.Title);
         Assert.Equal("A. Speaker", media.Tags.Artist);
+    }
+
+    // Found by the ISO BMFF fuzz target through the registry: an Annex B sniffer read two bytes past a start code that ended the sniffed head.
+    [Fact]
+    public void SniffingAHeadThatEndsRightAfterAStartCodeDoesNotRunPastIt()
+    {
+        byte[] input = File.ReadAllBytes(DataPath("fuzz", "isobmff/isobmff-sniff-annexb-start-code-at-end-of-head.bin"));
+        try
+        {
+            using IDemuxer d = MediaFormats.Default.Open(new MemoryMediaSource(input.AsMemory(1)), new MediaOpenOptions());
+        }
+        catch (MediaException)
+        {
+        }
+
+        foreach (VideoStreamKind kind in Enum.GetValues<VideoStreamKind>())
+        {
+            new VideoStreamFormat(kind).Sniff([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+            new VideoStreamFormat(kind).Sniff([0, 0, 1]);
+        }
+    }
+
+    // Found by the video-stream fuzz target: an AV1 OBU whose size field was close to int.MaxValue overflowed the end-of-OBU test.
+    [Fact]
+    public void AnObuWithAHugeSizeFieldIsAMalformedUnitNotACrash()
+    {
+        byte[] input = File.ReadAllBytes(DataPath("fuzz", "video-es/video-es-obu-size-overflow.bin"));
+        try
+        {
+            using VideoStreamDemuxer d = VideoStreamDemuxer.Open(new MemoryMediaSource(input.AsMemory(1)), VideoStreamKind.Av1Obu, new MediaOpenOptions());
+            while (d.TryReadPacket(out _))
+            {
+            }
+        }
+        catch (MediaException)
+        {
+        }
     }
 }

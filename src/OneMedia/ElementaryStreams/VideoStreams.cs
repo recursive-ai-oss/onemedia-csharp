@@ -340,7 +340,7 @@ internal sealed class ObuAssembler : VideoAssembler
                 continue;
             }
 
-            if (_scan + total > span.Length)
+            if ((long)_scan + total > span.Length) // total can be close to int.MaxValue: add in 64 bits
             {
                 if (final)
                 {
