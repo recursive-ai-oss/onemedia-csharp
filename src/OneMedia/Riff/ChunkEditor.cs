@@ -343,6 +343,18 @@ public sealed class ChunkEditor
         available += free;
         required += Math.Max(1, m - free);
         PieceList added = new();
+        if (kids.Count > 0)
+        {
+            // A last chunk of odd length may lack its pad byte at the end of the file; the new chunk must start on an even offset.
+            ChunkNode lastKid = kids[^1];
+            long payloadEnd = lastKid.Offset + lastKid.HeaderSize + lastKid.PayloadSize;
+            long missing = lastKid.NextOffset - Math.Max(payloadEnd, Math.Min(lastKid.NextOffset, _source.Length));
+            if (missing > 0)
+            {
+                added.AddData(new byte[missing]);
+            }
+        }
+
         added.AddData(bytes);
         shift.Add(kids.Count > 0 ? NextOf(kids[^1]) : parent.Offset + parent.HeaderSize, m);
         rw.AddAppendChunk(parent, added);

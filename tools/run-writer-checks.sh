@@ -81,7 +81,7 @@ edit)
 inplace)
   list_files > "$OUT/files.list"
   grep -vi '\.avi$' "$OUT/files.list" > "$OUT/files-noavi.list"
-  one() { d="$WORK/ip-$(echo "$1" | md5sum | cut -c1-8)"; $TOOL inplace "$1" "$d" 2>/dev/null | head -1 | cut -c1-500; rm -rf "$d"; }
+  one() { d="$WORK/ip-$(echo "$1" | md5sum | cut -c1-8)"; r=$($TOOL inplace "$1" "$d" 2>/dev/null | head -1 | cut -c1-500 | tr -d '\000-\010'); printf '%s\t%s\n' "$r" "$1"; rm -rf "$d"; }
   export -f one; export TOOL WORK
   xargs -a "$OUT/files-noavi.list" -d '\n' -P "$JOBS" -I{} bash -c 'one "$@"' _ {} > "$OUT/inplace.tsv" 2> "$OUT/inplace.err"
   awk -F'\t' '{print $1" "$2}' "$OUT/inplace.tsv" | sort | uniq -c
