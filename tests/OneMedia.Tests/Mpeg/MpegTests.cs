@@ -249,4 +249,65 @@ public class MpegTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public void DvdSubpictureUnitIsJoinedFromItsPesPackets()
+    {
+        // The first two bytes give the unit's size (30 bytes here); the second PES packet carries the rest.
+        Mpeg.PacketQueue queue = new(MediaLimits.Default);
+        Mpeg.PesPassthroughAssembler a = new(0, queue, MediaLimits.Default, new DefectLog(), keyframes: true, dvdSubpicture: true);
+        byte[] first = new byte[20];
+        first[1] = 30;
+        a.Push(first, new Mpeg.PesStamp(900, -1, 0, false), true);
+        a.Push(new byte[10], new Mpeg.PesStamp(1800, -1, 100, false), true);
+        a.Push(new byte[8], new Mpeg.PesStamp(2700, -1, 200, false), true); // a new unit
+        a.Flush();
+        Assert.True(queue.TryDequeue(out PacketInfo one, out ReadOnlySpan<byte> data));
+        Assert.Equal(30, data.Length);
+        Assert.Equal(900, one.Pts.Ticks);
+        Assert.True(queue.TryDequeue(out PacketInfo two, out data));
+        Assert.Equal(8, data.Length);
+        Assert.Equal(2700, two.Pts.Ticks);
+    }
+
+    [Fact]
+    public void Ac3IsFoundWhenTheStreamStartsInsideAFrame()
+    {
+        // A private stream with no descriptor whose first PES packet holds 300 bytes of the tail of a frame, then whole frames.
+        byte[] ts = File.ReadAllBytes(Path("h264-ac3.ts"));
+        using IDemuxer d = MediaFormats.Default.Open(new MemoryMediaSource(ts), new MediaOpenOptions());
+        MediaTrack audio = d.Tracks.First(t => t.Kind == TrackKind.Audio);
+        Assert.Equal("ac3", audio.Codec.Name);
+        int frame = 0;
+        while (d.TryReadPacket(out PacketView v))
+        {
+            if (v.Info.TrackIndex == audio.Index)
+            {
+                frame = v.Data.Length;
+                break;
+            }
+        }
+
+        Assert.True(frame > 0);
+        byte[] bytes = new byte[300 + frame * 8];
+        bytes.AsSpan(0, 300).Fill(0x55);
+        int at = 300;
+        using IDemuxer again = MediaFormats.Default.Open(new MemoryMediaSource(ts), new MediaOpenOptions());
+        while (again.TryReadPacket(out PacketView v) && at + v.Data.Length <= bytes.Length)
+        {
+            if (v.Info.TrackIndex == audio.Index)
+            {
+                v.Data.CopyTo(bytes.AsSpan(at));
+                at += v.Data.Length;
+            }
+        }
+
+        Mpeg.PacketQueue queue = new(MediaLimits.Default);
+        Mpeg.ProbingAssembler probe = new(0, queue, MediaLimits.Default, new DefectLog());
+        probe.Push(bytes.AsSpan(0, 300), new Mpeg.PesStamp(1000, -1, 0, false), true);
+        probe.Push(bytes.AsSpan(300, at - 300), default, false);
+        probe.Flush();
+        Assert.Equal("ac3", probe.Resolved?.Codec.Name);
+        Assert.True(queue.Count >= 2);
+    }
 }
