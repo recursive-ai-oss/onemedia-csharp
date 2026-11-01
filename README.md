@@ -1,12 +1,12 @@
 # OneMedia
 
-**Containers, metadata, subtitles; no decoding.** A managed .NET library for media containers, with no dependency beyond the .NET base class library. OneMedia is unaffiliated with other products or companies named OneMedia.
+**Containers, metadata, subtitles; no decoding.** A managed .NET library for media containers, with no dependency beyond the .NET base class library. This preview reads containers and metadata; subtitles are planned and not in it yet. OneMedia is unaffiliated with other products or companies named OneMedia.
 
 The goal is the depth of libavformat, GPAC, mkvtoolnix, MediaInfo and ExifTool in one library you can call from C#: demux and mux, lossless tag editing, evidence-backed capture time and place, subtitles and captions, repair, and HLS/DASH packaging. It never decodes or encodes an audio or video sample; audio decoding is handed to [OneAudio](https://github.com/recursive-ai-oss/oneaudio-csharp) through the `RecursiveAI.OneMedia.Audio` adapter.
 
 ## Status
 
-**Preview, version `0.1.0-preview.1`: reading MP4/MOV/3GP (including fragmented MP4) and Matroska/WebM.** Writing, tag editing, every other container, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
+**Preview, version `0.1.0-preview.2`: reading MP4/MOV/3GP (including fragmented MP4) and Matroska/WebM.** Writing, tag editing, every other container, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
 
 ```csharp
 using RecursiveAI.OneMedia;
@@ -14,7 +14,9 @@ using RecursiveAI.OneMedia.Audio;   // package RecursiveAI.OneMedia.Audio
 
 using var media = Media.Open("clip.mov");
 Console.WriteLine($"{media.Duration} {media.Video?.Codec} {media.Audio?.Codec}");
-Console.WriteLine($"{media.Tags.Title} {media.CaptureTime.Value} {media.Location.Value}");
+Console.WriteLine($"{media.Tags.Title} {media.CaptureTime}");     // a fact prints its best value, or "none"
+if (media.Location.TryGetValue(out var place))                      // absent facts have no value: no 0,0 stand-in
+    Console.WriteLine($"{place.Latitude}, {place.Longitude}");
 foreach (var candidate in media.CaptureTime.Candidates) Console.WriteLine(candidate);
 
 using var pcm = media.Decode();   // the audio track, decoded by OneAudio
@@ -75,4 +77,4 @@ Build output goes to `artifacts/` in the repository root (ignored by git). To bu
 
 ## Licence
 
-`MIT OR Apache-2.0`, at your option. Copyright (c) Recursive AI, LLC. See `LICENSE-MIT` and `LICENSE-APACHE`. Sample media notices are in `THIRD-PARTY-NOTICES`.
+`MIT OR Apache-2.0`, at your option. Copyright (c) Recursive AI, LLC. See `LICENSE-MIT` and `LICENSE-APACHE`. Test media provenance and third-party notices are in `THIRD-PARTY-NOTICES.md`.

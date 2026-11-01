@@ -1,3 +1,5 @@
+using RecursiveAI.OneMedia.Codecs;
+
 namespace RecursiveAI.OneMedia;
 
 /// <summary>What a track carries.</summary>
@@ -249,6 +251,27 @@ public sealed record MediaTrack
 
     /// <summary>Average bit rate in bits per second as declared, or 0.</summary>
     public long BitRate { get; init; }
+
+    /// <summary>
+    /// Describes the track's codec from its configuration (see <see cref="CodecParameterReader.TryDescribe(CodecId, CodecConfiguration, out CodecParameters?)"/>)
+    /// and, for AAC, adds what only the container's declared rate can show: when the configuration is plain AAC-LC and the container declares
+    /// twice its rate, <see cref="CodecParameters.SbrImplied"/> is set and <see cref="CodecParameters.SampleRate"/> is the declared rate.
+    /// </summary>
+    /// <returns>The description, or null when the codec has no configuration form here or the bytes do not parse. Never throws.</returns>
+    public CodecParameters? DescribeCodec()
+    {
+        if (!CodecParameterReader.TryDescribe(Codec, Configuration, out CodecParameters? p) || p is null)
+        {
+            return null;
+        }
+
+        if (Codec == CodecId.Aac && !p.SbrPresent && p.CoreSampleRate > 0 && Audio is { } a && a.SampleRate == 2 * p.CoreSampleRate)
+        {
+            return p with { SbrImplied = true, SampleRate = a.SampleRate };
+        }
+
+        return p;
+    }
 
     /// <summary>Number of packets (samples, frames) when the container's index says, else -1.</summary>
     public long PacketCount { get; init; } = -1;

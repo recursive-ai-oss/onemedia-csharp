@@ -4,7 +4,7 @@
     <AssemblyName>$(PackagePrefix)OneMedia</AssemblyName>
     <RootNamespace>RecursiveAI.OneMedia</RootNamespace>
     <PackageId>$(PackagePrefix)OneMedia</PackageId>
-    <Description>Containers, metadata, subtitles; no decoding. A managed media container library with no dependency beyond .NET: sources, exact media time, limits, typed defects, content sniffing and the track and packet model that the format readers build on. Unaffiliated with other products or companies named OneMedia.</Description>
+    <Description>Containers, metadata, subtitles; no decoding. This preview reads containers and metadata; subtitles are planned and not in it yet. A managed media container library with no dependency beyond .NET: sources, exact media time, limits, typed defects, content sniffing and the track and packet model that the format readers build on. Unaffiliated with other products or companies named OneMedia.</Description>
     <IsPackable>true</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
