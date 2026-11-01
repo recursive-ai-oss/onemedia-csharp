@@ -79,7 +79,18 @@ internal static class FfprobeReader
             return result;
         }
 
-        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(json);
+        }
+        catch (JsonException)
+        {
+            // ffprobe gave up part-way through its output (a header it cannot make sense of): it found no streams.
+            return result;
+        }
+
+        using JsonDocument parsed = doc;
         if (!doc.RootElement.TryGetProperty("streams", out JsonElement streams))
         {
             return result;

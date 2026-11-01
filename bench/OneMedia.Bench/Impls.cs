@@ -364,6 +364,74 @@ internal static class Impls
         return new Work(0, 0, t.AdditionalFields.Count + t.EmbeddedPictures.Count);
     }
 
+    // ---- MP4 mux of the first AAC track -------------------------------------------------------------------------------------
+
+    private sealed record AacInput(MediaTrack Track, byte[][] Frames, long Ticks);
+
+    private static readonly Dictionary<string, AacInput> AacInputs = [];
+
+    // The packets are read once per process, outside the measured work: the row times the muxers, with the same frames in memory for each.
+    private static AacInput LoadAac(string path)
+    {
+        lock (AacInputs)
+        {
+            if (AacInputs.TryGetValue(path, out AacInput? known))
+            {
+                return known;
+            }
+
+            using IDemuxer d = OpenOurs(path);
+            SelectFirstAudio(d);
+            MediaTrack track = d.Tracks.First(t => t.Kind == TrackKind.Audio);
+            List<byte[]> frames = [];
+            while (d.TryReadPacket(out PacketView p))
+            {
+                frames.Add(p.Data.ToArray());
+            }
+
+            return AacInputs[path] = new AacInput(track, [.. frames], 0);
+        }
+    }
+
+    private static Work MuxAac(string path, RecursiveAI.OneMedia.IsoBmff.IsoLayout layout)
+    {
+        AacInput input = LoadAac(path);
+        using MemoryStream output = new(1 << 20);
+        using RecursiveAI.OneMedia.IsoBmff.IsoMuxer mux = new(output, new RecursiveAI.OneMedia.IsoBmff.IsoMuxOptions { Layout = layout });
+        int track = mux.AddTrack(input.Track with { Edit = default });
+        long dts = 0;
+        long timescale = input.Track.Timescale;
+        foreach (byte[] frame in input.Frames)
+        {
+            MediaTime t = new(dts, timescale);
+            mux.WritePacket(new PacketInfo(track, t, t, new MediaTime(1024, timescale), PacketAttributes.Keyframe, ByteRange.None, frame.Length), frame);
+            dts += 1024;
+        }
+
+        mux.Finish();
+        return new Work(input.Frames.Length, output.Length);
+    }
+
+    public static Work OursMuxAac(string path) => MuxAac(path, RecursiveAI.OneMedia.IsoBmff.IsoLayout.MoovFirst);
+
+    public static Work OursMuxAacMoovLast(string path) => MuxAac(path, RecursiveAI.OneMedia.IsoBmff.IsoLayout.MoovLast);
+
+    public static Work SharpMp4MuxAac(string path)
+    {
+        AacInput input = LoadAac(path);
+        using MemoryStream output = new(1 << 20);
+        SharpMP4.Builders.Mp4Builder builder = new SharpMP4.Builders.Mp4Builder(new SharpMP4.Builders.SingleStreamOutput(output));
+        SharpMP4.Tracks.AACTrack track = new((byte)input.Track.Audio!.Value.Channels, (uint)input.Track.Audio!.Value.SampleRate, 16);
+        builder.AddTrack(track);
+        foreach (byte[] frame in input.Frames)
+        {
+            builder.ProcessTrackSample(track.TrackID, frame, 1024);
+        }
+
+        builder.FinalizeMedia();
+        return new Work(input.Frames.Length, output.Length);
+    }
+
     // ---- SharpMP4 ---------------------------------------------------------------------------------------------------------
 
     public static Work SharpMp4Demux(string path)

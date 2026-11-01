@@ -203,10 +203,12 @@ internal static class IsoBmffOpener
         BoxTree tree = new(source, limits, defects);
         FileTypeBox? ftyp = null;
         BoxNode? moov = null;
+        bool mdatFirst = false;
         long pos = 0;
         int seen = 0;
         while (pos < length && seen++ < MaxLeadingBoxes && BoxReader.TryRead(source, pos, length, true, defects, out BoxHeader h, cancellationToken))
         {
+            mdatFirst |= h.Type == BoxTypes.Mdat;
             if (h.Type is BoxTypes.Ftyp && ftyp is null)
             {
                 ftyp = FileTypeBox.Parse(tree.CreateNode(h).ReadPayload(4096));
@@ -241,7 +243,7 @@ internal static class IsoBmffOpener
         }
 
         List<SegmentIndexBox> sidx = movie.IsFragmented ? ScanSegmentIndex(source, moov.Header.End, length, limits, defects, cancellationToken) : [];
-        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = tables, MoovEnd = moov.Header.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length };
+        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = tables, MoovEnd = moov.Header.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length, MediaDataPrecededMovie = mdatFirst };
     }
 
     public static async ValueTask<OpenedMovie> OpenAsync(IAsyncMediaSource source, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
@@ -251,6 +253,7 @@ internal static class IsoBmffOpener
         FileTypeBox? ftyp = null;
         BoxHeader moovHeader = default;
         bool found = false;
+        bool mdatFirst = false;
         long pos = 0;
         int seen = 0;
         while (pos < length && seen++ < MaxLeadingBoxes)
@@ -261,6 +264,7 @@ internal static class IsoBmffOpener
                 break;
             }
 
+            mdatFirst |= h.Type == BoxTypes.Mdat;
             if (h.Type == BoxTypes.Ftyp && ftyp is null)
             {
                 int take = (int)Math.Min(h.PayloadSize, 4096);
@@ -295,7 +299,7 @@ internal static class IsoBmffOpener
         BoxTree tree = new(memory, limits, defects);
         IsoMovie movie = MovieReader.Read(tree.CreateNode(moovHeader), memory, limits, defects, ftyp?.IsQuickTime ?? false);
         List<SegmentIndexBox> sidx = movie.IsFragmented ? await ScanSegmentIndexAsync(source, moovHeader.End, length, limits, defects, cancellationToken).ConfigureAwait(false) : [];
-        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = memory, MoovEnd = moovHeader.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length };
+        return new OpenedMovie { FileType = ftyp, Movie = movie, TableSource = memory, MoovEnd = moovHeader.End, SidxDuration = TotalDuration(sidx), SegmentIndexes = sidx, Length = length, MediaDataPrecededMovie = mdatFirst };
     }
 
     /// <summary>Reads a forward-only source up to and including the movie box.</summary>

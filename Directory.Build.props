@@ -39,7 +39,7 @@
 
   <PropertyGroup Label="Package metadata">
     <!-- The one place the package version lives; the core package, the audio adapter and the tool share it. -->
-    <Version>0.1.0-preview.3</Version>
+    <Version>0.2.0-preview.1</Version>
     <Authors>Recursive AI, LLC</Authors>
     <Company>Recursive AI, LLC</Company>
     <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
@@ -49,14 +49,14 @@
     <PackageProjectUrl>https://recursiveai.org/onemedia/</PackageProjectUrl>
     <PackageReadmeFile>PACKAGE.md</PackageReadmeFile>
     <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
-    <PackageTags>mp4;mov;3gp;fmp4;matroska;mkv;webm;container;demux;metadata;tags;nativeaot;trimmable;wasm;sharpmp4;metadataextractor;mediainfo;ffprobe;mkvtoolnix</PackageTags>
+    <PackageTags>mp4;mov;3gp;fmp4;matroska;mkv;webm;avi;asf;wma;mpegts;m2ts;flv;ogg;flac;mp3;wav;aiff;caf;container;demux;metadata;tags;nativeaot;trimmable;wasm;sharpmp4;metadataextractor;mediainfo;ffprobe;mkvtoolnix</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EnablePackageValidation>true</EnablePackageValidation>
     <!-- Compare the public API with the last published version; intended breaks go in CompatibilitySuppressions.xml. -->
-    <PackageValidationBaselineVersion>0.1.0-preview.3</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>0.2.0-preview.1</PackageValidationBaselineVersion>
   </PropertyGroup>
 
 </Project>

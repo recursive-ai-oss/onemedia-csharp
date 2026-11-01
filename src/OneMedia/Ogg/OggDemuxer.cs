@@ -533,15 +533,6 @@ internal sealed class OggEngine : ISequentialEngine
         }
 
         s.Vorbis = id;
-        if (VorbisModes.TryParse(s.Headers[2], in id, out VorbisModes? modes))
-        {
-            s.Modes = modes;
-        }
-        else
-        {
-            Defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, s.FirstPageOffset, "The Vorbis setup header cannot be read, so packet durations are unknown.", "ogg.vorbis-setup");
-        }
-
         s.Timescale = id.SampleRate;
         ArrayBufferWriter<byte> w = new();
         VorbisXiphLacing.Build(s.Headers[0], s.Headers[1], s.Headers[2], w);
@@ -726,6 +717,28 @@ internal sealed class OggEngine : ISequentialEngine
         return (granule >> s.TheoraShift) + (granule & mask) + (s.TheoraNewGranule ? 0 : 1);
     }
 
+    /// <summary>
+    /// Reads the block-size modes from the setup header the first time a Vorbis packet needs a duration. The setup header holds every codebook, so
+    /// reading it is the dearest step of opening a file, and a probe or a tag read never needs it.
+    /// </summary>
+    private void EnsureVorbisModes(OggLogicalBitstream s)
+    {
+        if (s.Kind != OggStreamKind.Vorbis || s.ModesTried || s.Headers.Count < 3)
+        {
+            return;
+        }
+
+        s.ModesTried = true;
+        if (VorbisModes.TryParse(s.Headers[2], in s.Vorbis, out VorbisModes? modes))
+        {
+            s.Modes = modes;
+        }
+        else
+        {
+            Defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, s.FirstPageOffset, "The Vorbis setup header cannot be read, so packet durations are unknown.", "ogg.vorbis-setup");
+        }
+    }
+
     private void FinishPage(OggLogicalBitstream s, OggPageHeader h)
     {
         int n = _entries.Count;
@@ -734,6 +747,7 @@ internal sealed class OggEngine : ISequentialEngine
             return;
         }
 
+        EnsureVorbisModes(s);
         ReadOnlySpan<byte> body = _pages.Body;
         long sum = 0;
         for (int i = 0; i < n; i++)
