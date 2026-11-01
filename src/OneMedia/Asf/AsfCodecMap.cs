@@ -88,7 +88,8 @@ internal static class AsfCodecMap
                 {
                     ReadOnlySpan<byte> bmi = d[11..];
                     width = BinaryPrimitives.ReadInt32LittleEndian(bmi[4..]);
-                    height = Math.Abs(BinaryPrimitives.ReadInt32LittleEndian(bmi[8..]));
+                    int signedHeight = BinaryPrimitives.ReadInt32LittleEndian(bmi[8..]);
+                    height = signedHeight == int.MinValue ? 0 : Math.Abs(signedHeight); // a negative height means a top-down bitmap
                     fourcc = System.Text.Encoding.Latin1.GetString(bmi.Slice(16, 4)).TrimEnd('\0');
                     int headerSize = (int)Math.Min(BinaryPrimitives.ReadUInt32LittleEndian(bmi), (uint)bmi.Length);
                     if (headerSize >= 40 && headerSize < bmi.Length)

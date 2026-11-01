@@ -114,6 +114,24 @@ public class AsfTests
         Assert.Equal(AsfProtection.EncryptedStream, ((AsfDemuxer)e).Protection);
     }
 
+    // Found by the ASF fuzz target: a video format whose bitmap height is int.MinValue made Math.Abs throw.
+    [Fact]
+    public void BitmapHeightOfMinValueIsNotAnOverflow()
+    {
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "asf", "asf-bitmap-height-min-value.bin"));
+        try
+        {
+            using IDemuxer d = MediaFormats.Create().Open(new MemoryMediaSource(input));
+            while (d.TryReadPacket(out _))
+            {
+            }
+        }
+        catch (MediaException)
+        {
+            // A typed rejection is fine; any other exception fails the test.
+        }
+    }
+
     [Fact]
     public void TagsAreReadWithRanges()
     {
