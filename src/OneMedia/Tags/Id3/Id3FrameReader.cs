@@ -404,7 +404,7 @@ internal sealed class Id3FrameReader(TagIo io, int major, bool tagUnsynchronised
                     frame.Native = Opaque(frame, frame.Id, prefix);
                     return;
                 }
-                catch (InvalidDataException)
+                catch (Exception e) when (e is InvalidDataException or IOException)
                 {
                     _defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, offset, $"The compressed ID3v2 frame '{frame.Id}' is not valid zlib data; it is kept undecoded.", "id3.compressed-data");
                     frame.Native = Opaque(frame, frame.Id, prefix);
