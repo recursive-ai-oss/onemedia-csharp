@@ -62,6 +62,7 @@ Checked on the generated files, the Xiph/Blender samples and the OneAudio-readab
 - **Vorbis, the packet that ends a page.** The sum of a stream's packet lengths, with the page granule at each page end, is consistent here (no `ogg.granule-mismatch`).
   ffprobe gives that packet the length of its predecessor and times it at granule minus that, which leaves a gap before the next packet (observed: the
   packets at 5374 and 7346 in a 48 kHz file are 16 ticks apart from the sum of the lengths). Differences stay below one block (≤ 4096 ticks) and only on page-ending packets; `pts`, `dts`, `duration` are excepted with that tolerance for Vorbis.
+- **Chained files against OneAudio.** OneAudio's reader gives the first link only (174 packets of `chained-vorbis-opus.ogg` against our 275), and its page granules restart in each link where ours continue after the earlier links (2 of 6 granules of `chained-vorbis-vorbis.ogg` differ for that reason). Everywhere else the packets are byte-equal.
 - **Duration of Speex.** ffprobe counts from the first packet, which starts before 0 by the encoder lookahead (−40 samples at 8 kHz, −143 at 16 kHz; `start_time=-0.005`), so
   its duration is the last granule plus that; ours is the last granule (3.995 s against 4.000 s). Reported by `infocheck`, not a packet difference.
 - **Duration of Opus.** ffprobe takes the last granule as the duration (it includes the pre-skip, 6.5 ms for 312 samples); ours is the playable length.
