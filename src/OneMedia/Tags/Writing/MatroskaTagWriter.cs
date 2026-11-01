@@ -290,10 +290,26 @@ internal static class MatroskaTagWriter
         return EbmlWriter.Element(SimpleTag, [.. payload]);
     }
 
+    // The DocType element (ID 0x4282) of the EBML header holds "webm" for WebM files; the header is the first few bytes of the file.
+    private static bool IsWebM(IMediaSource src)
+    {
+        Span<byte> head = stackalloc byte[64]; // the EBML header is shorter than this in every file seen
+        int n = src.Read(0, head);
+        ReadOnlySpan<byte> pattern = [0x42, 0x82, 0x84, (byte)'w', (byte)'e', (byte)'b', (byte)'m'];
+        return head[..n].IndexOf(pattern) >= 0;
+    }
+
     private static void PlanPictures(IMediaSource src, EbmlElement seg, IReadOnlyList<EbmlElement> children, TagEdits edits, EbmlEditor editor, List<string> conv, MediaLimits limits, List<byte[]> inserts, HashSet<long> blocked)
     {
         if (!edits.PictureEdits.Any())
         {
+            return;
+        }
+
+        if (IsWebM(src) && edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture))
+        {
+            // The WebM profile has no Attachments element (mkvalidator rejects an AttachedFile in a webm file), so a cover has no place in it.
+            conv.Add("pictures: not written; the WebM profile has no attachments");
             return;
         }
 

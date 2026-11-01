@@ -77,8 +77,15 @@ internal static class Checker
     private static CommonField? RemovableField(string path)
     {
         using MediaFile m = Media.Open(path);
+        // A Matroska file's Encoder also comes from the Segment's WritingApp, which belongs to the muxer and is kept, so it cannot show a removal.
+        bool matroska = Path.GetExtension(path).ToLowerInvariant() is ".mkv" or ".mka" or ".webm";
         foreach (CommonField f in new[] { CommonField.Genre, CommonField.Date, CommonField.Copyright, CommonField.Composer, CommonField.Album, CommonField.Encoder, CommonField.Grouping })
         {
+            if (matroska && f == CommonField.Encoder)
+            {
+                continue;
+            }
+
             if (m.Tags.First(f) is not null)
             {
                 return f;
@@ -115,7 +122,7 @@ internal static class Checker
         string after = Hash(output);
         using MemoryMediaSource mem = new(File.ReadAllBytes(output));
         using MediaFile m = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1" ? MediaFile.Open(mem) : Media.Open(output);
-        string readBack = $"title={Flag(m.Tags.Title == "Edited Title \u00fc")} artist={Flag(m.Tags.Artist == "Edited Artist")} comment={Flag(CommentOf(m, input) == "An edited comment")} picture={Flag(m.Tags.Pictures.Any(p => p.Length == Png.Length))} removed={(remove is { } rr ? Flag(m.Tags.First(rr) is null) + ":" + rr : "none")}";
+        string readBack = $"title={Flag(m.Tags.Title == "Edited Title \u00fc")} artist={Flag(m.Tags.Artist == "Edited Artist")} comment={Flag(CommentOf(m, input) == "An edited comment")} picture={(Path.GetExtension(input).Equals(".webm", StringComparison.OrdinalIgnoreCase) ? "none(webm)" : Flag(m.Tags.Pictures.Any(p => p.Length == Png.Length)))} removed={(remove is { } rr ? Flag(m.Tags.First(rr) is null) + ":" + rr : "none")}";
         long changed = plan.Plan.Pieces.Where(p => p.Kind != OutputPieceKind.Copy).Sum(p => p.Length);
         string systems = string.Join(",", plan.Report.Systems.Select(s => s.System + (s.Created ? "+" : "")));
         string notRep = string.Join(",", plan.Report.Systems.SelectMany(s => s.NotRepresentable.Select(n => s.System + ":" + n.Field)));
