@@ -184,7 +184,7 @@ public static class TagWriter
     {
         try
         {
-            using MediaFile file = MediaFile.Open(src);
+            using MediaFile file = MediaFile.Open(src, null, new MediaOpenOptions { LeaveOpen = true });
             return file.Format == MediaFormatId.MpegAudio || file.Format == MediaFormatId.Id3;
         }
         catch (MediaException)

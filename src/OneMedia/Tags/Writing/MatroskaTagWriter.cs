@@ -47,7 +47,7 @@ internal static class MatroskaTagWriter
 
         // The reader's own verdict: a file it reports errors for (other than a cut-off end or a wrong CRC-32) is not edited, because the edit would move things the
         // reader found by searching or guessing.
-        using (MediaFile probe = MediaFile.Open(src, null, new MediaOpenOptions { Limits = limits }, ct))
+        using (MediaFile probe = MediaFile.Open(src, null, new MediaOpenOptions { Limits = limits, LeaveOpen = true }, ct))
         {
             if (probe.Defects.Any(d => d.Severity == DefectSeverity.Error && d.Kind is not (DefectKind.ChecksumMismatch or DefectKind.SizeExceedsFile)))
             {

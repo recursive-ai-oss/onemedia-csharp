@@ -87,6 +87,30 @@ public sealed class TagWriteTests
         Assert.Equal("C", after.Tags.Comment);
     }
 
+    [Theory]
+    [InlineData("audio/aac.mka")]
+    [InlineData("audio-es/tagged/id3v1-only.mp3")]
+    [InlineData("audio/aac.m4a")]
+    public void PlanningFromAFilePathLeavesNothingClosedForTheWrite(string fixture)
+    {
+        // The planners open the file through the readers; the plan must still be writable from the same path afterwards.
+        string path = WriterTestSupport.Fixture(fixture);
+        string target = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + Path.GetExtension(path));
+        try
+        {
+            TagEdits edits = new();
+            edits.Set(CommonField.Title, "From a path");
+            TagWriteReport report = TagWriter.SaveAs(path, target, edits);
+            Assert.NotNull(report.Write);
+            using MediaFile m = Media.Open(target);
+            Assert.Equal("From a path", m.Tags.Title);
+        }
+        finally
+        {
+            File.Delete(target);
+        }
+    }
+
     [Fact]
     public void TrackAndTotalAreWrittenAsAPair()
     {
