@@ -172,7 +172,13 @@ public class RereadTests
         {
             Assert.True(media.Packets(media.Audio!).Any());
             float[] buf = new float[4096 * decoder.Format.Channels];
-            Assert.Throws<MediaReadStateException>(() => decoder.Read(buf));
+            // OneAudio 1.6.0 reads the first access units when it opens an AAC decoder (to look for SBR) and replays them, so reading
+            // alone may never reach the source; a seek does.
+            Assert.Throws<MediaReadStateException>(() =>
+            {
+                decoder.Seek(0);
+                decoder.Read(buf);
+            });
         }
     }
 
@@ -237,19 +243,16 @@ public class RereadTests
         Assert.Throws<MediaReadStateException>(() => once.Packets(once.Audio!).Count());
     }
 
-    // OneAudio 1.5.1 refuses SBR/PS-signalled AAC itself, with its own typed exception; this library only reports how the file signals it.
+    // OneAudio 1.6.0 decodes signalled HE-AAC; this library reports how the file signals it.
     [Theory]
-    [InlineData("sbr-compatible.m4a", SbrSignalling.BackwardCompatible, "backward-compatible SBR")]
-    [InlineData("sbr-explicit.m4a", SbrSignalling.Explicit, "explicit SBR signalling")]
-    [InlineData("sbrps-explicit.m4a", SbrSignalling.Explicit, "explicit SBR and parametric stereo")]
-    public void SignalledHeAacIsRefusedByOneAudioWithItsTypedException(string file, SbrSignalling signalling, string wording)
+    [InlineData("sbr-compatible.m4a", SbrSignalling.BackwardCompatible)]
+    [InlineData("sbr-explicit.m4a", SbrSignalling.Explicit)]
+    [InlineData("sbrps-explicit.m4a", SbrSignalling.Explicit)]
+    public void SignallingIsReportedForDecodableHeAac(string file, SbrSignalling signalling)
     {
         using MediaFile media = Media.Open(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "heaac", file));
-        UnsupportedAudioFormatException e = Assert.Throws<UnsupportedAudioFormatException>(() => media.Decode());
-        Assert.Throws<UnsupportedAudioFormatException>(() => media.Decode(out _));
-        Assert.Contains(wording, e.Message, StringComparison.Ordinal);
-        Assert.Equal(signalling != SbrSignalling.BackwardCompatible, e.Message.Contains("explicit", StringComparison.Ordinal));
-
+        using IAudioDecoder d = media.Decode(out AudioDecodeReport decoded);
+        Assert.Equal(signalling, decoded.Signalling);
         AudioDecodeReport report = media.DescribeDecode();
         Assert.Equal(signalling, report.Signalling);
         Assert.Equal(report.Signalling, media.Audio!.DescribeCodec()!.SbrSignalling);
