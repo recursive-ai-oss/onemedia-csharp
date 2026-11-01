@@ -21,6 +21,6 @@ bash "$here/run-mpeg-diff.sh" run diff --jobs 4 --out "$O" --exceptions "$here/O
 tail -3 "$O/diff.log"
 bash "$here/run-mpeg-diff.sh" run infocheck $ALL > "$O/infocheck.log" 2>&1
 tail -3 "$O/infocheck.log"
-bash "$here/run-mpeg-diff.sh" run meta --out "$O" $(ls "$S"/avchd/* "$G"/ts/named-service.ts "$G"/ts/h264-aac.ts) > "$O/meta.log" 2>&1
+bash "$here/run-mpeg-diff.sh" run meta --out "$O" $(ls "$S"/avchd/*.[mM][tT][sS] "$G"/ts/named-service.ts "$G"/ts/h264-aac.ts "$G"/m2ts/h264-aac.m2ts) > "$O/meta.log" 2>&1
 tail -3 "$O/meta.log"
 ls "$O"
