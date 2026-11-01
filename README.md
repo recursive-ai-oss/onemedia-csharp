@@ -31,6 +31,18 @@ using var pcm = media.Decode();   // the audio track, decoded by OneAudio
 
 Audio tracks of MP4/3GP equal OneAudio's own MP4 reader packet for packet (250,469 packets over 64 files). Tags and facts agree with ExifTool 13.60 and MediaInfo 26.10 on 116 files, with every difference explained in [docs/tags.md](docs/tags.md); the field mapping is [docs/tag-mapping.md](docs/tag-mapping.md). The audio adapter is described in [docs/audio-adapter.md](docs/audio-adapter.md), the comparison method in [docs/harness.md](docs/harness.md), and the benchmarks in [docs/bench.md](docs/bench.md).
 
+**Speed** against the fastest managed library per task (ratio = OneMedia time ÷ theirs, steady state; lower is better). Full tables, allocations, memory, first-call times and the native tools' times are in [docs/bench-results](docs/bench-results); the method is in [docs/bench.md](docs/bench.md).
+
+| Task | Compared with | x64 (Ryzen 9 7950X3D) geomean / worst file | arm64 (Apple M2) geomean / worst file |
+|---|---|---|---|
+| MP4 demux, every packet | SharpMP4 | 0.10× / 0.21× | 0.09× / 0.20× |
+| MP4 audio track only | OneAudio `Mp4PacketSource` | 0.53× / 0.82× | 0.49× / 0.61× |
+| MP4 probe (tracks, duration) | MetadataExtractor, TagLib#, ATL.NET | 0.10× / 0.40× | 0.12× / 0.28× |
+| Matroska demux | Matroska (NEbml) | 0.26× / 0.31× | 0.25× / 0.41× |
+| Matroska probe | NEbml element reader | 0.69× / 0.83× | 0.60× / 0.76× |
+
+The first open in a process includes JIT time: about 17–23 ms for MP4 and 12–16 ms for Matroska, against 10–14 ms and about 3 ms for those libraries.
+
 Every parser is fuzzed; damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
 
 ## Packages
