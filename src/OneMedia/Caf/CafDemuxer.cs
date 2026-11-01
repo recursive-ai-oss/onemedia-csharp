@@ -371,13 +371,16 @@ public sealed class CafDemuxer : AudioFileDemuxer
                     else if (c.Type == "pakt")
                     {
                         // The table comes before the audio, and the stream cannot come back for it, so it is kept whole (bounded by the tag limit).
-                        if (c.PayloadSize > limits.MaxTagBytes)
+                        if (ReferenceEquals(c, pakt)) // only the first table counts; a repeated one is skipped
                         {
-                            throw new UnsupportedMediaException($"The packet table of {c.PayloadSize} bytes is too large to hold for a forward-only source.");
-                        }
+                            if (c.PayloadSize > limits.MaxTagBytes)
+                            {
+                                throw new UnsupportedMediaException($"The packet table of {c.PayloadSize} bytes is too large to hold for a forward-only source.");
+                            }
 
-                        tableBytes = new byte[c.PayloadSize];
-                        media.Read(c.Offset + 12, tableBytes, ct);
+                            tableBytes = new byte[c.PayloadSize];
+                            media.Read(c.Offset + 12, tableBytes, ct);
+                        }
                     }
                 }
             }
