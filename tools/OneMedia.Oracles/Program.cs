@@ -56,6 +56,7 @@ internal static class Program
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
             case "packetset": return PacketSets.Run(o.Files);
             case "atl": return AtlCompare.Run(o.Files);
+            case "oneaudio-ogg": return OggCompare.Run(o.Files);
             case "defects": return AllocCheck.Defects(o.Files);
             case "alloc": return AllocCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
