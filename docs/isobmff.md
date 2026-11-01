@@ -195,3 +195,16 @@ adds leading empty edits) and lists the following as explained, never as agreeme
 | Duration of files whose `mvhd` is shorter than a track (or whose `mvhd` timescale is wrong): ffprobe reports the longest stream | `MediaFile.Duration` follows ffprobe (longest track), `ContainerDuration` keeps the box value. |
 
 Everything else (size, byte offset, key flag, durations, timestamps) matches on every packet of every compared file.
+
+## Windows Shell evidence (Media Foundation sample comparison pending)
+
+The same Windows run (see docs/asf.md) asked the Shell about 8 MP4-family files (`h264-aac.mp4`, `h264-aac-negative-cts.mp4`, fragmented `frag-1000.mp4`, `cat-two-parts.mp4`, `h264-pcm16.mov`, `MOV00001_sonyk750i.3gp`, `audio-alac.m4a`, `tx3g-sub.mp4`).
+
+- **Duration:** 8/8 equal to the millisecond, including the edit-listed, fragmented and two-part files (the Shell shows presentation time after edits, as we do).
+- **Streams and sizes:** video width/height and audio rate/channels agree on all files. Formats: `avc1` = FourCC `H264`, `s263` = `H263`, `mp4a` AAC = `{00001610-...}`, `samr` and `alac` come back as MPEG-4 sample-entry GUIDs (`{73616D72-767A-494D-B478-F29D25DC9037}`, `{616C6163-...}`); `sowt` PCM is plain PCM (`{00000001-...}`).
+- **Dates:** `System.Media.DateEncoded` equals `mvhd` creation time taken as UTC with no zone shift (`tx3g-sub.mp4` 2026-10-31 14:10:29, the 3GP 2005-10-09 13:05:01), the same as our capture time candidate.
+- **Tags:** none of these files carries `ilst` tags; the Shell shows no Title or Author and we report only the `Encoder` of `tx3g-sub.mp4`.
+- **Thumbnails:** produced for all files with video (176x144 to 320x240), none for the M4A without cover art.
+- **Text track:** `tx3g-sub.mp4`: the Shell says nothing of the `tx3g` track.
+
+Pending: Media Foundation's own packets (sample times, sizes, hashes) for these files against ours, including negative composition offsets, the fragmented file and the two sample entries of `cat-two-parts.mp4`.
