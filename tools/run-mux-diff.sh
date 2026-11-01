@@ -52,5 +52,12 @@ export CORPUS OUT LAYOUT OPTS TOOL ORACLES
 if [ $# -gt 0 ]; then LIST=$(printf '%s\n' "$@"); else
   LIST=$(find "$CORPUS" -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.m4a' -o -iname '*.m4v' -o -iname '*.3gp' -o -iname '*.3g2' -o -iname '*.m4s' -o -iname '*.f4v' \) -size -"${MAXKB}"k | sort)
 fi
-echo "$LIST" | xargs -P "$JOBS" -I{} bash -c 'one "$@"' _ {} | sort | tee "$OUT/summary.tsv"
+# RESUME=1 skips the files an earlier (killed) run already summarised in $OUT/summary.part.
+touch "$OUT/summary.part"
+[ "${RESUME:-0}" = 1 ] || : > "$OUT/summary.part"
+if [ "${RESUME:-0}" = 1 ]; then
+  LIST=$(echo "$LIST" | while read -r f; do grep -qF "${f#"$CORPUS"/}	" "$OUT/summary.part" || echo "$f"; done)
+fi
+echo "$LIST" | xargs -P "${JOBS}" -I{} bash -c 'one "$@"' _ {} >> "$OUT/summary.part"
+sort "$OUT/summary.part" > "$OUT/summary.tsv"
 echo "files: $(wc -l < "$OUT/summary.tsv")"
