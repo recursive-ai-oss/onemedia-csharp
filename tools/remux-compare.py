@@ -249,8 +249,9 @@ def main():
             if x[0] != y[0] or x[1] != y[1]:
                 dx, dy = to_int(y[0]), to_int(y[1])
                 ox, oy = to_int(x[0]), to_int(x[1])
-                shifts.add(None if None in (dx, dy, ox, oy) else (dx - ox, dy - oy))
-        uniform = len(shifts) == 1 and None not in shifts and next(iter(shifts))[0] == next(iter(shifts))[1]
+                if None not in (dx, dy, ox, oy):
+                    shifts.add((dx - ox, dy - oy))  # untimed packets (N/A) are judged below, against the reader's numbering plus this shift
+        uniform = len(shifts) == 1 and next(iter(shifts))[0] == next(iter(shifts))[1]
         shift = next(iter(shifts))[0] if uniform else 0
         for n, (x, y) in enumerate(pairs):
             st += 1
@@ -259,7 +260,7 @@ def main():
                 if x[k] == y[k]:
                     continue
                 cls = None
-                if k < 2 and x[k] == "N/A" and pr and n < len(pr) and (to_int(y[k]) == pr[n][1 - k] or (k == 0 and pr[n][1] < -(1 << 62) and y[0] == y[1])):
+                if k < 2 and x[k] == "N/A" and pr and n < len(pr) and (to_int(y[k]) in (pr[n][1 - k], pr[n][1 - k] + shift) or (k == 0 and pr[n][1] < -(1 << 62) and y[0] == y[1])):
                     # The input has no time stamps (a raw elementary stream); the reader numbers the frames and the output keeps its numbers.
                     cls = "untimed-input"
                 elif k < 2 and uniform and to_int(x[k]) is not None and to_int(y[k]) is not None and to_int(y[k]) - to_int(x[k]) == shift:
