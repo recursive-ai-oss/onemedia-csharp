@@ -171,12 +171,26 @@ public static class TagWriter
         }
 
         Span<byte> tail = stackalloc byte[3]; // an ID3v1 marker
-        if (src.Length >= 128 && src.Read(src.Length - 128, tail) == 3 && tail.SequenceEqual("TAG"u8))
+        if (src.Length >= 128 && src.Read(src.Length - 128, tail) == 3 && tail.SequenceEqual("TAG"u8) && OpensAsMpegAudio(src))
         {
+            // Only an ID3v1 marker at the end: any file can end in "TAG" by chance, so the reader must agree that this is MPEG audio before a tag is added in front of it.
             return TagFamily.Mp3;
         }
 
         return TagFamily.None;
+    }
+
+    private static bool OpensAsMpegAudio(IMediaSource src)
+    {
+        try
+        {
+            using MediaFile file = MediaFile.Open(src);
+            return file.Format == MediaFormatId.MpegAudio || file.Format == MediaFormatId.Id3;
+        }
+        catch (MediaException)
+        {
+            return false;
+        }
     }
 
     private static bool ChunkTreeDetect(ReadOnlySpan<byte> head) => ChunkWalker.Detect(head) is not null;

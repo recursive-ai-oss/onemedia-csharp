@@ -14,6 +14,8 @@ public sealed class TagWriteFuzzTests
     [InlineData("matroska-void-hides-seekhead.bin")]
     [InlineData("matroska-second-pass.bin")]
     [InlineData("matroska-fuzz-3.bin")]
+    [InlineData("matroska-fuzz-5.bin")]
+    [InlineData("mp3-id3v1-marker-only.bin")]
     public void AFileThatOpenedStillOpensAfterTheTagWrite(string name)
     {
         byte[] file = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "tagwrite", name));

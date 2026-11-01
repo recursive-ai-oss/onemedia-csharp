@@ -72,6 +72,13 @@ internal static class MatroskaTagWriter
 
         List<KeyOp> ops = [];
         SystemWriteReport rep = KeyValueOps.Build(TagSystems.Matroska, edits, Existing, Style, Override, ops);
+        bool wantsTags = options.Wants(TagSystems.Matroska);
+        if (!wantsTags)
+        {
+            // Naming other systems leaves the Tags element and the attachments alone.
+            ops.Clear();
+            rep = new SystemWriteReport(TagSystems.Matroska, [], [], [], [], false);
+        }
 
         // The tag new items are appended to: a file-level Tag at the default level, else any file-level Tag, else a new one.
         EbmlElement? home = fileTags.FirstOrDefault(t => LevelOf(t) == 50) ?? fileTags.FirstOrDefault();
@@ -169,13 +176,21 @@ internal static class MatroskaTagWriter
             conv.Add("Encoder: the ENCODER tag was removed; the Segment's MuxingApp and WritingApp belong to the muxer and are kept");
         }
 
-        PlanPictures(src, seg, children, edits, editor, conv, limits, inserts, blocked);
+        if (wantsTags)
+        {
+            PlanPictures(src, seg, children, edits, editor, conv, limits, inserts, blocked);
+        }
+
         if (inserts.Count > 0)
         {
             InsertBeforeClusters(src, seg, children, inserts, editor, limits, blocked);
         }
 
-        reports.Insert(0, rep with { Written = written, Removed = removed, Conversions = conv, Created = created });
+        if (wantsTags)
+        {
+            reports.Insert(0, rep with { Written = written, Removed = removed, Conversions = conv, Created = created });
+        }
+
         EditPlan plan = editor.Build(ct);
         return new TagWritePlan(plan, new TagWriteReport(reports, []));
     }
