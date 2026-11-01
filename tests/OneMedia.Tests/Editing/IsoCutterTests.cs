@@ -396,4 +396,43 @@ public class IsoCutterTests
         List<int> expected = [.. Enumerable.Range(0, Frames), .. Enumerable.Range(0, Frames)];
         Assert.Equal(expected, ShownVideo(all, shown));
     }
+
+    [Fact]
+    public void HappyPathWorksOnFilesAndLeavesNothingBehind()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "onemedia-edit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string input = Path.Combine(dir, "in.mp4");
+            File.WriteAllBytes(input, BuildSource());
+
+            string clip = Path.Combine(dir, "clip.mp4");
+            ClipReport report = Media.Trim(input, clip, TimeSpan.FromSeconds(0.68), TimeSpan.FromSeconds(1.64));
+            Assert.Equal(Frame(24), report.Duration);
+            Assert.True(File.Exists(clip));
+
+            IReadOnlyList<ClipReport> parts = Media.Split(input, Path.Combine(dir, "part-{0:00}.mp4"), [TimeSpan.FromSeconds(0.9)]);
+            Assert.Equal(2, parts.Count);
+            string joined = Path.Combine(dir, "joined.mp4");
+            Media.Concat(joined, Path.Combine(dir, "part-01.mp4"), Path.Combine(dir, "part-02.mp4"));
+            Assert.Equal(Payloads(File.ReadAllBytes(input)).Count, Payloads(File.ReadAllBytes(joined)).Count);
+
+            // A file that is not ISO is refused with a typed reason, and no partial file is left.
+            string text = Path.Combine(dir, "text.mp4");
+            File.WriteAllText(text, "not a media file");
+            Assert.Equal(EditRefusalReason.UnsupportedSource, Assert.Throws<EditRefusedException>(() => Media.Trim(text, Path.Combine(dir, "x.mp4"), TimeSpan.Zero, TimeSpan.FromSeconds(1))).Reason);
+            Assert.Empty(Directory.GetFiles(dir, "*.partial"));
+            Assert.False(File.Exists(Path.Combine(dir, "x.mp4")));
+
+            // A refused trim leaves no output behind either.
+            Assert.Throws<EditRefusedException>(() => Media.Trim(input, Path.Combine(dir, "y.mp4"), TimeSpan.FromSeconds(50), TimeSpan.FromSeconds(60)));
+            Assert.Empty(Directory.GetFiles(dir, "*.partial"));
+            Assert.False(File.Exists(Path.Combine(dir, "y.mp4")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
