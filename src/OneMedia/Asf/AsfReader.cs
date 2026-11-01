@@ -22,16 +22,18 @@ internal sealed class AsfReader
     private bool[] _enabled = [];
     private byte[] _packetBuffer = [];
     private int _fixedSize;
+    private bool _variable;
     private long _nextOffset;
     private long _packetNumber;
     private long _packetLimit = long.MaxValue;
     private long _dataEnd = long.MaxValue;
     private long _preroll;
+    private int _skipTrack = -1;      // after a seek: the track whose objects before the keyframe's time are dropped
+    private long _skipBefore;
     private byte[]? _currentArray;
     private int _currentStart;
     private int _currentLength;
     private byte[]? _currentOwned;
-    private KeyTable? _keys;
 
     public AsfReader(AsfInput input, MediaLimits limits, DefectLog defects)
     {
@@ -106,6 +108,7 @@ internal sealed class AsfReader
 
         _limits.CheckAllocation(max, fp.Range.Offset);
         _fixedSize = (int)min;
+        _variable = min != max;
         _packetBuffer = new byte[max];
         _nextOffset = _header.DataStart;
         long count = _header.DataPacketCount != 0 ? _header.DataPacketCount : fp.DataPacketCount;
@@ -148,6 +151,22 @@ internal sealed class AsfReader
         }
 
         Entry e = _queue.Dequeue();
+        if (_skipTrack >= 0 && e.Track == _skipTrack)
+        {
+            // The keyframe shares a data packet with frames that precede it; a seek must start at the keyframe itself.
+            if (e.TimeMs - _preroll < _skipBefore)
+            {
+                if (e.Owned is not null)
+                {
+                    Recycle(e.Owned);
+                }
+
+                return await ReadPacketAsync(ct).ConfigureAwait(false);
+            }
+
+            _skipTrack = -1;
+        }
+
         _currentArray = e.Owned ?? _packetBuffer;
         _currentOwned = e.Owned;
         _currentStart = e.Owned is null ? e.Start : 0;
@@ -204,8 +223,9 @@ internal sealed class AsfReader
             }
 
             string? problem = AsfPacketParser.Parse(_packetBuffer.AsSpan(0, got), _fixedSize, _payloads, out int length);
-            if (length <= 0)
+            if (length <= 0 || !_variable)
             {
+                // With one packet size the next packet starts that far on, whatever the packet states (the rest is implied padding).
                 length = _fixedSize;
             }
 
@@ -366,9 +386,6 @@ internal sealed class AsfReader
         }
     }
 
-    public ValueTask<MediaTime> SeekAsync(MediaTime target, SeekMode mode, CancellationToken ct) =>
-        SeekCore.SeekAsync(this, target, mode, ct);
-
     private readonly record struct Entry(int Track, long TimeMs, bool Key, int Start, int Length, byte[]? Owned, long SourceOffset);
 
     private struct StreamState
@@ -382,66 +399,116 @@ internal sealed class AsfReader
         public byte[]? Buffer;
     }
 
-    /// <summary>The keyframes of the primary stream: presentation time in milliseconds and the number of the data packet holding the start of the frame.</summary>
-    private sealed class KeyTable(List<(long TimeMs, long Packet)> keys)
+    /// <summary>
+    /// Seeking works on the demuxer's own times (presentation time less the preroll, which is also how the Simple Index counts: observed in files
+    /// whose first keyframe is indexed at 0 while its payloads carry the preroll as presentation time). The index only narrows the search: it
+    /// is one entry per interval, naming the packet of the keyframe at or before that time, so the exact keyframe is found by reading packet
+    /// headers forward from the entry.
+    /// </summary>
+    public async ValueTask<MediaTime> SeekAsync(MediaTime target, SeekMode mode, CancellationToken ct)
     {
-        public List<(long TimeMs, long Packet)> Keys { get; } = keys;
-    }
-
-    private static class SeekCore
-    {
-        public static async ValueTask<MediaTime> SeekAsync(AsfReader r, MediaTime target, SeekMode mode, CancellationToken ct)
+        if (!CanSeek)
         {
-            if (!r.CanSeek)
-            {
-                throw new NotSupportedException("This ASF source cannot be seeked: it is forward-only, has variable-size packets or is protected.");
-            }
+            throw new NotSupportedException("This ASF source cannot be seeked: it is forward-only, has variable-size packets or is protected.");
+        }
 
-            r._keys ??= await r.BuildKeyTableAsync(ct).ConfigureAwait(false);
-            List<(long TimeMs, long Packet)> keys = r._keys.Keys;
-            r.ResetAssembly();
-            if (keys.Count == 0)
+        ResetAssembly();
+        _skipTrack = -1;
+        int primary = 0;
+        for (int i = 0; i < Tracks.Count; i++)
+        {
+            if (Tracks[i].Kind == TrackKind.Video)
             {
-                r._nextOffset = r._header.DataStart;
-                r._packetNumber = 0;
-                return MediaTime.Zero;
+                primary = i;
+                break;
             }
+        }
 
-            long wanted = target.Rescale(1000, mode == SeekMode.PreviousKeyframe ? MediaRounding.Floor : MediaRounding.Ceiling).Ticks + r._preroll;
-            int pick = -1;
-            for (int i = 0; i < keys.Count; i++)
+        if (Tracks.Count == 0)
+        {
+            return MediaTime.Zero;
+        }
+
+        // Every audio object is a keyframe, as the packets report it.
+        int stream = (int)Tracks[primary].Id;
+        bool anyKey = Tracks[primary].Kind != TrackKind.Video;
+        long wanted = Math.Max(0, target.Rescale(1000, mode == SeekMode.PreviousKeyframe ? MediaRounding.Floor : MediaRounding.Ceiling).Ticks);
+        _index ??= await ReadIndexAsync(ct).ConfigureAwait(false);
+        long entry = 0;
+        if (_index is { Packets.Length: > 0 } index)
+        {
+            entry = Math.Min(wanted / Math.Max(1, index.IntervalMs), index.Packets.Length - 1);
+        }
+
+        while (true)
+        {
+            long startPacket = _index is { } ix && entry > 0 ? ix.Packets[entry] : 0;
+            bool found = false, passed = false;
+            long bestPacket = 0, bestTime = 0, lastTime = 0, lastPacket = -1;
+            _nextOffset = _header.DataStart + startPacket * _fixedSize;
+            _packetNumber = startPacket;
+            while (!passed)
             {
-                if (mode == SeekMode.PreviousKeyframe ? keys[i].TimeMs <= wanted : keys[i].TimeMs >= wanted)
-                {
-                    pick = i;
-                    if (mode == SeekMode.NextKeyframe)
-                    {
-                        break;
-                    }
-                }
-                else if (mode == SeekMode.PreviousKeyframe)
+                long number = _packetNumber;
+                if (!await ReadDataPacketScanAsync(ct).ConfigureAwait(false))
                 {
                     break;
                 }
+
+                foreach (AsfPayload p in _payloads)
+                {
+                    if (p.Stream != stream || !(p.Key || anyKey) || !(p.Compressed || p.Offset == 0) || p.TimeMs < 0)
+                    {
+                        continue;
+                    }
+
+                    long t = Math.Max(0, p.TimeMs - _preroll);
+                    lastTime = t;
+                    lastPacket = number;
+                    if (mode == SeekMode.PreviousKeyframe)
+                    {
+                        if (t <= wanted)
+                        {
+                            (found, bestTime, bestPacket) = (true, t, number);
+                        }
+                        else
+                        {
+                            passed = true;
+                            if (!found && entry == 0)
+                            {
+                                (found, bestTime, bestPacket) = (true, t, number); // before the first keyframe: the first one
+                            }
+
+                            break;
+                        }
+                    }
+                    else if (t >= wanted)
+                    {
+                        (found, bestTime, bestPacket) = (true, t, number);
+                        passed = true;
+                        break;
+                    }
+                }
             }
 
-            if (mode == SeekMode.PreviousKeyframe && pick < 0)
+            if (!found && mode == SeekMode.PreviousKeyframe && entry > 0)
             {
-                pick = 0;
+                entry--; // the entry's packet starts after the wanted time: look from the entry before
+                continue;
             }
 
-            if (pick < 0)
+            if (!found)
             {
                 // Past the last keyframe: position at the end.
-                pick = keys.Count - 1;
-                r._nextOffset = r._header.DataStart + (keys[pick].Packet + 1) * r._fixedSize;
-                r._packetNumber = keys[pick].Packet + 1;
-                return new MediaTime(keys[pick].TimeMs - r._preroll, 1000);
+                _nextOffset = _header.DataStart + (_packetNumber > 0 ? _packetNumber : 0) * _fixedSize;
+                return lastPacket >= 0 ? new MediaTime(lastTime, 1000) : MediaTime.Zero;
             }
 
-            r._packetNumber = keys[pick].Packet;
-            r._nextOffset = r._header.DataStart + keys[pick].Packet * r._fixedSize;
-            return new MediaTime(keys[pick].TimeMs - r._preroll, 1000);
+            _packetNumber = bestPacket;
+            _nextOffset = _header.DataStart + bestPacket * _fixedSize;
+            _skipTrack = primary;
+            _skipBefore = bestTime;
+            return new MediaTime(bestTime, 1000);
         }
     }
 
@@ -469,62 +536,6 @@ internal sealed class AsfReader
         _input.Invalidate();
     }
 
-    // The primary stream is the first video stream, or the first stream. Its keyframes come from the file's index when it has one that
-    // answers, and otherwise from reading every packet header once (the only way to know where keyframes are).
-    private async ValueTask<KeyTable> BuildKeyTableAsync(CancellationToken ct)
-    {
-        int primary = 0;
-        for (int i = 0; i < Tracks.Count; i++)
-        {
-            if (Tracks[i].Kind == TrackKind.Video)
-            {
-                primary = i;
-                break;
-            }
-        }
-
-        int stream = (int)Tracks[primary].Id;
-        List<(long, long)>? fromIndex = await ReadIndexAsync(stream, ct).ConfigureAwait(false);
-        if (fromIndex is { Count: > 0 })
-        {
-            return new KeyTable(fromIndex);
-        }
-
-        List<(long TimeMs, long Packet)> keys = [];
-        long savedOffset = _nextOffset, savedNumber = _packetNumber;
-        _nextOffset = _header.DataStart;
-        _packetNumber = 0;
-        while (true)
-        {
-            long number = _packetNumber;
-            if (!await ReadDataPacketScanAsync(ct).ConfigureAwait(false))
-            {
-                break;
-            }
-
-            while (_queue.Count > 0)
-            {
-                Entry e = _queue.Dequeue();
-                if (e.Owned is not null)
-                {
-                    Recycle(e.Owned);
-                }
-            }
-
-            foreach (AsfPayload p in _payloads)
-            {
-                if (p.Stream == stream && p.Key && p.Offset == 0 && p.TimeMs >= 0)
-                {
-                    keys.Add((p.TimeMs, number));
-                }
-            }
-        }
-
-        _nextOffset = savedOffset;
-        _packetNumber = savedNumber;
-        return new KeyTable(keys);
-    }
-
     // Reads one packet for the key scan: like ReadDataPacketAsync, but nothing is assembled and the payload list is left for the caller.
     private async ValueTask<bool> ReadDataPacketScanAsync(CancellationToken ct)
     {
@@ -541,13 +552,18 @@ internal sealed class AsfReader
         }
 
         _ = AsfPacketParser.Parse(_packetBuffer.AsSpan(0, got), _fixedSize, _payloads, out int length);
-        _nextOffset += length > 0 ? length : _fixedSize;
+        _nextOffset += length > 0 && _variable ? length : _fixedSize;
         _packetNumber++;
         return true;
     }
 
-    // Looks for a Simple Index (which indexes the primary video stream) or an Index object after the data and turns it into keyframe positions.
-    private async ValueTask<List<(long, long)>?> ReadIndexAsync(int stream, CancellationToken ct)
+    private SimpleIndex? _index;
+
+    private sealed record SimpleIndex(long IntervalMs, long[] Packets);
+
+    // Looks for a Simple Index after the data. Its body: file ID (16), time interval (8, in 100 ns), maximum packet count (4), entry count (4),
+    // then per entry a packet number (4) and a packet count (2). Null when the file has none.
+    private async ValueTask<SimpleIndex?> ReadIndexAsync(CancellationToken ct)
     {
         long length = _input.Length;
         long at = _header.DataObjectSize >= 50 ? _header.DataObjectOffset + _header.DataObjectSize : _header.DataStart + (_packetLimit == long.MaxValue ? 0 : _packetLimit * _fixedSize);
@@ -566,13 +582,23 @@ internal sealed class AsfReader
                 break;
             }
 
-            if (guid == AsfGuids.SimpleIndex && size <= 64 << 20 && size >= 24 + 20)
+            if (guid == AsfGuids.SimpleIndex && size <= 64 << 20 && size >= 24 + 32)
             {
                 byte[] body = new byte[size - 24];
                 _limits.CheckAllocation(body.Length, at);
                 if (await _input.ReadAsync(at + 24, body, ct).ConfigureAwait(false) == body.Length)
                 {
-                    return ParseSimpleIndex(body);
+                    long interval = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(16)), long.MaxValue) / 10_000;
+                    uint count = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(28));
+                    long usable = Math.Min(count, (body.Length - 32) / 6);
+                    long[] packets = new long[usable];
+                    for (int i = 0; i < usable; i++)
+                    {
+                        long packet = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(32 + i * 6));
+                        packets[i] = packet >= _packetLimit || packet == 0xFFFFFFFF ? 0 : packet;
+                    }
+
+                    return interval > 0 && usable > 0 ? new SimpleIndex(interval, packets) : null;
                 }
             }
 
@@ -580,27 +606,5 @@ internal sealed class AsfReader
         }
 
         return null;
-    }
-
-    // Simple Index body: file ID (16), time interval (8, in 100 ns), maximum packet count (4), entry count (4), then per entry a packet number (4) and a packet count (2).
-    private static List<(long, long)> ParseSimpleIndex(byte[] body)
-    {
-        long interval = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(16)), long.MaxValue);
-        uint count = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(28));
-        List<(long, long)> keys = [];
-        long lastPacket = -1;
-        for (uint i = 0; i < count && 32 + (i + 1) * 6L <= body.Length; i++)
-        {
-            long packet = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(32 + (int)i * 6));
-            if (packet == lastPacket || packet == 0xFFFFFFFF)
-            {
-                continue;
-            }
-
-            lastPacket = packet;
-            keys.Add((i * interval / 10_000, packet));
-        }
-
-        return keys;
     }
 }

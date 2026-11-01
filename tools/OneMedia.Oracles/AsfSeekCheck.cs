@@ -63,7 +63,9 @@ internal static class AsfSeekCheck
                     }
 
                     checks++;
-                    if (keys.Count > 0 && (firstKey != expected || landed.Ticks != expected))
+                    // A target after the last keyframe positions at the end of the data: nothing more to read.
+                    bool pastEnd = mode == SeekMode.NextKeyframe && keys.Count > 0 && keys[^1] < target;
+                    if (keys.Count > 0 && (landed.Ticks != expected || (!pastEnd && firstKey != expected)))
                     {
                         problems++;
                         if (problems <= 3)

@@ -179,6 +179,19 @@ internal static class AsfHeaderParser
                 }
             }
 
+            // Ascending stream number: streams described only in Extended Stream Properties join the others in a stable order.
+            for (int i = 1; i < Streams.Count; i++)
+            {
+                AsfStreamEntry moving = Streams[i];
+                int j = i - 1;
+                for (; j >= 0 && Streams[j].StreamNumber > moving.StreamNumber; j--)
+                {
+                    Streams[j + 1] = Streams[j];
+                }
+
+                Streams[j + 1] = moving;
+            }
+
             h.Streams = Streams;
             h.Codecs = Codecs;
             h.Languages = Languages;
@@ -513,8 +526,31 @@ internal static class AsfHeaderParser
             at += nameLength;
         }
 
-        _ = extensionCount;
+        // Payload extension systems: GUID (16), data size (2), info length (4), info. They describe replicated-data layouts this reader does not need.
+        for (int i = 0; i < extensionCount && at + 22 <= b.Length; i++)
+        {
+            uint infoLength = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(at + 18));
+            if (infoLength > b.Length - at - 22)
+            {
+                at = b.Length;
+                break;
+            }
+
+            at += 22 + (int)infoLength;
+        }
+
         s.Extended.Add((stream, start, end, bitrate, language, frameTime, names));
+
+        // Observed in files written by the Windows Media tools: a stream may be described only here, by a complete Stream Properties object
+        // after the extension systems.
+        if (at + ObjectHeaderSize <= b.Length && new Guid(b.AsSpan(at, 16)) == AsfGuids.StreamProperties)
+        {
+            ulong embeddedSize = BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(at + 16));
+            if (embeddedSize >= ObjectHeaderSize + 54 && embeddedSize <= (ulong)(b.Length - at))
+            {
+                await ReadStreamPropertiesAsync(s, bodyStart + at, (long)embeddedSize, bodyStart + at + ObjectHeaderSize, (long)embeddedSize - ObjectHeaderSize).ConfigureAwait(false);
+            }
+        }
     }
 
     private static async ValueTask<List<IStructureNode>> ReadHeaderExtensionAsync(ParseState s, long position, long bodyStart, long size, int depth)

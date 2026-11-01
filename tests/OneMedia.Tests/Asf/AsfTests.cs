@@ -148,8 +148,8 @@ public class AsfTests
     [Fact]
     public void SeekFindsTheKeyframeBefore()
     {
-        // Video keyframes in packets 0 and 3 (times 1000 and 2000 less the 1000 preroll = 0 and 1000 ms).
-        byte[] file = Sample(b => { });
+        // Video keyframes in packets 0 and 3: presentation times 1000 and 2500, so 0 and 1500 ms after the 1000 ms preroll. The index counts
+        // from the same zero and names the packet of the keyframe at or before each half second.
         AsfBuilder with = new();
         with.AddFileProperties().AddAudioStream(1).AddVideoStream(2);
         for (int i = 0; i < 6; i++)
@@ -157,19 +157,17 @@ public class AsfTests
             with.AddPacket(false, new Payload(2, i % 3 == 0, (uint)i, 0, 10, (uint)(1000 + i * 500), Bytes(10, (byte)i)));
         }
 
-        with.AddSimpleIndex(5_000_000, 0, 0, 3, 3, 3, 3);
+        with.AddSimpleIndex(5_000_000, 0, 0, 0, 3, 3, 3, 3);
         using IDemuxer d = new AsfFormat().Open(new MemoryMediaSource(with.Build()), MediaOpenOptions.Default);
         Assert.True(d.CanSeek);
-        MediaTime landed = d.Seek(new MediaTime(1400, 1000));
-        Assert.Equal(new MediaTime(1000, 1000), landed);
+        Assert.Equal(new MediaTime(1500, 1000), d.Seek(new MediaTime(1600, 1000)));
         Assert.True(d.TryReadPacket(out PacketView first));
         Assert.True(first.Info.IsKeyframe);
-        Assert.Equal(1000, first.Info.Pts.Ticks);
+        Assert.Equal(1500, first.Info.Pts.Ticks);
         Assert.Equal(3, first.Data[0]);
-        d.Seek(new MediaTime(0, 1000));
+        Assert.Equal(new MediaTime(0, 1000), d.Seek(new MediaTime(1400, 1000)));
         Assert.True(d.TryReadPacket(out first));
         Assert.Equal(0, first.Info.Pts.Ticks);
-        Assert.NotEmpty(file);
     }
 
     [Fact]
