@@ -114,6 +114,64 @@ public class AdapterTests
         Assert.Equal(19200, ours.Length);
     }
 
+    // Fixtures written by tools/matroska-discard-padding.py with DiscardPadding on blocks in the middle of the track. The lengths are what ffmpeg 8.0
+    // decodes the same files to (ffmpeg -i FILE -f f32le), which applies every block's padding: Opus 20160 - 312 pre-skip - (480 + 240 + 648) = 18480 mono
+    // frames at 48 kHz; Vorbis 6656 - (16 + 40 + 50) = 6550; AAC 8192 - (64 + 16) = 8112. ffmpeg keeps the 1024-frame CodecDelay that the adapter drops (see AacDropsTheCodecDelay...), so the adapter's AAC figure is 8112 - 1024 = 7088.
+    [Theory]
+    [InlineData("opus-midpad.mka", 18480)]
+    [InlineData("vorbis-midpad.mka", 6550)]
+    [InlineData("aac-midpad.mka", 7088)]
+    public void DiscardPaddingInTheMiddleOfATrackShortensTheDecode(string file, int frames)
+    {
+        (float[] ours, _) = ReadAll(AudioDecoder.OpenFile(Fixture(file), MediaAudioExtensions.CreateRegistry()));
+        Assert.Equal(frames, ours.Length);
+    }
+
+    [Fact]
+    public void OpusMidStreamDiscardRemovesExactlyThePaddedFramesAndNothingElse()
+    {
+        (float[] whole, _) = ReadAll(AudioDecoder.OpenFile(Fixture("opus.mka"), MediaAudioExtensions.CreateRegistry()));
+        (float[] cut, _) = ReadAll(AudioDecoder.OpenFile(Fixture("opus-midpad.mka"), MediaAudioExtensions.CreateRegistry()));
+        // Output frame 0 is packet 0's frame 312. Block 5 ends at 6 * 960 - 312 = 5448 and loses its last 480 frames; block 12 ends at 13 * 960 - 312
+        // = 12168 and loses 240. Everything else, including the packets after the cut, is bit-identical because the codec still decodes whole packets.
+        float[] expected = [.. whole.AsSpan(0, 5448 - 480), .. whole.AsSpan(5448, 12168 - 240 - 5448), .. whole.AsSpan(12168)];
+        Assert.Equal(expected.Length, cut.Length);
+        Assert.True(expected.AsSpan().SequenceEqual(cut));
+    }
+
+    [Fact]
+    public void AdapterReportsOnlyWhatItCouldNotApply()
+    {
+        using MediaFile media = Media.Open(Fixture("opus-midpad.mka"));
+        MediaTrackPacketSource source = MediaTrackPacketSource.Create(media.Demuxer!, media.Audio!);
+        while (source.TryReadPacket(out OneAudio.PacketView _))
+        {
+        }
+
+        Assert.Equal(AudioSeamLimitations.None, source.Limitations);
+    }
+
+    [Fact]
+    public void DiscardEndFramesCarriesThePaddingPerPacket()
+    {
+        using MediaFile media = Media.Open(Fixture("vorbis-midpad.mka"));
+        MediaTrackPacketSource source = MediaTrackPacketSource.Create(media.Demuxer!, media.Audio!);
+        List<int> discards = [];
+        while (source.TryReadPacket(out OneAudio.PacketView p))
+        {
+            if (!p.IsHeader)
+            {
+                discards.Add(p.DiscardEndFrames);
+            }
+        }
+
+        Assert.Equal(14, discards.Count);
+        Assert.Equal(16, discards[3]);
+        Assert.Equal(40, discards[7]);
+        Assert.Equal(50, discards[13]);
+        Assert.Equal(106, discards.Sum());
+    }
+
     [Fact]
     public void AacDropsTheCodecDelayTheMatroskaFileDeclares()
     {

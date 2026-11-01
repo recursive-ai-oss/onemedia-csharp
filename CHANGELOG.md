@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+
+- `RecursiveAI.OneMedia.Audio` depends on `RecursiveAI.OneAudio` 1.5.0.
+- Audio adapter: Matroska `DiscardPadding` on any block (not only the last) is passed to OneAudio as `PacketView.DiscardEndFrames`, for Opus, Vorbis, AAC, FLAC and AMR, converted at the rate OneAudio decodes (the core rate for HE-AAC). Vorbis end padding is now applied. `AudioSeamLimitations.MidStreamDiscardPadding` and `EndPaddingNotApplied` are marked `[Obsolete]` and never set; nothing is left unapplied except padding that asks to cut the start of a block (`LeadingDiscardPadding`).
+- AMR samples that hold several frames (3GP with `damr` frames-per-sample above 1) decode through the adapter, since OneAudio 1.5.0 splits them by their table of contents.
+
 ## [0.1.0-preview.2] - 2026-11-01
 
 Fixes from a review of the first preview. No new formats or features.
