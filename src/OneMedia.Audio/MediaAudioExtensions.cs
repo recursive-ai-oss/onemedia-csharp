@@ -31,11 +31,11 @@ public static class MediaAudioExtensions
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
     /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (OneAudio has no SBR or PS decoder and refuses the track; its message says how the file signals it).</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
-    /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source.</exception>
+    /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(media);
-        IDemuxer demuxer = media.Demuxer ?? throw new InvalidOperationException("Decoding needs a file opened from a seekable source.");
+        IDemuxer demuxer = media.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "Decoding needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
         registry ??= CreateRegistry();
         if (track.Codec == CodecId.Mp3)
@@ -68,11 +68,11 @@ public static class MediaAudioExtensions
     /// <param name="track">The audio track; <see cref="MediaFile.Audio"/> when null.</param>
     /// <returns>The report.</returns>
     /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, or its codec cannot be presented.</exception>
-    /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source.</exception>
+    /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static AudioDecodeReport DescribeDecode(this MediaFile media, MediaTrack? track = null)
     {
         ArgumentNullException.ThrowIfNull(media);
-        IDemuxer demuxer = media.Demuxer ?? throw new InvalidOperationException("Describing a decode needs a file opened from a seekable source.");
+        IDemuxer demuxer = media.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "Describing a decode needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
         MediaTrackPacketSource source = MediaTrackPacketSource.Create(demuxer, track);
         return ReportOf(source);
@@ -94,11 +94,11 @@ public static class MediaAudioExtensions
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
     /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (OneAudio has no SBR or PS decoder and refuses the track; its message says how the file signals it).</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
-    /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source.</exception>
+    /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, out AudioDecodeReport report, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(media);
-        IDemuxer demuxer = media.Demuxer ?? throw new InvalidOperationException("Decoding needs a file opened from a seekable source.");
+        IDemuxer demuxer = media.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "Decoding needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
         registry ??= CreateRegistry();
         if (track.Codec == CodecId.Mp3)

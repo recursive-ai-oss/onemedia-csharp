@@ -9,6 +9,7 @@ using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Codecs;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Tool;
 
 return Run(args);
 
@@ -71,7 +72,7 @@ static int Info(string path, bool json)
 
 static string Time(MediaTime t) => t.IsKnown ? t.ToTimeSpan().ToString("c", CultureInfo.InvariantCulture) : "unknown";
 
-static string Describe(MediaTrack t) => CodecParameterReader.TryDescribe(t.Codec, t.Configuration, out CodecParameters? p) && p?.Rfc6381 is { } s ? s : "";
+static string Describe(MediaTrack t) => t.Rfc6381Codec() ?? "";
 
 static void WriteText(MediaFile media)
 {
@@ -107,19 +108,22 @@ static void WriteText(MediaFile media)
 
             if (v.FrameRateNumerator > 0 && v.FrameRateDenominator > 0)
             {
-                sb.Append(CultureInfo.InvariantCulture, $" {v.FrameRateNumerator}/{v.FrameRateDenominator} fps");
+                sb.Append(CultureInfo.InvariantCulture, $" {CliFormat.FrameRate(v.FrameRateNumerator, v.FrameRateDenominator)} fps");
             }
         }
 
         if (t.Audio is { } a)
         {
             sb.Append(CultureInfo.InvariantCulture, $" {a.SampleRate} Hz {a.Channels} ch");
-            if (t.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.ContainerDeclaresDoubleRate))
+            if (CliFormat.HeAac(t) is { } heaac)
             {
-                string how = heaac.SbrSignalling == RecursiveAI.OneMedia.Codecs.SbrSignalling.Explicit ? "explicit" : "backward-compatible";
-                string kind = heaac.SbrPresent ? $"{(heaac.PsPresent ? "SBR+PS" : "SBR")}, {how} signalling" : "container declares twice the core rate";
-                sb.Append(CultureInfo.InvariantCulture, $" [{kind}: output {heaac.SampleRate} Hz, core {heaac.CoreSampleRate} Hz]");
+                sb.Append(CultureInfo.InvariantCulture, $" [{heaac}]");
             }
+        }
+
+        if (t.Name is { Length: > 0 } name)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" name=\"{name}\"");
         }
 
         if (t.Language is not null)
@@ -170,6 +174,13 @@ static void WriteFactText<T>(string name, Fact<T> fact, Func<T, string> show)
     if (fact.Best is { } best)
     {
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{name}: {show(best.Value)} ({best.Source}, {fact.Candidates.Count} candidate(s))"));
+        if (fact.Candidates.Count > 1)
+        {
+            foreach (FactCandidate<T> c in fact.Candidates)
+            {
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"  {(ReferenceEquals(c, best) ? "*" : "-")} {show(c.Value)} from {c.Source} (raw \"{c.RawValue}\", {c.Certainty})"));
+            }
+        }
     }
     else
     {
@@ -239,18 +250,33 @@ static void WriteJson(MediaFile media)
             w.WriteString("rfc6381", rfc);
         }
 
+        if (t.Name is { Length: > 0 } name)
+        {
+            w.WriteString("name", name);
+        }
+
         w.WriteNumber("timescale", t.Timescale);
         if (t.Video is { } v)
         {
             w.WriteNumber("width", v.Width);
             w.WriteNumber("height", v.Height);
             w.WriteNumber("rotation", v.RotationDegrees);
+            if (v.FrameRateNumerator > 0 && v.FrameRateDenominator > 0)
+            {
+                (long fn, long fd) = CliFormat.FrameRateOf(v.FrameRateNumerator, v.FrameRateDenominator);
+                w.WriteNumber("frameRateNumerator", fn);
+                w.WriteNumber("frameRateDenominator", fd);
+            }
         }
 
         if (t.Audio is { } a)
         {
             w.WriteNumber("sampleRate", a.SampleRate);
             w.WriteNumber("channels", a.Channels);
+            if (CliFormat.HeAac(t) is { } heaac)
+            {
+                w.WriteString("aacNote", heaac);
+            }
         }
 
         if (t.Language is not null)

@@ -259,8 +259,11 @@ public class AdapterTests
     {
         using MediaFile media = Media.Open(HeAacFixture("sbr-implied.m4a"));
         (float[] samples, AudioFormat format) = ReadAll(media.Decode(out AudioDecodeReport report));
-        Assert.True(report.IsCoreOnly);
-        Assert.True(report.Limitations.HasFlag(AudioSeamLimitations.SbrNotApplied));
+        // Only the container's doubled rate suggests SBR here, which is a hint: the report says "possibly", not "audio is missing".
+        Assert.False(report.IsCoreOnly);
+        Assert.True(report.IsPossiblyCoreOnly);
+        Assert.True(report.Limitations.HasFlag(AudioSeamLimitations.SbrPossiblyNotApplied));
+        Assert.False(report.Limitations.HasFlag(AudioSeamLimitations.SbrNotApplied));
         Assert.False(report.Limitations.HasFlag(AudioSeamLimitations.PsNotApplied));
         Assert.Equal(44100, report.SignalledSampleRate);
         // The PCM really is at the core rate, and the report says so.
@@ -268,11 +271,14 @@ public class AdapterTests
         Assert.Equal(22050, report.DecodedSampleRate);
         Assert.Equal(format.Channels, report.DecodedChannels);
         Assert.Equal(0, report.SignalledChannels);
-        // The fixture's frames hold no SBR data, so the stream itself never confirms the guess.
+        // The fixture's frames hold no SBR data, so the stream itself never confirms the guess and the report stays "possibly".
         IAudioDecoder again = media.Decode();
         using (again)
         {
             Assert.False(again.SbrDataIgnored());
+            AudioDecodeReport settled = report.AfterReading(again);
+            Assert.Equal(report, settled);
+            Assert.False(settled.IsCoreOnly);
         }
 
         // About half a second at the core rate; at the signalled rate it would be twice as many frames.

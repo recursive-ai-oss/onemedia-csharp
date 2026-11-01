@@ -64,7 +64,7 @@ Edit lists are **not applied** to packet times. They are reported in `MediaTrack
   `Priming` and `EndPadding` for the first audio track, because the tag states encoder delay and padding exactly where the edit list rounds;
 - `EndPadding`: for a single non-empty edit, the media after the end of the edit.
 
-Presentation time on the edited timeline of a packet is `Pts - Priming + StartTime` (rescaled to a common scale). A packet that ends at or before
+Presentation time on the edited timeline of a packet is `Pts - Priming + StartTime` (rescaled to a common scale); `MediaTrack.PresentationTime(...)` computes it for any container (Matroska `CodecDelay` is subtracted the same way; transport and program streams, whose packet times already include their `StartTime`, get no addition). Only the first non-empty edit is applied. A packet that ends at or before
 the first edit's start (`Pts + Duration <= media_time`) carries `PacketAttributes.Discard`: it is decoded but never shown.
 
 ## Sample tables without loading them

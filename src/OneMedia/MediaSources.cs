@@ -495,3 +495,43 @@ public sealed class ObservedForwardSource : IForwardMediaSource
     /// <inheritdoc />
     public ValueTask DisposeAsync() => _inner.DisposeAsync();
 }
+
+/// <summary>Replays bytes already read from a forward-only source, then continues with the source itself; the position stays absolute.</summary>
+internal sealed class ReplayForwardSource(ReadOnlyMemory<byte> head, IForwardMediaSource inner) : IForwardMediaSource
+{
+    private int _replayed;
+
+    public long Position => _replayed < head.Length ? _replayed : inner.Position;
+
+    public int Read(Span<byte> destination, CancellationToken cancellationToken = default)
+    {
+        if (_replayed < head.Length)
+        {
+            return TakeHead(destination.Length, destination);
+        }
+
+        return inner.Read(destination, cancellationToken);
+    }
+
+    public ValueTask<int> ReadAsync(Memory<byte> destination, CancellationToken cancellationToken = default)
+    {
+        if (_replayed < head.Length)
+        {
+            return new ValueTask<int>(TakeHead(destination.Length, destination.Span));
+        }
+
+        return inner.ReadAsync(destination, cancellationToken);
+    }
+
+    private int TakeHead(int wanted, Span<byte> destination)
+    {
+        int n = Math.Min(wanted, head.Length - _replayed);
+        head.Span.Slice(_replayed, n).CopyTo(destination);
+        _replayed += n;
+        return n;
+    }
+
+    public void Dispose() => inner.Dispose();
+
+    public ValueTask DisposeAsync() => inner.DisposeAsync();
+}
