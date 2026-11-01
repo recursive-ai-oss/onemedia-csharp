@@ -6,6 +6,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Added
 
+- The neutral mux contract (`IMuxer`, `MuxReport`, `MuxRefusedException` with `MuxRefusalReason`) and the ISO base media muxer `IsoMuxer` (`RecursiveAI.OneMedia.IsoBmff`): MP4, M4A/M4V, MOV, 3GP/3G2 and fragmented MP4/CMAF; moov-first (default), moov-last and fragmented layouts with optional `sidx` and `mfra`; `co64` past 4 GiB with constant memory (a 4.38 GB file in 64 MB); edit lists for priming, padding and start offsets; sample entries from `CodecConfiguration`; typed refusals; zero allocations per packet in steady state. See `docs/muxing.md`.
 - Browser playability (`RecursiveAI.OneMedia.Playback`, `docs/playability.md`): `MediaFile.CanPlay(profile)` and `Media.CanPlay(path, profile)` return a verdict per mode (a plain URL, MediaSource) with typed blockers (container, codec, profile, level, bit depth, chroma, `hvc1`/`hev1` form, segmentation, encryption), each marked as fixable by a remux, an audio transcode, or a video blocker; plus warnings for hardware-dependent codecs, a movie box at the end and incomplete codec strings. Built-in profiles as static data: `Chrome`, `Chromium`, `Firefox`, `Safari`, `WebKitLinux`, `IosSafari`, `AndroidChrome`, `GenericMp4`; the first five were checked by playing a 75-file matrix in the real browsers (`tools/playback/`).
 - `IsoBmffDemuxer.MediaDataPrecedesMovie` and `IsoBmffAsyncDemuxer.FileType`/`MediaDataPrecedesMovie`.
 

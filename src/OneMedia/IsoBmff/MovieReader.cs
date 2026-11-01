@@ -593,6 +593,8 @@ public static class MovieReader
         "ec-3" => BoxTypes.Make("dec3"),
         "samr" or "sawb" or "sawp" => BoxTypes.Make("damr"),
         "alac" => BoxTypes.Make("alac"),
+        // ISO/IEC 23003-5: the PCM configuration box carries the byte order and sample size the entry code alone does not.
+        "ipcm" or "fpcm" => BoxTypes.Make("pcmC"),
         _ => 0,
     };
 

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Copies every ISO file of a corpus through the ISO muxer and compares each copy with its input: packets through ffprobe
+# (tools/mux-compare.py), structure through MP4Box -info, and a black-box decode through ffmpeg.
+#
+#   ORACLES=<dir with ffmpeg ffprobe MP4Box> CORPUS=<dir> WORK=<scratch dir> [LAYOUT=first|last|frag] [OPTS="--cmaf --sidx --mfra"] \
+#     [MAXKB=1048576] [MUXJOBS=6] [RESUME=1] tools/run-mux-diff.sh [files...]
+#
+# Prints one TSV line per file under $WORK/<tag>/summary.tsv:
+#   file, copy status, ffprobe packets compared / matched / different, MP4Box new messages, ffmpeg new messages
+# The copy of every file is deleted once compared unless KEEP=1.
+set -u
+ORACLES=${ORACLES:?directory holding ffmpeg, ffprobe and MP4Box}
+CORPUS=${CORPUS:?corpus directory}
+WORK=${WORK:?scratch directory}
+LAYOUT=${LAYOUT:-first}
+OPTS=${OPTS:-}
+MAXKB=${MAXKB:-1048576}
+JOBS=${MUXJOBS:-6}  # not JOBS: the work queue sets that
+TAG=${TAG:-$LAYOUT$(echo "$OPTS" | tr -d ' -')}
+OUT="$WORK/$TAG"
+mkdir -p "$OUT"
+export ONEMEDIA_SCRATCH="$WORK"
+export PATH="$ORACLES:$PATH"
+dotnet build tools/OneMedia.MuxCheck -c Release -v quiet -clp:NoSummary || exit 1
+TOOL="$WORK/artifacts/bin/OneMedia.MuxCheck/release/OneMedia.MuxCheck.dll"
+ffprobe -version | head -1
+MP4Box -version 2>&1 | head -1
+
+one() {
+  f=$1
+  base=$(echo "${f#"$CORPUS"/}" | tr '/' '_')
+  o="$OUT/$base.mp4"
+  copy=$(dotnet "$TOOL" copy "$f" "$o" --layout "$LAYOUT" $OPTS 2>&1 | head -1 | cut -f2- | tr '\t' ' ')
+  if [ -f "$o.map" ] && [ -s "$o" ]; then
+    cmp=$(SIDX=$([[ "$OPTS" == *--sidx* ]] && echo 1 || echo 0) FRAGMENTED=$([ "$LAYOUT" = frag ] && echo 1 || echo 0) python3 tools/mux-compare.py "$ORACLES/ffprobe" "$f" "$o" | head -1 | cut -f2-)
+    # What the oracles say about the input is the same for every layout: keep it in $CACHE (optional) and compute it once.
+    ic="${CACHE:-$o}"
+    if [ -n "${CACHE:-}" ]; then mkdir -p "$CACHE"; ic="$CACHE/$base"; fi
+    if [ ! -f "$ic.in.done" ]; then
+      MP4Box -info "$f" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$f||g" | sort -u > "$ic.in.mp4box"
+      ffmpeg -threads 1 -v error -i "$f" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$ic.in.ffmpeg"
+      touch "$ic.in.done"
+    fi
+    # Messages MP4Box prints for the output that it does not print for the input (file names removed).
+    MP4Box -info "$o" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$o||g" | sort -u > "$o.out.mp4box"
+    newbox=$(comm -13 "$ic.in.mp4box" "$o.out.mp4box" | wc -l)
+    ffmpeg -threads 1 -v error -i "$o" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$o.out.ffmpeg"
+    newff=$(comm -13 "$ic.in.ffmpeg" "$o.out.ffmpeg" | wc -l)
+    printf '%s\t%s\t%s\tmp4box_new=%s\tffmpeg_new=%s\n' "${f#"$CORPUS"/}" "$copy" "$cmp" "$newbox" "$newff"
+  else
+    printf '%s\t%s\tNOT-WRITTEN\n' "${f#"$CORPUS"/}" "$copy"
+  fi
+  [ "${KEEP:-0}" = 1 ] || rm -f "$o" "$o.map" "$o.pkts"
+}
+export -f one
+export CORPUS OUT LAYOUT OPTS TOOL ORACLES CACHE
+
+if [ $# -gt 0 ]; then LIST=$(printf '%s\n' "$@"); else
+  LIST=$(find "$CORPUS" -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.m4a' -o -iname '*.m4v' -o -iname '*.3gp' -o -iname '*.3g2' -o -iname '*.m4s' -o -iname '*.f4v' \) -size -"${MAXKB}"k | sort)
+fi
+# RESUME=1 skips the files an earlier (killed) run already summarised in $OUT/summary.part.
+touch "$OUT/summary.part"
+[ "${RESUME:-0}" = 1 ] || : > "$OUT/summary.part"
+if [ "${RESUME:-0}" = 1 ]; then
+  LIST=$(echo "$LIST" | while read -r f; do grep -qF "${f#"$CORPUS"/}	" "$OUT/summary.part" || echo "$f"; done)
+fi
+echo "$LIST" | xargs -P "${JOBS}" -I{} bash -c 'one "$@"' _ {} >> "$OUT/summary.part"
+sort "$OUT/summary.part" > "$OUT/summary.tsv"
+echo "files: $(wc -l < "$OUT/summary.tsv")"
