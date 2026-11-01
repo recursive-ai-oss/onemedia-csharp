@@ -26,7 +26,7 @@ EBML header | Segment (size patched at Finish)
 
 ## Live mode
 
-`MatroskaMuxOptions.Live` writes to a stream that cannot seek: the Segment and every Cluster have an unknown size (RFC 8794 §6.2), each block is written when it arrives (two writes: block header, payload), and there are no Cues, Duration, SeekHead patch, lacing or CRC. `DefaultDuration` comes only from the declared frame rate or a codec's frame length; any other packet with a duration is a BlockGroup. Read back with the forward-only reader and with ffprobe.
+`MatroskaMuxOptions.Live` writes to a stream that cannot seek: the Segment and every Cluster have an unknown size (RFC 8794 §6.2), each block is written when it arrives (two writes: block header, payload), and there are no Cues, Duration, SeekHead patch, lacing or CRC. `DefaultDuration` comes only from the declared frame rate or a codec's frame length; any other packet with a duration is a BlockGroup. Read back with the forward-only reader and with ffprobe. Frames that came from a laced block are written as separate blocks that share a timestamp (a lace cannot be formed once earlier frames are on the wire); ffmpeg warns about the equal decode times when it reads them, and the packets still match.
 
 ## Memory and allocations
 

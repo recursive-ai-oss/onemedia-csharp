@@ -37,7 +37,7 @@ while IFS= read -r f <&3; do
   "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$out" -f null - > "$work/logs/ffm-$b.log" 2>&1; "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$f" -f null - > "$work/logs/ffmin-$b.log" 2>&1
   if [ "$(wc -l < "$work/logs/ffm-$b.log")" -gt "$(wc -l < "$work/logs/ffmin-$b.log")" ]; then
     # ffmpeg derives decode times for streams with B-frames; where ffprobe states no presentation time for the input's packets it warns about the output's
-    if grep -q 'not-stated-by-ffprobe' "$log"; then fm=explained
+    if grep -q 'not-stated-by-ffprobe' "$log" || { grep -q 'lace-shared-pts' "$log" && [[ " ${extra[*]} " == *--live* ]]; }; then fm=explained
     else
       # the same warnings appear when ffmpeg reads a file it wrote itself from the input (its decode-time guess for B-frames at millisecond resolution)
       "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$f" -c copy -f matroska "$work/out/ref-$b.mkv" > /dev/null 2>&1
