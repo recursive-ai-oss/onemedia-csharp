@@ -81,6 +81,10 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Install the WebAssembly workload
+        # The solution includes the WebAssembly smoke app, which needs the workload to build.
+        run: dotnet workload install wasm-tools
+
       - name: Restore
         run: dotnet restore OneMedia.slnx
 

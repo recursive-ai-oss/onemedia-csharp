@@ -193,3 +193,5 @@ Documented differences from ffprobe, each with its rule in `tools/OneMedia.Oracl
   `mpa-es` 4,049,038, `adts-ac3-amr-es` 5,742,026.
 - **Release suite** (worker, `dotnet test -c Release`): 403 tests pass, none skipped. **NativeAOT** publish of the smoke app (`linux-x64`, warnings as errors): 0 trim or AOT warnings, the app runs and its audio-stream checks
   pass. **WebAssembly** smoke app under node: 0 failures.
+- **Tag-read speed, indicative** (worker, 7 files, `--reps 3`, run as a queued job so other work shared the machine; not a publishable row): geomean 0.71× of the fastest managed comparator (TagLib#; ATL.NET is slower on every
+  file), worst 0.94×, allocations 89–313 KiB per open against TagLib#'s 15–47 KiB (the read buffer is rented from the shared pool; the first run, which allocated it, measured 1.03× geomean and 1.69× worst).
