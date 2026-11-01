@@ -412,6 +412,32 @@ public class RemuxTests
         }
     }
 
+    [Theory]
+    [InlineData("mpeg", "h264-aac.ts", RemuxFormat.Matroska)]
+    [InlineData("isobmff", "bframes_aac.mp4", RemuxFormat.Matroska)]
+    [InlineData("audio", "opus.webm", RemuxFormat.WebM)]
+    [InlineData("xiph-flv", "tags.flac", RemuxFormat.Matroska)]
+    public void MatroskaAndWebMTargetsCarryThePayloadsAndTimes(string folder, string name, RemuxFormat format)
+    {
+        string path = Data(folder, name);
+        (byte[] output, RemuxReport report) = Remux(path, format);
+        using MediaFile source = Media.Open(path);
+        List<Pkt> input = ReadAll(source);
+        using MediaFile result = Media.Open(output);
+        List<Pkt> written = ReadAll(result);
+        foreach (RemuxTrackReport t in report.Tracks.Where(t => t.OutputTrack >= 0 && t.Repackaging == "none"))
+        {
+            List<Pkt> a = input.Where(p => p.Track == t.InputTrack).ToList();
+            List<Pkt> b = written.Where(p => p.Track == t.OutputTrack).ToList();
+            Assert.Equal(a.Count, b.Count);
+            for (int i = 0; i < a.Count; i++)
+            {
+                Assert.True(a[i].Data.AsSpan().SequenceEqual(b[i].Data), $"{name} track {t.InputTrack} packet {i}");
+                Assert.Equal(a[i].Key, b[i].Key);
+            }
+        }
+    }
+
     [Fact]
     public void PacketsOfAnUndeclaredTrackAreSkippedAndReportedOnce()
     {

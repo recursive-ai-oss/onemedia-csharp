@@ -10,7 +10,15 @@ internal static class RemuxMuxers
         switch (format)
         {
             case RemuxFormat.Matroska or RemuxFormat.WebM:
-                throw new UnsupportedMediaException($"Writing {format} is not available yet.");
+                return new RecursiveAI.OneMedia.Matroska.MatroskaMuxer(
+                    output,
+                    new RecursiveAI.OneMedia.Matroska.MatroskaMuxOptions
+                    {
+                        Profile = format == RemuxFormat.WebM ? RecursiveAI.OneMedia.Matroska.MatroskaProfile.WebM : RecursiveAI.OneMedia.Matroska.MatroskaProfile.Matroska,
+                        // Matroska counts nanoseconds from 2001-01-01 UTC (RFC 9559 DateUTC); a tick is 100 ns.
+                        DateUtcNanoseconds = options.CreationTime is { } t ? (t.UtcTicks - new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks) * 100 : null,
+                    },
+                    options.Limits);
             default:
                 {
                     IsoFileKind kind = format switch

@@ -31,8 +31,11 @@ Everything the output does not hold is listed in `RemuxReport.Losses`.
 
 ### Targets
 
-`RemuxFormat`: `Mp4`, `M4a`, `M4v`, `Mov`, `ThreeGp`, `ThreeG2`, `FragmentedMp4`, `Cmaf` (one track), `Matroska`, `WebM`. The ISO family is written by `IsoMuxer`. Matroska and WebM are
-written once the Matroska muxer is part of the library; until then asking for them throws `UnsupportedMediaException`.
+`RemuxFormat`: `Mp4`, `M4a`, `M4v`, `Mov`, `ThreeGp`, `ThreeG2`, `FragmentedMp4`, `Cmaf` (one track), `Matroska`, `WebM`. The ISO family is written by `IsoMuxer`, Matroska and WebM by `MatroskaMuxer`
+(`docs/muxing-matroska.md`; WebM takes VP8, VP9, AV1, Vorbis and Opus only). `Faststart` has no meaning for Matroska, whose index is written by the muxer.
+
+What a Matroska or WebM output does not carry is listed: display rotation, AAC priming and edit lists (`Timing`), ISO sample entry boxes for colour, field order, clean aperture and HDR metadata (`CodecField`, `NotRepresentable`), and for WebM video the `Colour` element and `SegmentUID`
+(the validator the muxer is checked with rejects them there). `Changes` notes that BlockAdditions, interlacing and stereo mode are not written.
 
 ## Choosing and dropping tracks
 

@@ -468,7 +468,15 @@ public sealed class RemuxSession : IDisposable
             MediaTrack declared = Declare(s);
             try
             {
-                s.Out = muxer is IsoMuxer iso ? iso.AddTrack(declared, IsoOptions?.Invoke(s.Input)) : muxer.AddTrack(declared);
+                if (muxer is IsoMuxer iso)
+                {
+                    s.Out = iso.AddTrack(declared, IsoOptions?.Invoke(s.Input));
+                }
+                else
+                {
+                    s.Out = muxer.AddTrack(declared);
+                    ReportUnwrittenEntryBoxes(s);
+                }
             }
             catch (MuxRefusedException e) when (_options.AllowDrop)
             {
@@ -494,6 +502,16 @@ public sealed class RemuxSession : IDisposable
 
         _held.Clear();
         _heldBytes = 0;
+    }
+
+    // Matroska has no place for the colour, field-order, clean-aperture or HDR boxes of an ISO sample entry; the ISO path carries them.
+    private void ReportUnwrittenEntryBoxes(TrackState s)
+    {
+        if (IsoOptions?.Invoke(s.Input)?.SampleEntryBoxes is { Count: > 0 } boxes)
+        {
+            string types = string.Join(' ', boxes.Select(b => System.Text.Encoding.ASCII.GetString(b.Span.Slice(4, 4))));
+            _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotRepresentable, s.Input.Index, types, "The muxer does not write these sample entry boxes (colour, field order, clean aperture, HDR metadata)."));
+        }
     }
 
     private static LossReason ReasonOf(MuxRefusalReason reason, MediaTrack t) => reason switch
@@ -554,6 +572,26 @@ public sealed class RemuxSession : IDisposable
             {
                 _losses.Add(new RemuxLoss(LossKind.Disposition, LossReason.NotRepresentable, t.Index, lost.ToString(), "MP4 and QuickTime have no field for these disposition flags."));
             }
+        }
+
+        if (_format is RemuxFormat.Matroska or RemuxFormat.WebM)
+        {
+            if (declared.Video is { RotationDegrees: not 0 } rot)
+            {
+                _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotWritten, t.Index, "rotation", $"The Matroska muxer does not write the display rotation of {rot.RotationDegrees} degrees."));
+            }
+
+            if (t.Codec == CodecId.Aac && ((declared.Edit.Priming.IsKnown && !declared.Edit.Priming.IsZero) || declared.Edit.Edits is { Count: > 0 }))
+            {
+                _losses.Add(new RemuxLoss(LossKind.Timing, LossReason.NotWritten, t.Index, "aac-priming", "AAC priming and edit lists are not written to Matroska; players that do not drop the encoder delay start the track late."));
+            }
+
+            if (_format == RemuxFormat.WebM && t.Kind == TrackKind.Video)
+            {
+                _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotWritten, t.Index, "colour", "WebM output omits the Colour element and the SegmentUID (the validator used for the writer rejects them there)."));
+            }
+
+            _changes.Add($"Track {t.Index}: BlockAdditions, interlacing and stereo mode are not written to Matroska.");
         }
 
         return declared;
