@@ -132,7 +132,9 @@ internal sealed class Idx1Cursor : AviIndexCursor
             for (int i = 0; i < entries && ok; i++)
             {
                 long pos = b + BinaryPrimitives.ReadUInt32LittleEndian(probe[((i * 16) + 8)..]);
-                ok = source.Read(pos, id, cancellationToken) == 4 && id.SequenceEqual(probe.Slice(i * 16, 4));
+                // An entry named 'rec ' points at a LIST header: the interleave group that holds the chunks listed after it.
+                ReadOnlySpan<byte> named = probe.Slice(i * 16, 4);
+                ok = source.Read(pos, id, cancellationToken) == 4 && (id.SequenceEqual(named) || (named.SequenceEqual("rec "u8) && id.SequenceEqual("LIST"u8)));
             }
 
             if (ok)

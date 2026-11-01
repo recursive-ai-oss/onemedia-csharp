@@ -57,6 +57,15 @@ where it matters). Raw DV and the DV frame layout are in [dv.md](dv.md).
 - Seeking walks chunk headers from the start of the movie (small reads, no payloads) to find the key frame of the first video stream and set
   every clock; with an index-less file the picture header of the video chunks decides.
 
+## Damaged and unaligned chunks
+
+- A chunk position that holds no printable identifier is either an odd-length chunk written without its pad byte (the header then starts one byte
+  earlier) or damage. On a seekable source the reader first tries one byte back, then scans forward up to 1 MiB for a data chunk of a described
+  stream that is followed by another header, and continues there with an `avi.resync` defect at the offset where the header was expected.
+  Forward-only sources do not resync. Observed on the published `invalid_unaligned`, `mp_seek_failed` and `a.avi` samples.
+- An `idx1` whose first entries are `rec ` groups still matches its offsets: a `rec ` entry points at the `LIST` header of the group.
+- The frame rate of a DV type 1 stream is 30000/1001 or 25 when the stream header is within 0.1% of it (writers state 333666/10000000).
+
 ## Metadata
 
 `LIST INFO` entries become native tags in system `riff-info` (four-character id, text decoded as UTF-8 when valid, otherwise Latin-1); they map

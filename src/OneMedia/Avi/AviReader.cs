@@ -603,6 +603,15 @@ internal sealed class AviReader : IDisposable
             uint id = BinaryPrimitives.ReadUInt32LittleEndian(h);
             uint size = BinaryPrimitives.ReadUInt32LittleEndian(h[4..]);
             long headerAt = _pos;
+            if (!IsPrintableId(id) && _input.CanSeek && TryResync(headerAt, out long found))
+            {
+                // Not a chunk header: the previous chunk was not padded to an even length, or bytes are damaged. Reading goes on at the
+                // next place that holds a header of a described stream (observed: other readers do the same).
+                _defects.Add(DefectKind.Inconsistent, DefectSeverity.Warning, headerAt, found == headerAt - 1 ? "The previous chunk has an odd length and no padding byte." : $"{found - headerAt} bytes that are not a chunk header were skipped.", "avi.resync");
+                _pos = found;
+                continue;
+            }
+
             if (id == RiffChunk.Ids.List)
             {
                 if (_input.Read(h[8..12]) < 4)
@@ -668,6 +677,94 @@ internal sealed class AviReader : IDisposable
 
         chunk = default;
         return false;
+    }
+
+    // RIFF identifiers are printable ASCII (0x20 to 0x7E); anything else at a chunk position is damage or a missing pad byte.
+    private static bool IsPrintableId(uint id)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            byte b = (byte)(id >> (8 * i));
+            if (b < 0x20 || b > 0x7E)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private const int ResyncBytes = 1024 * 1024;
+
+    // Finds where chunks continue after a position that holds no chunk header: first one byte back (an unpadded odd chunk before it),
+    // then forward for a data chunk of a described stream that is followed by another header. Bounded by ResyncBytes.
+    private bool TryResync(long headerAt, out long found)
+    {
+        found = -1;
+        long length = _input.Length;
+        const int Block = 64 * 1024;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(Block + 16);
+        try
+        {
+            Span<byte> next = stackalloc byte[8]; // the header that must follow a candidate, fixed
+            long start = Math.Max(0, headerAt - 1);
+            long stop = length < 0 ? headerAt + ResyncBytes : Math.Min(length, headerAt + ResyncBytes);
+            for (long block = start; block < stop; block += Block)
+            {
+                _cancellation.ThrowIfCancellationRequested();
+                _input.Seek(block);
+                int got = _input.Read(buffer.AsSpan(0, Block + 16));
+                for (int i = 0; i + 8 <= got && block + i < stop; i++)
+                {
+                    long at = block + i;
+                    if (at != headerAt - 1 && at < headerAt + 1)
+                    {
+                        continue;
+                    }
+
+                    uint cid = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(i));
+                    if (!AviChunkId.TryStreamNumber(cid, out int stream, out ushort type) || stream >= _state.Count || !IsDataType(type))
+                    {
+                        continue;
+                    }
+
+                    uint csize = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(i + 4));
+                    long after = at + 8 + csize + (csize & 1);
+                    if (length >= 0 && at + 8 + csize > length)
+                    {
+                        continue;
+                    }
+
+                    if (at == headerAt - 1)
+                    {
+                        found = at;
+                        return true;
+                    }
+
+                    _input.Seek(after);
+                    if (_input.Read(next) < 8)
+                    {
+                        continue;
+                    }
+
+                    uint nid = BinaryPrimitives.ReadUInt32LittleEndian(next);
+                    if (nid == RiffChunk.Ids.List || nid == Idx1Id || nid == RiffChunk.Make("JUNK")
+                        || (AviChunkId.TryStreamNumber(nid, out int ns, out ushort nt) && ns < _state.Count && IsDataType(nt)))
+                    {
+                        found = at;
+                        return true;
+                    }
+
+                    // The block buffer is still valid: only the file position moved.
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     // Moves to the next 'movi' list after the current one: past idx1 and other trailing chunks, into a following RIFF AVIX.
@@ -924,6 +1021,7 @@ internal sealed class AviReader : IDisposable
                 rate = 1000;
             }
 
+            (scale, rate) = AviTracks.DvFrameRate(s.Header, scale, rate);
             long g = (long)BigInteger.GreatestCommonDivisor(scale, rate);
             _scale = scale / g;
             _rate = rate / g;

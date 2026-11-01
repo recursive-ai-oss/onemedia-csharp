@@ -6,6 +6,29 @@ namespace RecursiveAI.OneMedia.Avi;
 /// <summary>Turns the header models of one stream into the neutral <see cref="MediaTrack"/>.</summary>
 internal static class AviTracks
 {
+    /// <summary>
+    /// The frame rate of a DV type 1 stream is the DV system's (30000/1001 or 25), whatever rounding the writer put in the stream header:
+    /// a header of 333666/10000000 is the NTSC rate stated to seven digits. A rate within a tenth of a percent of one of the two is replaced.
+    /// </summary>
+    internal static (long Scale, long Rate) DvFrameRate(AviStreamHeader h, long scale, long rate)
+    {
+        if (h.Type != AviStreamHeader.Iavs || scale <= 0 || rate <= 0)
+        {
+            return (scale, rate);
+        }
+
+        // |rate/scale - n/d| <= n/d/1000  <=>  |rate*d - n*scale| * 1000 <= n*scale
+        foreach ((long n, long d) in new[] { (30000L, 1001L), (25L, 1L) })
+        {
+            if (Math.Abs((rate * d) - (n * scale)) * 1000 <= n * scale)
+            {
+                return (d, n);
+            }
+        }
+
+        return (scale, rate);
+    }
+
     public static MediaTrack Build(AviStreamInfo s, AviHeaderList headers)
     {
         AviStreamHeader h = s.Header;
@@ -17,6 +40,7 @@ internal static class AviTracks
             rate = 1000;
         }
 
+        (scale, rate) = DvFrameRate(h, scale, rate);
         long g = (long)BigInteger.GreatestCommonDivisor(scale, rate);
         scale /= g;
         rate /= g;
