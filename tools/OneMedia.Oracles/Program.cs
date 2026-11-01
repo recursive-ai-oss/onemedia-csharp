@@ -185,7 +185,7 @@ internal static class Program
                     }
                 }
             }
-            catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception)
+            catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
             {
                 report = new FileReport { File = file, Status = "error", Message = e.GetType().Name + ": " + e.Message };
             }

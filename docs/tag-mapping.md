@@ -103,3 +103,36 @@ generated from it, and a test fails when they differ.
 | DiscNumber | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | ffmpeg writes DISC, optionally as number/total |
 | DiscTotal | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of DISC |
 | TrackTotal | mkv | `TOTAL_PARTS`, `TRACK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of TRACK when TOTAL_PARTS is absent |
+| Title | riff-info | `INAM` | ExifTool RIFF Info tags |  |
+| Artist | riff-info | `IART` | ExifTool RIFF Info tags |  |
+| Album | riff-info | `IPRD` | ExifTool RIFF Info tags | IPRD is the product, which music files use for the album |
+| Composer | riff-info | `IMUS` | ExifTool RIFF Info tags | IMUS is Music By |
+| Author | riff-info | `IWRI` | ExifTool RIFF Info tags | IWRI is Written By |
+| Genre | riff-info | `IGNR`, `GENR` | ExifTool RIFF Info tags |  |
+| Comment | riff-info | `ICMT`, `CMNT`, `COMM` | ExifTool RIFF Info tags |  |
+| Description | riff-info | `ISBJ` | ExifTool RIFF Info tags | ISBJ is the subject |
+| Description | bext | `Description` | EBU Tech 3285 (BWF) §2 | the free description of the recording |
+| Date | riff-info | `ICRD` | ExifTool RIFF Info tags | as written, usually a year or an ISO 8601 date |
+| Date | bext | `OriginationDate` | EBU Tech 3285 (BWF) §2 | the origination date; the time of day is the OriginationTime tag |
+| Copyright | riff-info | `ICOP` | ExifTool RIFF Info tags |  |
+| Encoder | riff-info | `ISFT` | ExifTool RIFF Info tags | the software that wrote the file |
+| EncodedBy | riff-info | `ITCH`, `IENC`, `CODE` | ExifTool RIFF Info tags | ITCH is the technician |
+| Keywords | riff-info | `IKEY` | ExifTool RIFF Info tags |  |
+| TrackNumber | riff-info | `ITRK`, `IPRT` | ExifTool RIFF Info tags | ITRK, optionally as number/total |
+| TrackTotal | riff-info | `ITRK` | ExifTool RIFF Info tags | the part after the slash of ITRK |
+| Title | aiff | `NAME` | ExifTool AIFF tags |  |
+| Artist | aiff | `AUTH` | ExifTool AIFF tags | AUTH names the author; players show it as the artist |
+| Author | aiff | `AUTH` | ExifTool AIFF tags |  |
+| Copyright | aiff | `(c) ` | ExifTool AIFF tags |  |
+| Comment | aiff | `ANNO`, `COMT` | ExifTool AIFF tags | ANNO, then the text of the first COMT comment |
+| Title | caf-info | `title` | Apple Core Audio Format Specification, Information chunk |  |
+| Artist | caf-info | `artist` | Apple Core Audio Format Specification, Information chunk |  |
+| Album | caf-info | `album` | Apple Core Audio Format Specification, Information chunk |  |
+| Composer | caf-info | `composer` | Apple Core Audio Format Specification, Information chunk |  |
+| Genre | caf-info | `genre` | Apple Core Audio Format Specification, Information chunk |  |
+| Comment | caf-info | `comments` | Apple Core Audio Format Specification, Information chunk |  |
+| Date | caf-info | `recorded date`, `year` | Apple Core Audio Format Specification, Information chunk | the recording date, else the year |
+| Copyright | caf-info | `copyright` | Apple Core Audio Format Specification, Information chunk |  |
+| Encoder | caf-info | `encoding application` | Apple Core Audio Format Specification, Information chunk |  |
+| TrackNumber | caf-info | `track number` | Apple Core Audio Format Specification, Information chunk | the track number, optionally as number/total |
+| TrackTotal | caf-info | `track number` | Apple Core Audio Format Specification, Information chunk | the part after the slash of the track number |
