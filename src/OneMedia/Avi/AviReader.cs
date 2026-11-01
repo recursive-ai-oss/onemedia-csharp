@@ -603,7 +603,7 @@ internal sealed class AviReader : IDisposable
             uint id = BinaryPrimitives.ReadUInt32LittleEndian(h);
             uint size = BinaryPrimitives.ReadUInt32LittleEndian(h[4..]);
             long headerAt = _pos;
-            if (!IsPrintableId(id) && _input.CanSeek && TryResync(headerAt, out long found))
+            if (_input.CanSeek && IsBrokenHeader(id, size, headerAt) && TryResync(headerAt, out long found))
             {
                 // Not a chunk header: the previous chunk was not padded to an even length, or bytes are damaged. Reading goes on at the
                 // next place that holds a header of a described stream (observed: other readers do the same).
@@ -692,6 +692,24 @@ internal sealed class AviReader : IDisposable
         }
 
         return true;
+    }
+
+    // A header is broken when its identifier is not printable, or when it is not a stream chunk, list or JUNK and states a size that runs
+    // past the end of the file (a data chunk or list that is cut by the end of the file is the truncated tail, which is handled elsewhere).
+    private bool IsBrokenHeader(uint id, uint size, long headerAt)
+    {
+        if (!IsPrintableId(id))
+        {
+            return true;
+        }
+
+        if (id == RiffChunk.Ids.List || id == RiffChunk.Ids.Riff || AviChunkId.TryStreamNumber(id, out int stream, out _) && stream < _state.Count)
+        {
+            return false;
+        }
+
+        long length = _input.Length;
+        return length >= 0 && headerAt + 8 + size > length;
     }
 
     private const int ResyncBytes = 1024 * 1024;

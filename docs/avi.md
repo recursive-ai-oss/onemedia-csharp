@@ -59,7 +59,7 @@ where it matters). Raw DV and the DV frame layout are in [dv.md](dv.md).
 
 ## Damaged and unaligned chunks
 
-- A chunk position that holds no printable identifier is either an odd-length chunk written without its pad byte (the header then starts one byte
+- A chunk position that holds no printable identifier (or an unknown chunk whose size runs past the end of the file) is either an odd-length chunk written without its pad byte (the header then starts one byte
   earlier) or damage. On a seekable source the reader first tries one byte back, then scans forward up to 1 MiB for a data chunk of a described
   stream that is followed by another header, and continues there with an `avi.resync` defect at the offset where the header was expected.
   Forward-only sources do not resync. Observed on the published `invalid_unaligned`, `mp_seek_failed` and `a.avi` samples.
@@ -120,4 +120,5 @@ position) and every track field agrees on the corpus (counts in the stage report
 | `no-presentation-order` | prints no `pts` for streams whose codec reorders (MPEG-4 B-frames, H.264) | `pts` = decode-order position = `dts` | An AVI index lists chunks in decoding order only; nothing in the container states a presentation time. |
 | `variable-frame-audio` | no duration for FLAC chunks | stream rate/scale per chunk | FLAC frames vary in length and the container states no per-chunk duration. |
 | `dv-embedded-audio` | synthesizes audio streams from DV (type 1 AVI and raw DV) | the video track only; audio parameters are in metadata | DV audio is shuffled across the frame's DIF blocks and needs a de-shuffling decoder step; see [dv.md](dv.md). |
+| `subtitle-events` | for text streams (`ass`) emits the script header and each event as its own packet, timed from the script | the chunk bytes at the chunk's clock | A chunk of a text stream is opaque to the container; splitting scripts into events is the subtitle layer's job. |
 | `truncated-last-chunk` | an empty packet for the cut chunk | the present bytes with `Corrupt` | The reader is lossless: bytes that exist are returned and flagged. |
