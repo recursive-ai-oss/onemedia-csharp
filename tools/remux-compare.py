@@ -42,13 +42,15 @@ def concat_hash(ffprobe, path, index):
     import hashlib
     ffmpeg = os.path.join(os.path.dirname(ffprobe), "ffmpeg")
     h = hashlib.sha256()
+    total = 0
     p = subprocess.Popen([ffmpeg, "-v", "error", "-threads", "1", "-i", path, "-map", "0:%d" % index, "-c", "copy", "-f", "data", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     while True:
         chunk = p.stdout.read(1 << 20)
         if not chunk:
             break
         h.update(chunk)
-    return h.hexdigest() if p.wait() == 0 else None
+        total += len(chunk)
+    return (h.hexdigest(), total) if p.wait() == 0 else None
 
 
 def to_int(v):
@@ -296,7 +298,14 @@ def main():
             sm += sd
             sd = 0
             sf = []
-        if (count_diff or sc.get("size") or sc.get("hash") or sc.get("pts")) and modes.get(o, "none") == "none" and concat_hash(ffprobe, src, i) == concat_hash(ffprobe, dst, o) is not None:
+        framing = False
+        damaged = False
+        if (count_diff or sc.get("size") or sc.get("hash") or sc.get("pts")) and modes.get(o, "none") == "none":
+            ci, co = concat_hash(ffprobe, src, i), concat_hash(ffprobe, dst, o)
+            framing = co is not None and ci == co
+            # ffprobe lost sync in a damaged input where the container reader recovered: the output holds every byte the reader delivered.
+            damaged = not framing and co is not None and co[1] == sum(r[3] for r in pr) and len(pr) > 0
+        if framing or damaged:
             # ffprobe's parser cut the stream into packets differently from the container's own framing (or the reverse), but the bytes of the
             # stream are the same: the difference is framing only.
             if count_kind:
@@ -304,7 +313,7 @@ def main():
                 diff -= count_diff
             timing_only = bool(sc.get("pts")) and not (sc.get("size") or sc.get("hash") or count_diff)
             sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
-            sc["explained:framing-and-timing" if timing_only else "explained:framing-only"] += sd + count_diff
+            sc["explained:damaged-input" if damaged else "explained:framing-and-timing" if timing_only else "explained:framing-only"] += sd + count_diff
             sm += sd
             sd = 0
             sf = []
