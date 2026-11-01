@@ -1261,7 +1261,20 @@ internal sealed class OggEngine : ISequentialEngine
 }
 
 
-/// <summary>Reads Ogg (RFC 3533): pages with their checksums, packets that span pages, and every logical bitstream of the file, multiplexed or chained. See the remarks of the engine for the timing rules.</summary>
+/// <summary>
+/// Reads Ogg (RFC 3533): pages with their checksums, packets that span pages, and every logical stream of the file, multiplexed or chained.
+/// Vorbis, Opus (RFC 7845), FLAC, Theora and Speex streams become tracks with their codec configuration; Skeleton is read as metadata
+/// (<see cref="Skeleton"/>); any other stream is kept as an unknown data track. The reader works on forward-only sources.
+/// </summary>
+/// <remarks>
+/// Times come from granule positions. A packet's start is found by counting back from the granule of the page it ends on, so the
+/// first packets of a stream may start before 0 (Vorbis counts its first packet as half a block, as the common tools do). On the last page of a
+/// stream a granule below the packets' total trims the last packet: its duration shrinks and <see cref="PacketInfo.DiscardPadding"/> says by how much.
+/// Opus times are on the 48 kHz clock with the pre-skip subtracted (RFC 7845 §4.4).
+/// The duration of a seekable file is read from the last pages in a tail read of at most 72 KiB; nothing else is scanned.
+/// A chained file is read link by link: the tracks of later links are appended to <see cref="Tracks"/> when the reader reaches them and
+/// their times continue after the end of the earlier links.
+/// </remarks>
 public sealed class OggDemuxer : IDemuxer, IMetadataProvider
 {
     private readonly OggEngine _engine;
