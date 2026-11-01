@@ -50,3 +50,14 @@ isobmff	*	file=multitrack	ignore	ffprobe	mp3-in-quicktime-one-byte-samples: the 
 isobmff	duration	file=MAV_0001	ignore	ours	video-parser-frame-timing: packet 0 lasts 6210 in the sample table (it alternates 6210/6120); ffprobe takes the parser frame timing (docs/isobmff.md).
 matroska	*	file=RA_missing_timestamps	ignore	ffprobe	realaudio-deinterleave: ffprobe de-interleaves RealAudio cook/ra blocks into 280-byte packets; ours delivers the stored 1400-byte blocks (docs/matroska-differential.md).
 matroska	pts	codec=rv40	ignore	neither	realvideo-timestamps: ffprobe derives RealVideo frame times from the stream (azumi.mkv has blocks at 80 and 81 ms where it reports 40 and 80); ours is the block time (docs/matroska-differential.md).
+mpegts	pts	kind=audio	tolerance=1	neither	audio-pts-interpolation: frames after the first in a PES are placed by the codec frame length; ffprobe's rounding differs by at most one 90 kHz tick (docs/mpeg.md).
+mpegts	dts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for pts.
+mpegps	pts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for mpegts.
+mpegps	dts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for mpegts.
+mpegps	count	codec=dvd_nav_packet	ignore	ours	nav-packets: ffprobe lists no packets for the DVD navigation stream; ours is a data track of the private_stream_2 payloads (docs/mpeg.md).
+ivf	pos	*	ignore	neither	ivf-pos: ffprobe reports the start of the 12-byte frame header, ours the start of the frame payload, which is the packet's source range.
+h264	dts	*	ffprobe-na	neither	raw-stream-dts: a raw video stream carries no timestamps; ffprobe prints N/A, ours counts frames at the frame rate (docs/mpeg.md).
+hevc	dts	*	ffprobe-na	neither	raw-stream-dts.
+vvc	dts	*	ffprobe-na	neither	raw-stream-dts.
+mpegvideo	dts	*	ffprobe-na	neither	raw-stream-dts.
+mpegvideo	pts	*	ours-na	neither	raw-mpeg2-pts: ffprobe derives presentation times from the picture headers' temporal references; ours leaves them unknown in elementary streams (docs/mpeg.md).

@@ -103,3 +103,6 @@ generated from it, and a test fails when they differ.
 | DiscNumber | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | ffmpeg writes DISC, optionally as number/total |
 | DiscTotal | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of DISC |
 | TrackTotal | mkv | `TOTAL_PARTS`, `TRACK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of TRACK when TOTAL_PARTS is absent |
+| Title | mpegts | `event_name`, `service_name` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's name first, then the service name |
+| Description | mpegts | `event_text` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's short text |
+| Date | mdpm | `DateTimeOriginal` | ExifTool H264 tags (MDPM) | the camera clock in AVCHD; local time of unknown zone |
