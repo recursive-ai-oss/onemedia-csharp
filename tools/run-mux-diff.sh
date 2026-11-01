@@ -3,7 +3,7 @@
 # (tools/mux-compare.py), structure through MP4Box -info, and a black-box decode through ffmpeg.
 #
 #   ORACLES=<dir with ffmpeg ffprobe MP4Box> CORPUS=<dir> WORK=<scratch dir> [LAYOUT=first|last|frag] [OPTS="--cmaf --sidx --mfra"] \
-#     [MAXKB=1048576] [JOBS=6] tools/run-mux-diff.sh [files...]
+#     [MAXKB=1048576] [MUXJOBS=6] [RESUME=1] tools/run-mux-diff.sh [files...]
 #
 # Prints one TSV line per file under $WORK/<tag>/summary.tsv:
 #   file, copy status, ffprobe packets compared / matched / different, MP4Box new messages, ffmpeg new messages
@@ -15,7 +15,7 @@ WORK=${WORK:?scratch directory}
 LAYOUT=${LAYOUT:-first}
 OPTS=${OPTS:-}
 MAXKB=${MAXKB:-1048576}
-JOBS=${JOBS:-6}
+JOBS=${MUXJOBS:-6}  # not JOBS: the work queue sets that
 TAG=${TAG:-$LAYOUT$(echo "$OPTS" | tr -d ' -')}
 OUT="$WORK/$TAG"
 mkdir -p "$OUT"
