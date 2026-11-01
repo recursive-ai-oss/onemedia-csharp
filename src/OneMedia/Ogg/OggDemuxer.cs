@@ -256,7 +256,15 @@ internal sealed class OggEngine : ISequentialEngine
         SplitPackets(s, h, lacing, body);
         if (s.HeadersDone && s.Kind != OggStreamKind.Skeleton)
         {
-            FinishPage(s, h);
+            try
+            {
+                FinishPage(s, h);
+            }
+            catch (ArithmeticException e)
+            {
+                // A granule position near the 64-bit limits cannot be turned into a time.
+                throw new MediaFormatException("The granule position of a page is too large to be a time.", e) { Kind = DefectKind.Inconsistent, Offset = h.Offset };
+            }
         }
 
         if (h.IsLast)

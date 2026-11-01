@@ -370,4 +370,7 @@ public class XiphFlvFuzzRegressionTests
 
     [Fact]
     public void OggSecondFuzzFinding() => Run("ogg-second.bin", (s, o) => OggDemuxer.Open(s, o));
+
+    [Fact]
+    public void OggThirdFuzzFinding() => Run("ogg-third.bin", (s, o) => OggDemuxer.Open(s, o));
 }
