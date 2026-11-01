@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags;
 using Atl = ATL;
@@ -187,6 +188,73 @@ internal static class Impls
         }
 
         return Drain(d);
+    }
+
+    /// <summary>Copy-mux every packet into Matroska or WebM (WebM for a .webm input) on a stream that keeps nothing but can seek, so the figure is the muxer and the reader.</summary>
+    public static Work OursMuxMatroska(string path)
+    {
+        using IDemuxer d = OpenOurs(path);
+        MatroskaMuxOptions options = new() { Profile = path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ? MatroskaProfile.WebM : MatroskaProfile.Matroska };
+        using CountingSeekableSink sink = new();
+        using MatroskaMuxer mux = new(sink, options);
+        for (int i = 0; i < d.Tracks.Count; i++)
+        {
+            try
+            {
+                mux.AddTrack(d.Tracks[i]);
+            }
+            catch (MuxRefusedException)
+            {
+                throw new NotAvailableException("a track the muxer cannot carry");
+            }
+        }
+
+        long packets = 0, bytes = 0;
+        while (d.TryReadPacket(out PacketView p))
+        {
+            mux.WritePacket(p.Info, p.Data);
+            packets++;
+            bytes += p.Data.Length;
+        }
+
+        MuxReport report = mux.Finish();
+        return new Work(packets, bytes, report.BytesWritten & 1);
+    }
+
+    private sealed class CountingSeekableSink : Stream
+    {
+        private long _position;
+        private long _length;
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => true;
+
+        public override bool CanWrite => true;
+
+        public override long Length => _length;
+
+        public override long Position { get => _position; set => _position = value; }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => _position = origin == SeekOrigin.Begin ? offset : throw new NotSupportedException();
+
+        public override void SetLength(long value) => _length = value;
+
+        public override void Write(byte[] buffer, int offset, int count) => Advance(count);
+
+        public override void Write(ReadOnlySpan<byte> buffer) => Advance(buffer.Length);
+
+        private void Advance(int count)
+        {
+            _position += count;
+            _length = Math.Max(_length, _position);
+        }
     }
 
     private static Work Drain(IDemuxer d)
