@@ -1,21 +1,37 @@
 # OneMedia
 
-**Containers, metadata, subtitles; no decoding.** A managed .NET library for reading media containers, with no dependency beyond the .NET base class library. OneMedia is unaffiliated with other products or companies named OneMedia.
+**Containers, metadata, subtitles; no decoding.** A managed .NET library for media containers, with no dependency beyond the .NET base class library. OneMedia is unaffiliated with other products or companies named OneMedia.
 
 The goal is the depth of libavformat, GPAC, mkvtoolnix, MediaInfo and ExifTool in one library you can call from C#: demux and mux, lossless tag editing, evidence-backed capture time and place, subtitles and captions, repair, and HLS/DASH packaging. It never decodes or encodes an audio or video sample; audio decoding is handed to [OneAudio](https://github.com/recursive-ai-oss/oneaudio-csharp) through the `RecursiveAI.OneMedia.Audio` adapter.
 
 ## Status
 
-**Preview, version `0.1.0-preview.1`. Nothing here reads a media file yet.** What exists is the foundation the readers are being built on:
+**Preview, version `0.1.0-preview.1`: reading MP4/MOV/3GP (including fragmented MP4) and Matroska/WebM.** Writing, tag editing, every other container, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
 
-- sources: files, streams, memory, caller-supplied ranged reads (HTTP range, blob storage) and forward-only streams, with a hook for counting bytes and range requests;
-- `MediaTime`: exact rational time with explicit rounding, no floating point;
-- `MediaLimits` and typed defects and exceptions, so damaged or hostile input is reported with byte offsets and never surfaces as an untyped exception;
-- content-based format sniffing and an explicit format registry (no reflection, so unused formats trim away);
-- the neutral track and packet model, with an allocation-free pull path and pooled owned packets;
-- the `onemedia` tool, which for now only names the container format of a file (`onemedia info <file>`).
+```csharp
+using RecursiveAI.OneMedia;
+using RecursiveAI.OneMedia.Audio;   // package RecursiveAI.OneMedia.Audio
 
-Reading MP4/MOV/3GP and Matroska/WebM is in progress; every other format and every operation in the list at the top is planned and not started. This README will say so until it is no longer true.
+using var media = Media.Open("clip.mov");
+Console.WriteLine($"{media.Duration} {media.Video?.Codec} {media.Audio?.Codec}");
+Console.WriteLine($"{media.Tags.Title} {media.CaptureTime.Value} {media.Location.Value}");
+foreach (var candidate in media.CaptureTime.Candidates) Console.WriteLine(candidate);
+
+using var pcm = media.Decode();   // the audio track, decoded by OneAudio
+```
+
+`onemedia info <file>` (or `--json`) prints tracks, codecs (RFC 6381 strings), tags and facts with their candidate sources.
+
+### Support (0.1)
+
+| Format | Read | Write | Tag edit | Packets vs ffprobe 7.0.2 | Probe I/O, ours vs ffprobe / MediaInfo / ExifTool | Documented deviations |
+|---|---|---|---|---|---|---|
+| MP4, MOV, 3GP/3G2, M4A/M4V, fragmented MP4 | ✓ demux, codec headers, native tags (`udta`, `ilst`, `mdta`, 3GPP, XMP, Nero chapters), common tags, basic facts | — | — | 121 corpus files, 744,306 packets, 0 unexplained | 4.38 GB file with the index at the end: 124,660 B in 32 reads vs 1,741,689 B / 32 (ffprobe), 23,628,223 B / 138 (MediaInfo), 1,103,868 B / 139 (ExifTool) | [docs/isobmff.md](docs/isobmff.md): edit-list repeats and drops, last-packet durations, negative composition offsets, fragmented durations are structural (no fragment scan) |
+| Matroska, WebM (MKV, MKA, MK3D) | ✓ demux (seekable and live/forward-only), codec headers, tags with targets, attachments, basic facts | — | — | 92 corpus files, 464,934 packets, 0 unexplained | 4.45 GB file: 32,768 B in 1 read vs 4,877,532 B / 16 (ffprobe), 72,168,087 B / 493 (MediaInfo), 79,600 B / 11 (ExifTool) | [docs/matroska-differential.md](docs/matroska-differential.md): attachments are not streams, RealAudio is not de-interleaved, RealVideo timestamps as stored |
+
+Audio tracks of MP4/3GP equal OneAudio's own MP4 reader packet for packet (250,469 packets over 64 files). Tags and facts agree with ExifTool 13.60 and MediaInfo 26.10 on 116 files, with every difference explained in [docs/tags.md](docs/tags.md); the field mapping is [docs/tag-mapping.md](docs/tag-mapping.md). The audio adapter is described in [docs/audio-adapter.md](docs/audio-adapter.md), the comparison method in [docs/harness.md](docs/harness.md), and the benchmarks in [docs/bench.md](docs/bench.md).
+
+Every parser is fuzzed; damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
 
 ## Packages
 
@@ -25,7 +41,7 @@ Reading MP4/MOV/3GP and Matroska/WebM is in progress; every other format and eve
 | `RecursiveAI.OneMedia.Audio` | adapter that hands audio tracks to OneAudio; depends on the core package and `RecursiveAI.OneAudio` |
 | `RecursiveAI.OneMedia.Tool` | the `onemedia` command-line tool (`dotnet tool install`) |
 
-Target framework is `net10.0`. The library is built to be NativeAOT, trimming and browser-WebAssembly clean.
+Target framework is `net10.0`. The library is NativeAOT, trimming and browser-WebAssembly clean.
 
 ## Building
 
@@ -37,26 +53,14 @@ dotnet pack -c Release
 
 Build output goes to `artifacts/` in the repository root (ignored by git). To build somewhere else, set `ONEMEDIA_SCRATCH` to a directory; output then goes to `$ONEMEDIA_SCRATCH/artifacts`. Test files are written under the system temporary directory (`TMPDIR`).
 
-`smoke/OneMedia.AotSmoke` is published with NativeAOT in CI and fails on any trim or AOT warning; `smoke/OneMedia.WasmSmoke` runs the same checks under the browser-wasm runtime (`wasm-tools` workload; run the built `AppBundle/main.mjs` with node). `tools/`, `fuzz/` and `bench/` hold the differential harness, fuzz targets and benchmarks; they are placeholders for now.
+`smoke/OneMedia.AotSmoke` is published with NativeAOT and fails on any trim or AOT warning; `smoke/OneMedia.WasmSmoke` runs the same checks under the browser-wasm runtime (`wasm-tools` workload; run the built `AppBundle/main.mjs` with node). `tools/` holds the differential and I/O harness and the corpus scripts, `fuzz/` the fuzz targets and `bench/` the benchmarks; none of them ship.
 
 ## Contributing notes
 
 - Clean room: the code is written from published specifications and from observing the behaviour of other tools as black boxes. The source of other media libraries and tools is not consulted.
 - Every public type and member has an XML doc comment; warnings are errors.
-- `unsafe` code, `Unsafe.*`, `MemoryMarshal` and intrinsics are not used outside bulk-scan hot paths, and none exists yet.
+- `unsafe` code, `Unsafe.*`, `MemoryMarshal` and intrinsics are not used.
 
 ## Licence
 
-`MIT OR Apache-2.0`, at your option. Copyright (c) Recursive AI, LLC. See `LICENSE-MIT` and `LICENSE-APACHE`.
- EOF
-sed -i 's/^ EOF$//' README.md
-cat > PACKAGE.md <<'EOF'
-# OneMedia
-
-**Containers, metadata, subtitles; no decoding.** A managed .NET library for media containers with no dependency beyond the .NET base class library. Unaffiliated with other products or companies named OneMedia.
-
-**Preview (`0.1.0-preview.1`):** this release contains the foundation only: byte sources (file, stream, memory, ranged, forward-only), exact rational `MediaTime`, resource limits, typed defects and exceptions, content-based format sniffing with an explicit registry, and the track and packet model. Reading MP4/MOV/3GP and Matroska/WebM is in progress; no container can be opened yet.
-
-See the [repository](https://github.com/recursive-ai-oss/onemedia-csharp) for the plan, the [README](https://github.com/recursive-ai-oss/onemedia-csharp/blob/main/README.md) for the current status, and the [changelog](https://github.com/recursive-ai-oss/onemedia-csharp/blob/main/CHANGELOG.md).
-
-Licence: `MIT OR Apache-2.0`. Copyright (c) Recursive AI, LLC.
+`MIT OR Apache-2.0`, at your option. Copyright (c) Recursive AI, LLC. See `LICENSE-MIT` and `LICENSE-APACHE`. Sample media notices are in `THIRD-PARTY-NOTICES`.
