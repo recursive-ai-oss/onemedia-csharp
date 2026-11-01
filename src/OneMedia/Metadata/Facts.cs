@@ -34,8 +34,30 @@ public sealed class Fact<T>
     /// <summary>True when there is at least one reading.</summary>
     public bool HasValue => Candidates.Count > 0;
 
-    /// <summary>The best reading's value, or the type's default when there is none.</summary>
-    public T? Value => Candidates.Count > 0 ? Candidates[0].Value : default;
+    /// <summary>
+    /// The best reading's value. Check <see cref="HasValue"/> first, or use <see cref="TryGetValue"/>: a fact with no readings has no value, and
+    /// returning a default would be indistinguishable from a real one (a location of 0,0 is a place in the Atlantic Ocean).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">There is no reading (<see cref="HasValue"/> is false).</exception>
+    public T Value => Candidates.Count > 0 ? Candidates[0].Value : throw new InvalidOperationException("The file states no value for this fact; check HasValue or use TryGetValue.");
+
+    /// <summary>Gets the best reading's value when there is one.</summary>
+    /// <param name="value">The best reading's value, or the type's default when this returns false.</param>
+    /// <returns>True when there is at least one reading.</returns>
+    public bool TryGetValue([System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out T value)
+    {
+        if (Candidates.Count > 0)
+        {
+            value = Candidates[0].Value;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    /// <summary>The best reading's value as text, or <c>none</c> when the file states nothing.</summary>
+    public override string ToString() => Candidates.Count > 0 ? Candidates[0].Value?.ToString() ?? string.Empty : "none";
 }
 
 /// <summary>Display orientation of a video track: a clockwise rotation, then an optional horizontal mirror.</summary>

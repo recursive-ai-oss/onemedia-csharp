@@ -97,6 +97,19 @@ public sealed record CodecParameters
     /// <summary>The core (pre-SBR) sample rate of AAC when SBR is signalled, otherwise equal to <see cref="SampleRate"/>.</summary>
     public int CoreSampleRate { get; init; }
 
+    /// <summary>True when the AAC configuration signals spectral band replication (HE-AAC), explicitly or by the backward-compatible extension. A decoder that only handles the core coder outputs <see cref="CoreSampleRate"/> instead of <see cref="SampleRate"/>.</summary>
+    public bool SbrPresent { get; init; }
+
+    /// <summary>
+    /// True when the AAC configuration itself shows no SBR, but the container declares an output rate of exactly twice the configuration's:
+    /// the sign of HE-AAC that signals SBR only inside the stream. Only <see cref="MediaTrack.DescribeCodec"/> sets it, since it needs the
+    /// container's rate. A guess, not a reading: the stream may carry no SBR. <see cref="SbrPresent"/> stays false.
+    /// </summary>
+    public bool SbrImplied { get; init; }
+
+    /// <summary>True when the AAC configuration signals parametric stereo (HE-AACv2): the coded channel count is one less than the output's.</summary>
+    public bool PsPresent { get; init; }
+
     /// <summary>Audio channel count including any low-frequency channel; 0 when not known.</summary>
     public int Channels { get; init; }
 
