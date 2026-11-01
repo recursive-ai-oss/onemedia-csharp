@@ -12,6 +12,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Added
 
+- AVI: `RecursiveAI.OneMedia.Avi` reads AVI and OpenDML (`AVIX`, super and standard indexes, `idx1`, index-less files by a bounded `movi` scan), DV in AVI (type 1 and type 2) and `LIST INFO`/`IDIT` tags; raw DV (`.dv`) through `RecursiveAI.OneMedia.Dv`; key frames from the index or the picture header; the reader registers with `AddOneMedia()` in the audio adapter. DV audio inside frames is not de-shuffled (no audio track for DV type 1 and raw DV). See `docs/avi.md` and `docs/dv.md`.
 - `MediaFile.Tags`, `CaptureTime`, `Location`, `Device`, `Rotation`, `Native[...]` and `ReadMetadataAsync`, and tags and facts in `onemedia info` (text and `--json`).
 - `MediaFile.ContainerDuration`, `TracksDuration` and `ExactDuration`; `Duration` is the container's figure unless a track without an edit list is longer.
 - Matroska: zlib-compressed frames are inflated on read; `OutputSamplingFrequency` is the audio rate; `V_MS/VFW/FOURCC` tracks are named by their FourCC.

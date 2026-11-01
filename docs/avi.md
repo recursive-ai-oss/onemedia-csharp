@@ -3,7 +3,7 @@
 How `RecursiveAI.OneMedia.Avi` reads AVI files. Documents: the Microsoft AVI RIFF file reference (field layouts of `AVIMAINHEADER`,
 `AVISTREAMHEADER`, `AVIOLDINDEX`), the OpenDML AVI File Format Extensions 1.02 (super index, standard index, `AVIX`, `dmlh`, `vprp`), the
 Microsoft `BITMAPINFOHEADER` and `WAVEFORMATEX`/`WAVEFORMAT_EXTENSIBLE` documentation, and the RIFF INFO list names as listed in ExifTool's
-tag documentation. Everything the documents leave open was settled by files written by other muxers and read by an independent tool (stated
+tag documentation. The Microsoft reference is licensed CC BY 4.0 (© Microsoft; see THIRD-PARTY-NOTICES.md); no text is copied. Everything the documents leave open was settled by files written by other muxers and read by an independent tool (stated
 where it matters). Raw DV and the DV frame layout are in [dv.md](dv.md).
 
 ## Layers
@@ -89,11 +89,17 @@ A file that is not RIFF/AVI, or has no `hdrl` list, raises `MediaFormatException
 
 ## Reading cost
 
-`Open` reads the RIFF header and `hdrl` (the first kilobytes: a one-time read of up to 1 MiB while `hdrl` is parsed from memory), and the
-`movi` list header. It does not read `idx1` or any `ix##`; index entries are read in blocks of 1,024 entries (16 KiB) only when packets are
-delivered, so `idx1` at the end of the file costs a seek and one block read for the first chunks, not a scan. The probe and metadata read
-touch `hdrl`, the `LIST INFO` and `IDIT` chunks (which writers put right after `hdrl` or after `movi`), and for DV type 1 the first video
-frame's header blocks. Numbers per file are in [io-results.txt](io-results.txt).
+`Open` reads the RIFF header, `hdrl` (parsed from one block of up to 1 MiB, so a few kilobytes in practice) and the `movi` list header. It does
+not read `idx1` or any `ix##`; index entries are read in blocks of 1,024 entries (16 KiB) only when packets are delivered, so `idx1` at the
+end of the file costs a seek and one block read for the first chunks, not a scan. The probe and metadata read touch `hdrl`, the
+`LIST INFO` and `IDIT` chunks (which writers put right after `hdrl` or after `movi`), and for DV type 1 the first video frame's header
+blocks.
+
+Measured over HTTP range requests on 70 files (probe plus metadata, see [io-results.txt](io-results.txt)): 4.4 to 7.8 KB in 20 to 32 requests
+for every file with a `movi` list, whatever its size; the OpenDML files of 1.29 GB and 4.65 GB take 4,748 B / 32 and 4,844 B / 32 (ffprobe
+1.67 MB / 11 and 3.35 MB / 23, MediaInfo 11 MB / 173 and 11.4 MB / 176 through `strace`, ExifTool 47 KB / 8 and 71 KB / 11). The one file
+that needs a scan is a sample with no `movi` list: the bounded search for stream chunks (4 MiB at most) read 75 KB in 451 requests. Raw DV
+reads 64 KiB (the first frames' header blocks) in 3 requests.
 
 ## Deviations from ffprobe 7.0.2
 
