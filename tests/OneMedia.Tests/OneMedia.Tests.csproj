@@ -47,6 +47,7 @@
     <None Include="../../testdata/fuzz/video-es/*" Link="testdata/fuzz/video-es/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/asf/*" Link="testdata/fuzz/asf/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/riff-wav/*" Link="testdata/fuzz/riff-wav/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/tagwrite/*" Link="testdata/fuzz/tagwrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/pcm/*" Link="testdata/pcm/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../docs/tag-mapping.md" Link="docs/tag-mapping.md" CopyToOutputDirectory="PreserveNewest" />
     <!-- The codec fuzz targets double as robustness checks: the tests feed them random, truncated and bit-flipped input. -->

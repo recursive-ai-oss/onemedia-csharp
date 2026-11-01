@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneMedia.Matroska;
@@ -81,6 +82,30 @@ public sealed class EbmlEditor
         Add(new Request(RequestKind.Append, parent, newElement, false));
     }
 
+    /// <summary>
+    /// Replaces an element with a run of complete elements, for inserting new elements beside an existing one (the first of the run is
+    /// normally the element itself, copied). Growth is absorbed by a Void element that follows, as for <see cref="Replace"/>.
+    /// </summary>
+    /// <param name="element">The element to replace.</param>
+    /// <param name="elements">One or more complete elements, back to back.</param>
+    /// <exception cref="ArgumentException"><paramref name="elements"/> is not a run of whole elements, or <paramref name="element"/> overlaps another edit.</exception>
+    public void ReplaceWithRun(EbmlElement element, ReadOnlyMemory<byte> elements)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ReadOnlySpan<byte> rest = elements.Span;
+        while (!rest.IsEmpty)
+        {
+            if (!Ebml.TryReadId(rest, out _, out int idLen) || !Ebml.TryReadSize(rest[idLen..], out long size, out int sizeLen) || size < 0 || idLen + sizeLen + size > rest.Length)
+            {
+                throw new ArgumentException("The new content must be whole elements whose size fields match their lengths.", nameof(elements));
+            }
+
+            rest = rest[(idLen + sizeLen + (int)size)..];
+        }
+
+        Add(new Request(RequestKind.Replace, element, elements, false));
+    }
+
     private static void CheckElement(ReadOnlyMemory<byte> element)
     {
         if (!EbmlWriter.IsSingleElement(element.Span, out _))
@@ -99,6 +124,17 @@ public sealed class EbmlEditor
                 {
                     throw new ArgumentException("Two edits overlap: an element and one of its descendants (or the same element) cannot both be edited.");
                 }
+            }
+        }
+
+        // An element appended inside something that is replaced or removed would vanish with it; refuse instead of losing it silently.
+        foreach (Request other in _requests)
+        {
+            (EbmlElement? replaced, EbmlElement? appendedTo) = request.Kind == RequestKind.Append ? (other.Kind != RequestKind.Append ? other.Element : null, request.Element)
+                : (request.Element, other.Kind == RequestKind.Append ? other.Element : null);
+            if (replaced is not null && appendedTo is not null && (replaced.Offset == appendedTo.Offset || IsAncestor(replaced, appendedTo)))
+            {
+                throw new ArgumentException("An element cannot be added inside an element that is replaced or removed by another edit.");
             }
         }
 
@@ -182,7 +218,46 @@ public sealed class EbmlEditor
         return rw.Rewrite().ToPlan(_source.Length, used, available, required);
     }
 
-    private static bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void;
+    // A Void whose stated size was cut down to fit (a damaged file) may hide real elements inside the bytes it claims; it is not padding to reuse.
+    // A Void that a SeekHead entry points into hides an element the reader reaches by that entry, so it is no padding either.
+    private bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred && !SeekHeadHides(e);
+
+    private List<long>? _seekTargets;
+    private bool _seekHeadDamaged;
+
+    // A SeekHead with a damaged entry cannot say where everything is, so no Void is trusted to be empty then.
+    private bool SeekHeadHides(EbmlElement voidElement)
+    {
+        List<long> targets = SeekTargets();
+        return _seekHeadDamaged || targets.Any(t => t >= voidElement.Offset && t < voidElement.Range.End);
+    }
+
+    private List<long> SeekTargets()
+    {
+        if (_seekTargets is not null)
+        {
+            return _seekTargets;
+        }
+
+        List<long> found = [];
+        foreach (EbmlElement seg in _document.Elements.Where(x => x.Id == MatroskaIds.Segment))
+        {
+            long segStart = seg.Offset + seg.HeaderSize;
+            foreach (EbmlElement head in seg.ChildElements.Where(x => x.Id == MatroskaIds.SeekHead))
+            {
+                _seekHeadDamaged |= HasInferredSize(head);
+                bool changed = false;
+                // Rebuilding with an identity map reads every position in the SeekHead and changes nothing.
+                EbmlPositions.Rebuild(ReadElement(head), rel =>
+                {
+                    found.Add(segStart + rel);
+                    return rel;
+                }, ref changed);
+            }
+        }
+
+        return _seekTargets = found;
+    }
 
     private static long TotalSize(EbmlElement e) => e.HeaderSize + e.PayloadSize;
 
@@ -354,6 +429,12 @@ public sealed class EbmlEditor
                         byte[] rebuilt = EbmlPositions.Rebuild(original, mapRel, ref changed);
                         if (changed)
                         {
+                            // Re-encoding positions inside entries whose sizes were cut back would scramble them.
+                            if (HasInferredSize(child))
+                            {
+                                throw new UnsupportedMediaException("The SeekHead is damaged (an entry's size runs past its parent), so its positions cannot be moved safely.");
+                            }
+
                             patches.Add(new Patch(child, rebuilt.Length, () => Data(rebuilt)));
                         }
 
@@ -395,6 +476,8 @@ public sealed class EbmlEditor
 
         return patches;
     }
+
+    private static bool HasInferredSize(EbmlElement e) => e.IsSizeInferred || e.ChildElements.Any(HasInferredSize);
 
     private static PieceList Data(byte[] bytes)
     {
@@ -530,20 +613,51 @@ public sealed class EbmlEditor
 
         protected override void EmitHeader(EbmlElement node, long areaLength, PieceList into)
         {
-            if (node.IsSizeInferred || (areaLength == node.PayloadSize && !_regenerate))
+            int idLen = EbmlWriter.IdLength(node.Id);
+            int oldWidth = node.HeaderSize - idLen;
+            if (node.IsSizeInferred)
             {
-                // An unknown (or cut-back) size stays as it is; an unchanged size needs no new header.
+                // An unknown size stays unknown. A size cut back to fit the file (a truncated file) is kept as stated plus the growth, so the
+                // stated end still lies past the edited content and nothing falls outside the element.
+                if (areaLength != node.PayloadSize && StatedSize(node, idLen, oldWidth) is long stated && stated + (areaLength - node.PayloadSize) >= areaLength)
+                {
+                    long grown = stated + (areaLength - node.PayloadSize);
+                    int w = oldWidth is >= 1 and <= 8 && grown < (1L << (7 * oldWidth)) - 1 ? oldWidth : EbmlWriter.SizeLength(grown);
+                    byte[] h = new byte[idLen + w];
+                    EbmlWriter.WriteId(h, node.Id);
+                    EbmlWriter.WriteSize(h.AsSpan(idLen), grown, w);
+                    into.AddData(h);
+                    return;
+                }
+
                 into.AddCopy(node.Offset, node.HeaderSize);
                 return;
             }
 
-            int idLen = EbmlWriter.IdLength(node.Id);
-            int oldWidth = node.HeaderSize - idLen;
+            if (areaLength == node.PayloadSize && !_regenerate)
+            {
+                // An unchanged size needs no new header.
+                into.AddCopy(node.Offset, node.HeaderSize);
+                return;
+            }
+
             int width = oldWidth is >= 1 and <= 8 && areaLength < (1L << (7 * oldWidth)) - 1 ? oldWidth : EbmlWriter.SizeLength(areaLength);
             byte[] head = new byte[idLen + width];
             EbmlWriter.WriteId(head, node.Id);
             EbmlWriter.WriteSize(head.AsSpan(idLen), areaLength, width);
             into.AddData(head);
+        }
+
+        // The size the file states for an element whose size was cut back; null when the field is the unknown-size marker or unreadable.
+        private long? StatedSize(EbmlElement node, int idLen, int sizeWidth)
+        {
+            Span<byte> field = stackalloc byte[Ebml.MaxSizeLength]; // a size field is at most 8 bytes
+            if (sizeWidth is < 1 or > Ebml.MaxSizeLength || Source.Read(node.Offset + idLen, field[..sizeWidth]) != sizeWidth || !Ebml.TryReadSize(field[..sizeWidth], out long size, out _) || size < 0)
+            {
+                return null;
+            }
+
+            return size;
         }
 
         protected override bool TryGetLeading(EbmlElement node, out long leadingEnd)

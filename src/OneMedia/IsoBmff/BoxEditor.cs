@@ -104,6 +104,17 @@ public sealed class BoxEditor
             }
         }
 
+        // A box appended inside something that is replaced or removed would vanish with it; refuse instead of losing it silently.
+        foreach (Request other in _requests)
+        {
+            (BoxNode? replaced, BoxNode? appendedTo) = request.Kind == RequestKind.Append ? (other.Kind != RequestKind.Append ? other.Node : null, request.Node)
+                : (request.Node, other.Kind == RequestKind.Append ? other.Node : null);
+            if (replaced is not null && appendedTo is not null && (replaced.Offset == appendedTo.Offset || IsAncestor(replaced, appendedTo)))
+            {
+                throw new ArgumentException("A box cannot be added inside a box that is replaced or removed by another edit.");
+            }
+        }
+
         _requests.Add(request);
     }
 
@@ -186,7 +197,8 @@ public sealed class BoxEditor
         return rw.Rewrite().ToPlan(_tree.Length, used, available, required);
     }
 
-    private static bool IsPadding(BoxNode n) => n.Type is BoxTypes.Free or BoxTypes.Skip;
+    // A free box whose size was inferred or cut down to fit (a damaged file) may hide real boxes inside the bytes it claims; it is not padding to reuse.
+    private static bool IsPadding(BoxNode n) => n.Type is BoxTypes.Free or BoxTypes.Skip && !n.IsSizeInferred && !n.Header.IsClamped;
 
     private static long TotalSize(BoxNode n) => n.Header.End - n.Offset;
 

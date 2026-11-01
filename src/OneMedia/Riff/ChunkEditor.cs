@@ -22,6 +22,7 @@ public sealed class ChunkEditor
     private readonly IMediaSource _source;
     private readonly MediaLimits _limits;
     private readonly List<Request> _requests = [];
+    private readonly HashSet<long> _padAdded = [];
     private Dictionary<ChunkNode, ChunkNode>? _parents;
 
     /// <summary>Creates an editor over a chunk file.</summary>
@@ -132,6 +133,17 @@ public sealed class ChunkEditor
             }
         }
 
+        // A chunk appended inside something that is replaced or removed would vanish with it; refuse instead of losing it silently.
+        foreach (Request other in _requests)
+        {
+            (ChunkNode replaced, ChunkNode appendedTo) = request.Kind == RequestKind.Append ? (other.Node, request.Node) : (request.Node, other.Node);
+            bool pair = request.Kind == RequestKind.Append ? other.Kind != RequestKind.Append : other.Kind == RequestKind.Append;
+            if (pair && (replaced.Offset == appendedTo.Offset || IsAncestor(replaced, appendedTo)))
+            {
+                throw new ArgumentException("A chunk cannot be added inside a chunk that is replaced or removed by another edit.");
+            }
+        }
+
         _requests.Add(request);
     }
 
@@ -151,7 +163,8 @@ public sealed class ChunkEditor
         return false;
     }
 
-    private bool IsPadding(ChunkNode n) => _file.Layout switch
+    // A padding chunk whose size was inferred (a damaged file) may hide real chunks inside the bytes it claims; it is not padding to reuse.
+    private bool IsPadding(ChunkNode n) => !n.IsSizeInferred && _file.Layout switch
     {
         ChunkLayout.Wave64 => n.ChunkGuid == ChunkBuilder.Wave64Junk,
         ChunkLayout.Iff => n.Id is "JUNK" or "FLLR" or "PAD ",
@@ -187,6 +200,7 @@ public sealed class ChunkEditor
     public EditPlan Build(CancellationToken cancellationToken = default)
     {
         ChunkNode root = _file.Root;
+        _padAdded.Clear();
         Rewriter rw = new(_file, _source, Parents(), RewriteHeaders, cancellationToken);
         ShiftMap shift = new();
         HashSet<ChunkNode> consumed = new(NodeComparer<ChunkNode>.Instance);
@@ -349,7 +363,8 @@ public sealed class ChunkEditor
             ChunkNode lastKid = kids[^1];
             long payloadEnd = lastKid.Offset + lastKid.HeaderSize + lastKid.PayloadSize;
             long missing = lastKid.NextOffset - Math.Max(payloadEnd, Math.Min(lastKid.NextOffset, _source.Length));
-            if (missing > 0)
+            // Only the first chunk added after it carries the pad byte; the ones after that start on an even offset already.
+            if (missing > 0 && _padAdded.Add(lastKid.Offset))
             {
                 added.AddData(new byte[missing]);
             }

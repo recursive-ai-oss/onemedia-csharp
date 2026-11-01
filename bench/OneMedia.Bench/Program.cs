@@ -33,6 +33,12 @@ if (args[0] == "child")
     return 0;
 }
 
+if (args[0] == "crossread")
+{
+    // crossread FILE: what ATL.NET and TagLib# read back from a file the tag-write check wrote.
+    return CrossRead.Run([.. args.Skip(1)]);
+}
+
 if (args[0] == "tagcompare")
 {
     // tagcompare OUT.tsv FILE...: our common tag view next to ExifTool, ATL.NET and TagLib# (tools under $ONEMEDIA_HOME/oracles/bin).
