@@ -1,13 +1,15 @@
 using System.Globalization;
 using RecursiveAI.OneMedia.IsoBmff;
+using RecursiveAI.OneMedia.Matroska;
 
 namespace RecursiveAI.OneMedia.Editing;
 
 internal static class EditFiles
 {
-    public static IReadOnlyList<ClipReport> Write(string input, IReadOnlyList<string> outputs, Func<IsoBmffDemuxer, Stream[], IReadOnlyList<ClipReport>> run)
+    public static IReadOnlyList<ClipReport> Write(string input, IReadOnlyList<string> outputs, Func<IsoBmffDemuxer, Stream[], IReadOnlyList<ClipReport>> run,
+        Func<MatroskaDemuxer, Stream[], IReadOnlyList<ClipReport>> runMatroska)
     {
-        using IsoBmffDemuxer d = OpenIso(input);
+        using IDisposable d = OpenAny(input);
         string[] partial = new string[outputs.Count];
         FileStream[] streams = new FileStream[outputs.Count];
         for (int i = 0; i < partial.Length; i++)
@@ -18,7 +20,7 @@ internal static class EditFiles
 
         try
         {
-            IReadOnlyList<ClipReport> reports = run(d, streams);
+            IReadOnlyList<ClipReport> reports = d is IsoBmffDemuxer iso ? run(iso, streams) : runMatroska((MatroskaDemuxer)d, streams);
             foreach (FileStream s in streams)
             {
                 s.Dispose();
@@ -47,20 +49,22 @@ internal static class EditFiles
         }
     }
 
-    public static IReadOnlyList<ClipReport> WriteParts(string input, string pattern, Func<IsoBmffDemuxer, Func<int, Stream>, IReadOnlyList<ClipReport>> run)
+    public static IReadOnlyList<ClipReport> WriteParts(string input, string pattern, Func<IsoBmffDemuxer, Func<int, Stream>, IReadOnlyList<ClipReport>> run,
+        Func<MatroskaDemuxer, Func<int, Stream>, IReadOnlyList<ClipReport>> runMatroska)
     {
-        using IsoBmffDemuxer d = OpenIso(input);
+        using IDisposable d = OpenAny(input);
         List<(FileStream Stream, string Partial, string Final)> parts = [];
         try
         {
-            IReadOnlyList<ClipReport> reports = run(d, index =>
+            Func<int, Stream> open = index =>
             {
                 string final = PartPath(pattern, index + 1);
                 string partial = final + ".partial";
                 FileStream fs = new(partial, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1 << 16);
                 parts.Add((fs, partial, final));
                 return fs;
-            });
+            };
+            IReadOnlyList<ClipReport> reports = d is IsoBmffDemuxer iso ? run(iso, open) : runMatroska((MatroskaDemuxer)d, open);
             foreach ((FileStream fs, _, _) in parts)
             {
                 fs.Dispose();
@@ -87,17 +91,38 @@ internal static class EditFiles
 
     public static ClipReport Join(string[] inputs, string output, CancellationToken ct)
     {
-        List<IsoBmffDemuxer> sources = [];
+        List<IDisposable> sources = [];
         string partial = output + ".partial";
         try
         {
             foreach (string path in inputs)
             {
-                sources.Add(OpenIso(path));
+                sources.Add(OpenAny(path));
             }
 
             using FileStream fs = new(partial, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1 << 16);
-            ClipReport report = IsoJoiner.Concat(sources, fs, null, ct);
+            ClipReport report;
+            if (sources[0] is IsoBmffDemuxer)
+            {
+                List<IsoBmffDemuxer> iso = [];
+                foreach (IDisposable s in sources)
+                {
+                    iso.Add(AsIso(s));
+                }
+
+                report = IsoJoiner.Concat(iso, fs, null, ct);
+            }
+            else
+            {
+                List<MatroskaDemuxer> mkv = [];
+                foreach (IDisposable s in sources)
+                {
+                    mkv.Add(AsMatroska(s));
+                }
+
+                report = MatroskaJoiner.Concat(mkv, fs, null, ct);
+            }
+
             fs.Dispose();
             File.Move(partial, output, overwrite: true);
             return report;
@@ -109,12 +134,18 @@ internal static class EditFiles
         }
         finally
         {
-            foreach (IsoBmffDemuxer s in sources)
+            foreach (IDisposable s in sources)
             {
                 s.Dispose();
             }
         }
     }
+
+    private static IsoBmffDemuxer AsIso(IDisposable d) =>
+        d as IsoBmffDemuxer ?? throw new EditRefusedException(EditRefusalReason.NeedsReencode, "The inputs are in different container formats; join files of one format (MP4/MOV/3GP, or Matroska/WebM).");
+
+    private static MatroskaDemuxer AsMatroska(IDisposable d) =>
+        d as MatroskaDemuxer ?? throw new EditRefusedException(EditRefusalReason.NeedsReencode, "The inputs are in different container formats; join files of one format (MP4/MOV/3GP, or Matroska/WebM).");
 
     private static string PartPath(string pattern, int number)
     {
@@ -127,15 +158,22 @@ internal static class EditFiles
         return string.Concat(pattern.AsSpan(0, pattern.Length - ext.Length), "-", number.ToString("000", CultureInfo.InvariantCulture), ext);
     }
 
-    private static IsoBmffDemuxer OpenIso(string path)
+    private static IDisposable OpenAny(string path)
     {
         FileMediaSource source = FileMediaSource.Open(path);
-        if (!IsoBmffDemuxer.TryOpen(source, new MediaOpenOptions(), out IsoBmffDemuxer? d, out MediaDefect failure) || d is null)
+        if (IsoBmffDemuxer.TryOpen(source, new MediaOpenOptions(), out IsoBmffDemuxer? d, out MediaDefect failure) && d is not null)
         {
-            source.Dispose();
-            throw new EditRefusedException(EditRefusalReason.UnsupportedSource, $"Cutting and joining work on MP4, MOV and 3GP files; {Path.GetFileName(path)} did not open as one ({failure.Message}).");
+            return d;
         }
 
-        return d;
+        try
+        {
+            return MatroskaDemuxer.Open(source);
+        }
+        catch (MediaException)
+        {
+            source.Dispose();
+            throw new EditRefusedException(EditRefusalReason.UnsupportedSource, $"Cutting and joining work on MP4, MOV, 3GP, Matroska and WebM files; {Path.GetFileName(path)} did not open as one ({failure.Message}).");
+        }
     }
 }

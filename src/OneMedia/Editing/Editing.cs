@@ -98,3 +98,22 @@ internal sealed class DeferredEdits : IReadOnlyList<EditSegment>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
+
+/// <summary>Exact sums and differences of times that count in different units: the result uses the finer unit, so nothing is rounded away.</summary>
+internal static class EditTime
+{
+    public static MediaTime Plus(MediaTime a, MediaTime b) => Combine(a, b, 1);
+
+    public static MediaTime Minus(MediaTime a, MediaTime b) => Combine(a, b, -1);
+
+    private static MediaTime Combine(MediaTime a, MediaTime b, int sign)
+    {
+        long scale = Math.Max(a.Timescale, b.Timescale);
+        if (scale % a.Timescale != 0 || scale % b.Timescale != 0)
+        {
+            return sign > 0 ? a.Add(b, MediaRounding.NearestAwayFromZero) : a.Subtract(b, MediaRounding.NearestAwayFromZero);
+        }
+
+        return new MediaTime(checked((a.Ticks * (scale / a.Timescale)) + (sign * b.Ticks * (scale / b.Timescale))), scale);
+    }
+}

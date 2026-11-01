@@ -20,7 +20,8 @@ public static partial class Media
     /// <returns>Where the clip starts, its length, and what was rounded or dropped.</returns>
     /// <exception cref="EditRefusedException">The range is empty, the file is not an ISO base media file, or it cannot be cut.</exception>
     public static ClipReport Trim(string input, string output, TimeSpan from, TimeSpan to, TrimMode mode = TrimMode.FrameAccurate, CancellationToken cancellationToken = default) =>
-        EditFiles.Write(input, [output], (d, streams) => [IsoCutter.Trim(d, streams[0], MediaTime.FromTimeSpan(from), MediaTime.FromTimeSpan(to), mode, null, cancellationToken)])[0];
+        EditFiles.Write(input, [output], (d, streams) => [IsoCutter.Trim(d, streams[0], MediaTime.FromTimeSpan(from), MediaTime.FromTimeSpan(to), mode, null, cancellationToken)],
+            (d, streams) => [MatroskaCutter.Trim(d, streams[0], MediaTime.FromTimeSpan(from), MediaTime.FromTimeSpan(to), mode, null, cancellationToken)])[0];
 
     /// <summary>
     /// Splits an MP4, MOV or 3GP file into parts that start on keyframes at or before the given times. The parts hold the source's packets exactly once, so
@@ -33,7 +34,8 @@ public static partial class Media
     /// <returns>One report per part.</returns>
     /// <exception cref="EditRefusedException">The cut times are unusable or the file cannot be cut.</exception>
     public static IReadOnlyList<ClipReport> Split(string input, string outputPattern, IReadOnlyList<TimeSpan> at, CancellationToken cancellationToken = default) =>
-        EditFiles.WriteParts(input, outputPattern, (d, open) => IsoCutter.Split(d, open, ToMediaTimes(at), cancellationToken));
+        EditFiles.WriteParts(input, outputPattern, (d, open) => IsoCutter.Split(d, open, ToMediaTimes(at), cancellationToken),
+            (d, open) => MatroskaCutter.Split(d, open, ToMediaTimes(at), cancellationToken));
 
     /// <summary>
     /// Splits an MP4, MOV or 3GP file into parts of about <paramref name="maxPartBytes"/> of payload, cutting on the first keyframe after the budget is reached.
@@ -45,7 +47,8 @@ public static partial class Media
     /// <returns>One report per part.</returns>
     /// <exception cref="EditRefusedException">The file has no video track or cannot be cut.</exception>
     public static IReadOnlyList<ClipReport> SplitBySize(string input, string outputPattern, long maxPartBytes, CancellationToken cancellationToken = default) =>
-        EditFiles.WriteParts(input, outputPattern, (d, open) => IsoCutter.SplitBySize(d, open, maxPartBytes, cancellationToken));
+        EditFiles.WriteParts(input, outputPattern, (d, open) => IsoCutter.SplitBySize(d, open, maxPartBytes, cancellationToken),
+            (d, open) => MatroskaCutter.SplitBySize(d, open, maxPartBytes, cancellationToken));
 
     /// <summary>
     /// Joins MP4, MOV or 3GP files end to end without re-encoding. Inputs must match track for track; a mismatch is refused with the track named.

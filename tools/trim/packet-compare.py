@@ -55,8 +55,11 @@ def main():
         if same and times and la:
             # A constant offset per stream is allowed; ffprobe lists packets in decode order, so compare the pts relative to the first packet's dts.
             ta, tb_ = tb(st), tb(sb[idx])
-            ra = [Fraction(int(p["pts"])) * ta - Fraction(int(la[0]["dts"])) * ta for p in la]
-            rb = [Fraction(int(p["pts"])) * tb_ - Fraction(int(lb[0]["dts"])) * tb_ for p in lb]
+            # Matroska packets carry no decode time; their first presentation time is the reference there.
+            ref_a = int(la[0].get("dts", la[0]["pts"]))
+            ref_b = int(lb[0].get("dts", lb[0]["pts"]))
+            ra = [Fraction(int(p["pts"])) * ta - Fraction(ref_a) * ta for p in la]
+            rb = [Fraction(int(p["pts"])) * tb_ - Fraction(ref_b) * tb_ for p in lb]
             if ra != rb:
                 same = False
                 note = "pts differ"
