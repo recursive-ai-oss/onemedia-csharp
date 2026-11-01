@@ -122,6 +122,8 @@ internal static class Program
         {
             "isobmff" => IsoExtensions,
             "matroska" => MatroskaExtensions,
+            "xiph" => [".ogg", ".oga", ".ogv", ".opus", ".spx", ".flac"],
+            "flv" => [".flv"],
             _ => [.. IsoExtensions, .. MatroskaExtensions],
         };
         List<string> files = [];

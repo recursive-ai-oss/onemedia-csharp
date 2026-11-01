@@ -28,6 +28,7 @@ public static class TagMappingTable
     private const string ExifToolUser = "ExifTool QuickTime UserData tags";
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
+    private const string VorbisDoc = "Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
@@ -140,6 +141,28 @@ public static class TagMappingTable
         Row(CommonField.DiscNumber, TagSystems.Matroska, MatroskaDoc, "ffmpeg writes DISC, optionally as number/total", "DISC"),
         Row(CommonField.DiscTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of DISC", "DISC"),
         Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of TRACK when TOTAL_PARTS is absent", "TOTAL_PARTS", "TRACK"),
+
+        Row(CommonField.Title, TagSystems.VorbisComment, VorbisDoc, "", "TITLE"),
+        Row(CommonField.Artist, TagSystems.VorbisComment, VorbisDoc, "PERFORMER is the spec's name for the performing artist", "ARTIST", "PERFORMER"),
+        Row(CommonField.AlbumArtist, TagSystems.VorbisComment, VorbisDoc, "", "ALBUMARTIST", "ALBUM ARTIST"),
+        Row(CommonField.Album, TagSystems.VorbisComment, VorbisDoc, "", "ALBUM"),
+        Row(CommonField.Composer, TagSystems.VorbisComment, VorbisDoc, "", "COMPOSER"),
+        Row(CommonField.Author, TagSystems.VorbisComment, VorbisDoc, "lyricist", "LYRICIST"),
+        Row(CommonField.Director, TagSystems.VorbisComment, VorbisDoc, "", "DIRECTOR"),
+        Row(CommonField.Genre, TagSystems.VorbisComment, VorbisDoc, "", "GENRE"),
+        Row(CommonField.Comment, TagSystems.VorbisComment, VorbisDoc, "", "COMMENT"),
+        Row(CommonField.Description, TagSystems.VorbisComment, VorbisDoc, "the spec's short description of the contents", "DESCRIPTION"),
+        Row(CommonField.Date, TagSystems.VorbisComment, VorbisDoc, "a year or an ISO 8601 date, as written", "DATE"),
+        Row(CommonField.Copyright, TagSystems.VorbisComment, VorbisDoc, "", "COPYRIGHT"),
+        Row(CommonField.Encoder, TagSystems.VorbisComment, VorbisDoc, "", "ENCODER"),
+        Row(CommonField.EncodedBy, TagSystems.VorbisComment, VorbisDoc, "", "ENCODEDBY", "ENCODED-BY"),
+        Row(CommonField.Grouping, TagSystems.VorbisComment, VorbisDoc, "", "GROUPING"),
+        Row(CommonField.Lyrics, TagSystems.VorbisComment, VorbisDoc, "", "LYRICS", "UNSYNCEDLYRICS"),
+        Row(CommonField.Rating, TagSystems.VorbisComment, VorbisDoc, "", "RATING"),
+        Row(CommonField.TrackNumber, TagSystems.VorbisComment, VorbisDoc, "the spec's TRACKNUMBER may read number/total", "TRACKNUMBER", "TRACK"),
+        Row(CommonField.TrackTotal, TagSystems.VorbisComment, VorbisDoc, "TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER", "TRACKTOTAL", "TOTALTRACKS", "TRACKNUMBER"),
+        Row(CommonField.DiscNumber, TagSystems.VorbisComment, VorbisDoc, "may read number/total", "DISCNUMBER"),
+        Row(CommonField.DiscTotal, TagSystems.VorbisComment, VorbisDoc, "DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER", "DISCTOTAL", "TOTALDISCS", "DISCNUMBER"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

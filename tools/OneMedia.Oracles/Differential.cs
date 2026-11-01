@@ -13,6 +13,9 @@ internal static class Readers
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
         return registry;
     }
 }

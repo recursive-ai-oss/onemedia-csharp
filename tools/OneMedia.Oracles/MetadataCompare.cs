@@ -30,6 +30,9 @@ internal static partial class MetadataCompare
         MediaFormatRegistry registry = new();
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
         foreach (string file in files)
         {
             try
@@ -93,6 +96,9 @@ internal static partial class MetadataCompare
         MediaFormatRegistry registry = new();
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
         foreach (string file in files)
         {
             using IDemuxer demuxer = registry.Open(FileMediaSource.Open(file));

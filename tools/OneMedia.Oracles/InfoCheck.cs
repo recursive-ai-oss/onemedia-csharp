@@ -119,6 +119,8 @@ internal static class InfoCheck
     {
         "h264" or "hevc" or "av1" or "vp8" or "vp9" or "aac" or "mp3" or "opus" or "vorbis" or "flac" or "ac3" or "eac3" or "mjpeg" => ffprobe,
         "mpeg2video" => "mpeg2video",
+        "theora" or "speex" or "flv1" or "vp6f" or "vp6a" or "nellymoser" or "adpcm_swf" => ffprobe,
+        "flashsv" or "flashsv2" => ffprobe,
         "amr_nb" => "amr-nb",
         "amr_wb" => "amr-wb",
         "mov_text" => "tx3g",

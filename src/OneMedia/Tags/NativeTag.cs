@@ -27,6 +27,15 @@ public static class TagSystems
 
     /// <summary>The XMP packet carried in a <c>uuid</c> or <c>XMP_</c> box.</summary>
     public const string Xmp = "xmp";
+
+    /// <summary>Vorbis comments, in Ogg (Vorbis, Opus, FLAC, Theora, Speex) and in native FLAC files.</summary>
+    public const string VorbisComment = "vorbis";
+
+    /// <summary>FLAC metadata blocks other than the Vorbis comment: PICTURE, APPLICATION, CUESHEET, SEEKTABLE.</summary>
+    public const string Flac = "flac";
+
+    /// <summary>The properties of an FLV <c>onMetaData</c> script data tag.</summary>
+    public const string Flv = "flv";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>
@@ -115,6 +124,12 @@ public sealed class NativeTag
 
     /// <summary>For <see cref="TagValueKind.Image"/>, the media type (<c>image/jpeg</c>, <c>image/png</c>, <c>image/bmp</c>, <c>image/gif</c>); else <c>null</c>.</summary>
     public string? MimeType { get; internal set; }
+
+    /// <summary>For an image that says what it shows: the ID3v2 picture type (0 other, 3 front cover, 4 back cover …). Null when the system does not say.</summary>
+    public int? PictureType { get; internal set; }
+
+    /// <summary>For an image, its description when the system carries one (FLAC PICTURE blocks do).</summary>
+    public string? Description { get; internal set; }
 
     /// <summary>The whole number for <see cref="TagValueKind.Number"/> values, else <c>null</c>.</summary>
     public long? Number { get; internal set; }
