@@ -53,16 +53,16 @@ edit)
     # 1. our per-track payload hash, in and out
     hi=$($TOOL hash "$f" 2>/dev/null | md5sum | cut -c1-12); ho=$($TOOL hash "$o" 2>/dev/null | md5sum | cut -c1-12)
     # 2. ffprobe packets (size, times, flags, data hash), in and out
-    fp() { ffprobe -v error -show_packets -show_data_hash CRC32 -show_entries packet=stream_index,pts,dts,duration,size,flags,data_hash -of csv=p=0 "$1" 2>&1 | md5sum | cut -c1-12; }
+    fp() { ffprobe -v error -show_packets -show_data_hash CRC32 -show_entries packet=stream_index,pts,dts,duration,size,flags,data_hash -of csv=p=0 "$1" 2>&1 | sed -E "s#$1##g; s/@ 0x[0-9a-f]+//" | md5sum | cut -c1-12; }
     pi=$(fp "$f"); po=$(fp "$o")
     # 3. the format's own validator
     v="-"
     case "${f,,}" in
       *.mp4|*.m4a|*.m4v|*.mov|*.3gp|*.3g2)
-        norm() { MP4Box -dts "$1" 2>&1 | sed -E 's/Offset [0-9]+//; s/'"$(basename "$1" | sed 's/[.[\*^$/]/\\&/g')"'//g' | md5sum | cut -c1-12; }
+        norm() { MP4Box -dts "$1" 2>&1 | sed -E "s#$1##g; s/Offset [0-9]+//; s/start [0-9]+//" | md5sum | cut -c1-12; }
         mi=$(norm "$f"); mo=$(norm "$o")
-        MP4Box -info "$o" > /dev/null 2>&1; rc=$?
-        v="mp4box dts $([ "$mi" = "$mo" ] && echo equal || echo DIFF) info-rc=$rc" ;;
+        MP4Box -info "$f" > /dev/null 2>&1; rci=$?; MP4Box -info "$o" > /dev/null 2>&1; rc=$?
+        v="mp4box dts $([ "$mi" = "$mo" ] && echo equal || echo DIFF) info-rc in=$rci out=$rc"; [ $rc -le $rci ] || v="$v DIFF" ;;
       *.mkv|*.mka|*.webm)
         mkvalidator "$f" > /dev/null 2>&1; ri=$?; mkvalidator "$o" > "$WORK/$b.val" 2>&1; ro=$?
         v="mkvalidator in=$ri out=$ro $([ $ro -le $ri ] && echo ok || echo WORSE)"; rm -f "$WORK/$b.val" ;;
