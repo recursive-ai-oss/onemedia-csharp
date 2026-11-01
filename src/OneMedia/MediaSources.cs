@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace RecursiveAI.OneMedia;

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneMedia.Matroska;
@@ -120,7 +121,18 @@ internal sealed class MatroskaReader
     // ---------------------------------------------------------------------------------------------------------------------------
     // Element headers
 
-    private async ValueTask<ElementHeader> PeekHeaderAsync(CancellationToken ct)
+    // Almost always the next header is already buffered, and then there is nothing to wait for: answer without an asynchronous method.
+    private ValueTask<ElementHeader> PeekHeaderAsync(CancellationToken ct)
+    {
+        if (_in.Buffered.Length >= MaxHeaderBytes)
+        {
+            return new ValueTask<ElementHeader>(ParseHeader(_in.Buffered, _in.Position));
+        }
+
+        return PeekHeaderSlowAsync(ct);
+    }
+
+    private async ValueTask<ElementHeader> PeekHeaderSlowAsync(CancellationToken ct)
     {
         long offset = _in.Position;
         await _in.EnsureAsync(MaxHeaderBytes, ct).ConfigureAwait(false);
@@ -146,7 +158,23 @@ internal sealed class MatroskaReader
     /// Reads a master element's payload into memory. On damage it logs a defect and returns null, having moved past the element (or to
     /// the end of the data when it claims more than is left), so that callers walking the file always make progress.
     /// </summary>
-    private async ValueTask<byte[]?> ReadPayloadAsync(ElementHeader h, string what, CancellationToken ct)
+    private ValueTask<byte[]?> ReadPayloadAsync(ElementHeader h, string what, CancellationToken ct)
+    {
+        // The element, header and payload, is already buffered: copy it out without an asynchronous method.
+        if (h.Size >= 0 && h.HeaderLength + h.Size <= _in.Buffered.Length)
+        {
+            _in.Advance(h.HeaderLength);
+            _limits.CheckAllocation(h.Size, h.Offset);
+            byte[] data = new byte[h.Size];
+            _in.Buffered[..data.Length].CopyTo(data);
+            _in.Advance(data.Length);
+            return new ValueTask<byte[]?>(data);
+        }
+
+        return ReadPayloadSlowAsync(h, what, ct);
+    }
+
+    private async ValueTask<byte[]?> ReadPayloadSlowAsync(ElementHeader h, string what, CancellationToken ct)
     {
         _in.Advance(h.HeaderLength);
         if (h.Size < 0)
@@ -175,7 +203,24 @@ internal sealed class MatroskaReader
         return data;
     }
 
-    private async ValueTask SkipElementAsync(ElementHeader h, CancellationToken ct)
+    private ValueTask SkipElementAsync(ElementHeader h, CancellationToken ct)
+    {
+        // An empty element, or one whose payload is buffered or can be seeked past, is skipped without an asynchronous method.
+        if (h.Size <= 0 || (_in.CanSeek && h.PayloadOffset + h.Size <= _in.Length))
+        {
+            _in.Advance(h.HeaderLength);
+            if (h.Size > 0)
+            {
+                _in.SkipSeekable(h.Size);
+            }
+
+            return default;
+        }
+
+        return SkipElementSlowAsync(h, ct);
+    }
+
+    private async ValueTask SkipElementSlowAsync(ElementHeader h, CancellationToken ct)
     {
         _in.Advance(h.HeaderLength);
         if (h.Size <= 0)

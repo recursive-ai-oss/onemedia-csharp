@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
 
@@ -67,9 +68,14 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
     public static IsoBmffDemuxer Open(IMediaSource source, MediaOpenOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
-        options ??= MediaOpenOptions.Default;
+        return Open(source, default, options ?? MediaOpenOptions.Default, cancellationToken);
+    }
+
+    // As Open, for a caller that has already read the first bytes of the source: they are not read again.
+    internal static IsoBmffDemuxer Open(IMediaSource source, ReadOnlySpan<byte> head, MediaOpenOptions options, CancellationToken cancellationToken)
+    {
         DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
-        OpenedMovie opened = IsoBmffOpener.Open(source, options.Limits, defects, cancellationToken);
+        OpenedMovie opened = IsoBmffOpener.Open(source, head, options.Limits, defects, cancellationToken);
         return new IsoBmffDemuxer(source, null, opened, options, defects, cancellationToken);
     }
 
@@ -421,6 +427,7 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
 
         _disposed = true;
         _readAhead.Release();
+        _opened.Release();
         ReturnBuffer();
         if (!_leaveOpen)
         {

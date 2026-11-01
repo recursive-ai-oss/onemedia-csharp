@@ -25,6 +25,21 @@ internal static class MatroskaTarget
         // Small limits keep each run fast and exercise the limit paths.
         MediaLimits limits = new() { MaxAllocationBytes = 4 << 20, MaxElementCount = 100_000, MaxStructureDepth = 24, MaxPacketBytes = 1 << 20 };
         MediaOpenOptions options = new() { Limits = limits };
+        if ((input[0] & 4) != 0)
+        {
+            // The registry hands the bytes it sniffed on to the reader, which then starts from them instead of reading them again;
+            // the packets must be the ones a direct open gives.
+            Summary? viaRegistry = Summarise(() => MediaFormats.Default.Open(new MemoryMediaSource(file), new MediaOpenOptions { Limits = options.Limits }), MediaFormatId.Matroska);
+            if (viaRegistry is not null)
+            {
+                Summary? direct = Summarise(() => MatroskaDemuxer.Open(new MemoryMediaSource(file), new MediaOpenOptions { Limits = options.Limits }), MediaFormatId.Matroska);
+                if (direct != viaRegistry)
+                {
+                    throw new InvalidOperationException($"opening through the registry gave {viaRegistry} but a direct open gave {direct}");
+                }
+            }
+        }
+
         try
         {
             using MatroskaDemuxer d = forward
@@ -90,6 +105,34 @@ internal static class MatroskaTarget
     {
         for (int i = 0; i < max && d.TryReadPacket(out _); i++)
         {
+        }
+    }
+
+    private sealed record Summary(int Tracks, long Packets, long Bytes);
+
+    // What reading a file gives, or null when it is rejected or is not the expected format.
+    private static Summary? Summarise(Func<IDemuxer> open, MediaFormatId expected)
+    {
+        try
+        {
+            using IDemuxer d = open();
+            if (d.Format != expected)
+            {
+                return null;
+            }
+
+            long packets = 0, bytes = 0;
+            while (packets < 20_000 && d.TryReadPacket(out PacketView p))
+            {
+                packets++;
+                bytes += p.Data.Length;
+            }
+
+            return new Summary(d.Tracks.Count, packets, bytes);
+        }
+        catch (MediaException)
+        {
+            return null;
         }
     }
 }

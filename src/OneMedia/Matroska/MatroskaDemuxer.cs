@@ -59,6 +59,15 @@ public sealed class MatroskaDemuxer : IDemuxer, IMetadataProvider
         return Create(input, options, defects, options.LeaveOpen ? null : source, null, cancellationToken);
     }
 
+    // As Open, for a caller that has already read the first bytes of the source: they are not read again.
+    internal static MatroskaDemuxer Open(IMediaSource source, ReadOnlySpan<byte> head, MediaOpenOptions options, CancellationToken cancellationToken)
+    {
+        DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
+        SyncSourceInput input = new(source);
+        input.Seed(head);
+        return Create(input, options, defects, options.LeaveOpen ? null : source, source, cancellationToken);
+    }
+
     private static MatroskaDemuxer Create(EbmlInput input, MediaOpenOptions options, DefectLog defects, IDisposable? owned, IMediaSource? media, CancellationToken cancellationToken)
     {
         MatroskaReader reader = new(input, options.Limits, defects);
@@ -291,7 +300,7 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer, IAsyncMetadataProvider
 }
 
 /// <summary>The format entry for the registry: sniffing by EBML header, and opening through the Matroska demuxers.</summary>
-public sealed class MatroskaFormat : IMediaFormat
+public sealed class MatroskaFormat : IMediaFormat, IHeadSeededFormat
 {
     private readonly EbmlSniffer _sniffer = new();
 
@@ -307,6 +316,9 @@ public sealed class MatroskaFormat : IMediaFormat
     /// <inheritdoc />
     public IDemuxer Open(IMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
         MatroskaDemuxer.Open(source, options, cancellationToken);
+
+    IDemuxer IHeadSeededFormat.Open(IMediaSource source, ReadOnlySpan<byte> head, MediaOpenOptions options, CancellationToken cancellationToken) =>
+        MatroskaDemuxer.Open(source, head, options, cancellationToken);
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>

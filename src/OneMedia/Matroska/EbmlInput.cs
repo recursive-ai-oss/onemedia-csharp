@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 namespace RecursiveAI.OneMedia.Matroska;
 
 /// <summary>
@@ -93,6 +94,21 @@ internal abstract class EbmlInput
         _bufLen = 0;
     }
 
+    /// <summary>Moves forward by <paramref name="count"/> bytes on a seekable input: a buffer adjustment or a jump, with no read.</summary>
+    public void SkipSeekable(long count)
+    {
+        long buffered = _bufLen - _bufPos;
+        if (count <= buffered)
+        {
+            _bufPos += (int)count;
+            return;
+        }
+
+        _bufStart = Position + count;
+        _bufPos = 0;
+        _bufLen = 0;
+    }
+
     /// <summary>Moves forward by <paramref name="count"/> bytes: a buffer adjustment or a seek when the source allows, otherwise a read-and-discard.</summary>
     /// <returns>The number of bytes actually skipped (fewer at the end of a forward-only source).</returns>
     public async ValueTask<long> SkipAsync(long count, CancellationToken cancellationToken)
@@ -132,6 +148,19 @@ internal abstract class EbmlInput
         }
 
         return skipped;
+    }
+
+    /// <summary>Fills the buffer with the first bytes of a source that is still at its start, so the first read of them is not made again.</summary>
+    public void Seed(ReadOnlySpan<byte> head)
+    {
+        if (_bufLen != 0 || _bufStart != 0 || _bufPos != 0)
+        {
+            throw new InvalidOperationException("Only an unread input can be seeded.");
+        }
+
+        head = head[..Math.Min(head.Length, Window)];
+        head.CopyTo(_buf);
+        _bufLen = head.Length;
     }
 
     /// <summary>Declares the absolute position of the first byte a forward-only source will deliver.</summary>

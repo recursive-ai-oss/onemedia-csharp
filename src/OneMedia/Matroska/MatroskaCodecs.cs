@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 namespace RecursiveAI.OneMedia.Matroska;
 
 /// <summary>Maps Matroska CodecIDs (RFC 9559 §27 and the Matroska codec mapping document) onto the neutral <see cref="CodecId"/>.</summary>

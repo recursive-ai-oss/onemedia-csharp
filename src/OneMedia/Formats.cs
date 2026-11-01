@@ -240,16 +240,36 @@ public sealed class MediaFormatRegistry
     /// <exception cref="MediaFormatException">The data is not valid for the format it was recognised as.</exception>
     public IDemuxer Open(IMediaSource source, MediaOpenOptions? options = null, CancellationToken cancellationToken = default)
     {
-        if (!TrySniff(source, out FormatMatch match, cancellationToken))
+        ArgumentNullException.ThrowIfNull(source);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(SniffBytes);
+        try
         {
-            throw new UnsupportedMediaException("The data is not in any registered format.");
-        }
+            int n = source.Read(0, buffer.AsSpan(0, SniffBytes), cancellationToken);
+            if (!TrySniff(buffer.AsSpan(0, n), out FormatMatch match))
+            {
+                throw new UnsupportedMediaException("The data is not in any registered format.");
+            }
 
-        if (match.Format is not IMediaFormat format)
+            if (match.Format is not IMediaFormat format)
+            {
+                throw new UnsupportedMediaException($"{match.Format.DisplayName} is recognised but this program has no reader for it.");
+            }
+
+            // The bytes just read are the start of the file; a reader that can use them does not read them again.
+            return format is IHeadSeededFormat seeded
+                ? seeded.Open(source, buffer.AsSpan(0, n), options ?? MediaOpenOptions.Default, cancellationToken)
+                : format.Open(source, options ?? MediaOpenOptions.Default, cancellationToken);
+        }
+        finally
         {
-            throw new UnsupportedMediaException($"{match.Format.DisplayName} is recognised but this program has no reader for it.");
+            ArrayPool<byte>.Shared.Return(buffer);
         }
-
-        return format.Open(source, options ?? MediaOpenOptions.Default, cancellationToken);
     }
+}
+
+/// <summary>A format whose reader can start from the first bytes of the file, which the registry has already read to recognise it.</summary>
+internal interface IHeadSeededFormat
+{
+    /// <summary>Opens <paramref name="source"/> like <see cref="IMediaFormat.Open(IMediaSource, MediaOpenOptions, CancellationToken)"/>; <paramref name="head"/> is a copy of the source from offset 0, valid only for the call.</summary>
+    IDemuxer Open(IMediaSource source, ReadOnlySpan<byte> head, MediaOpenOptions options, CancellationToken cancellationToken);
 }

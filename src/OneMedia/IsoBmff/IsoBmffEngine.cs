@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Globalization;
 using RecursiveAI.OneMedia.Codecs;
 

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 namespace RecursiveAI.OneMedia.IsoBmff;
 
 /// <summary>

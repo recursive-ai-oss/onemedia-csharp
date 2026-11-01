@@ -35,10 +35,13 @@ row the obvious public call is used: SharpMP4 reads track by track with `ReadSam
 
 - One fresh process per (row, implementation, file), so peak memory belongs to that work alone. The parent reads each file
   once before its rows so all implementations start with it in the page cache; the tables say so.
-- In the process: two untimed runs (JIT and type loading, then sizing), then 5 samples, each the mean of enough back-to-back
-  runs to take about 50 ms. The median is reported, and the range is kept in `results.tsv`. Files over 1 GiB get one warm-up run and
-  then 3 samples of one run each. The first run of every cell (JIT and type loading included) is shown apart as "cold first run" in
-  the note column; it is not part of the ratio.
+- In the process: a cold first run (JIT and type loading included), then a warm-up of at least 30 runs and 1.5 s for every
+  implementation alike, so that the runtime has promoted the hot methods to optimised code before any sample (tier-0, then the
+  instrumented stage, then optimised, each behind a 100 ms quiet timer). Then one sizing run and 5 samples, each the mean of enough
+  back-to-back runs to take about 50 ms. The median is reported, and the range is kept in `results.tsv`. Probe rows (`*-probe`) are
+  sampled this way on every file, since probe work does not grow with the file. Demux-style rows on files over 1 GiB get the cold run
+  and then 3 samples of one run each. The cold first run is shown apart in the note column, for the comparators as well; it is a
+  published, non-gating number (the first open in a process: what a one-off `info` call or a per-file open pays).
 - Allocation is `GC.GetAllocatedBytesForCurrentThread` per run, and per packet. Peak memory is the process's peak working set;
   the working set before any work is printed beside it.
 - Reference tools run as processes under `/usr/bin/time`, three times (once over 1 GiB): wall time measured by the parent, peak
@@ -61,6 +64,19 @@ fragmented MP4 (done by `run`); `list` shows rows and files. The corpus is `$ONE
 
 Timings are only comparable between runs on a quiet machine. The published run is one command per machine under the
 exclusive bench queue.
+
+## JIT tiers: steady state and first open
+
+Each cell runs in a fresh process. The runtime starts every method in unoptimised tier-0 code and promotes hot ones only after a
+100 ms quiet period and a background compile, with a second instrumented stage under dynamic PGO. Measuring before that climb
+finishes measures tier-0 code, which punishes libraries that do more of their own work per call. The samples are therefore taken
+after a warm-up long enough for every implementation to have tiered up (see Method), and the library carries no tiering overrides.
+
+The first call in a process is a separate matter: it is JIT dominated, it is what a one-off open pays, and it is reported as "cold first
+run" for OneMedia and for every comparator. It is published but does not enter the ratio.
+
+To see the unwarmed regime for a cell, run `OneMedia.Bench child ROW IMPL REL CORPUS REPS` under `DOTNET_TieredCompilation=0` (every
+method fully optimised) or `DOTNET_TieredPGO=0`.
 
 ## Provenance of the comparator calls
 
