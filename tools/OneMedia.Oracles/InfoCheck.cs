@@ -125,6 +125,7 @@ internal static class InfoCheck
         "subrip" => "subrip",
         "webvtt" => "webvtt",
         var p when p.StartsWith("pcm_", StringComparison.Ordinal) => "pcm",
+        "wmav1" or "wmav2" or "wmapro" or "wmalossless" or "wmavoice" or "wmv1" or "wmv2" or "wmv3" or "vc1" or "mpeg4" or "mp2" or "msmpeg4v1" or "msmpeg4v2" or "msmpeg4v3" => ffprobe,
         _ => null,
     };
 }

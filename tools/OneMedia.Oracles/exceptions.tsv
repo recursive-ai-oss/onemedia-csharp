@@ -50,3 +50,5 @@ isobmff	*	file=multitrack	ignore	ffprobe	mp3-in-quicktime-one-byte-samples: the 
 isobmff	duration	file=MAV_0001	ignore	ours	video-parser-frame-timing: packet 0 lasts 6210 in the sample table (it alternates 6210/6120); ffprobe takes the parser frame timing (docs/isobmff.md).
 matroska	*	file=RA_missing_timestamps	ignore	ffprobe	realaudio-deinterleave: ffprobe de-interleaves RealAudio cook/ra blocks into 280-byte packets; ours delivers the stored 1400-byte blocks (docs/matroska-differential.md).
 matroska	pts	codec=rv40	ignore	neither	realvideo-timestamps: ffprobe derives RealVideo frame times from the stream (azumi.mkv has blocks at 80 and 81 ms where it reports 40 and 80); ours is the block time (docs/matroska-differential.md).
+asf	pos	*	ignore	neither	ffprobe reports the start of the data packet the payload sits in; we report the start of the payload bytes, and none for an object reassembled from several payloads (docs/asf.md).
+asf	duration	*	ours-na	neither	duration-from-codec: ffprobe derives an audio or video packet duration from the bit rate or frame rate; the file states none per packet (docs/asf.md).

@@ -213,6 +213,9 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <summary>Deviations found so far; grows as packets are read.</summary>
     public DefectLog Defects => Container.Defects;
 
+    /// <summary>True when the file's content is protected (encrypted or under digital rights management). Its tracks and metadata are readable; no payloads are delivered.</summary>
+    public bool IsProtected => Container.IsProtected;
+
     /// <summary>The first video track marked default, else the first video track; null when there is none.</summary>
     public MediaTrack? Video => FirstOf(TrackKind.Video);
 
