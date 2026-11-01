@@ -1033,9 +1033,9 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         };
     }
 
-    private static NalVideoAssembler Wire(NalVideoAssembler a)
+    private NalVideoAssembler Wire(NalVideoAssembler a)
     {
-        a.SeiHandler = TsServiceInfo.OnSei;
+        a.SeiHandler = _info.OnSei;
         return a;
     }
 

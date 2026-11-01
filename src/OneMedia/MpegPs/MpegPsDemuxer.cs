@@ -905,4 +905,8 @@ public sealed class MpegPsFormat : IMediaFormat
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
         MpegPsDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        AsyncDemuxer.OpenAsync(source, s => MpegPsDemuxer.Open(s, options, cancellationToken), cancellationToken);
 }

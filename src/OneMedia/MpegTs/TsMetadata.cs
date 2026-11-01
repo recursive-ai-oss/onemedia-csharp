@@ -49,7 +49,19 @@ internal sealed class TsServiceInfo
 
     public bool HasServiceNames => Services.Count > 0;
 
-    public static bool OnSei(ReadOnlySpan<byte> sei) => true;
+    /// <summary>The camera data (MDPM) found in the first access units' SEI, or null.</summary>
+    public Avchd.MdpmBlock? Mdpm { get; private set; }
+
+    public bool OnSei(ReadOnlySpan<byte> sei)
+    {
+        if (Avchd.Mdpm.TryParse(sei, out Avchd.MdpmBlock? block) && block is not null)
+        {
+            Mdpm = block;
+            return true;
+        }
+
+        return false;
+    }
 
     public void OnSdt(ReadOnlySpan<byte> s, List<MpegTsDemuxer.ProgramState> programs)
     {

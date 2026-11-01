@@ -22,4 +22,8 @@ public sealed class MpegTsFormat : IMediaFormat
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
         MpegTsDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        Mpeg.AsyncDemuxer.OpenAsync(source, s => MpegTsDemuxer.Open(s, options, cancellationToken), cancellationToken);
 }

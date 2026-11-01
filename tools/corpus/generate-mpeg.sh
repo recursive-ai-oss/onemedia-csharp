@@ -58,7 +58,7 @@ ff ts/h264-mp2.ts   $V $A "${X264[@]}" -g 25 -bf 0 -c:a mp2 -f mpegts
 ff ts/h264-mp3.ts   $V $A "${X264[@]}" -g 25 -c:a libmp3lame -f mpegts
 ff ts/h264-eac3.ts  $V $A "${X264[@]}" -g 25 -c:a eac3 -f mpegts
 ff ts/h264-only.ts  $V "${X264[@]}" -g 12 -bf 3 -b_strategy 2 -f mpegts
-ff ts/h264-baseline.ts $V "${X264[@]}" -profile:v baseline -g 30 -c:a aac $A -f mpegts
+ff ts/h264-baseline.ts $V $A "${X264[@]}" -profile:v baseline -g 30 -c:a aac -f mpegts
 ff ts/h264-high-50fps.ts $(vid 640x360 50) $A "${X264[@]}" -profile:v high -g 50 -bf 4 -c:a aac -f mpegts
 ff ts/h264-30000-1001.ts $(vid 320x240 30000/1001) $A "${X264[@]}" -g 30 -bf 2 -c:a aac -f mpegts
 ff ts/h264-interlaced.ts $V $A "${X264[@]}" -flags +ildct+ilme -x264opts tff=1 -g 25 -c:a aac -f mpegts

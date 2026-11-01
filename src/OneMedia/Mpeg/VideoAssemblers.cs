@@ -276,6 +276,7 @@ internal sealed class NalVideoAssembler : VideoAssembler
     private bool _seenVcl;
     private bool _key;
     private bool _paramSets;
+    private int _seiUnits;
 
     /// <summary>Called with the payload of each SEI NAL unit (after its header) until it returns true; AVCHD metadata is found this way.</summary>
     public SeiHandlerDelegate? SeiHandler { get; set; }
@@ -353,6 +354,25 @@ internal sealed class NalVideoAssembler : VideoAssembler
 
     private void CompleteUnit(int length)
     {
+        if (SeiHandler is { } handler)
+        {
+            // Camera data rides in the SEI of the first few access units; look there, then stop looking.
+            AnnexBReader reader = new(Buffered[..length]);
+            while (reader.TryRead(out ReadOnlySpan<byte> sei, out _, out _))
+            {
+                if (NalUnit.GetType(_codec, sei) == 6 && _codec == NalCodec.H264 && handler(sei[1..]))
+                {
+                    SeiHandler = null;
+                    break;
+                }
+            }
+
+            if (++_seiUnits >= 60)
+            {
+                SeiHandler = null;
+            }
+        }
+
         if (!Describe())
         {
             _paramSets = false;
@@ -426,11 +446,6 @@ internal sealed class NalVideoAssembler : VideoAssembler
         }
         else if ((_codec == NalCodec.H264 && type == 6) || (_codec == NalCodec.Hevc && type == 39))
         {
-            if (SeiHandler is { } h && h(nal[Math.Min(header, nal.Length)..]))
-            {
-                SeiHandler = null;
-            }
-
             if (HasRecoveryPoint(nal[Math.Min(header, nal.Length)..]))
             {
                 _key = true;

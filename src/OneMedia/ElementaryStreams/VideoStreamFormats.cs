@@ -44,6 +44,13 @@ public sealed class VideoStreamFormat : IMediaFormat
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
         VideoStreamDemuxer.Open(source, _kind, options, cancellationToken);
 
+    /// <inheritdoc />
+    public ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default)
+    {
+        VideoStreamKind kind = _kind;
+        return Mpeg.AsyncDemuxer.OpenAsync(source, s => VideoStreamDemuxer.Open(s, kind, options, cancellationToken), cancellationToken);
+    }
+
     // ISO/IEC 13818-2 §6.2.2.1: a video sequence starts with sequence_header_code 0x000001B3 (a sequence may be preceded by zero bytes).
     private static SniffResult SniffMpeg(ReadOnlySpan<byte> head)
     {
@@ -190,4 +197,8 @@ public sealed class IvfFormat : IMediaFormat
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
         IvfDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        Mpeg.AsyncDemuxer.OpenAsync(source, s => IvfDemuxer.Open(s, options, cancellationToken), cancellationToken);
 }
