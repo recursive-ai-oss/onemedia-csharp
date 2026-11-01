@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.2.0-preview.1] - 2026-11-01
+
+Every other reader: ASF/WMV/WMA, MPEG-TS/M2TS, PS/VOB, elementary video and audio streams, MP3 with ID3 and APE, Ogg, FLAC, FLV, AVI/OpenDML, DV, WAV/BWF/RF64/W64, AIFF/AIFC and CAF, with their native tags in the common view. Still read-only: writing, tag editing, subtitles, repair and packaging are planned and not in this release.
+
+Known gaps: DV audio inside DV frames is not de-shuffled, so DV type 1 and raw DV have no audio track; `Decode()` does not play PCM, ADPCM, WMA, AC-3/E-AC-3 or ALAC tracks (it names the codec in an `UnsupportedAudioFormatException`); AVCHD CPI/MPL sidecars are listed, not decoded.
+
 ### Added
 
 - ASF/WMV/WMA reading (`RecursiveAI.OneMedia.Asf`, `docs/asf.md`): header objects as a range tree, packets in file order with exact presentation times, keyframe seeks, audio de-scrambling, forward-only and ranged sources, `Protected` for DRM files (`MediaFile.IsProtected`), and native `asf` tags (Content Description, extended attributes, Metadata and Metadata Library, WM/Picture) in the common view. Content Description's description is `Description`. Tags and packets agree with ffprobe, ExifTool, MediaInfo and ATL.NET on the corpus; WMA audio does not decode, MP3 in ASF does through `.Audio`.
@@ -18,7 +24,6 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - `TrackEditInfo.PacketTimesIncludePriming`: set for Ogg Opus, whose packet times already have the pre-skip taken off (RFC 7845 §4.4), so `MediaTrack.PresentationTime` subtracts it once.
 - One codec id per codec across WAVE, AVI and ASF: ADPCM (Microsoft, IMA, G.726) now has the same neutral id in every container.
 - AVI: `RecursiveAI.OneMedia.Avi` reads AVI and OpenDML (`AVIX`, super and standard indexes, `idx1`, index-less files by a bounded `movi` scan), DV in AVI (type 1 and type 2) and `LIST INFO`/`IDIT` tags; raw DV (`.dv`) through `RecursiveAI.OneMedia.Dv`; key frames from the index or the picture header; the reader registers with `AddOneMedia()` in the audio adapter. DV audio inside frames is not de-shuffled (no audio track for DV type 1 and raw DV). See `docs/avi.md` and `docs/dv.md`. AVI `LIST INFO` and `IDIT` are read by the same `Tags.Riff` reader as WAVE, and AVI shares the WAVE reader's chunk walker, so AVI defect codes are the shared `riff.*` codes (`riff.size-exceeds-file`, `riff.size-exceeds-parent`, `riff.unbounded-size`, `riff.trailing`).
-
 - `MediaTrack.PresentationTime(...)`: a packet's time on the presentation timeline with the edit list, Matroska codec delay and start offset applied, in `MediaTime`.
 - `MediaTrack.Rfc6381Codec()`: the track's RFC 6381 `codecs` string, now also `vp8` and the ISO timed-text codes `tx3g`, `wvtt` and `stpp`; codecs with no registered string return null.
 - `Media.Open(Stream)` accepts a stream that cannot seek (new `MediaFile.Open(IForwardMediaSource)` and `MediaFormatRegistry.Open(IForwardMediaSource)`): formats readable front to back open and read once, a format that needs to seek throws `UnsupportedMediaException`, a second read throws `MediaReadStateException` (`CannotRewind`).
@@ -29,14 +34,14 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ### Fixed
 
 - Format sniffing: an Annex B head that ended right after a start code made the H.265 check read one byte past the end (found by fuzzing the registry).
-
 - CAF with variable-size packets opened from a stream that cannot seek delivered no packets, because the packet table had gone by before the audio; the table is kept, and a file whose table is not before the audio is refused with `UnsupportedMediaException`.
 
 - `onemedia info` printed Matroska frame rates unreduced (`200000000/8333333 fps`); they are now reduced or snapped to the nearest broadcast rate.
 - Raw AV1 streams: an OBU whose size field was close to `int.MaxValue` overflowed the end-of-OBU test and threw `ArgumentOutOfRangeException`; it is now a malformed unit.
-- Format sniffing: the Annex B video sniffer read past the end of a head that ended right after a start code.
 
 ### Changed
+
+- Reading tags allocates far less: an ID3 tag no longer clears a 64 KiB window for a few hundred bytes (an MP3 tag read went from about 150 KB to 20 KB allocated), the common tag view no longer allocates a list per mapping row, and an Ogg Vorbis file reads its setup header only when packet durations are asked for.
 
 - A track whose only hint of SBR is a container that declares twice the AAC core rate is now reported as "possibly core-only" (`SbrPossiblyNotApplied`, `IsPossiblyCoreOnly`). `AudioDecodeReport.IsCoreOnly` and `SbrNotApplied` are set only on evidence (SBR/PS in the configuration, or SBR data met by the decoder), so a complete AAC-LC track with a wrong container rate no longer reads as missing audio. The decoded rate and priming are unchanged.
 - `Packets()` and the `.Audio` decode calls on a file opened with `OpenAsync` throw `MediaReadStateException` (`AsynchronousSource`, still an `InvalidOperationException`) instead of a plain `InvalidOperationException`.

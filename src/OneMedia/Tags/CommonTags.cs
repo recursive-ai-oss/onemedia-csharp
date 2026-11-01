@@ -231,23 +231,39 @@ public sealed class CommonTags
         }
 
         List<CommonValue> list = [];
-        foreach (TagMappingRow row in TagMappingTable.Rows)
+        // Index loops: foreach over these interface-typed lists would allocate an enumerator per row and key, which dominates the cost of a read.
+        IReadOnlyList<TagMappingRow> rows = TagMappingTable.Rows;
+        for (int r = 0; r < rows.Count; r++)
         {
+            TagMappingRow row = rows[r];
             if (row.Field != field)
             {
                 continue;
             }
 
-            foreach (string key in row.Keys)
+            for (int k = 0; k < row.Keys.Count; k++)
             {
-                List<CommonValue> found = [];
-                foreach (NativeTag tag in _native)
+                string key = row.Keys[k];
+                // Created on the first match: most rows match nothing, and an empty list per row and key adds up over a table of hundreds.
+                List<CommonValue>? found = null;
+                for (int t = 0; t < _native.Count; t++)
                 {
-                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.Ape or TagSystems.Id3v2 or TagSystems.VorbisComment or TagSystems.Flv ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
-                    if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text && !(text.Length == 0 && tag.System == TagSystems.Asf))
+                    NativeTag tag = _native[t];
+                    if (tag.System != row.System)
                     {
-                        found.Add(new CommonValue(field, text, tag));
+                        continue; // the cheapest test first: a row of one tag system never matches the others, and the key compare is dearer
                     }
+
+                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.Ape or TagSystems.Id3v2 or TagSystems.VorbisComment or TagSystems.Flv ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
+                    if (IsFileLevel(tag, field) && keyMatches && ValueOf(field, tag) is { } text && !(text.Length == 0 && tag.System == TagSystems.Asf))
+                    {
+                        (found ??= []).Add(new CommonValue(field, text, tag));
+                    }
+                }
+
+                if (found is null)
+                {
+                    continue;
                 }
 
                 if (row.System == TagSystems.Matroska)

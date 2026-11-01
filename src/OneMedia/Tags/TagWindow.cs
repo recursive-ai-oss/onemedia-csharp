@@ -70,7 +70,9 @@ internal sealed class TagWindow
         int want = (int)Math.Min(WindowBytes, Math.Max(count, Start + Length - absolute));
         if (_buffer.Length < want)
         {
-            _buffer = new byte[WindowBytes];
+            // Sized to the region, not to the window: a tag of a few hundred bytes must not allocate and clear 64 KiB. Any later want is
+            // no larger, because it never exceeds what is left of the region.
+            _buffer = new byte[(int)Math.Min(WindowBytes, Math.Max(want, Length))];
         }
 
         int n = _source.Read(absolute, _buffer.AsSpan(0, want));

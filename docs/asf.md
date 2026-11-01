@@ -111,7 +111,7 @@ either oracle. Explained classes:
 - ATL.NET: 105 fields identical on 55 files; 5 fields (Content Description description) only we report, because ATL ignores it.
 - `img_0001.asf` (damaged header GUID) is rejected by every tool.
 
-## I/O (docs/io-asf.txt)
+## I/O (docs/io-results.txt, section asf)
 
 Probe plus metadata, 55 files incl. a generated 2.33 GB WMV (wmv2 + wmav2 at 40 Mbit/s repeated by stream copy). Ours reads a 36,864-byte head in 3 requests
 over HTTP range for the 2.33 GB file and the same for every file whose header fits (up to ~110 KB / 16 reads when the header is large with pictures), against

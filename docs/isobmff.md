@@ -195,3 +195,17 @@ adds leading empty edits) and lists the following as explained, never as agreeme
 | Duration of files whose `mvhd` is shorter than a track (or whose `mvhd` timescale is wrong): ffprobe reports the longest stream | `MediaFile.Duration` follows ffprobe (longest track), `ContainerDuration` keeps the box value. |
 
 Everything else (size, byte offset, key flag, durations, timestamps) matches on every packet of every compared file.
+
+## Stream and duration differences from `ffprobe -show_streams -show_format` (`infocheck`)
+
+`onemedia`'s `infocheck` compares the track list (kind, codec, size, rate, channels, language) and the container duration with ffprobe 7.0.2. On the 121-file ISO
+corpus every difference is scoped in `tools/OneMedia.Oracles/exceptions.tsv` (fields `info-duration`, `info-codec`, `info-open`):
+
+| File or class | Difference | Reason |
+|---|---|---|
+| Fragmented files whose `mvhd` states no duration | ours unknown, ffprobe has the sum of the fragments | open stays structural; ours reports the box value or none |
+| `dash-flags.mp4`, `MAV_0001.3G2`, `W41CA_MAV_0000.mp4`, `au30sec.mp4` | `mvhd` states the first fragment (1 s to 15 s); the fragments total 4 s to 30 s | ours is the box value; ffprobe sums the fragments |
+| `Fraunhofer...small.mp4` | ffprobe 136 s, ours 4,352 s | the `mvhd` timescale is wrong by a factor of 32; `TracksDuration` is 136 s |
+| `apple_cv.mov`, `ctk_cpro.mov` | ffprobe falls back to a packet-derived length after "missing mandatory atoms"; ours is the movie header | broken header |
+| same two files, codec | the `cvid` (Cinepak) entry has no neutral codec id in the ISO reader | the track keeps its FourCC; a mapping is a follow-up |
+| `0625rvt6-42.mov` | `ima4` has no neutral codec id in the ISO reader; ffprobe reads 352x288 from the H.263 picture header, the container says 240x180 | ours is the container's value |
