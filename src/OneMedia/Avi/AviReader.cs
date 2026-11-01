@@ -8,7 +8,8 @@ namespace RecursiveAI.OneMedia.Avi;
 /// <summary>
 /// The AVI engine: opens the header list, builds the tracks, and walks the <c>movi</c> lists chunk by chunk. Packets come out in file
 /// order, as the chunks are stored. Key-frame flags come from the index (OpenDML standard indexes, else <c>idx1</c>) by looking up each
-/// chunk's position; a file without an index, or a source that cannot seek, has none, and every packet is then reported as a key frame.
+/// chunk's position. A chunk the index does not describe (no index, a forward-only source) is judged from its picture header for
+/// MPEG-4 Part 2, H.264 and MPEG-1/2 video, and is a key frame for every other codec.
 /// </summary>
 internal sealed class AviReader : IDisposable
 {
@@ -22,6 +23,7 @@ internal sealed class AviReader : IDisposable
     private readonly DefectLog _defects;
     private readonly CancellationToken _cancellation;
     private readonly List<TrackState> _state = [];
+    private byte[]? _head;
     private byte[] _packet = [];
     private bool _unknownStreamReported;
 
@@ -332,6 +334,10 @@ internal sealed class AviReader : IDisposable
         }
 
         Tracks = tracks;
+        for (int i = 0; i < tracks.Count && i < _state.Count; i++)
+        {
+            _state[i].Guess = AviKeyframes.For(tracks[i].Codec);
+        }
         if (!longest.IsKnown && Headers.Main.TotalFrames > 0 && Headers.Main.MicroSecondsPerFrame > 0)
         {
             longest = new MediaTime(Headers.Main.TotalFrames * (long)Headers.Main.MicroSecondsPerFrame, 1_000_000);
@@ -355,7 +361,7 @@ internal sealed class AviReader : IDisposable
             }
 
             ReadPayload(chunk, out int size, out bool complete);
-            PacketAttributes flags = KeyFlag(chunk) ? PacketAttributes.Keyframe : PacketAttributes.None;
+            PacketAttributes flags = KeyFlag(chunk, _packet.AsSpan(0, size)) ? PacketAttributes.Keyframe : PacketAttributes.None;
             if (!complete)
             {
                 flags |= PacketAttributes.Corrupt;
@@ -391,25 +397,37 @@ internal sealed class AviReader : IDisposable
         return before;
     }
 
-    private bool KeyFlag(ChunkHeader chunk)
+    // The index states key frames; where it states nothing for a chunk (no index, or a chunk it does not list) the picture header of
+    // the chunk decides for the codecs that have one. payload is the chunk's bytes when they are at hand; empty makes this read the
+    // start of the chunk (seeking walks only headers).
+    private bool KeyFlag(ChunkHeader chunk, ReadOnlySpan<byte> payload = default)
     {
-        if (_source is null)
-        {
-            return true;
-        }
-
-        AviIndexCursor? cursor = _odml[chunk.Stream] ?? (AviIndexCursor?)_idx1;
-        if (cursor is null)
-        {
-            return true;
-        }
-
-        if (cursor.Seek(chunk.Offset, out AviIndexEntry e) && e.Offset == chunk.Offset)
+        AviIndexCursor? cursor = _source is null ? null : _odml[chunk.Stream] ?? (AviIndexCursor?)_idx1;
+        if (cursor is not null && cursor.Seek(chunk.Offset, out AviIndexEntry e) && e.Offset == chunk.Offset)
         {
             return e.IsKeyframe;
         }
 
-        return true;
+        KeyframeGuess guess = _state[chunk.Stream].Guess;
+        if (guess == KeyframeGuess.All || chunk.Size == 0)
+        {
+            return true;
+        }
+
+        if (payload.IsEmpty)
+        {
+            if (_source is null)
+            {
+                return true;
+            }
+
+            _head ??= new byte[AviKeyframes.HeadBytes];
+            _input.Seek(chunk.Offset + 8);
+            int n = _input.Read(_head.AsSpan(0, (int)Math.Min(chunk.Size, (uint)_head.Length)));
+            payload = _head.AsSpan(0, n);
+        }
+
+        return AviKeyframes.IsKey(guess, payload.Length > AviKeyframes.HeadBytes ? payload[..AviKeyframes.HeadBytes] : payload);
     }
 
     private void ReadPayload(ChunkHeader chunk, out int size, out bool complete)
@@ -766,6 +784,8 @@ internal sealed class AviReader : IDisposable
         }
 
         public bool Enabled { get; set; }
+
+        public KeyframeGuess Guess { get; set; }
 
         public long SampleSize { get; }
 

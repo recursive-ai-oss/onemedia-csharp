@@ -141,6 +141,45 @@ public class DvTests
     }
 
     [Fact]
+    public void PullPathAllocatesNothingPerFrame()
+    {
+        byte[] one = Frame(pal: true);
+        byte[] data = new byte[one.Length * 200];
+        for (int i = 0; i < 200; i++)
+        {
+            one.CopyTo(data, i * one.Length);
+        }
+
+        long best = long.MaxValue;
+        for (int pass = 0; pass < 5 && best != 0; pass++)
+        {
+            using DvDemuxer d = DvDemuxer.Open(new MemoryMediaSource(data));
+            Assert.True(d.TryReadPacket(out _));
+            long allocated = Drain(d, out int count);
+            Assert.Equal(199, count);
+            if (pass > 0)
+            {
+                best = Math.Min(best, allocated);
+            }
+        }
+
+        Assert.Equal(0, best);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+    private static long Drain(DvDemuxer d, out int count)
+    {
+        count = 0;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        while (d.TryReadPacket(out PacketView p))
+        {
+            count += p.Data.Length > 0 ? 1 : 0;
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    [Fact]
     public void TruncatedLastFrameIsDeliveredCorruptWithADefect()
     {
         byte[] data = [.. Frame(pal: false), .. Frame(pal: false)];

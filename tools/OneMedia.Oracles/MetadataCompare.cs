@@ -30,6 +30,8 @@ internal static partial class MetadataCompare
         MediaFormatRegistry registry = new();
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Avi.AviFormat());
+        registry.Add(new RecursiveAI.OneMedia.Dv.DvFormat());
         foreach (string file in files)
         {
             try
@@ -171,6 +173,8 @@ internal static partial class MetadataCompare
                 TagSystems.QuickTimeUserData or TagSystems.ThreeGpp => ["UserData"],
                 TagSystems.Xmp => ["XMP-x", "XMP-xmp", "XMP-dc", "XMP-exif", "XMP-tiff", "XMP-photoshop"],
                 TagSystems.MatroskaInfo => ["Info", "Matroska"],
+                TagSystems.RiffInfo => ["RIFF"],
+                TagSystems.Dv => ["DV"],
                 _ => t.TrackId > 0 ? ["Track"] : ["Matroska"],
             };
             List<string> etVals = [.. et.Where(kv => groups.Any(g => kv.Key.StartsWith(g, StringComparison.Ordinal))).SelectMany(kv => kv.Value)];

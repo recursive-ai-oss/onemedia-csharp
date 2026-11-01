@@ -35,6 +35,7 @@ ff() {
   want "$rel" || return 0
   local out="$G/$rel"
   if [ -s "$out" ]; then skipped=$((skipped+1)); return 0; fi
+  mkdir -p "$(dirname "$out")"
   if [ -n "${ONEMEDIA_BENCH_LOCK:-}" ] && [ -e "$ONEMEDIA_BENCH_LOCK" ]; then echo "benchmark lock present; stopping" >&2; exit 3; fi
   local part="${out%.*}.part.${out##*.}"
   if "$FF" "${FFG[@]}" "$@" "$part" 2>"$G/.last.log" && [ -s "$part" ]; then
