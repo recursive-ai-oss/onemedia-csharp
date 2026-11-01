@@ -166,3 +166,100 @@ matroska	info-codec	file=test1.mkv	ignore	ours	vfw-fourcc-unmapped: a V_MS/VFW/F
 matroska	info-codec	file=test6.mkv	ignore	ours	vfw-fourcc-unmapped.
 matroska	info-codec	file=wmaproEOF	ignore	ours	acm-format-tag-unmapped: an A_MS/ACM track carries a WAVEFORMATEX whose format tag (WMA Pro) has no neutral codec id here; the codec stays unknown with its tag.
 *	info-duration	file=ext-	ignore	ours	duration-from-file-size: these ten-frame files carry no Xing/Info frame, so ffprobe estimates the duration from the file size and the first frame's bit rate, which counts tag bytes (the APE and ID3 tags are 4 to 40 percent of a 4 to 6 KB file); ours counts the frames (10 x 1152 samples at 44.1 kHz = 0.261224 s).
+ogg	pos	*	ignore	neither	payload-range: ffprobe reports the offset of the page that ends the packet; ours is the range of the packet payload itself, which can start on an earlier page (docs/ogg.md).
+flv	pos	*	ignore	neither	payload-range: ffprobe reports the offset of the tag header; ours is the range of the payload after the tag and codec headers (docs/flv.md).
+flv	duration	*	ours-na	neither	parser-derived-duration: a tag carries no duration; ffprobe fills in one from the frame rate (video) or the audio frame length (AAC, MP3), rounded to milliseconds; ours is unknown (docs/flv.md).
+ogg	count	file=chained-	ignore	neither	chained-link-tracks: a chained file's later links are tracks of their own here; ffprobe 7.0.2 merges a link with the same codec into stream 0 (its header packets included) and stops at a link with another codec (docs/ogg.md).
+ogg	pts	codec=vorbis	tolerance=4096	ours	vorbis-page-end-packet: ffprobe times the packet that ends a page as granule minus the previous packet's length, so it is early (or late) by the difference between the two lengths and leaves a gap before the next packet; ours is continuous with the granule (docs/ogg.md).
+ogg	dts	codec=vorbis	tolerance=4096	ours	vorbis-page-end-packet: same as pts (docs/ogg.md).
+ogg	duration	codec=vorbis	tolerance=4096	ours	vorbis-page-end-packet: ffprobe gives the page-ending packet the previous packet's length; ours is the block-size rule of Vorbis I section 1.3.2.3 (docs/ogg.md).
+flac	count	file=cover	ignore	neither	attached-picture: ffprobe lists a PICTURE block as a one-packet video stream; here it is a tag with its byte range (docs/flac.md).
+flac	count	file=all-blocks	ignore	neither	attached-picture: the all-blocks fixture carries a PICTURE block; see the cover rule (docs/flac.md).
+caf	duration	*	ffprobe-na	ours	ffprobe prints N/A for the duration of packets in CAF files with a packet table; the table gives each packet's frame count and we report it.
+*	pts	file=sf/voxware.wav	ignore	n/a	ffprobe prints N/A timestamps for this VOXware stream (no parser); we count frames from the average data rate.
+*	dts	file=sf/voxware.wav	ignore	n/a	as for pts.
+*	duration	file=sf/voxware.wav	ignore	n/a	as for pts.
+*	key	file=sf/voxware.wav	ignore	n/a	ffprobe does not flag the packets as keyframes; every packet of an audio file is a keyframe for us.
+*	pts	file=sf/o2_711u.wave	ignore	n/a	ffprobe prints N/A timestamps for this file; its header is a WAVE of µ-law data with a cbSize extension ffprobe treats as a parser-less stream.
+*	dts	file=sf/o2_711u.wave	ignore	n/a	as for pts.
+*	duration	file=sf/o2_711u.wave	ignore	n/a	as for pts.
+*	key	file=sf/o2_711u.wave	ignore	n/a	as for voxware.wav.
+*	pts	file=crafted/ext-unknown-sub.wav	ignore	n/a	an extensible format with an unknown sub-format GUID: ffprobe has no codec and prints N/A timestamps; we name the codec unknown and still cut and time the packets from the header.
+*	dts	file=crafted/ext-unknown-sub.wav	ignore	n/a	as for pts.
+*	duration	file=crafted/ext-unknown-sub.wav	ignore	n/a	as for pts.
+*	key	file=crafted/ext-unknown-sub.wav	ignore	n/a	as for pts.
+*	duration	file=libsndfile-samples/wav-g721.wav	ignore	n/a	G.726 in a WAVE: ffprobe's parser gives 1365 frames to 512 bytes (3 bits per sample) where the header says 4 bits (1024 frames); the packet bytes agree.
+*	count	file=sf/Fnonull.aif	ignore	n/a	ffprobe delivers no packets from this AIFF-C test file (see docs/pcm-files.md); the sound data is intact and we deliver it.
+*	count	file=sf/Pmiscck.aif	ignore	n/a	as for Fnonull.aif.
+*	count	file=sf/Poffset.aif	ignore	n/a	as for Fnonull.aif.
+*	count	file=sf/Ptjunk.aif	ignore	n/a	as for Fnonull.aif.
+wav	pts	*	ffprobe-na	ours	ffprobe prints N/A for the last packet of some block-coded streams; we time it from the block size.
+wav	dts	*	ffprobe-na	ours	ffprobe prints N/A for the last packet of some block-coded streams; we time it from the block size.
+wav	duration	*	ffprobe-na	ours	ffprobe prints N/A for the last packet of some block-coded streams; we time it from the block size.
+*	count	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	size	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	hash	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pos	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pts	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	dts	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	duration	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	key	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	count	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	size	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	hash	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pos	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pts	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	dts	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	duration	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	key	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	duration	file=sf/oki.wav	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+*	duration	file=sf/o2_726.aiff	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+*	pts	file=libsndfile-samples/wav-g721.wav	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+*	dts	file=libsndfile-samples/wav-g721.wav	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+avi	pts	kind=video	ffprobe-na	ours	no-presentation-order: an AVI index lists chunks in decode order only; for codecs with reordering (MPEG-4 Part 2 with B-frames, H.264) ffprobe prints no pts, ours is the decode-order position and equals dts (docs/avi.md).
+avi	duration	codec=flac	ffprobe-na	neither	variable-frame-audio: FLAC frames in AVI state no per-chunk duration; ffprobe prints N/A, ours is the stream header rate and scale per chunk (docs/avi.md).
+dv	count	codec=pcm_s16le	ignore	ours	dv-embedded-audio: ffprobe synthesizes the audio streams of a DV frame (docs/dv.md).
+avi	reframed	codec=pcm_*	ignore	neither	audio-reframed: ffprobe cuts the chunks of this stream into other packets (sample-addressed audio is cut into pieces of at most 4096 bytes); the same bytes must be covered at the same positions and the first time must agree, which the harness checks instead of packets (docs/avi.md).
+avi	reframed	codec=adpcm_*	ignore	neither	audio-reframed: ffprobe cuts the chunks of this stream into other packets (block-addressed audio is cut into blocks of nBlockAlign bytes); the same bytes must be covered at the same positions and the first time must agree, which the harness checks instead of packets (docs/avi.md).
+avi	reframed-bytes	codec=mp3	ignore	neither	audio-reframed: ffprobe cuts the chunks of this stream into other packets (MP3 chunks are cut into frames by its parser); its frames straddle chunk boundaries, so the harness checks the total bytes and the first time instead of packets (docs/avi.md).
+avi	reframed-bytes	codec=ac3	ignore	neither	audio-reframed: ffprobe cuts the chunks of this stream into other packets (AC-3 chunks are cut into frames by its parser); its frames straddle chunk boundaries, so the harness checks the total bytes and the first time instead of packets (docs/avi.md).
+avi	reframed-bytes	codec=mp2	ignore	neither	audio-reframed: ffprobe cuts the chunks of this stream into other packets (MPEG audio layer 2 chunks are cut into frames by its parser); its frames straddle chunk boundaries, so the harness checks the total bytes and the first time instead of packets (docs/avi.md).
+avi	*	codec=ass	ignore	neither	subtitle-events: a text stream in AVI holds a script (header and events) per chunk; ffprobe emits the header and every event as packets of their own with times taken from the script, we deliver the chunk bytes at the chunk's clock (docs/avi.md).
+avi	*	file=missing-video-stream/a.avi	ignore	neither	damaged-resync: the file has stretches of garbage inside the movie list; both readers skip them by their own rules and find the next chunk at different places, so a few chunks near each stretch are listed by one side only (docs/avi.md).
+avi	*	file=mp_seek_failed	ignore	neither	damaged-resync: the file has stretches of garbage inside the movie list; both readers skip them by their own rules and find the next chunk at different places, so a few chunks near each stretch are listed by one side only (docs/avi.md).
+avi	count	codec=pcm_s16le	ignore	ours	dv-embedded-audio: a type 1 DV stream carries sound inside each video frame; ffprobe synthesizes an audio stream from it, we expose the video track only and report the audio parameters (docs/dv.md). Applies only where we have no such track: where we have one, the reframed rule compares bytes.
+avi	size	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+dv	size	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+avi	pos	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+dv	pos	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+avi	hash	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+dv	hash	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+avi	duration	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+dv	duration	codec=dvvideo	ignore	ours	truncated-dv-frame: a DV frame is a fixed size, so a difference is a frame cut by the end of the file; ffprobe lists it as an empty packet, ours holds the bytes present with the Corrupt flag (docs/dv.md).
+avi	streams	file=cut-at-header	ignore	ours	tolerant-header: the file ends inside the header list; ffprobe finds no streams, we read the streams that are complete (docs/avi.md).
+avi	key	codec=mpeg1video	ignore	ours	index-key-flag: the index marks some mid-stream pictures as key frames and ffprobe's parser reports them as not key; the container states it, so ours follows the index (docs/avi.md).
+avi	duration	codec=mp2	ignore	ours	parser-frame-duration: ffprobe derives the duration of MPEG audio chunks from the codec frame length; ours is the stream header's rate and scale applied to the chunk's bytes (docs/avi.md).
+avi	*	file=FMP_3	ignore	neither	damaged-info-list: the INFO list holds a chunk with a wrong size; ffprobe resumes later in the file and misses the first chunks, we read from the start of the movi list (docs/avi.md).
+flac	info-duration	file=unknown-length	ignore	ours	unknown-length: STREAMINFO states no sample count, so ffprobe gives no duration; ours is read from the last frame (docs/flac.md).
+ogg	info-duration	file=chained-	ignore	ours	chained-duration: the duration of a chained file is unknown here and known to ffprobe, because the later links ends are not known without reading on (docs/ogg.md).
+*	info-duration	file=aiff-count-short	ignore	ours	stated-count-short: the COMM frame count is smaller than the sound data; the data decides here, ffprobe plays the stated count (docs/pcm-files.md).
+*	info-duration	file=cameraclick.caf	ignore	ours	caf-packet-table: ffprobe gives no duration for CAF with a packet table; ours is the table frame count (docs/pcm-files.md).
+*	info-duration	file=w64-ms-adpcm	ignore	ours	adpcm-na: ffprobe gives no duration for Wave64 MS ADPCM; ours is block arithmetic (docs/pcm-files.md).
+*	info-duration	file=aif-ima-adpcm	ignore	neither	adpcm-block-arithmetic: ffprobe divides the data size by the average byte rate, ours counts whole blocks times frames per block (docs/pcm-files.md).
+*	info-duration	file=Pmiscck	ignore	neither	libsndfile-aifc: the header-derived length differs between ffprobe and ours for these odd-chunk AIFF-C test files, for which ffprobe delivers no packets (docs/pcm-files.md).
+*	info-duration	file=Poffset	ignore	neither	libsndfile-aifc (see Pmiscck).
+*	info-duration	file=Porder	ignore	neither	libsndfile-aifc (see Pmiscck).
+*	info-duration	file=Ptjunk	ignore	neither	libsndfile-aifc (see Pmiscck).
+*	info-duration	file=Pnossnd	ignore	ours	no-sound-chunk: the file has no SSND chunk; ours states the zero length, ffprobe none (docs/pcm-files.md).
+*	info-codec	file=g722.aifc	ignore	ours	aifc-g722: the AIFF-C compression type G722 has no neutral codec id; the codec stays unknown with its tag.
+*	info-open	file=aiff-no-comm	ignore	ours	damaged-header: a required chunk is absent; ours raises a typed MediaFormatException, ffprobe lists a stream of zeroed parameters (docs/pcm-files.md).
+*	info-open	file=caf-no-desc	ignore	ours	damaged-header (see aiff-no-comm).
+*	info-open	file=no-fmt	ignore	ours	damaged-header (see aiff-no-comm).
+*	info-open	file=truncated-header.wav	ignore	ours	damaged-header (see aiff-no-comm).
+*	info-open	file=bad_chans	ignore	ours	damaged-header: impossible parameters (zero channels); typed MediaFormatException here (see aiff-no-comm).
+*	info-open	file=bad_srate	ignore	ours	damaged-header: impossible parameters (zero rate); typed MediaFormatException here (see aiff-no-comm).
+*	info-open	file=zero-channels	ignore	ours	ffprobe-open-fails: ffprobe writes no usable output for a WAVE with zero channels; ours raises a typed exception.
+*	info-open	file=sw1038t_short	ignore	ours	nist-sphere: not RIFF and not in scope; ffprobe reads it (docs/pcm-files.md).
+*	info-open	file=swb.wav	ignore	ours	nist-sphere (see sw1038t_short).
+*	info-open	file=telephone.wav	ignore	ours	nist-sphere (see sw1038t_short).
+avi	info-duration	file=verona60avi56k	ignore	ours	audio-header-length: the audio stream header states 30864 s of samples for a 1.9 MB file; ffprobe takes the duration from the video stream, ours is the longest stream header (docs/avi.md).

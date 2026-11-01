@@ -55,6 +55,20 @@ seed() {
            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
            { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
          done ;;
+    riff-wav|aiff|caf) # The first byte picks the path (bit 0: forward-only, 1: seeks, 2: ranged async, 3: metadata); the rest is the file.
+             case "$target" in riff-wav) pat="*.wav";; aiff) pat="*.aif*";; caf) pat="*.caf";; esac
+             for f in "$here"/testdata/pcm/$pat; do
+               [ -f "$f" ] || continue
+               { printf '\012'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+               { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+               { printf '\014'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
+             done ;;
+    registry) # The first byte picks the path (bit 0: seek around; bit 1: read the metadata); the rest is the file. Seeds: one of every format we have.
+             for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/audio/* "$here"/testdata/xiph-flv/* "$here"/testdata/pcm/* "$here"/testdata/asf/* "$here"/testdata/mpeg/* "$here"/testdata/audio-es/*.* "$here"/testdata/audio-es/tagged/*.mp3 "$here"/testdata/matroska/*.mkv; do
+               [ -f "$f" ] || continue
+               [ "$(stat -c %s "$f")" -le 262144 ] || continue
+               { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+             done ;;
     tags) # The first byte picks the path (bit 0: Matroska rather than ISO BMFF; bit 1: the asynchronous reader); the rest is the file.
           for f in "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mov "$here"/testdata/metadata/*.m4a "$here"/testdata/metadata/*.3gp "$here"/testdata/isobmff/*.mp4; do
             [ -f "$f" ] || continue
@@ -112,6 +126,29 @@ seed() {
                 { printf "\\$(printf '%03o' $((hi | 6)))"; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
               done
             done ;;
+    ogg|flac|flv|vorbis-comment) # The first byte picks the path (bit 0: forward-only, bit 1: seeks, bit 2: asynchronous open); the rest is the file.
+          local pat
+          case "$target" in ogg) pat="*.ogg *.opus *.oga";; flac) pat="*.flac";; flv) pat="*.flv";; *) pat="*.ogg *.flac";; esac
+          for p in $pat; do
+            for f in "$here"/testdata/xiph-flv/$p "$here"/testdata/audio/$p; do
+              [ -f "$f" ] || continue
+              { printf '\000'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+              { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+              { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
+            done
+          done ;;
+    riff-avi) # The first byte picks the path (bit 0: forward-only; bit 1: seeks; bit 2: registry against direct open; bit 3: metadata); the rest is the file.
+          for f in "$here"/testdata/avi/*.avi; do
+            [ -f "$f" ] || continue
+            { printf '\016'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+          done ;;
+    dv) # The first byte picks the path (bit 0: forward-only; bit 1: seeks; bit 2: metadata); the rest is the file.
+          for f in "$here"/testdata/avi/*.dv; do
+            [ -f "$f" ] || continue
+            { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+          done ;;
   esac
   if [ -z "$(ls -A "$corpus")" ]; then printf 'xxxxxxxxxx' > "$corpus/empty.seed"; fi
 }

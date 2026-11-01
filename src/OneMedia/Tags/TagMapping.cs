@@ -30,6 +30,8 @@ public static class TagMappingTable
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
     private const string DvbDoc = "ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor)";
     private const string ExifToolH264 = "ExifTool H264 tags (MDPM)";
+    private const string FlvDoc = "ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E";
+    private const string VorbisDoc = "Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string AsfDoc = "ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media";
     private const string PicardId3 = "Picard tag map, ID3v2.3/2.4 column (CC0)";
@@ -39,6 +41,10 @@ public static class TagMappingTable
     private const string Lyrics3Doc = "Lyrics3 v2.00 (id3.org)";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
+    private const string ExifToolRiff = "ExifTool RIFF Info tags";
+    private const string ExifToolAiff = "ExifTool AIFF tags";
+    private const string Ebu3285 = "EBU Tech 3285 (BWF) §2";
+    private const string CafSpec = "Apple Core Audio Format Specification, Information chunk";
 
     private static TagMappingRow Row(CommonField f, string system, string document, string note, params string[] keys) => new(f, system, keys, document, note);
 
@@ -172,6 +178,29 @@ public static class TagMappingTable
         Row(CommonField.Description, MpegTs.MpegTsTagSystems.ServiceInformation, DvbDoc, "the present event's short text", "event_text"),
         Row(CommonField.Date, MpegTs.MpegTsTagSystems.CameraData, ExifToolH264, "the camera clock in AVCHD; local time of unknown zone", "DateTimeOriginal"),
 
+        // Vorbis comments come before ID3v2 so that, in a FLAC or Ogg file with an ID3 tag in front, the stream's own comments win.
+        Row(CommonField.Title, TagSystems.VorbisComment, VorbisDoc, "", "TITLE"),
+        Row(CommonField.Artist, TagSystems.VorbisComment, VorbisDoc, "PERFORMER is the spec's name for the performing artist", "ARTIST", "PERFORMER"),
+        Row(CommonField.AlbumArtist, TagSystems.VorbisComment, VorbisDoc, "", "ALBUMARTIST", "ALBUM ARTIST"),
+        Row(CommonField.Album, TagSystems.VorbisComment, VorbisDoc, "", "ALBUM"),
+        Row(CommonField.Composer, TagSystems.VorbisComment, VorbisDoc, "", "COMPOSER"),
+        Row(CommonField.Author, TagSystems.VorbisComment, VorbisDoc, "lyricist", "LYRICIST"),
+        Row(CommonField.Director, TagSystems.VorbisComment, VorbisDoc, "", "DIRECTOR"),
+        Row(CommonField.Genre, TagSystems.VorbisComment, VorbisDoc, "", "GENRE"),
+        Row(CommonField.Comment, TagSystems.VorbisComment, VorbisDoc, "", "COMMENT"),
+        Row(CommonField.Description, TagSystems.VorbisComment, VorbisDoc, "the spec's short description of the contents", "DESCRIPTION"),
+        Row(CommonField.Date, TagSystems.VorbisComment, VorbisDoc, "a year or an ISO 8601 date, as written", "DATE"),
+        Row(CommonField.Copyright, TagSystems.VorbisComment, VorbisDoc, "", "COPYRIGHT"),
+        Row(CommonField.Encoder, TagSystems.VorbisComment, VorbisDoc, "", "ENCODER"),
+        Row(CommonField.EncodedBy, TagSystems.VorbisComment, VorbisDoc, "", "ENCODEDBY", "ENCODED-BY"),
+        Row(CommonField.Grouping, TagSystems.VorbisComment, VorbisDoc, "", "GROUPING"),
+        Row(CommonField.Lyrics, TagSystems.VorbisComment, VorbisDoc, "", "LYRICS", "UNSYNCEDLYRICS"),
+        Row(CommonField.Rating, TagSystems.VorbisComment, VorbisDoc, "", "RATING"),
+        Row(CommonField.TrackNumber, TagSystems.VorbisComment, VorbisDoc, "the spec's TRACKNUMBER may read number/total", "TRACKNUMBER", "TRACK"),
+        Row(CommonField.TrackTotal, TagSystems.VorbisComment, VorbisDoc, "TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER", "TRACKTOTAL", "TOTALTRACKS", "TRACKNUMBER"),
+        Row(CommonField.DiscNumber, TagSystems.VorbisComment, VorbisDoc, "may read number/total", "DISCNUMBER"),
+        Row(CommonField.DiscTotal, TagSystems.VorbisComment, VorbisDoc, "DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER", "DISCTOTAL", "TOTALDISCS", "DISCNUMBER"),
+
         // ID3v2. The v2.2 identifier of each frame follows the v2.3/2.4 one; text values of several strings are joined with "; ".
         Row(CommonField.Title, TagSystems.Id3v2, PicardId3, "", "TIT2", "TT2"),
         Row(CommonField.Artist, TagSystems.Id3v2, PicardId3, "", "TPE1", "TP1"),
@@ -231,6 +260,50 @@ public static class TagMappingTable
         Row(CommonField.Artist, TagSystems.Lyrics3, Lyrics3Doc, "extended artist", "EAR"),
         Row(CommonField.Album, TagSystems.Lyrics3, Lyrics3Doc, "extended album", "EAL"),
         Row(CommonField.Lyrics, TagSystems.Lyrics3, Lyrics3Doc, "version 2.00 field LYR; the whole block in version 1", "LYR", "LYRICS"),
+
+        Row(CommonField.Title, TagSystems.Flv, FlvDoc, "", "title"),
+        Row(CommonField.Artist, TagSystems.Flv, FlvDoc, "", "artist"),
+        Row(CommonField.Author, TagSystems.Flv, FlvDoc, "", "author"),
+        Row(CommonField.Album, TagSystems.Flv, FlvDoc, "", "album"),
+        Row(CommonField.Genre, TagSystems.Flv, FlvDoc, "", "genre"),
+        Row(CommonField.Comment, TagSystems.Flv, FlvDoc, "", "comment"),
+        Row(CommonField.Description, TagSystems.Flv, FlvDoc, "", "description"),
+        Row(CommonField.Copyright, TagSystems.Flv, FlvDoc, "", "copyright"),
+        Row(CommonField.Date, TagSystems.Flv, FlvDoc, "as written by the muxer", "creationdate", "date"),
+        Row(CommonField.Encoder, TagSystems.Flv, FlvDoc, "the muxer's name and version", "encoder", "metadatacreator"),
+        Row(CommonField.Title, TagSystems.RiffInfo, ExifToolRiff, "", "INAM"),
+        Row(CommonField.Artist, TagSystems.RiffInfo, ExifToolRiff, "", "IART"),
+        Row(CommonField.Album, TagSystems.RiffInfo, ExifToolRiff, "IPRD is the product, which music files use for the album", "IPRD"),
+        Row(CommonField.Composer, TagSystems.RiffInfo, ExifToolRiff, "IMUS is Music By", "IMUS"),
+        Row(CommonField.Author, TagSystems.RiffInfo, ExifToolRiff, "IWRI is Written By", "IWRI"),
+        Row(CommonField.Genre, TagSystems.RiffInfo, ExifToolRiff, "", "IGNR", "GENR"),
+        Row(CommonField.Comment, TagSystems.RiffInfo, ExifToolRiff, "", "ICMT", "CMNT", "COMM"),
+        Row(CommonField.Description, TagSystems.RiffInfo, ExifToolRiff, "ISBJ is the subject", "ISBJ"),
+        Row(CommonField.Description, TagSystems.Bext, Ebu3285, "the free description of the recording", "Description"),
+        Row(CommonField.Date, TagSystems.RiffInfo, ExifToolRiff, "as written, usually a year or an ISO 8601 date", "ICRD"),
+        Row(CommonField.Date, TagSystems.Bext, Ebu3285, "the origination date; the time of day is the OriginationTime tag", "OriginationDate"),
+        Row(CommonField.Copyright, TagSystems.RiffInfo, ExifToolRiff, "", "ICOP"),
+        Row(CommonField.Encoder, TagSystems.RiffInfo, ExifToolRiff, "the software that wrote the file", "ISFT"),
+        Row(CommonField.EncodedBy, TagSystems.RiffInfo, ExifToolRiff, "ITCH is the technician", "ITCH", "IENC", "CODE"),
+        Row(CommonField.Keywords, TagSystems.RiffInfo, ExifToolRiff, "", "IKEY"),
+        Row(CommonField.TrackNumber, TagSystems.RiffInfo, ExifToolRiff, "ITRK, optionally as number/total", "ITRK", "IPRT"),
+        Row(CommonField.TrackTotal, TagSystems.RiffInfo, ExifToolRiff, "the part after the slash of ITRK", "ITRK"),
+        Row(CommonField.Title, TagSystems.Aiff, ExifToolAiff, "", "NAME"),
+        Row(CommonField.Artist, TagSystems.Aiff, ExifToolAiff, "AUTH names the author; players show it as the artist", "AUTH"),
+        Row(CommonField.Author, TagSystems.Aiff, ExifToolAiff, "", "AUTH"),
+        Row(CommonField.Copyright, TagSystems.Aiff, ExifToolAiff, "", "(c) "),
+        Row(CommonField.Comment, TagSystems.Aiff, ExifToolAiff, "ANNO, then the text of the first COMT comment", "ANNO", "COMT"),
+        Row(CommonField.Title, TagSystems.CafInfo, CafSpec, "", "title"),
+        Row(CommonField.Artist, TagSystems.CafInfo, CafSpec, "", "artist"),
+        Row(CommonField.Album, TagSystems.CafInfo, CafSpec, "", "album"),
+        Row(CommonField.Composer, TagSystems.CafInfo, CafSpec, "", "composer"),
+        Row(CommonField.Genre, TagSystems.CafInfo, CafSpec, "", "genre"),
+        Row(CommonField.Comment, TagSystems.CafInfo, CafSpec, "", "comments", "comment"),
+        Row(CommonField.Date, TagSystems.CafInfo, CafSpec, "the recording date, else the year", "recorded date", "year"),
+        Row(CommonField.Copyright, TagSystems.CafInfo, CafSpec, "", "copyright"),
+        Row(CommonField.Encoder, TagSystems.CafInfo, CafSpec, "", "encoding application"),
+        Row(CommonField.TrackNumber, TagSystems.CafInfo, CafSpec, "the track number, optionally as number/total", "track number"),
+        Row(CommonField.TrackTotal, TagSystems.CafInfo, CafSpec, "the part after the slash of the track number", "track number"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

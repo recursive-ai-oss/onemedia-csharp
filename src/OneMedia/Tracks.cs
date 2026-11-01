@@ -132,6 +132,15 @@ public readonly record struct CodecId(string Name)
     /// <summary>Windows Media Audio Voice (format tags 0x000A and 0x000B).</summary>
     public static CodecId WmaVoice => new("wmavoice");
 
+    /// <summary>Apple Lossless (ALAC).</summary>
+    public static CodecId Alac => new("alac");
+    /// <summary>Microsoft ADPCM.</summary>
+    public static CodecId AdpcmMs => new("adpcm-ms");
+    /// <summary>IMA ADPCM as stored in WAVE (format tag 0x0011).</summary>
+    public static CodecId AdpcmImaWav => new("adpcm-ima-wav");
+    /// <summary>IMA ADPCM as stored in QuickTime, AIFF-C and CAF (<c>ima4</c>).</summary>
+    public static CodecId AdpcmImaQt => new("adpcm-ima-qt");
+
     /// <summary>3GPP timed text (tx3g).</summary>
     public static CodecId TimedText => new("tx3g");
     /// <summary>WebVTT.</summary>
@@ -211,7 +220,15 @@ public readonly record struct TrackEditInfo(
     MediaTime Priming = default,
     MediaTime EndPadding = default,
     MediaTime StartTime = default,
-    IReadOnlyList<EditSegment>? Edits = null);
+    IReadOnlyList<EditSegment>? Edits = null)
+{
+    /// <summary>
+    /// True when the container's packet times already have <see cref="Priming"/> taken off: the first packet then sits at minus the priming,
+    /// as an Ogg Opus granule position minus the pre-skip does (RFC 7845 §4.4). <see cref="MediaTrack.PresentationTime(MediaTime, MediaRounding)"/>
+    /// then does not subtract it a second time. False (the default) for containers whose packet times start at the raw media time.
+    /// </summary>
+    public bool PacketTimesIncludePriming { get; init; }
+}
 
 /// <summary>
 /// One track (stream) of a container as the neutral model sees it: immutable, built by the format reader when the file is opened.
@@ -323,7 +340,7 @@ public sealed record MediaTrack
     /// <c>Pts - Edit.Priming + Edit.StartTime</c>, in the packet time's own timescale.
     /// </summary>
     /// <remarks>
-    /// <para><see cref="TrackEditInfo.Priming"/> is subtracted for every container: an ISO edit list's first <c>media_time</c> (ISO/IEC 14496-12
+    /// <para><see cref="TrackEditInfo.Priming"/> is subtracted for every container (unless <see cref="TrackEditInfo.PacketTimesIncludePriming"/> says the packet times already carry it, as in Ogg Opus): an ISO edit list's first <c>media_time</c> (ISO/IEC 14496-12
     /// §8.6.6), a Matroska <c>CodecDelay</c> (RFC 9559, "subtracted from each block timestamp"), an Opus pre-skip, an MP3 encoder delay. So the first
     /// audio packet of an AAC track with 2112 samples of delay lands at minus 2112 samples: the decoder drops that much output, and the first
     /// audible sample is at zero.</para>
@@ -346,7 +363,7 @@ public sealed record MediaTrack
         }
 
         MediaTime t = pts;
-        if (Edit.Priming.IsKnown && !Edit.Priming.IsZero)
+        if (Edit.Priming.IsKnown && !Edit.Priming.IsZero && !Edit.PacketTimesIncludePriming)
         {
             t = t.Subtract(Edit.Priming, rounding);
         }

@@ -7,14 +7,16 @@ generated from it, and a test fails when they differ.
   the others stay reachable through `CommonTags.Values`.
 - Native keys are spelled as the system spells them: four-character atom codes for `ilst` and `udta` (`©nam`), reverse-DNS names for
   key-table metadata (`com.apple.quicktime.title`), `namespace#property` for XMP, upper-case names for Matroska (nested SimpleTags as
-  `PARENT/CHILD`). Matroska names are matched case-insensitively.
+  `PARENT/CHILD`). Matroska names are matched case-insensitively. RIFF INFO keys are the four-character chunk codes (`INAM`).
 - Matroska: only tags that target the file (no track, edition, chapter or attachment UID) feed the view, plus the tags of the only
   track of a single-track file (except `ENCODER`, which names the stream's encoder). Within a key the lowest target level of 30 or above
   comes first, then levels below 30; tags with no language or `und` come before language-specific ones; tags of the file itself
   come before tags of the only track.
 - 3GPP boxes and QuickTime user-data atoms share four-character codes with different layouts; the reader tells them apart as described in `docs/tags.md`.
-- Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime tag documentation (read as tables of facts), the Matroska
-  tag-name list, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
+- Vorbis comments (Ogg Vorbis, Opus, FLAC, Theora, Speex) use upper-case field names matched case-insensitively; `TRACKNUMBER` and `DISCNUMBER` may read
+  `number/total` (see `docs/vorbis-comment.md`). FLV script properties (`onMetaData`) are matched case-insensitively by name.
+- Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime, RIFF Info and FLV tag documentation (read as tables of facts), the Matroska
+  tag-name list, the Vorbis comment specification, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
 
 | Field | System | Keys (in precedence order) | Document | Note |
 |---|---|---|---|---|
@@ -125,6 +127,27 @@ generated from it, and a test fails when they differ.
 | Title | mpegts | `event_name`, `service_name` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's name first, then the service name |
 | Description | mpegts | `event_text` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's short text |
 | Date | mdpm | `DateTimeOriginal` | ExifTool H264 tags (MDPM) | the camera clock in AVCHD; local time of unknown zone |
+| Title | vorbis | `TITLE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Artist | vorbis | `ARTIST`, `PERFORMER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | PERFORMER is the spec's name for the performing artist |
+| AlbumArtist | vorbis | `ALBUMARTIST`, `ALBUM ARTIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Album | vorbis | `ALBUM` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Composer | vorbis | `COMPOSER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Author | vorbis | `LYRICIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | lyricist |
+| Director | vorbis | `DIRECTOR` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Genre | vorbis | `GENRE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Comment | vorbis | `COMMENT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Description | vorbis | `DESCRIPTION` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's short description of the contents |
+| Date | vorbis | `DATE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | a year or an ISO 8601 date, as written |
+| Copyright | vorbis | `COPYRIGHT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Encoder | vorbis | `ENCODER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| EncodedBy | vorbis | `ENCODEDBY`, `ENCODED-BY` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Grouping | vorbis | `GROUPING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Lyrics | vorbis | `LYRICS`, `UNSYNCEDLYRICS` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Rating | vorbis | `RATING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| TrackNumber | vorbis | `TRACKNUMBER`, `TRACK` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's TRACKNUMBER may read number/total |
+| TrackTotal | vorbis | `TRACKTOTAL`, `TOTALTRACKS`, `TRACKNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER |
+| DiscNumber | vorbis | `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | may read number/total |
+| DiscTotal | vorbis | `DISCTOTAL`, `TOTALDISCS`, `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER |
 | Title | id3v2 | `TIT2`, `TT2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | Artist | id3v2 | `TPE1`, `TP1` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | AlbumArtist | id3v2 | `TPE2`, `TP2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
@@ -177,3 +200,46 @@ generated from it, and a test fails when they differ.
 | Artist | lyrics3 | `EAR` | Lyrics3 v2.00 (id3.org) | extended artist |
 | Album | lyrics3 | `EAL` | Lyrics3 v2.00 (id3.org) | extended album |
 | Lyrics | lyrics3 | `LYR`, `LYRICS` | Lyrics3 v2.00 (id3.org) | version 2.00 field LYR; the whole block in version 1 |
+| Title | flv | `title` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Artist | flv | `artist` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Author | flv | `author` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Album | flv | `album` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Genre | flv | `genre` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Comment | flv | `comment` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Description | flv | `description` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Copyright | flv | `copyright` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Date | flv | `creationdate`, `date` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E | as written by the muxer |
+| Encoder | flv | `encoder`, `metadatacreator` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E | the muxer's name and version |
+| Title | riff-info | `INAM` | ExifTool RIFF Info tags |  |
+| Artist | riff-info | `IART` | ExifTool RIFF Info tags |  |
+| Album | riff-info | `IPRD` | ExifTool RIFF Info tags | IPRD is the product, which music files use for the album |
+| Composer | riff-info | `IMUS` | ExifTool RIFF Info tags | IMUS is Music By |
+| Author | riff-info | `IWRI` | ExifTool RIFF Info tags | IWRI is Written By |
+| Genre | riff-info | `IGNR`, `GENR` | ExifTool RIFF Info tags |  |
+| Comment | riff-info | `ICMT`, `CMNT`, `COMM` | ExifTool RIFF Info tags |  |
+| Description | riff-info | `ISBJ` | ExifTool RIFF Info tags | ISBJ is the subject |
+| Description | bext | `Description` | EBU Tech 3285 (BWF) §2 | the free description of the recording |
+| Date | riff-info | `ICRD` | ExifTool RIFF Info tags | as written, usually a year or an ISO 8601 date |
+| Date | bext | `OriginationDate` | EBU Tech 3285 (BWF) §2 | the origination date; the time of day is the OriginationTime tag |
+| Copyright | riff-info | `ICOP` | ExifTool RIFF Info tags |  |
+| Encoder | riff-info | `ISFT` | ExifTool RIFF Info tags | the software that wrote the file |
+| EncodedBy | riff-info | `ITCH`, `IENC`, `CODE` | ExifTool RIFF Info tags | ITCH is the technician |
+| Keywords | riff-info | `IKEY` | ExifTool RIFF Info tags |  |
+| TrackNumber | riff-info | `ITRK`, `IPRT` | ExifTool RIFF Info tags | ITRK, optionally as number/total |
+| TrackTotal | riff-info | `ITRK` | ExifTool RIFF Info tags | the part after the slash of ITRK |
+| Title | aiff | `NAME` | ExifTool AIFF tags |  |
+| Artist | aiff | `AUTH` | ExifTool AIFF tags | AUTH names the author; players show it as the artist |
+| Author | aiff | `AUTH` | ExifTool AIFF tags |  |
+| Copyright | aiff | `(c) ` | ExifTool AIFF tags |  |
+| Comment | aiff | `ANNO`, `COMT` | ExifTool AIFF tags | ANNO, then the text of the first COMT comment |
+| Title | caf-info | `title` | Apple Core Audio Format Specification, Information chunk |  |
+| Artist | caf-info | `artist` | Apple Core Audio Format Specification, Information chunk |  |
+| Album | caf-info | `album` | Apple Core Audio Format Specification, Information chunk |  |
+| Composer | caf-info | `composer` | Apple Core Audio Format Specification, Information chunk |  |
+| Genre | caf-info | `genre` | Apple Core Audio Format Specification, Information chunk |  |
+| Comment | caf-info | `comments`, `comment` | Apple Core Audio Format Specification, Information chunk |  |
+| Date | caf-info | `recorded date`, `year` | Apple Core Audio Format Specification, Information chunk | the recording date, else the year |
+| Copyright | caf-info | `copyright` | Apple Core Audio Format Specification, Information chunk |  |
+| Encoder | caf-info | `encoding application` | Apple Core Audio Format Specification, Information chunk |  |
+| TrackNumber | caf-info | `track number` | Apple Core Audio Format Specification, Information chunk | the track number, optionally as number/total |
+| TrackTotal | caf-info | `track number` | Apple Core Audio Format Specification, Information chunk | the part after the slash of the track number |

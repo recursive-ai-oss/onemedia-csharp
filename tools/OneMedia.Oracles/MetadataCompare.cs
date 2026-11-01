@@ -69,14 +69,16 @@ internal static partial class MetadataCompare
               the others stay reachable through `CommonTags.Values`.
             - Native keys are spelled as the system spells them: four-character atom codes for `ilst` and `udta` (`©nam`), reverse-DNS names for
               key-table metadata (`com.apple.quicktime.title`), `namespace#property` for XMP, upper-case names for Matroska (nested SimpleTags as
-              `PARENT/CHILD`). Matroska names are matched case-insensitively.
+              `PARENT/CHILD`). Matroska names are matched case-insensitively. RIFF INFO keys are the four-character chunk codes (`INAM`).
             - Matroska: only tags that target the file (no track, edition, chapter or attachment UID) feed the view, plus the tags of the only
               track of a single-track file (except `ENCODER`, which names the stream's encoder). Within a key the lowest target level of 30 or above
               comes first, then levels below 30; tags with no language or `und` come before language-specific ones; tags of the file itself
               come before tags of the only track.
             - 3GPP boxes and QuickTime user-data atoms share four-character codes with different layouts; the reader tells them apart as described in `docs/tags.md`.
-            - Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime tag documentation (read as tables of facts), the Matroska
-              tag-name list, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
+            - Vorbis comments (Ogg Vorbis, Opus, FLAC, Theora, Speex) use upper-case field names matched case-insensitively; `TRACKNUMBER` and `DISCNUMBER` may read
+              `number/total` (see `docs/vorbis-comment.md`). FLV script properties (`onMetaData`) are matched case-insensitively by name.
+            - Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime, RIFF Info and FLV tag documentation (read as tables of facts), the Matroska
+              tag-name list, the Vorbis comment specification, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
 
 
             """;
@@ -170,6 +172,12 @@ internal static partial class MetadataCompare
                 TagSystems.Asf => ["ASF"],
                 RecursiveAI.OneMedia.MpegTs.MpegTsTagSystems.CameraData => ["H264"],
                 RecursiveAI.OneMedia.MpegTs.MpegTsTagSystems.ServiceInformation => ["M2TS"],
+                TagSystems.VorbisComment => ["Vorbis", "Opus", "Ogg", "FLAC"],
+                TagSystems.Flac => ["FLAC"],
+                TagSystems.Flv => ["Flash", "FLV"],
+                RawId3Prefix.SystemName => ["ID3"],
+                TagSystems.RiffInfo => ["RIFF"],
+                TagSystems.Dv => ["DV"],
                 _ => t.TrackId > 0 ? ["Track"] : ["Matroska"],
             };
             List<string> etVals = [.. et.Where(kv => groups.Any(g => kv.Key.StartsWith(g, StringComparison.Ordinal))).SelectMany(kv => kv.Value)];

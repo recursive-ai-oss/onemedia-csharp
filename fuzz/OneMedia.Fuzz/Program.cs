@@ -16,10 +16,15 @@ Dictionary<string, FuzzTarget> targets = new(StringComparer.OrdinalIgnoreCase)
     ["matroska"] = MatroskaTarget.Run,
     ["tags"] = TagsTarget.Run,
     ["asf"] = AsfTarget.Run,
+    ["registry"] = RegistryTarget.Run,
+    ["riff-avi"] = RiffAviTarget.Run,
+    ["dv"] = DvTarget.Run,
 };
 CodecFuzz.Register(targets);
 MpegTarget.Register(targets);
 AudioStreamFuzz.Register(targets);
+XiphFlvTargets.Register(targets);
+PcmTargets.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;

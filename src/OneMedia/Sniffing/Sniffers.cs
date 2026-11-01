@@ -69,10 +69,21 @@ public sealed class AviSniffer : IMediaFormatSniffer
     public string DisplayName => "AVI";
 
     /// <inheritdoc />
-    public SniffResult Sniff(ReadOnlySpan<byte> head) =>
-        SniffHelpers.StartsWith(head, "RIFF"u8) && (SniffHelpers.Is(head, 8, "AVI "u8) || SniffHelpers.Is(head, 8, "AVIX"u8))
-            ? new SniffResult(SniffConfidence.Certain)
-            : SniffResult.None;
+    public SniffResult Sniff(ReadOnlySpan<byte> head)
+    {
+        if (!SniffHelpers.StartsWith(head, "RIFF"u8))
+        {
+            return SniffResult.None;
+        }
+
+        if (SniffHelpers.Is(head, 8, "AVI "u8) || SniffHelpers.Is(head, 8, "AVIX"u8))
+        {
+            return new SniffResult(SniffConfidence.Certain);
+        }
+
+        // Observed in files from some cameras: the form type is "AVI" followed by a stray byte and the header list follows as usual.
+        return SniffHelpers.Is(head, 8, "AVI"u8) && SniffHelpers.Is(head, 12, "LIST"u8) ? new SniffResult(SniffConfidence.Possible) : SniffResult.None;
+    }
 }
 
 /// <summary>Recognises ASF (WMV, WMA) by the GUID of its header object, which every ASF file begins with.</summary>

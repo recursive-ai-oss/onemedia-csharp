@@ -40,8 +40,11 @@ internal static class Program
     private static readonly string[] IsoExtensions = [".mp4", ".m4a", ".m4v", ".mov", ".3gp", ".3g2", ".ismv", ".qt"];
     private static readonly string[] OggExtensions = [".ogg", ".opus", ".oga"];
     private static readonly string[] MatroskaExtensions = [".mkv", ".mka", ".webm", ".mk3d", ".mks"];
+    private static readonly string[] PcmExtensions = [".wav", ".wave", ".w64", ".rf64", ".bwf", ".aif", ".aiff", ".aifc", ".caf"];
 
     private static readonly string[] AsfExtensions = [".asf", ".wma", ".wmv", ".wm", ".dvr-ms"];
+    private static readonly string[] AviExtensions = [".avi"];
+    private static readonly string[] DvExtensions = [".dv", ".dif"];
 
     public static int Main(string[] args)
     {
@@ -64,6 +67,10 @@ internal static class Program
             case "atlcompare": return AtlCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "asfinfo": return AsfInfo.Run(o.Files);
             case "asfseek": return AsfSeekCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, "asf"));
+            case "atl": return AtlSummary.Run(o.Files);
+            case "oneaudio-ogg": return OggCompare.Run(o.Files);
+            case "defects": return AllocCheck.Defects(o.Files);
+            case "alloc": return AllocCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
@@ -137,6 +144,11 @@ internal static class Program
             "ac3" => [".ac3", ".eac3", ".ec3"],
             "amr" => [".amr", ".awb"],
             "audio-es" => [".mp3", ".mp2", ".mpa", ".aac", ".ac3", ".eac3", ".ec3", ".amr", ".awb"],
+            "xiph" => [".ogg", ".oga", ".ogv", ".opus", ".spx", ".flac"],
+            "flv" => [".flv"],
+            "pcm" => PcmExtensions,
+            "avi" => AviExtensions,
+            "dv" => DvExtensions,
             _ => [.. IsoExtensions, .. MatroskaExtensions, .. AsfExtensions],
         };
         List<string> files = [];
@@ -185,11 +197,14 @@ internal static class Program
                 List<ProbeStream> streams = FfprobeReader.ReadStreams(file);
                 if (streams.Count == 0)
                 {
-                    // A file ffprobe finds no streams in is agreed on when we reject it too (typed, without an exception).
+                    // A file ffprobe finds no streams in is expected to be refused by us too (a typed error, never a crash), unless a scoped
+                    // "streams" rule accepts that we read it.
                     OurResult rejected = OurReader.Read(registry, file);
-                    report = rejected.Status == "ok"
-                        ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" }
-                        : new FileReport { File = file, Status = "ok", Message = $"neither reads the file: ffprobe finds no streams, ours: {rejected.Message}" };
+                    bool weRead = rejected.Status == "ok" && rejected.Tracks.Count > 0;
+                    bool excused = weRead && exceptions.Match(rejected.Format, "streams", file, null, "", "", "", false, false, 0) is not null;
+                    report = weRead && !excused
+                        ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams, we do" }
+                        : new FileReport { File = file, Status = "ok", Message = weRead ? "only we read streams (excepted)" : $"neither reads the file: ffprobe finds no streams, ours: {rejected.Message}" };
                     // A scoped "open" rule accepts files the oracle itself cannot open.
                     if (report.Status != "ok" && exceptions.Match("*", "open", file, null, "", "", "", false, false, 0) is not null)
                     {
@@ -208,7 +223,7 @@ internal static class Program
                     }
                 }
             }
-            catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception)
+            catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
             {
                 report = new FileReport { File = file, Status = "error", Message = e.GetType().Name + ": " + e.Message };
             }

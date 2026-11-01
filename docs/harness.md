@@ -137,6 +137,10 @@ are reported as notes, not differences.
 (`--budget 25` stops starting files; exit 75 means files remain). `SWEEP_WRAP` gives a command prefix for each chunk, for
 running through a job queue. Results are per file, so a rerun resumes.
 
+`tools/xiph-flv/sweep.sh xiph|flv` runs the same `diff` for Ogg/FLAC (`--family xiph`) and FLV (`--family flv`), then `infocheck`, and for Ogg/FLAC also
+`oneaudio-ogg` (packets against OneAudio's Ogg reader), `atl` (tags against ATL.NET) and `meta` (tags and facts against ExifTool and MediaInfo).
+`tools/xiph-flv/generate.sh` writes the fixtures (`LARGE=1` adds the 2 GB files).
+
 ## I/O measurement
 
 `OneMedia.Oracles io` measures the cost of probing each file, in bytes read and request or call counts:

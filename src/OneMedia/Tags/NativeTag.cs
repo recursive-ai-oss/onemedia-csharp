@@ -41,6 +41,39 @@ public static class TagSystems
 
     /// <summary>Lyrics3 v2.00 fields (and the block itself when it cannot be split), keyed by the three-letter field code.</summary>
     public const string Lyrics3 = "lyrics3";
+    /// <summary>Vorbis comments, in Ogg (Vorbis, Opus, FLAC, Theora, Speex) and in native FLAC files.</summary>
+    public const string VorbisComment = "vorbis";
+
+    /// <summary>FLAC metadata blocks other than the Vorbis comment: PICTURE, APPLICATION, CUESHEET, SEEKTABLE.</summary>
+    public const string Flac = "flac";
+
+    /// <summary>The properties of an FLV <c>onMetaData</c> script data tag.</summary>
+    public const string Flv = "flv";
+    /// <summary>RIFF <c>LIST INFO</c> text chunks (<c>INAM</c>, <c>IART</c>…) of WAVE and AVI files, and the AVI <c>IDIT</c> date chunk.</summary>
+    public const string RiffInfo = "riff-info";
+
+    /// <summary>The Broadcast Wave <c>bext</c> chunk, EBU Tech 3285: one tag per field.</summary>
+    public const string Bext = "bext";
+
+    /// <summary>The <c>iXML</c> chunk: one tag per text element, keyed by its path.</summary>
+    public const string IXml = "ixml";
+
+    /// <summary>The <c>axml</c> chunk (an XML document of the Audio Definition Model), as one text tag.</summary>
+    public const string AXml = "axml";
+
+    /// <summary>The <c>cart</c> chunk (AES46 broadcast cart): one tag per field.</summary>
+    public const string Cart = "cart";
+
+    /// <summary>AIFF text chunks: <c>NAME</c>, <c>AUTH</c>, <c>(c) </c>, <c>ANNO</c> and <c>COMT</c>.</summary>
+    public const string Aiff = "aiff";
+
+    /// <summary>The CAF <c>info</c> chunk: key and value strings.</summary>
+    public const string CafInfo = "caf-info";
+
+    /// <summary>An ID3v2 tag stored in a chunk (<c>id3 </c>, <c>ID3 </c>) of a WAVE or AIFF file, kept as one raw binary tag.</summary>
+    public const string Id3Chunk = "id3-chunk";
+    /// <summary>DV packs (IEC 61834 / SMPTE 314M) of the first frame.</summary>
+    public const string Dv = "dv";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>
