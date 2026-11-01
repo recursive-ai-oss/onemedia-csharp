@@ -37,8 +37,8 @@ one() {
     MP4Box -info "$f" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$f||g" | sort -u > "$o.in.mp4box"
     MP4Box -info "$o" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$o||g" | sort -u > "$o.out.mp4box"
     newbox=$(comm -13 "$o.in.mp4box" "$o.out.mp4box" | wc -l)
-    ffmpeg -threads 1 -v error -i "$f" -f null - 2>&1 | sort -u > "$o.in.ffmpeg"
-    ffmpeg -threads 1 -v error -i "$o" -f null - 2>&1 | sort -u > "$o.out.ffmpeg"
+    ffmpeg -threads 1 -v error -i "$f" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$o.in.ffmpeg"
+    ffmpeg -threads 1 -v error -i "$o" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$o.out.ffmpeg"
     newff=$(comm -13 "$o.in.ffmpeg" "$o.out.ffmpeg" | wc -l)
     printf '%s\t%s\t%s\tmp4box_new=%s\tffmpeg_new=%s\n' "${f#"$CORPUS"/}" "$copy" "$cmp" "$newbox" "$newff"
   else
