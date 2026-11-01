@@ -41,6 +41,7 @@
     <!-- The codec fuzz targets double as robustness checks: the tests feed them random, truncated and bit-flipped input. -->
     <Compile Include="../../fuzz/OneMedia.Fuzz/CodecFuzz.cs" Link="Codecs/CodecFuzz.cs" />
     <None Include="../../testdata/audio/*" Link="testdata/audio/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/heaac/*.m4a" Link="testdata/heaac/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
   </ItemGroup>

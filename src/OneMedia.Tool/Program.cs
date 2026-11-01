@@ -114,6 +114,11 @@ static void WriteText(MediaFile media)
         if (t.Audio is { } a)
         {
             sb.Append(CultureInfo.InvariantCulture, $" {a.SampleRate} Hz {a.Channels} ch");
+            if (t.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.SbrImplied))
+            {
+                string kind = heaac.PsPresent ? "SBR+PS" : heaac.SbrImplied ? "SBR implied by the declared rate" : "SBR";
+                sb.Append(CultureInfo.InvariantCulture, $" [{kind}: output {heaac.SampleRate} Hz, core {heaac.CoreSampleRate} Hz]");
+            }
         }
 
         if (t.Language is not null)
@@ -165,12 +170,17 @@ static void WriteFactText<T>(string name, Fact<T> fact, Func<T, string> show)
     {
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{name}: {show(best.Value)} ({best.Source}, {fact.Candidates.Count} candidate(s))"));
     }
+    else
+    {
+        Console.WriteLine(name + ": none");
+    }
 }
 
 static void WriteFactJson<T>(Utf8JsonWriter w, string name, Fact<T> fact, Func<T, string> show)
 {
     if (!fact.HasValue)
     {
+        w.WriteNull(name);
         return;
     }
 
