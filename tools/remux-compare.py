@@ -302,8 +302,9 @@ def main():
             if count_kind:
                 del classes[count_kind]
                 diff -= count_diff
+            timing_only = bool(sc.get("pts")) and not (sc.get("size") or sc.get("hash") or count_diff)
             sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
-            sc["explained:framing-only" if not (sc.get("pts") and not sc.get("size") and not sc.get("hash") and not count_diff) else "explained:framing-and-timing"] += sd + count_diff
+            sc["explained:framing-and-timing" if timing_only else "explained:framing-only"] += sd + count_diff
             sm += sd
             sd = 0
             sf = []
