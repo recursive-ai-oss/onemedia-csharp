@@ -63,7 +63,7 @@ Block timestamps are in `TimestampScale` units (default 1 ms; a Matroska source 
 
 Tracks whose packet times already exclude `CodecDelay` (`TrackEditInfo.PacketTimesIncludePriming`: Matroska and Ogg Opus) get it added back to the Block timestamp; an ISO Opus track (packet times start at 0, the pre-skip is discarded by the decoder) is written with its times as they are, and `CodecDelay` states the pre-skip. AAC priming from an edit list is not carried (Matroska readers do not apply `CodecDelay` to AAC consistently).
 
-A packet with an unknown duration stays unknown (no `BlockDuration`): the neutral contract says to derive it from the next decode time, but a lace member or a subtitle has no next time to derive from.
+A packet with an unknown duration (or a zero duration on audio or video, which states nothing) gets the distance to the next decode time of its track, as the neutral contract says, when that packet is still held: in seekable mode, within the open Cluster, and the previous packet is completed before a Cluster is cut. It is then a `BlockDuration`, or covered by a learned `DefaultDuration`. Left unknown: the last packet of a track; every packet in live mode (a block is on the wire before the next packet exists; the duration comes from the declared frame rate or the codec's frame length instead); members of a lace (they share one time); and subtitle packets (their duration is their meaning).
 
 ## Not carried
 
@@ -79,6 +79,11 @@ Rotation (`ProjectionPoseRoll`), interlacing and field order, stereo mode, conte
 | `rounded-to-the-output-time-base` | Times differ by under half an output unit | The source's TimestampScale is finer or does not divide a second; ffprobe's own integer time base for such a scale is approximate (1e-4) |
 | `pts-as-ffprobe-gives-for-the-input` / `duration-as-ffprobe-gives-for-the-input` | Our reader and ffprobe disagree, but ffprobe says the same for input and output | A documented reader/ffprobe difference (`docs/matroska-differential.md`) |
 | `pts-not-stated-by-ffprobe-for-the-input` | ffprobe gives no presentation time for packets of the input (MPEG-4 with B-frames) and does for the output | ffprobe derives them from our explicit block times; ffmpeg's null muxer then warns about the dts it generates |
+| `duration-derived-from-next-dts` | ffprobe shows a duration for the output where the input stated none | The muxer derived it from the next decode time (checked numerically by the tool) |
+| `duration-truncated-from-default-duration-by-ffprobe` | Durations differ by one millisecond | ffprobe truncates a nanosecond `DefaultDuration` (41.67 ms) where we round to the nearest unit (42) |
+| `ffprobe-gives-the-default-duration-for-a-shorter-last-block` | The last packet is shorter than the others (an edit-list trim) | We write its `BlockDuration` (checked with mkvinfo); ffprobe 7.0.2 reports `DefaultDuration` |
+| `key-as-ffprobe-gives-for-the-input` | ffprobe marks a key frame the container does not | ffmpeg's MPEG-4 part 2 parser marks I-VOPs itself, for the input as well |
+| `ffprobe-reframes-the-input-the-same-way` | ffprobe lists other packet counts than the container has | A QuickTime MP3 track stored one byte per sample is re-framed by ffmpeg's parser for the input too; we copy the samples as stored |
 | `duration-from-default-duration` | ffprobe shows a duration for the output where the input stated none | We state a `DefaultDuration` the input lacked (learned or from the codec) |
 | `ffprobe-splits-blocks(-of-the-input-too)` | ffprobe lists more packets than blocks | RealAudio de-interleaving, identical for the input |
 | invisible flag | ffprobe shows no `D` for a block's invisible flag | Checked with our reader instead: the flag survives |
