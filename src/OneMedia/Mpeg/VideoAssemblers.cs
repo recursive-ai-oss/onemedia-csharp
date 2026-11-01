@@ -144,7 +144,7 @@ internal abstract class VideoAssembler : TrackAssembler
 
             if (Parameters is { FrameRateNumerator: > 0, FrameRateDenominator: > 0 } p)
             {
-                return ((Clock * p.FrameRateDenominator) + (p.FrameRateNumerator / 2)) / p.FrameRateNumerator;
+                return Clock * p.FrameRateDenominator / p.FrameRateNumerator; // rounded down, as the packet's whole ticks
             }
 
             return 0;
@@ -155,12 +155,13 @@ internal abstract class VideoAssembler : TrackAssembler
     /// Takes the first <paramref name="length"/> buffered bytes as one access unit. <paramref name="fieldParity"/> is 0 or 1 when the
     /// unit is a single field picture (top or bottom), -1 for a frame.
     /// </summary>
-    protected void CutUnit(int length, bool key, int temporalReference = -1, int fieldParity = -1, int extraHalves = 0)
+    protected void CutUnit(int length, bool key, int temporalReference = -1, int fieldParity = -1, int extraHalves = 0, bool weakKey = false)
     {
         TakeStamp(Head, out PesStamp stamp, out long pos);
         long pts, dts;
         if (ElementaryMode)
         {
+            key |= weakKey;
             if (_rateNumerator == 0)
             {
                 long n = Parameters is { FrameRateNumerator: > 0, FrameRateDenominator: > 0 } fp ? fp.FrameRateNumerator : 25;
@@ -198,6 +199,12 @@ internal abstract class VideoAssembler : TrackAssembler
         }
 
         bool field = fieldParity >= 0;
+        bool secondField = field && _openParity >= 0 && _openParity != fieldParity;
+        if (weakKey && !secondField)
+        {
+            key = true; // an intra picture that opens with a parameter set, and is not the second field of a frame
+        }
+
         if (field)
         {
             long half = (NominalDuration + 1) / 2;
@@ -452,7 +459,7 @@ internal sealed class NalVideoAssembler : VideoAssembler
 
         // A unit that opens with a sequence parameter set and codes an intra picture is where a decoder can start, as encoders
         // that write no recovery point SEI intend (observed in AVCHD camera streams).
-        CutUnit(length, _key || (_unitHasSps && _unitIntra), -1, _unitParity);
+        CutUnit(length, _key, -1, _unitParity, 0, _unitHasSps && _unitIntra);
         _seenVcl = false;
         _key = false;
         _unitHasSps = _unitIntra = false;

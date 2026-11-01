@@ -30,14 +30,28 @@ Sniffers for the raw video kinds answer `Likely`, not `Certain`: an Annex B stre
   Seek targets are in the same raw time; a target before the first keyframe lands on the first keyframe.
   A unit without its own stamp gets `dts = previous dts + duration`; presentation time is unknown for H.264/HEVC without a stamp (the reordering is not
   derived from picture order count). Frames after the first in a PES get `pts` from the frame length of the codec.
+  A PES packet that carries only a PTS gives `dts = pts` (H.222.0 §2.4.3.7), also when the pictures are reordered; the decode times of such a stream are then not monotonic.
+- **Field pictures.** An H.264 stream may code each frame as two field pictures, each its own access unit. The slice header says which (`field_pic_flag`, `bottom_field_flag`, §7.3.3;
+  `frame_num` width and `frame_mbs_only_flag` come from the sequence parameter set). A field lasts half a frame (rounded down); the second field of a pair that has no stamp of its own
+  is half a frame (rounded up) after the first, in both `pts` and `dts`. MPEG-2 field pictures are paired by `temporal_reference` and opposite parity and make one packet.
+- **Durations.** A video packet lasts one frame at the rate the sequence header declares (rounded down to a whole 90 kHz tick); an MPEG-2 picture with `repeat_first_field` lasts
+  1.5 frames (progressive sequences: 2 or 3 frames, §6.3.10). Streams without a declared rate take the distance to the next decode time.
+  The container duration is the audio and video range: a subtitle or data stream that starts early does not move it (found with `dean00007.mts`, whose subtitle starts 66 ms early).
 - **Duration** = latest `pts + duration` minus earliest `pts` over all tracks, read from the last 1 MiB when the source is seekable; forward-only sources report none.
-- **Keyframes.** From `random_access_indicator` of the adaptation field where the stream sets it; otherwise from the bitstream (IDR pictures, intra random access points; MPEG-2 I pictures).
+- **Keyframes.** From the bitstream: H.264 IDR pictures and recovery point SEI messages (the SEI is unescaped before its payload sizes are read), HEVC IRAP pictures, MPEG-2 I pictures,
+  MPEG-4 Part 2 intra VOPs; and an H.264 intra picture that opens with a sequence parameter set (cameras that write no recovery point SEI mark GOP starts this way: `avchd_lite…MTS`),
+  unless it is the second field of a frame. The adaptation field's `random_access_indicator` is not used: cameras set it inconsistently.
 - **Probe.** Reads from the front until every PMT has been seen and every track is described, but at most 5,000,000 bytes (`MpegTsDemuxer.ProbeLimitBytes`), then the last 1 MiB for the
   duration. Service information (SDT, EIT) is read only from the probed front. A 2 GB transport stream therefore costs a fixed prefix and a fixed tail, not a scan.
 - **Seeking** has no index to use: the file is bisected on the presentation time of the first video stream (to a 2 MiB window), then read forward to the last keyframe at or before the target.
 - **Descriptors.** Language (`0x0A`), registration (`0x05`), AC-3 (`0x6A`), E-AC-3 (`0x7A`), DTS (`0x7B`), AAC (`0x7C`), Opus/extension (`0x7F`) and the ISO 639 code identify
   codecs and languages; stream types map to codec ids in `TsStreamTypes`. `mpeg1video`, `mp2`, `mp1` and `aac-latm` are codec ids first used here.
 - **M2TS.** A 192-byte stream with an AAC or other private stream and no descriptor is identified by sniffing its first payload (`ProbingAssembler`).
+  The probe buffers up to 8 KiB of the stream before it decides, because a capture that starts mid-frame shows its first AC-3 sync word (`0x0B77`, checked against the next frame's) only later.
+- **No tables.** A capture without PAT/PMT in its first packets (`foxksaz.ts`) is described by guessing from the PES stream ids; the search for tables runs for at most 24 MB. Tables that
+  arrive later rewind the read and replace the guesses. ATSC stream type `0x80` is MPEG-2 video unless the packets are M2TS or the program carries an `HDMV` registration (then LPCM); `0x81` is AC-3.
+- **Damaged streams.** A byte that is not `0x47` where a packet should start makes the reader search for the next place where packets line up; the tail scan for the duration does the same.
+  A packet with `transport_error_indicator` set, or a repeated packet (same continuity counter and content), is dropped and reported; the unit that spans a loss is marked corrupt.
 
 ### Tags and facts
 
@@ -59,6 +73,7 @@ One sample cannot settle what the flag byte means, so the offset ExifTool prints
 
 Pack headers (MPEG-2 with the system clock reference extension and program mux rate; MPEG-1), system header, program stream map (stream types for codec ids), PES with PTS/DTS.
 `private_stream_1` sub-streams: AC-3 / E-AC-3 (`0x80`–`0x87`, framed), DTS (`0x88`–`0x8F`), LPCM (`0xA0`–`0xA7`) and DVD sub-pictures (`0x20`–`0x3F`) pass through one PES payload per packet.
+A DVD sub-picture unit (its first two bytes give its size) is joined from as many PES packets as it needs. DTS and LPCM payloads pass through one PES per packet.
 `private_stream_2` (the VOB navigation packs, `00 00 01 BF`) becomes a data track with codec `dvd-nav`, one packet per pack, payload unchanged.
 MPEG-2 pictures without a PES stamp get a presentation time from the temporal reference placed relative to the GOP's last stamped picture.
 Probe: at most 5,000,000 bytes from the front (at least 256 KiB), tail 1 MiB for the duration, bisect seek as for transport streams.
@@ -99,14 +114,52 @@ but it holds a pool thread while it waits and is **not suitable for single-threa
 
 ## Differences from ffprobe 7.0.2
 
-Each is scoped in `tools/OneMedia.Oracles/exceptions.tsv`. Counts are in the sweep summary below.
+The pinned ffprobe/ffmpeg 7.0.2 static build **crashes (segmentation fault)** on any transport stream that contains the SDT ffmpeg's own muxer writes. [Agent default] The packet
+differential therefore runs on copies with that table removed (`tools/corpus/ts_tools.py stripsdt`, kept under `generated/mpeg/tsx/`); the SDT itself is checked by the unit tests and by
+ExifTool and MediaInfo. Every other difference below is a scoped rule in `tools/OneMedia.Oracles/exceptions.tsv` (rule, follows, reason); a rule only excuses the difference it names.
+Sweep (`tools/run-mpeg-sweep.sh`): 149 files (generated transport, program and elementary streams, and the published samples), 54,785 ffprobe packets and 53,814 of ours (the difference is the classes below); 0 unexplained.
 
 | Class | Scope | What differs and why |
 |---|---|---|
-| `raw-stream-dts` | `h264`, `hevc`, `vvc`, `mpegvideo` | a raw stream has no timestamps; ffprobe prints N/A for dts, we count frames at the frame rate |
-| `raw-mpeg2-pts` | `mpegvideo` | ffprobe derives pts from temporal references; ours is unknown in elementary streams |
+| `raw-stream-dts`, `raw-mpeg2-pts`, `raw-stream-duration-rounding` | `h264`, `hevc`, `vvc`, `mpegvideo` | a raw stream has no timestamps: ffprobe prints N/A (or derives pts from temporal references, or rounds the frame duration in its 1/1200000 base); ours counts frames at the stream's rate |
 | `ivf-pos` | `ivf` | ffprobe's `pos` is the frame header, ours the payload (the packet's source range) |
-| `nav-packets` | `mpegps` data track `dvd_nav_packet` | ffprobe lists no packets for the navigation stream |
-| `audio-pts-interpolation` | TS/PS audio | see below |
+| `nav-packets` | `mpegps` `dvd_nav_packet` | ffprobe lists no packets for the navigation stream |
+| `unstamped-units` | TS/PS video | a picture inside a PES without a timestamp has none in ffprobe; ours continues decode time and, for MPEG-2, places the picture by temporal reference |
+| `pts-only-with-reordering` | `Aladin.mpg` | PES packets with PTS only on a reordered stream: ours `dts = pts` per H.222.0, ffprobe derives a monotonic dts |
+| `pts-from-neighbour` | TS subtitle/data | ffprobe gives a teletext PES without PTS the time of its neighbours; ours leaves it unknown |
+| `leading-fragment`, `leading-fragment-stamp`, `pos-of-leading-fragment`, `leading-junk-in-first-frame` | TS/PS | a capture that starts mid-unit: ffprobe lists the tail as a packet (and gives it the first PES packet's stamp and position, or merges up to 564 junk bytes into the first audio frame); ours starts at the first unit that begins in the file and gives it the stamp (H.222.0 §2.4.3.7). The harness pairs packets after dropping the 1–3 surplus that pair best |
+| `cut-tail` | files cut inside a frame | ffprobe lists the incomplete last audio frame; ours stops before it and reports `Truncated` |
+| `late-stream-and-cut-tail` | `TITLE01-ANGLE1.VOB`, `dvd.mpeg` | a sub-picture stream first seen after the probed prefix (1.66 MB into 3.7 MB) is a defect (`ps.late-stream`), not a track |
+| `dvd-lpcm-header`, `dvd-lpcm-duration` | `mpegps` LPCM | ffprobe keeps the 3-byte audio header in each packet and derives a duration from it; ours delivers the samples |
+| `dts-core-frames` | `mpegps` DTS | ffprobe frames DTS; ours delivers each PES payload as one packet (no DTS framer in 0.2) |
+| `opus-in-ts-control-headers` | `mpegts` Opus | ffprobe splits PES payloads by the Opus control headers; ours does not (not implemented in 0.2) |
+| `mpeg4-visual-duration` | `mpegts` MPEG-4 Part 2 | no frame rate is read from its headers; ours has key frames, ffprobe also has durations |
+| `declared-rate` | `avchd_lite…MTS` | the SPS declares 59.94 Hz, the camera stamped 29.97 Hz; ours states the declared rate |
+| `measured-spacing` | `foxksaz.ts` | video without a sequence header at the start: ours takes durations from stamp spacing (1501/1502), ffprobe 1501 |
+| `timestamp-wrap-base` | `wrap-33bit.ts` | the stream starts just below 2^33: ffprobe subtracts 2^33 (negative times), ours keeps the stamps and continues upward through the wrap |
+| `positions-in-204-byte-packets` | `h264-aac-204.ts` | ffprobe's `pos` is 16 bytes short; ours is the offset of the transport packet |
+| `duplicate-packet-payload`, `transport-error-payload` | damaged generated streams | ffprobe appends the payload of repeated and error-flagged packets; ours drops them (H.222.0 §2.4.3.3) and reports |
+| `garbage-between-packets` | `block_green…ts` | ffprobe keeps the 132 stray bytes in the picture; ours skips them |
+| `broken-timestamps` | `broken-ntsc.mpg`, `block_green…ts` | the stamps are irregular on purpose; the two read different ones (and the pinned ffprobe reports a six-hour duration for 13 s) |
+| `ffprobe-open-fails` | `h264-aac-garbage.ts`, `res_change_ffmpeg_aspect.ts` | the pinned ffprobe reports no streams; ffprobe 8.0 lists them, with the packets equal to ours but for the garbage bytes and one 66-byte leading junk |
+| `ffprobe-duration-glitch` | `nature_704…h264` | ffprobe prints a one-tick duration for most packets |
+| `duration-tail-estimate` | container duration (`infocheck`) | ours is the last stamped PES packet plus one frame over the last 1 MiB; ffprobe parses the tail's packets. Within 40 ms on every file |
+| `duration-from-bitrate` | MPEG-1/2 elementary streams | ffprobe estimates a duration from the bit rate; ours is unknown |
+| `mpeg1-video-detected` | `mpeg1-mp2.ts` | PMT type `0x01` and a sequence header without extension: MPEG-1; ffprobe names all MPEG video `mpeg2video` |
 
-<!-- sweep results and the audio class are added after the final run -->
+Observations that settled choices: in `dean00007.mts` and `avchd_lite…MTS` the adaptation field's `random_access_indicator` is never set, so key frames come from the bitstream; the `avchd_lite` camera
+marks its GOP starts with SPS+PPS and an I slice and no recovery point SEI, and ffprobe marks those pictures (and not the second field of an IDR frame that repeats the parameter sets, as in `HD-h264.ts`).
+
+## Large file
+
+`generated/mpeg/large/ts-2gb.ts` (2,371,987,540 bytes, H.264 + AC-3, the seed looped; SDT stripped for the pinned ffprobe). Probe and metadata read, ours next to the tools
+(bytes / reads; local `strace` counts, HTTP range server for the second column):
+
+| Tool | Local reads | Over HTTP range |
+|---|---|---|
+| ours | 1,576,976 B / 4 | 1,576,976 B / 5 requests |
+| ffprobe 7.0.2 | 5,460,112 B / 170 | 5,591,184 B / 3 |
+| MediaInfo 26.10 | 17,402,896 B / 266 | 17,629,008 B / 2 |
+| ExifTool 13.60 | 509,424 B / 64 | — |
+
+Full pull of the file: 87,738 packets, 2.31 GB, **0 bytes allocated per packet after warm-up**, peak working set 44 MB (the process, not the file), 0.9 s with the file in the page cache.
