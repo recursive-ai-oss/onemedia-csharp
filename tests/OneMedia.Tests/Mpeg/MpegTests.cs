@@ -225,4 +225,28 @@ public class MpegTests
         MediaMetadata m = d.ReadMetadata();
         Assert.NotNull(m.Facts.Duration);
     }
+
+    [Fact]
+    public void AvchdSidecarsBesideTheStreamAreListed()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onemedia-avchd-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.Combine(root, "BDMV", "STREAM"));
+            Directory.CreateDirectory(System.IO.Path.Combine(root, "BDMV", "CLIPINF"));
+            Directory.CreateDirectory(System.IO.Path.Combine(root, "BDMV", "PLAYLIST"));
+            string stream = System.IO.Path.Combine(root, "BDMV", "STREAM", "00001.MTS");
+            File.Copy(Path("h264-aac.m2ts"), stream);
+            File.WriteAllBytes(System.IO.Path.Combine(root, "BDMV", "CLIPINF", "00001.CPI"), new byte[40]);
+            File.WriteAllBytes(System.IO.Path.Combine(root, "BDMV", "CLIPINF", "00002.CPI"), new byte[40]);
+            File.WriteAllBytes(System.IO.Path.Combine(root, "BDMV", "PLAYLIST", "00000.MPL"), new byte[24]);
+            using MediaFile file = Media.Open(stream);
+            Tags.ITagContainer sidecars = Assert.Single(file.Metadata.Containers, c => c.System == MpegTsTagSystems.Sidecars);
+            Assert.Equal(["00000.MPL", "00001.CPI"], sidecars.Tags.Select(t => t.Key).Order(StringComparer.Ordinal).ToArray());
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }

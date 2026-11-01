@@ -411,7 +411,7 @@ public sealed class MpegPsDemuxer : IDemuxer, IMetadataProvider
 
         CodecParameters? p = a.Parameters;
         VideoTrackInfo? video = kind == TrackKind.Video && p is not null
-            ? new VideoTrackInfo(p.Width, p.Height, 0, Math.Max(1, p.SarWidth), Math.Max(1, p.SarHeight), p.FrameRateNumerator, p.FrameRateDenominator)
+            ? new VideoTrackInfo(p.Width, p.Height, 0, Math.Max(1, p.SarWidth), Math.Max(1, p.SarHeight), FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator).Numerator, FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator).Denominator)
             : null;
         AudioTrackInfo? audio = kind == TrackKind.Audio && p is not null ? new AudioTrackInfo(p.SampleRate, p.Channels) : null;
         return new MediaTrack

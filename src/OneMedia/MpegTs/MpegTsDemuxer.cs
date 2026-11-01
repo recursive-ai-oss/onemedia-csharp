@@ -41,6 +41,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     private bool[] _enabled = [];
     private bool _eof;
     private bool _frozen;
+    private string? _path;
     private MediaTime _duration = MediaTime.Unknown;
     private MediaTime _startTime = MediaTime.Unknown;
     private long _firstPcr = -1, _firstPcrPos, _lastPcr = -1, _lastPcrPos;
@@ -115,7 +116,9 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     {
         ArgumentNullException.ThrowIfNull(source);
         options ??= MediaOpenOptions.Default;
-        return Create(new ByteInput(source, options.LeaveOpen), options, cancellationToken);
+        MpegTsDemuxer d = Create(new ByteInput(source, options.LeaveOpen), options, cancellationToken);
+        d._path = (source as FileMediaSource)?.Path;
+        return d;
     }
 
     /// <summary>Opens a transport stream that can only be read once, front to back. Seeking and the duration are unavailable.</summary>
@@ -439,7 +442,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         AudioTrackInfo? audio = null;
         if (trackKind == TrackKind.Video && p is not null)
         {
-            video = new VideoTrackInfo(p.Width, p.Height, 0, Math.Max(1, p.SarWidth), Math.Max(1, p.SarHeight), p.FrameRateNumerator, p.FrameRateDenominator);
+            video = new VideoTrackInfo(p.Width, p.Height, 0, Math.Max(1, p.SarWidth), Math.Max(1, p.SarHeight), FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator).Numerator, FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator).Denominator);
         }
         else if (trackKind == TrackKind.Audio && p is not null)
         {
@@ -1046,6 +1049,8 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     {
         return _metadata ??= TsMetadata.Build(this, _info, cancellationToken);
     }
+
+    internal string? Path => _path;
 
     internal IReadOnlyList<ProgramState> ProgramStates => _programs;
 

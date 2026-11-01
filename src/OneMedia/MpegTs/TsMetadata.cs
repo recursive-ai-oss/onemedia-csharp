@@ -13,6 +13,9 @@ public static class MpegTsTagSystems
 
     /// <summary>AVCHD camera data (MDPM) carried in the H.264 SEI: recording time, camera maker and the entries not decoded.</summary>
     public const string CameraData = "mdpm";
+
+    /// <summary>AVCHD clip information and playlist files found beside the stream, listed by name, path and size; their contents are not decoded.</summary>
+    public const string Sidecars = "avchd-sidecar";
 }
 
 /// <summary>A flat list of tags read from one table, with the transport packet that began it as its range.</summary>
@@ -216,6 +219,7 @@ internal static class TsMetadata
         }
 
         AddMdpm(info.Mdpm, containers, facts, io);
+        Avchd.AvchdSidecars.AddTo(demuxer.Path, containers, io);
         return new MediaMetadata(containers, [], facts.Build(), defects);
     }
 

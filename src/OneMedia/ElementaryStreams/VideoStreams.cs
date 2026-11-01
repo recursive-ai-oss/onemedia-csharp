@@ -274,7 +274,7 @@ public sealed class VideoStreamDemuxer : IDemuxer, IMetadataProvider
             VideoStreamKind.MpegVideo => a.DetectedCodec.IsUnknown ? CodecId.Mpeg2Video : a.DetectedCodec,
             _ => CodecId.Av1,
         };
-        VideoTrackInfo? video = p is not null ? new VideoTrackInfo(p.Width, p.Height, 0, Math.Max(1, p.SarWidth), Math.Max(1, p.SarHeight), p.FrameRateNumerator, p.FrameRateDenominator) : null;
+        VideoTrackInfo? video = p is not null ? new VideoTrackInfo(p.Width, p.Height, 0, Math.Max(1, p.SarWidth), Math.Max(1, p.SarHeight), FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator).Numerator, FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator).Denominator) : null;
         _tracks =
         [
             new MediaTrack
