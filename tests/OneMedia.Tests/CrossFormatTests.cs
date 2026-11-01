@@ -145,4 +145,25 @@ public class CrossFormatTests
         {
         }
     }
+
+    // Found by the registry fuzz target: a fragment whose track run declares millions of samples in a dozen bytes. With a sample-table ceiling
+    // the run is refused at once instead of being counted sample by sample.
+    [Fact]
+    public void ARunThatDeclaresMoreSamplesThanTheCeilingIsRefusedAtOnce()
+    {
+        byte[] input = File.ReadAllBytes(DataPath("fuzz", "registry/registry-fragment-trun-millions-of-samples.bin"));
+        MediaOpenOptions options = new() { Limits = new MediaLimits { MaxSampleTableEntries = 1_000_000 } };
+        using IDemuxer d = MediaFormats.Default.Open(new MemoryMediaSource(input.AsMemory(1)), options);
+        int packets = 0;
+        Exception? stopped = Record.Exception(() =>
+        {
+            while (d.TryReadPacket(out _))
+            {
+                packets++;
+            }
+        });
+
+        Assert.True(stopped is null or MediaLimitExceededException, stopped?.ToString());
+        Assert.True(packets <= 3);
+    }
 }

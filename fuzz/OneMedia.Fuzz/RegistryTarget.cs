@@ -22,7 +22,9 @@ internal static class RegistryTarget
         bool seek = (input[0] & 1) != 0;
         bool metadata = (input[0] & 2) != 0;
         byte[] file = input[1..].ToArray();
-        MediaLimits limits = new() { MaxAllocationBytes = 4 << 20, MaxElementCount = 100_000, MaxStructureDepth = 24, MaxPacketBytes = 1 << 20, MaxTagBytes = 1 << 20 };
+        // A track run may declare millions of samples in a dozen bytes; the default ceiling (100 million) allows that, and an instrumented run then
+        // takes seconds per input. The target keeps the ceiling low so that it measures parsing, not counting.
+        MediaLimits limits = new() { MaxAllocationBytes = 4 << 20, MaxElementCount = 100_000, MaxStructureDepth = 24, MaxPacketBytes = 1 << 20, MaxTagBytes = 1 << 20, MaxSampleTableEntries = 1_000_000 };
         MediaOpenOptions options = new() { Limits = limits };
         try
         {

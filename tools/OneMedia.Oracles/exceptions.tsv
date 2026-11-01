@@ -263,3 +263,25 @@ ogg	info-duration	file=chained-	ignore	ours	chained-duration: the duration of a 
 *	info-open	file=swb.wav	ignore	ours	nist-sphere (see sw1038t_short).
 *	info-open	file=telephone.wav	ignore	ours	nist-sphere (see sw1038t_short).
 avi	info-duration	file=verona60avi56k	ignore	ours	audio-header-length: the audio stream header states 30864 s of samples for a 1.9 MB file; ffprobe takes the duration from the video stream, ours is the longest stream header (docs/avi.md).
+isobmff	info-duration	*	ffprobe-na	ours	fragmented-no-stated-duration: a fragmented file whose movie header states no duration (or only the first fragment's); ffprobe scans every fragment for the length, ours stays structural on open and reports the box value or none (docs/isobmff.md).
+isobmff	info-duration	file=dash-flags	ignore	ours	fragmented-no-stated-duration: the movie header states the first fragment only.
+isobmff	info-duration	file=MAV_0001	ignore	ours	fragmented-shorter-header: mvhd and mdhd state the first fragment (4 s); the mehd and the fragments total 29.16 s, which ffprobe sums (docs/isobmff.md).
+isobmff	info-duration	file=W41CA_MAV_0000	ignore	ours	fragmented-shorter-header: mvhd states 15 s, mehd and the fragments total 22.53 s.
+isobmff	info-duration	file=au30sec	ignore	ours	fragmented-shorter-header: mvhd states 15 s, mehd and the fragments total 30.2 s.
+isobmff	info-duration	file=Fraunhofer__a_driving_force	ignore	ours	wrong-movie-timescale: the movie header states 4,352 s, 32 times the tracks' 136 s; ours reports the header, TracksDuration is 136 s (docs/isobmff.md).
+isobmff	info-duration	file=apple_cv.mov	ignore	neither	broken-header-fallback: ffprobe reports missing mandatory atoms and derives a length from packets (docs/isobmff.md).
+isobmff	info-duration	file=ctk_cpro.mov	ignore	neither	broken-header-fallback (see apple_cv).
+isobmff	info-codec	file=apple_cv.mov	ignore	ours	cinepak-entry-unmapped: the cvid sample entry has no neutral codec id in the ISO reader; the track keeps its FourCC.
+isobmff	info-codec	file=ctk_cpro.mov	ignore	ours	cinepak-entry-unmapped (see apple_cv).
+isobmff	info-codec	file=0625rvt6-42.mov	ignore	ours	ima4-entry-unmapped: the QuickTime ima4 sound entry has no neutral codec id in the ISO reader; the track keeps its FourCC.
+isobmff	info-open	file=0625rvt6-42.mov	ignore	ours	h263-picture-size: ffprobe reads the H.263 picture header (352x288); the track header and sample entry say 240x180.
+matroska	info-open	file=atlantis405-test.mkv	ignore	ours	ac3-header-channels: the track header says 2 channels, the AC-3 bitstream 5.1 (ffprobe reads the bitstream); ours is the header.
+*	streams	file=freeformat	ignore	ours	free-format-unopened: the pinned ffprobe finds no stream in a free-format MP3 (bit rate 0 in every header); ours reads it, and its packets equal those of the constant-bit-rate twin it was made from (docs/audio-es.md).
+*	streams	file=caf-pakt-missing	ignore	ours	tolerant-damage: a CAF with variable-size packets and no packet table; ffprobe rejects it ("Missing packet table"), ours reads it tolerantly and reports the missing table as a defect (docs/pcm-files.md).
+*	streams	file=caf-pakt-variable	ignore	ours	tolerant-damage: a CAF whose AAC magic cookie is damaged; ffprobe rejects it ("invalid AAC magic cookie"), ours reads what is valid (docs/pcm-files.md).
+*	streams	file=huge-chunk-size	ignore	ours	tolerant-damage: no usable data chunk (the size runs past the file); ffprobe rejects it ("no 'data' tag found"), ours reads it as a stream with no packets (docs/pcm-files.md).
+*	streams	file=crafted/no-data.wav	ignore	ours	tolerant-damage: no data chunk; ffprobe rejects it ("no 'data' tag found"), ours reads it as a stream with no packets (docs/pcm-files.md).
+*	streams	file=zero-channels	ignore	ours	tolerant-damage: a format chunk with zero channels; ffprobe's output is cut short ("Decoder requires channel layout to be set"), so it lists no stream (docs/pcm-files.md).
+*	streams	file=bad_length.aifc	ignore	ours	garbage-frame-count: the pinned ffprobe fails on the file; ours reads 0 frames (docs/pcm-files.md).
+*	streams	file=o2_728	ignore	ours	ffprobe rejects this AIFF-C ("could not find COMM tag or invalid block_align value"); ours reads it tolerantly (docs/pcm-files.md).
+

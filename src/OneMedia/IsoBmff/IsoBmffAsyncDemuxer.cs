@@ -64,6 +64,12 @@ public sealed class IsoBmffAsyncDemuxer : IAsyncDemuxer, IMetadataProvider, IAsy
     /// <inheritdoc />
     public bool CanSeek => true;
 
+    /// <summary>The file type box brands, or <c>null</c> when the file has none (older QuickTime movies).</summary>
+    public FileTypeBox? FileType => _opened.FileType;
+
+    /// <summary>True when a media data box comes before the movie box (not "fast start").</summary>
+    public bool MediaDataPrecedesMovie => _opened.MediaDataPrecededMovie;
+
     /// <summary>The parsed movie box.</summary>
     public IsoMovie Movie => _opened.Movie;
 
