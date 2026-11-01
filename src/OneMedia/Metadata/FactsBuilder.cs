@@ -109,6 +109,30 @@ internal sealed class FactsBuilder(DefectLog defects)
             case TagSystems.ITunes when t.Key == "©day":
                 AddTime(RankDayTag, t, text, source, "iTunes date text");
                 break;
+            case TagSystems.RiffInfo:
+                switch (t.Key)
+                {
+                    case "IDIT":
+                        // The digitisation time, written either in the C library's ctime layout or as an ISO-like date; neither has a time zone.
+                        if (TryParseCtime(text, out MediaDateTime ctime))
+                        {
+                            CaptureTime.Add(RankDateUtc - 5, new FactCandidate<MediaDateTime>(ctime, source, text.Trim(), "IDIT in the ctime layout (weekday month day time year), local time of the writer", TimeZoneCertainty.Unknown, t.ValueRange));
+                        }
+                        else
+                        {
+                            AddTime(RankDateUtc - 5, t, text, source, "IDIT date-time, local time of the writer");
+                        }
+
+                        break;
+                    case "ICRD":
+                        AddTime(RankDayTag, t, text, source, "RIFF INFO creation date");
+                        break;
+                    case "ISFT":
+                        AddString(Software, 20, t, text.Trim(), source);
+                        break;
+                }
+
+                break;
         }
     }
 
@@ -201,6 +225,35 @@ internal sealed class FactsBuilder(DefectLog defects)
         {
             defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, t.ValueRange.Offset, $"'{t.Key}' is not an ISO 6709 position: '{Shorten(text)}'.", "tags.iso6709");
         }
+    }
+
+    private static readonly string[] MonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // "Tue Mar 08 21:11:35 2005": weekday, month name, day, time, year (the layout of the C library's ctime).
+    private static bool TryParseCtime(string text, out MediaDateTime value)
+    {
+        value = default;
+        string[] parts = text.Split([' ', '\n', '\r', '\0', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5)
+        {
+            return false;
+        }
+
+        int month = Array.FindIndex(MonthNames, m => string.Equals(m, parts[1], StringComparison.OrdinalIgnoreCase)) + 1;
+        string[] hms = parts[3].Split(':');
+        if (month == 0 || hms.Length != 3
+            || !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int day)
+            || !int.TryParse(parts[4], NumberStyles.None, CultureInfo.InvariantCulture, out int year)
+            || !int.TryParse(hms[0], NumberStyles.None, CultureInfo.InvariantCulture, out int h)
+            || !int.TryParse(hms[1], NumberStyles.None, CultureInfo.InvariantCulture, out int m)
+            || !int.TryParse(hms[2], NumberStyles.None, CultureInfo.InvariantCulture, out int sec)
+            || year is < 1 or > 9999 || day < 1 || day > DateTime.DaysInMonth(year, month) || h > 23 || m > 59 || sec > 59)
+        {
+            return false;
+        }
+
+        value = new MediaDateTime(new DateTime(year, month, day, h, m, sec, DateTimeKind.Unspecified), null, TimeZoneCertainty.Unknown);
+        return true;
     }
 
     private static string Shorten(string s) => s.Length <= 60 ? s : s[..60] + "…";

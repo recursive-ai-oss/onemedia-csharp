@@ -1,3 +1,5 @@
+using RecursiveAI.OneMedia.Avi;
+using RecursiveAI.OneMedia.Dv;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Sniffing;
@@ -25,7 +27,7 @@ public static class MediaFormats
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());
         registry.Add(new WavSniffer());
-        registry.Add(new AviSniffer());
+        registry.Add(new AviFormat());
         registry.Add(new AsfSniffer());
         registry.Add(new MpegTsSniffer());
         registry.Add(new MpegPsSniffer());
@@ -39,6 +41,7 @@ public static class MediaFormats
         registry.Add(new AdtsSniffer());
         registry.Add(new AmrSniffer());
         registry.Add(new IvfSniffer());
+        registry.Add(new DvFormat());
         return registry;
     }
 }

@@ -27,6 +27,12 @@ public static class TagSystems
 
     /// <summary>The XMP packet carried in a <c>uuid</c> or <c>XMP_</c> box.</summary>
     public const string Xmp = "xmp";
+
+    /// <summary>DV packs (IEC 61834 / SMPTE 314M) of the first frame.</summary>
+    public const string Dv = "dv";
+
+    /// <summary>RIFF INFO list entries (and the <c>IDIT</c> date chunk) of AVI files.</summary>
+    public const string RiffInfo = "riff-info";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>

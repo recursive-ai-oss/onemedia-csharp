@@ -28,6 +28,7 @@ public static class TagMappingTable
     private const string ExifToolUser = "ExifTool QuickTime UserData tags";
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
+    private const string RiffInfoDoc = "RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
@@ -140,6 +141,19 @@ public static class TagMappingTable
         Row(CommonField.DiscNumber, TagSystems.Matroska, MatroskaDoc, "ffmpeg writes DISC, optionally as number/total", "DISC"),
         Row(CommonField.DiscTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of DISC", "DISC"),
         Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of TRACK when TOTAL_PARTS is absent", "TOTAL_PARTS", "TRACK"),
+        Row(CommonField.Title, TagSystems.RiffInfo, RiffInfoDoc, "INAM, the name", "INAM"),
+        Row(CommonField.Artist, TagSystems.RiffInfo, RiffInfoDoc, "IART", "IART"),
+        Row(CommonField.Album, TagSystems.RiffInfo, RiffInfoDoc, "IPRD, the product the media came from", "IPRD"),
+        Row(CommonField.Composer, TagSystems.RiffInfo, RiffInfoDoc, "IMUS, music by", "IMUS"),
+        Row(CommonField.Author, TagSystems.RiffInfo, RiffInfoDoc, "IWRI, written by", "IWRI"),
+        Row(CommonField.Genre, TagSystems.RiffInfo, RiffInfoDoc, "IGNR", "IGNR"),
+        Row(CommonField.Comment, TagSystems.RiffInfo, RiffInfoDoc, "ICMT", "ICMT"),
+        Row(CommonField.Description, TagSystems.RiffInfo, RiffInfoDoc, "ISBJ, the subject", "ISBJ"),
+        Row(CommonField.Date, TagSystems.RiffInfo, RiffInfoDoc, "ICRD, usually an ISO 8601 date", "ICRD"),
+        Row(CommonField.Copyright, TagSystems.RiffInfo, RiffInfoDoc, "ICOP", "ICOP"),
+        Row(CommonField.Encoder, TagSystems.RiffInfo, RiffInfoDoc, "ISFT, the software that wrote the file", "ISFT"),
+        Row(CommonField.Keywords, TagSystems.RiffInfo, RiffInfoDoc, "IKEY", "IKEY"),
+        Row(CommonField.TrackNumber, TagSystems.RiffInfo, RiffInfoDoc, "ITRK", "ITRK"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

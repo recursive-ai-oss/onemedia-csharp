@@ -41,6 +41,9 @@ public readonly record struct MediaFormatId(string Name)
     /// <summary>IVF (VP8/VP9/AV1 frames).</summary>
     public static MediaFormatId Ivf => new("ivf");
 
+    /// <summary>Raw DV (IEC 61834 / SMPTE 314M frames, no container).</summary>
+    public static MediaFormatId Dv => new("dv");
+
     /// <inheritdoc />
     public override string ToString() => Name ?? string.Empty;
 }

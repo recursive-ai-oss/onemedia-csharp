@@ -37,6 +37,8 @@ internal static class Program
     private static readonly string[] IsoExtensions = [".mp4", ".m4a", ".m4v", ".mov", ".3gp", ".3g2", ".ismv", ".qt"];
     private static readonly string[] OggExtensions = [".ogg", ".opus", ".oga"];
     private static readonly string[] MatroskaExtensions = [".mkv", ".mka", ".webm", ".mk3d", ".mks"];
+    private static readonly string[] AviExtensions = [".avi"];
+    private static readonly string[] DvExtensions = [".dv", ".dif"];
 
     public static int Main(string[] args)
     {
@@ -122,6 +124,8 @@ internal static class Program
         {
             "isobmff" => IsoExtensions,
             "matroska" => MatroskaExtensions,
+            "avi" => AviExtensions,
+            "dv" => DvExtensions,
             _ => [.. IsoExtensions, .. MatroskaExtensions],
         };
         List<string> files = [];

@@ -7,13 +7,13 @@ generated from it, and a test fails when they differ.
   the others stay reachable through `CommonTags.Values`.
 - Native keys are spelled as the system spells them: four-character atom codes for `ilst` and `udta` (`©nam`), reverse-DNS names for
   key-table metadata (`com.apple.quicktime.title`), `namespace#property` for XMP, upper-case names for Matroska (nested SimpleTags as
-  `PARENT/CHILD`). Matroska names are matched case-insensitively.
+  `PARENT/CHILD`). Matroska names are matched case-insensitively. RIFF INFO keys are the four-character chunk codes (`INAM`).
 - Matroska: only tags that target the file (no track, edition, chapter or attachment UID) feed the view, plus the tags of the only
   track of a single-track file (except `ENCODER`, which names the stream's encoder). Within a key the lowest target level of 30 or above
   comes first, then levels below 30; tags with no language or `und` come before language-specific ones; tags of the file itself
   come before tags of the only track.
 - 3GPP boxes and QuickTime user-data atoms share four-character codes with different layouts; the reader tells them apart as described in `docs/tags.md`.
-- Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime tag documentation (read as tables of facts), the Matroska
+- Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime and RIFF Info tag documentation (read as tables of facts), the Matroska
   tag-name list, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
 
 | Field | System | Keys (in precedence order) | Document | Note |
@@ -103,3 +103,16 @@ generated from it, and a test fails when they differ.
 | DiscNumber | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | ffmpeg writes DISC, optionally as number/total |
 | DiscTotal | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of DISC |
 | TrackTotal | mkv | `TOTAL_PARTS`, `TRACK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of TRACK when TOTAL_PARTS is absent |
+| Title | riff-info | `INAM` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | INAM, the name |
+| Artist | riff-info | `IART` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | IART |
+| Album | riff-info | `IPRD` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | IPRD, the product the media came from |
+| Composer | riff-info | `IMUS` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | IMUS, music by |
+| Author | riff-info | `IWRI` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | IWRI, written by |
+| Genre | riff-info | `IGNR` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | IGNR |
+| Comment | riff-info | `ICMT` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | ICMT |
+| Description | riff-info | `ISBJ` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | ISBJ, the subject |
+| Date | riff-info | `ICRD` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | ICRD, usually an ISO 8601 date |
+| Copyright | riff-info | `ICOP` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | ICOP |
+| Encoder | riff-info | `ISFT` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | ISFT, the software that wrote the file |
+| Keywords | riff-info | `IKEY` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | IKEY |
+| TrackNumber | riff-info | `ITRK` | RIFF INFO list (Microsoft RIFF file reference, registered INFO chunks), ExifTool RIFF Info tags | ITRK |

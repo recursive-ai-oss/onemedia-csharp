@@ -59,6 +59,18 @@ seed() {
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
           done ;;
+    riff-avi) # The first byte picks the path (bit 0: forward-only; bit 1: seeks; bit 2: registry against direct open; bit 3: metadata); the rest is the file.
+          for f in "$here"/testdata/avi/*.avi; do
+            [ -f "$f" ] || continue
+            { printf '\016'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+          done ;;
+    dv) # The first byte picks the path (bit 0: forward-only; bit 1: seeks; bit 2: metadata); the rest is the file.
+          for f in "$here"/testdata/avi/*.dv; do
+            [ -f "$f" ] || continue
+            { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+          done ;;
   esac
   if [ -z "$(ls -A "$corpus")" ]; then printf 'xxxxxxxxxx' > "$corpus/empty.seed"; fi
 }
