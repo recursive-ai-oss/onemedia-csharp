@@ -570,9 +570,21 @@ internal sealed class AviReader : IDisposable
         while (!_finished)
         {
             _cancellation.ThrowIfCancellationRequested();
+            // A forward-only source cannot go back: a list or chunk whose size ends before the bytes already read (a list of fewer than 4
+            // bytes has no room for its type) continues from the bytes consumed.
+            if (!_input.CanSeek && _pos < _input.Position)
+            {
+                _pos = _input.Position;
+            }
+
             if (_pos >= _sectionEnd && !EnterNextSection())
             {
                 break;
+            }
+
+            if (!_input.CanSeek && _pos < _input.Position)
+            {
+                _pos = _input.Position;
             }
 
             _input.Seek(_pos);
@@ -665,6 +677,11 @@ internal sealed class AviReader : IDisposable
         long limit = _input.Length;
         while (!_finished)
         {
+            if (!_input.CanSeek && _pos < _input.Position)
+            {
+                _pos = _input.Position;
+            }
+
             _input.Seek(_pos);
             int got = _input.Read(h[..8]);
             if (got < 8)
@@ -689,6 +706,11 @@ internal sealed class AviReader : IDisposable
                 long riffPos = _pos;
                 while (p < riffEnd && (limit < 0 || p < limit))
                 {
+                    if (!_input.CanSeek && p < _input.Position)
+                    {
+                        p = _input.Position; // a chunk too small for the 12 bytes just read
+                    }
+
                     _input.Seek(p);
                     if (_input.Read(h[..12]) < 8)
                     {
