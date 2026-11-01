@@ -65,9 +65,15 @@ def generate(ff, path, vcodec, acodec, fps, gop, bf, variant="mp4", seconds=12):
         raise RuntimeError(f"generate failed: {r.stderr[-400:]}")
 
 
+def decoder_args(path):
+    """AV1 is decoded with libaom: ffmpeg 7.0.2's default AV1 decoder (libdav1d) does not apply the discard flag of an edit list's hidden frames to its
+    delayed output, so a clip shows one frame too many at the start there. Observed with the same clip: libaom shows exactly the requested frames."""
+    return ["-c:v", "libaom-av1"] if os.path.basename(path).startswith("av1-") else []
+
+
 def framemd5(ff, path):
     """[(time, md5)] of the decoded video frames, in presentation order, as the demuxer presents them."""
-    r = run([ff, "-v", "error", "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"])
+    r = run([ff, "-v", "error", *decoder_args(path), "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"])
     tb = None
     frames = []
     for line in r.stdout.splitlines():
@@ -112,7 +118,7 @@ def floor_100ns(x: Fraction) -> Fraction:
 
 
 def check_case(a, src, idx, kind, frames, keys, src_pcm, src_packets, from_t, to_t, keyframe):
-    out = os.path.join(a.work, f"clip-{idx}.mp4")
+    out = os.path.join(a.work, f"{kind}-clip-{idx}.mp4")
     cmd = a.tool.split() + ["trim", src, out, "--from", f"{float(from_t):.7f}", "--to", f"{float(to_t):.7f}"] + (["--keyframe"] if keyframe else [])
     r = run(cmd)
     if r.returncode != 0:
@@ -174,7 +180,7 @@ def check_case(a, src, idx, kind, frames, keys, src_pcm, src_packets, from_t, to
         first = next((i for i, p in enumerate(la) if p == lb[0]), None)
         if first is None or la[first:first + len(lb)] != lb:
             problems.append(f"stream {idx}: packets are not a run of the source's")
-    ev = run([a.ffmpeg, "-v", "error", "-i", out, "-f", "null", "-"])
+    ev = run([a.ffmpeg, "-v", "error", *decoder_args(out), "-i", out, "-f", "null", "-"])
     if ev.stderr.strip():
         problems.append("ffmpeg: " + ev.stderr.strip().splitlines()[0][:100])
     if not a.keep:
