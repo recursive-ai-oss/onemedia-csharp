@@ -24,6 +24,29 @@ public class MediaFileMetadataTests
     }
 
     [Fact]
+    public void AFileWithNoLocationHasNoValueRatherThanZeroZero()
+    {
+        using MediaFile media = Media.Open(TagTestHelpers.Path("tags_ilst.mp4"));
+        Assert.False(media.Location.HasValue);
+        Assert.Empty(media.Location.Candidates);
+        Assert.Null(media.Location.Best);
+        Assert.False(media.Location.TryGetValue(out GeoLocation none));
+        Assert.Equal(default, none);
+        Assert.Throws<InvalidOperationException>(() => media.Location.Value);
+        Assert.Equal("none", media.Location.ToString());
+    }
+
+    [Fact]
+    public void AFileWithALocationGivesItThroughValueAndTryGetValue()
+    {
+        using MediaFile media = Media.Open(TagTestHelpers.Path("tags_keys.mov"));
+        Assert.True(media.Location.TryGetValue(out GeoLocation place));
+        Assert.Equal(media.Location.Value, place);
+        Assert.Equal(37.7749, place.Latitude, 3);
+        Assert.NotEqual("none", media.Location.ToString());
+    }
+
+    [Fact]
     public void MatroskaFileGivesTags()
     {
         using MediaFile media = Media.Open(TagTestHelpers.Path("mkvmerge_global.mkv"));

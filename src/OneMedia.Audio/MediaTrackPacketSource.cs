@@ -16,6 +16,39 @@ public enum AudioSeamLimitations
 
     /// <summary>A block asked to cut audio from its start (negative DiscardPadding); OneAudio has no way to receive that and the audio is kept.</summary>
     LeadingDiscardPadding = 1 << 0,
+
+    /// <summary>Never set since DiscardPadding on any block is applied through OneAudio's per-packet trim. Kept so code written against 0.1.0-preview.2 still compiles.</summary>
+    [Obsolete("DiscardPadding on any block is now applied; this flag is never set.")]
+    MidStreamDiscardPadding = 1 << 1,
+
+    /// <summary>Never set since end padding is applied for every codec through OneAudio's per-packet trim. Kept so code written against 0.1.0-preview.2 still compiles.</summary>
+    [Obsolete("End DiscardPadding is now applied; this flag is never set.")]
+    EndPaddingNotApplied = 1 << 2,
+
+    /// <summary>
+    /// The AAC configuration signals spectral band replication (HE-AAC) and OneAudio's AAC decoder does not apply it. It decodes the core coder
+    /// only, so the PCM comes out at the core sampling rate (typically half the signalled output rate) and without the high band.
+    /// <see cref="MediaTrackPacketSource.SampleRate"/> is that core rate; <see cref="MediaTrackPacketSource.SignalledSampleRate"/> is the rate the file asks for.
+    /// </summary>
+    SbrNotApplied = 1 << 3,
+
+    /// <summary>
+    /// The AAC configuration signals parametric stereo (HE-AACv2) and it is not applied: the decoded audio has the core's channel count
+    /// (one) where the file signals two.
+    /// </summary>
+    PsNotApplied = 1 << 4,
+}
+
+/// <summary>What a decode of an audio track will and will not do, known before any audio is read.</summary>
+/// <param name="Limitations">What OneAudio could not be told or did not apply that is already known from the track's configuration (the HE-AAC flags). Discard-padding flags are only known after reading, on <see cref="MediaTrackPacketSource.Limitations"/>.</param>
+/// <param name="DecodedSampleRate">The sampling rate of the PCM the decoder returns, in Hz (0 when the container does not say).</param>
+/// <param name="SignalledSampleRate">The rate the file asks for when it differs from <paramref name="DecodedSampleRate"/> (HE-AAC output rate); 0 when the same.</param>
+/// <param name="DecodedChannels">The channel count of the returned PCM (0 when unknown).</param>
+/// <param name="SignalledChannels">The channel count the file asks for when it differs from <paramref name="DecodedChannels"/> (HE-AACv2); 0 when the same.</param>
+public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations, int DecodedSampleRate, int SignalledSampleRate, int DecodedChannels, int SignalledChannels)
+{
+    /// <summary>True when the file signals SBR or PS and the decoder returns the core coder's audio only.</summary>
+    public bool IsCoreOnly => (Limitations & (AudioSeamLimitations.SbrNotApplied | AudioSeamLimitations.PsNotApplied)) != 0;
 }
 
 /// <summary>
@@ -39,6 +72,8 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     private readonly byte[][] _headers;
     private int _nextHeader;
     private readonly int _rate;
+    private int _signalledRate;
+    private int _signalledChannels;
     private readonly int _priming;
     private readonly long _length;
     private readonly int _timeScale;
@@ -116,6 +151,9 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         int priming = 0;
         long length = -1;
         long opusEnd = -1;
+        int signalledRate = 0;
+        int signalledChannels = 0;
+        AudioSeamLimitations limitations = AudioSeamLimitations.None;
 
         switch (track.Codec.Name)
         {
@@ -136,6 +174,23 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 
                 // ISO priming truncates, as OneAudio's own MP4 reader does. Matroska CodecDelay is in nanoseconds and 1024 frames at 48 kHz
                 // is 21333333 ns, which truncates to 1023, so it rounds to the nearest frame.
+                // ISO/IEC 14496-3 §1.6.2.1: with SBR or PS signalled, the file's sample entry and the configuration's extension rate describe the
+                // output of a full HE-AAC decoder. OneAudio decodes the core coder only, so frames, priming and channels are counted at the core
+                // rate and the difference is reported, never hidden.
+                if (track.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.SbrImplied) && heaac.CoreSampleRate > 0)
+                {
+                    signalledRate = heaac.SampleRate;
+                    limitations = AudioSeamLimitations.SbrNotApplied | (heaac.PsPresent ? AudioSeamLimitations.PsNotApplied : 0);
+                    rate = heaac.CoreSampleRate;
+                    if (heaac.Channels > 0)
+                    {
+                        channels = heaac.PsPresent && heaac.Channels == 2 ? 1 : heaac.Channels;
+                        signalledChannels = heaac.Channels != channels ? heaac.Channels : 0;
+                    }
+
+                    rawFrames = iso && track.Duration.IsKnown ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
+                }
+
                 (priming, length) = TrimOf(track, rate, rawFrames, iso ? MediaRounding.Floor : MediaRounding.NearestAwayFromZero);
                 break;
 
@@ -183,7 +238,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 break;
         }
 
-        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd };
+        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd, _signalledRate = signalledRate, _signalledChannels = signalledChannels, Limitations = limitations };
     }
 
     // Priming and length in frames at the track's rate, from what the container states. With an edit list the first non-empty edit gives both
@@ -316,7 +371,19 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     /// <summary>The track this source reads.</summary>
     public MediaTrack Track => _track;
 
-    /// <summary>What OneAudio could not be told about the packets read so far.</summary>
+    /// <summary>
+    /// The sampling rate the file asks for when it differs from the rate OneAudio decodes at: the output rate of an HE-AAC configuration.
+    /// Zero when the two are the same. <see cref="SampleRate"/> is always the rate of the PCM the decoder returns.
+    /// </summary>
+    public int SignalledSampleRate => _signalledRate;
+
+    /// <summary>The channel count the file asks for when it differs from <see cref="Channels"/> (HE-AACv2 parametric stereo); zero when the same.</summary>
+    public int SignalledChannels => _signalledChannels;
+
+    /// <summary>
+    /// What OneAudio could not be told about the track, or did not apply. The HE-AAC flags are set as soon as the source is created; the
+    /// discard-padding flags are collected while packets are read.
+    /// </summary>
     public AudioSeamLimitations Limitations { get; private set; }
 
     /// <inheritdoc />
