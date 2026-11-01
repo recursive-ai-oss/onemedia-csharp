@@ -15,7 +15,7 @@ export PATH=$HOME/dotnet10:${ONEMEDIA_ORACLES:-$HOME/onemedia/oracles/bin}:$PATH
 export MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
 OUT=${OUT:-$HOME/onemedia/u30-tagwrite/out}
 WORK=${WORK:-$HOME/onemedia/u30-tagwrite/work}
-BIN=$HOME/onemedia/u30-tagwrite/bin
+BIN=${BIN:-$HOME/onemedia/u30-tagwrite/bin}
 JOBS=${JOBS:-4}
 MAXSIZE=${MAXSIZE:-1073741824}
 CORPUS=${3:-$HOME/onemedia/corpus}
