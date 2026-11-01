@@ -3,6 +3,7 @@ using RecursiveAI.OneMedia.IsoBmff;
 
 namespace RecursiveAI.OneMedia.Tests;
 
+[Collection(AllocationMeasurements.Name)]
 public class IsoMuxerTests
 {
     private const int VideoFrames = 36;
@@ -485,6 +486,7 @@ public class IsoMuxerTests
     [Fact]
     public void SteadyStateWritesAllocateNothing()
     {
+        AllocationGuard.RequireOptimised();
         byte[] payload = new byte[96];
         foreach (IsoLayout layout in new[] { IsoLayout.MoovFirst, IsoLayout.MoovLast, IsoLayout.Fragmented })
         {

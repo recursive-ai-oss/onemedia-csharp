@@ -1,4 +1,5 @@
 using System.Numerics;
+using RecursiveAI.OneMedia.Codecs;
 using RecursiveAI.OneMedia.Riff;
 
 namespace RecursiveAI.OneMedia.Avi;
@@ -60,10 +61,12 @@ internal static class AviTracks
         AudioTrackInfo? audio = null;
         VideoTrackInfo? video = null;
         long bitRate = 0;
+        CodecParameters? streamParameters = null;
         if (h.Type == AviStreamHeader.Vids)
         {
             video = VideoInfo(s, headers, scale, rate, out codec, out tag);
             config = new CodecConfiguration(s.Format, "bitmapinfoheader");
+            streamParameters = DescribeExtradata(codec, s.Format);
         }
         else if (h.Type == AviStreamHeader.Iavs)
         {
@@ -95,7 +98,29 @@ internal static class AviTracks
             Audio = audio,
             Video = video,
             BitRate = bitRate,
+            StreamParameters = streamParameters,
         };
+    }
+
+    // ffmpeg's AVI muxer (and others) store the avcC/hvcC/vvcC record of an MP4-sourced stream after the 40-byte BITMAPINFOHEADER, under the
+    // FourCC avc1/hvc1/vvc1. When that record parses it names the codec exactly; the reader looks at the in-band parameter sets only without it.
+    private static CodecParameters? DescribeExtradata(CodecId codec, byte[] format)
+    {
+        if (codec.Name is not ("h264" or "hevc" or "vvc") || format.Length <= BitmapInfoHeader.Size)
+        {
+            return null;
+        }
+
+        int start = BitmapInfoHeader.TryParse(format, out BitmapInfoHeader bmp) && bmp.HeaderSize > BitmapInfoHeader.Size && bmp.HeaderSize < format.Length
+            ? (int)bmp.HeaderSize : BitmapInfoHeader.Size;
+        // configurationVersion is 1 in all three records; Annex B extradata (start codes) is not a record.
+        if (format[start] != 1)
+        {
+            return null;
+        }
+
+        string form = codec.Name == "h264" ? "avcC" : codec.Name == "hevc" ? "hvcC" : "vvcC";
+        return CodecParameterReader.TryDescribe(codec, new CodecConfiguration(format.AsMemory(start), form), out CodecParameters? p) ? p : null;
     }
 
     private static VideoTrackInfo VideoInfo(AviStreamInfo s, AviHeaderList headers, long scale, long rate, out CodecId codec, out string? tag)

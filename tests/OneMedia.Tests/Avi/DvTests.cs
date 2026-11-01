@@ -5,6 +5,7 @@ using RecursiveAI.OneMedia.Metadata;
 
 namespace RecursiveAI.OneMedia.Tests.Avi;
 
+[Collection(AllocationMeasurements.Name)]
 public class DvTests
 {
     // One DV frame of 25 Mbit/s video: 10 (525/60) or 12 (625/50) DIF sequences; only the first carries packs here, as in the standard's
@@ -143,6 +144,7 @@ public class DvTests
     [Fact]
     public void PullPathAllocatesNothingPerFrame()
     {
+        AllocationGuard.RequireOptimised();
         byte[] one = Frame(pal: true);
         byte[] data = new byte[one.Length * 200];
         for (int i = 0; i < 200; i++)

@@ -28,4 +28,20 @@ public static class Id3Genres
     /// <param name="index">The genre number.</param>
     /// <returns>The name, or <c>null</c> when the number is past the list.</returns>
     public static string? Name(int index) => index >= 0 && index < Names.Length ? Names[index] : null;
+
+    /// <summary>Looks up an ID3v1 genre number by name, ignoring case.</summary>
+    /// <param name="name">The genre name.</param>
+    /// <returns>The 0-based number, or 255 (the ID3v1 "unknown") when the name is not in the list.</returns>
+    public static int Number(string name)
+    {
+        for (int i = 0; i < Names.Length; i++)
+        {
+            if (string.Equals(Names[i], name, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return 255;
+    }
 }

@@ -53,7 +53,7 @@ internal static class AudioDecodeCheck
             : MediaAudioExtensions.CreateRegistry();
         // Transport streams are not an OneAudio container format; they decode through the file API.
         string ext = Path.GetExtension(file).ToLowerInvariant();
-        using IAudioDecoder d = ext is ".ts" or ".m2ts" or ".mts" ? Media.Open(file).Decode(registry: registry) : AudioDecoder.OpenFile(file, registry);
+        using IAudioDecoder d = ext is ".ts" or ".m2ts" or ".mts" or ".aac" or ".mp3" or ".amr" or ".awb" ? Media.Open(file).Decode(registry: registry) : AudioDecoder.OpenFile(file, registry);
         float[] buf = new float[ChunkFrames * Math.Max(1, d.Format.Channels)];
         using FileStream o = File.Create(output);
         int got;

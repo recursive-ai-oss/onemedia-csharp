@@ -4,7 +4,7 @@ namespace RecursiveAI.OneMedia;
 /// The happy path: one call per task, each a single line over the layers below. Everything here has an equivalent in the layer
 /// it calls (<see cref="MediaFile"/>, <see cref="MediaFormats"/>, the sources and the demuxers), where the options live.
 /// </summary>
-public static class Media
+public static partial class Media
 {
     /// <summary>Opens a media file by path. Formats are recognised by content, never by extension.</summary>
     /// <param name="path">The file.</param>

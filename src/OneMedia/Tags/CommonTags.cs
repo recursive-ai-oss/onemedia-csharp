@@ -286,75 +286,113 @@ public sealed class CommonTags
     /// <returns>The text.</returns>
     public string? First(CommonField field)
     {
+        if (Pending.FieldChange(field) is { } staged)
+        {
+            return staged.Count > 0 ? staged[0] : null;
+        }
+
         IReadOnlyList<CommonValue> v = Values(field);
         return v.Count > 0 ? v[0].Text : null;
     }
 
     /// <summary>The title.</summary>
-    public string? Title => First(CommonField.Title);
+    public string? Title { get => First(CommonField.Title); set => Pending.Set(CommonField.Title, value ?? ""); }
 
     /// <summary>The artist.</summary>
-    public string? Artist => First(CommonField.Artist);
+    public string? Artist { get => First(CommonField.Artist); set => Pending.Set(CommonField.Artist, value ?? ""); }
 
     /// <summary>The album artist.</summary>
-    public string? AlbumArtist => First(CommonField.AlbumArtist);
+    public string? AlbumArtist { get => First(CommonField.AlbumArtist); set => Pending.Set(CommonField.AlbumArtist, value ?? ""); }
 
     /// <summary>The album.</summary>
-    public string? Album => First(CommonField.Album);
+    public string? Album { get => First(CommonField.Album); set => Pending.Set(CommonField.Album, value ?? ""); }
 
     /// <summary>The composer.</summary>
-    public string? Composer => First(CommonField.Composer);
+    public string? Composer { get => First(CommonField.Composer); set => Pending.Set(CommonField.Composer, value ?? ""); }
 
     /// <summary>The author.</summary>
-    public string? Author => First(CommonField.Author);
+    public string? Author { get => First(CommonField.Author); set => Pending.Set(CommonField.Author, value ?? ""); }
 
     /// <summary>The director.</summary>
-    public string? Director => First(CommonField.Director);
+    public string? Director { get => First(CommonField.Director); set => Pending.Set(CommonField.Director, value ?? ""); }
 
     /// <summary>The genre.</summary>
-    public string? Genre => First(CommonField.Genre);
+    public string? Genre { get => First(CommonField.Genre); set => Pending.Set(CommonField.Genre, value ?? ""); }
 
     /// <summary>The comment.</summary>
-    public string? Comment => First(CommonField.Comment);
+    public string? Comment { get => First(CommonField.Comment); set => Pending.Set(CommonField.Comment, value ?? ""); }
 
     /// <summary>The description.</summary>
-    public string? Description => First(CommonField.Description);
+    public string? Description { get => First(CommonField.Description); set => Pending.Set(CommonField.Description, value ?? ""); }
 
     /// <summary>The date as written.</summary>
-    public string? Date => First(CommonField.Date);
+    public string? Date { get => First(CommonField.Date); set => Pending.Set(CommonField.Date, value ?? ""); }
 
     /// <summary>The copyright notice.</summary>
-    public string? Copyright => First(CommonField.Copyright);
+    public string? Copyright { get => First(CommonField.Copyright); set => Pending.Set(CommonField.Copyright, value ?? ""); }
 
     /// <summary>The encoding tool.</summary>
-    public string? Encoder => First(CommonField.Encoder);
+    public string? Encoder { get => First(CommonField.Encoder); set => Pending.Set(CommonField.Encoder, value ?? ""); }
 
     /// <summary>Who encoded the file.</summary>
-    public string? EncodedBy => First(CommonField.EncodedBy);
+    public string? EncodedBy { get => First(CommonField.EncodedBy); set => Pending.Set(CommonField.EncodedBy, value ?? ""); }
 
     /// <summary>The grouping.</summary>
-    public string? Grouping => First(CommonField.Grouping);
+    public string? Grouping { get => First(CommonField.Grouping); set => Pending.Set(CommonField.Grouping, value ?? ""); }
 
     /// <summary>The lyrics.</summary>
-    public string? Lyrics => First(CommonField.Lyrics);
+    public string? Lyrics { get => First(CommonField.Lyrics); set => Pending.Set(CommonField.Lyrics, value ?? ""); }
 
     /// <summary>The rating text.</summary>
-    public string? Rating => First(CommonField.Rating);
+    public string? Rating { get => First(CommonField.Rating); set => Pending.Set(CommonField.Rating, value ?? ""); }
 
     /// <summary>The keywords, one per value.</summary>
     public IReadOnlyList<CommonValue> Keywords => Values(CommonField.Keywords);
 
+    /// <summary>ReplayGain track gain as written (for example <c>-6.50 dB</c>). Setting stages an edit.</summary>
+    public string? ReplayGainTrackGain { get => First(CommonField.ReplayGainTrackGain); set => Pending.Set(CommonField.ReplayGainTrackGain, value ?? ""); }
+
+    /// <summary>ReplayGain track peak as written. Setting stages an edit.</summary>
+    public string? ReplayGainTrackPeak { get => First(CommonField.ReplayGainTrackPeak); set => Pending.Set(CommonField.ReplayGainTrackPeak, value ?? ""); }
+
+    /// <summary>ReplayGain album gain as written. Setting stages an edit.</summary>
+    public string? ReplayGainAlbumGain { get => First(CommonField.ReplayGainAlbumGain); set => Pending.Set(CommonField.ReplayGainAlbumGain, value ?? ""); }
+
+    /// <summary>ReplayGain album peak as written. Setting stages an edit.</summary>
+    public string? ReplayGainAlbumPeak { get => First(CommonField.ReplayGainAlbumPeak); set => Pending.Set(CommonField.ReplayGainAlbumPeak, value ?? ""); }
+
+    /// <summary>
+    /// The edits staged by the setters on this view and by <see cref="SetKeywords"/>, <see cref="SetPicture"/> and <see cref="RemovePictures"/>. Nothing is written to the file
+    /// until <see cref="MediaFile.Save"/>, <see cref="MediaFile.SaveAs"/> or <see cref="MediaFile.SaveInPlace"/>. Reads of a staged field return the staged value.
+    /// </summary>
+    public TagEdits Pending { get; } = new();
+
+    /// <summary>Stages new keywords, replacing the file's.</summary>
+    /// <param name="keywords">The keywords; none removes them.</param>
+    public void SetKeywords(IEnumerable<string> keywords) => Pending.Set(CommonField.Keywords, keywords);
+
+    /// <summary>Stages a picture, replacing a picture of the same role.</summary>
+    /// <param name="data">The encoded image.</param>
+    /// <param name="mimeType">The media type.</param>
+    /// <param name="role">The role.</param>
+    /// <param name="description">A description, for systems that carry one.</param>
+    public void SetPicture(ReadOnlyMemory<byte> data, string mimeType, PictureType role = PictureType.FrontCover, string description = "") => Pending.SetPicture(data, mimeType, role, description);
+
+    /// <summary>Stages the removal of pictures.</summary>
+    /// <param name="role">Only this role, or all when null.</param>
+    public void RemovePictures(PictureType? role = null) => Pending.RemovePictures(role);
+
     /// <summary>The track number, or <c>null</c>.</summary>
-    public int? TrackNumber => Number(CommonField.TrackNumber);
+    public int? TrackNumber { get => Number(CommonField.TrackNumber); set => Pending.Set(CommonField.TrackNumber, value ?? 0); }
 
     /// <summary>The track total, or <c>null</c>.</summary>
-    public int? TrackTotal => Number(CommonField.TrackTotal);
+    public int? TrackTotal { get => Number(CommonField.TrackTotal); set => Pending.Set(CommonField.TrackTotal, value ?? 0); }
 
     /// <summary>The disc number, or <c>null</c>.</summary>
-    public int? DiscNumber => Number(CommonField.DiscNumber);
+    public int? DiscNumber { get => Number(CommonField.DiscNumber); set => Pending.Set(CommonField.DiscNumber, value ?? 0); }
 
     /// <summary>The disc total, or <c>null</c>.</summary>
-    public int? DiscTotal => Number(CommonField.DiscTotal);
+    public int? DiscTotal { get => Number(CommonField.DiscTotal); set => Pending.Set(CommonField.DiscTotal, value ?? 0); }
 
     /// <summary>The pictures in the movie-level tags, in file order.</summary>
     public IReadOnlyList<TagPicture> Pictures
@@ -408,6 +446,11 @@ public sealed class CommonTags
 
     private int? Number(CommonField field)
     {
+        if (Pending.FieldChange(field) is { } staged)
+        {
+            return staged.Count > 0 && int.TryParse(staged[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int sn) ? sn : null;
+        }
+
         IReadOnlyList<CommonValue> v = Values(field);
         return v.Count > 0 && int.TryParse(v[0].Text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int n) ? n : null;
     }

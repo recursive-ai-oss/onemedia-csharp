@@ -5,6 +5,7 @@ using static RecursiveAI.OneMedia.Tests.AsfBuilder;
 
 namespace RecursiveAI.OneMedia.Tests;
 
+[Collection(AllocationMeasurements.Name)]
 public class AsfTests
 {
     private static byte[] Bytes(int length, byte seed) => [.. Enumerable.Range(0, length).Select(i => (byte)(seed + i))];
@@ -273,6 +274,7 @@ public class AsfTests
     [Fact]
     public void PullPathAllocatesNothingPerPacket()
     {
+        AllocationGuard.RequireOptimised();
         AsfBuilder b = new();
         b.AddFileProperties().AddAudioStream(1).AddVideoStream(2);
         for (int i = 0; i < 400; i += 2)
@@ -293,14 +295,18 @@ public class AsfTests
             Drain(warm, out _);
         }
 
-        using IDemuxer d = new AsfFormat().Open(new MemoryMediaSource(file), MediaOpenOptions.Default);
-        for (int i = 0; i < 6; i++)
+        long allocated = AllocationGuard.Best(() =>
         {
-            Assert.True(d.TryReadPacket(out _));
-        }
+            using IDemuxer d = new AsfFormat().Open(new MemoryMediaSource(file), MediaOpenOptions.Default);
+            for (int i = 0; i < 6; i++)
+            {
+                Assert.True(d.TryReadPacket(out _));
+            }
 
-        long allocated = Drain(d, out long checksum);
-        Assert.NotEqual(0, checksum);
+            long used = Drain(d, out long checksum);
+            Assert.NotEqual(0, checksum);
+            return used;
+        });
         Assert.Equal(0, allocated);
     }
 

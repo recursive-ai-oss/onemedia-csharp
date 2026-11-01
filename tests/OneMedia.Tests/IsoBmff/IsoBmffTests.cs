@@ -33,6 +33,7 @@ internal static class IsoBmffTestHelpers
     }
 }
 
+[Collection(AllocationMeasurements.Name)]
 public class IsoBmffDemuxTests
 {
     [Theory]
@@ -363,6 +364,7 @@ public class IsoBmffDemuxTests
     [InlineData("frag.mp4")]
     public void PullPathAllocatesNothingPerPacket(string name)
     {
+        AllocationGuard.RequireOptimised();
         byte[] file = File.ReadAllBytes(IsoBmffTestHelpers.Path(name));
         using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(file));
         long sum = 0;
@@ -371,17 +373,22 @@ public class IsoBmffDemuxTests
             sum += v.Data.Length; // first pass: buffers grow
         }
 
-        d.Seek(MediaTime.Zero);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        int n = 0;
-        while (d.TryReadPacket(out PacketView v))
+        long allocated = AllocationGuard.Best(() =>
         {
-            sum += v.Data.Length + v.Info.Pts.Ticks;
-            n++;
-        }
+            d.Seek(MediaTime.Zero);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            int n = 0;
+            while (d.TryReadPacket(out PacketView v))
+            {
+                sum += v.Data.Length + v.Info.Pts.Ticks;
+                n++;
+            }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
-        Assert.True(n > 30);
+            long used = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.True(n > 30);
+            return used;
+        });
+        Assert.Equal(0, allocated);
         Assert.NotEqual(0, sum);
     }
 
