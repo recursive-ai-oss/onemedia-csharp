@@ -59,6 +59,29 @@ seed() {
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
           done ;;
+    mpegts) # The first byte picks the path (bit 0: forward-only; bit 1: seek and read the metadata); the rest is the file.
+            for f in "$here"/testdata/mpeg/*.ts "$here"/testdata/mpeg/*.m2ts; do
+              [ -f "$f" ] || continue
+              { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+              { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+            done ;;
+    mpegps) # As mpegts.
+            for f in "$here"/testdata/mpeg/*.vob "$here"/testdata/mpeg/*.mpg; do
+              [ -f "$f" ] || continue
+              { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+              { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+            done ;;
+    video-es) # As mpegts, plus bits 2-4: the stream kind (H.264, HEVC, VVC, MPEG video, AV1 OBU) and bit 7: IVF instead.
+            for f in "$here"/testdata/mpeg/*.264 "$here"/testdata/mpeg/*.265 "$here"/testdata/mpeg/*.m2v "$here"/testdata/mpeg/*.ivf; do
+              [ -f "$f" ] || continue
+              case "$f" in
+                *.264) b=0 ;; *.265) b=4 ;; *.m2v) b=12 ;; *.ivf) b=128 ;; *) b=0 ;;
+              esac
+              { printf "\\$(printf '%03o' $((b | 2)))"; cat "$f"; } > "$corpus/$(basename "$f").seed"
+              { printf "\\$(printf '%03o' $((b | 1)))"; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+            done ;;
+    mdpm) # The SEI payload as the reader gets it (after the NAL header): one message of type 5 holding the MDPM block.
+          printf '\005\044\027\356\214\140\370\115\021\331\214\326\010\000\040\014\232\146MDPM\003\030\000\040\022\001\031\046\011\030\065\340\001\003\005\221\200' > "$corpus/mdpm.seed" ;;
   esac
   if [ -z "$(ls -A "$corpus")" ]; then printf 'xxxxxxxxxx' > "$corpus/empty.seed"; fi
 }
