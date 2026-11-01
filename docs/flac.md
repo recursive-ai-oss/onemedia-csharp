@@ -30,3 +30,8 @@ thread over a ranged source, reading in 64 KiB windows), `FlacMetadataBlock`, `F
 
 - **`unknown-length.flac`:** ffprobe has no duration; ours is read from the last frame.
 - **Cover art:** ffprobe lists an attached picture as a second (video) stream with one packet; the picture is a tag here and not a track.
+
+## Duration of a stream without a length
+
+STREAMINFO may hold 0 as the number of samples; the length is then read from the last frame found in the final 64 KiB (ours 4.000 s for the fixture,
+ffprobe prints none). A PICTURE block is a tag with its byte range; ffprobe makes it a second (video) stream with one packet, which is why `count` is excepted for those fixtures.

@@ -9,7 +9,7 @@ internal static class AtlCompare
 {
     public static int Run(IReadOnlyList<string> files)
     {
-        int same = 0, atlEmpty = 0, oursEmpty = 0, differs = 0;
+        int same = 0, fileName = 0, atlEmpty = 0, oursEmpty = 0, differs = 0;
         foreach (string file in files)
         {
             MediaFormatRegistry registry = Readers.Create();
@@ -33,11 +33,13 @@ internal static class AtlCompare
                 ("DiscNumber", Number(c.First(CommonField.DiscNumber)), t.DiscNumber is > 0 ? t.DiscNumber.Value.ToString(CultureInfo.InvariantCulture) : null),
             })
             {
-                string o = ours ?? string.Empty, a = (theirs ?? string.Empty).Trim();
-                string verdict = o.Length == 0 && a.Length == 0 ? "" : o == a ? "same" : a.Length == 0 ? "atl-empty" : o.Length == 0 ? "ours-empty" : "differs";
+                // ATL.NET trims its values; ours keep the stored text, so compare trimmed. ATL also falls back to the file name when a file has no title.
+                string o = (ours ?? string.Empty).Trim(), a = (theirs ?? string.Empty).Trim();
+                string verdict = o.Length == 0 && a.Length == 0 ? "" : o == a ? "same" : field == "Title" && o.Length == 0 && a == Path.GetFileNameWithoutExtension(file) ? "atl-file-name" : a.Length == 0 ? "atl-empty" : o.Length == 0 ? "ours-empty" : "differs";
                 switch (verdict)
                 {
                     case "same": same++; break;
+                    case "atl-file-name": fileName++; break;
                     case "atl-empty": atlEmpty++; break;
                     case "ours-empty": oursEmpty++; break;
                     case "differs": differs++; break;
@@ -50,7 +52,7 @@ internal static class AtlCompare
             }
         }
 
-        Console.WriteLine($"atl-compare: {files.Count} files: same {same}, atl-empty {atlEmpty}, ours-empty {oursEmpty}, differs {differs}");
+        Console.WriteLine($"atl-compare: {files.Count} files: same {same}, atl-file-name-title {fileName}, atl-empty {atlEmpty}, ours-empty {oursEmpty}, differs {differs}");
         return 0;
     }
 

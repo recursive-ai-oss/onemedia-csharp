@@ -32,10 +32,22 @@ internal static class OggCompare
             }
 
             using FileStream fs = File.OpenRead(file);
-            using OneAudio.Ogg.OggPacketSource source = OneAudio.Ogg.OggPacketSource.Open(fs, leaveOpen: true);
+            OneAudio.Ogg.OggPacketSource source;
+            try
+            {
+                source = OneAudio.Ogg.OggPacketSource.Open(fs, leaveOpen: true);
+            }
+            catch (OneAudio.AudioFormatException e)
+            {
+                // OneAudio's reader wants an Ogg page at offset 0; a file with a leading ID3v2 block is read by ours only.
+                Console.WriteLine($"skip {Path.GetFileName(file)}: OneAudio cannot open it ({e.Message})");
+                continue;
+            }
+
+            using OneAudio.Ogg.OggPacketSource owned = source;
             int i = 0;
             long fSize = 0, fHash = 0, fGranule = 0, fileGranules = 0;
-            while (source.TryReadPacket(out OneAudio.PacketView v))
+            while (owned.TryReadPacket(out OneAudio.PacketView v))
             {
                 if (v.IsHeader)
                 {

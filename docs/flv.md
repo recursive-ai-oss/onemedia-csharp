@@ -33,3 +33,10 @@ reader (`Amf.cs`: AMF0, and AMF3 for the `AVMPLUS` marker).
 
 - **`pos`:** ffprobe prints the tag's offset; ours is the payload range.
 - **`duration`:** a tag has no duration; ffprobe fills one in from the frame rate or the audio frame length, in ms; ours is unknown.
+
+## Agreement with other readers
+
+Checked on 30 files (ffmpeg-written, with H.264/HEVC/AV1/VP9/FLV1 video and AAC/MP3/ADPCM/Nellymoser/PCM/Speex audio; one of 3.6 GB): ffprobe 7.0.2
+lists 217,868 packets and so do we, with no difference after the `pos` and `duration` rules above; `infocheck` has no difference. ExifTool 13.60 and
+MediaInfo 26.10 agree on every field except: the `stereo` flag of `onMetaData` (we list the stored value 0; ExifTool leaves a false flag out), and the
+duration of a file whose `onMetaData` has none (3.967 s from the last tag; MediaInfo adds the last frame's length: 4.084 s).
