@@ -308,13 +308,13 @@ public sealed class WavDemuxer : AudioFileDemuxer
                 if (media.Read(c.Payload.Offset, b) == 4)
                 {
                     long stated = BinaryPrimitives.ReadUInt32LittleEndian(b);
-                    if (frames <= 0 || stated <= frames * 2)
+                    if (frames <= 0 || (stated <= frames * 2 && stated * 2 >= frames))
                     {
                         frames = stated;
                     }
                     else
                     {
-                        defects.Add(DefectKind.Inconsistent, DefectSeverity.Info, c.Offset, $"The 'fact' chunk states {stated} frames but the data holds about {frames}; the count from the data is used.", "wav.fact-count");
+                        defects.Add(DefectKind.Inconsistent, DefectSeverity.Info, c.Offset, $"The 'fact' chunk states {stated} frames but the data holds about {frames} (not within a factor of two); the count from the data is used.", "wav.fact-count");
                     }
                 }
 

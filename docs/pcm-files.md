@@ -37,7 +37,7 @@ PCM is cut into fixed packets with exact times (`pts` = frames before the packet
   of 0xFFFFFFFF, or an outer RIFF size of 0, means "to the end" as well (`riff.unbounded-size`).
 - **A chunk that fits the file but ends after a too-small outer size** is read in full (`riff.size-exceeds-parent`); libsndfile's Wave64 files do this.
 - **CAF** `data` with size −1 runs to the end of the file. Priming and remainder frames of the packet table are reported on the track, not applied.
-- `fact` counts are used for duration unless they are more than twice what the data holds (`wav.fact-count`).
+- `fact` counts are used for duration unless they differ from what the data holds by more than a factor of two (`wav.fact-count`).
 - Text: UTF-8 when valid, else Latin-1 (`riff.text-latin1`); `INFO` strings end at the first NUL.
 
 ## Defects
@@ -99,3 +99,29 @@ packets), 0 bytes allocated per packet in steady state, peak working set 38–41
 wrong for PCM (ffprobe and we agree); ExifTool computes ADPCM durations from the average data rate; both show mojibake for UTF-8 in INFO strings where we decode UTF-8;
 the `id3 ` chunk of AIFF/WAVE is kept as raw bytes until the ID3 reader is connected (artist, album, genre from it are "ours-missing"). ATL.NET (7.19, `bench tagcompare`):
 99 of 120 field comparisons equal; the others are ATL's file-name title fallback, its `0001-01-01` placeholder date, ID3 chunks, joined AIFF comments, and CAF comments it does not read.
+
+## Durations against ExifTool 13.60 and MediaInfo 26.10, field by field
+
+`meta --family pcm` on the final build: 223 files; the Duration fact differs in 49 rows (ffprobe 7.0.2 `format=duration` added as a third opinion). Every row, grouped by cause:
+
+| Cause | Files | Ours | ExifTool | MediaInfo | ffprobe |
+|---|---|---|---|---|---|
+| MediaInfo (and ExifTool, which prints nothing) misread CAF: they take the packet-table or `data` size without the frame size | 12 generated CAF PCM/IMA4 files, `audio1`, `testcaf3`, `waterfall`, `oboe-*`, `caf-float*`, `caf-pcm32`, `over4gb.caf` (e.g. `caf-pcm_s16le-stereo48k` ours 3.000) | = ffprobe | none | 0.085–1.396 | = ours |
+| ExifTool takes ADPCM duration from the average data rate and ignores the block frame count | `wav-adpcm_ima_wav-*`, `wav-adpcm_ms-*` (ours 3.000; ET 4.192 / 8.384), `aif-ima-adpcm`, `dvi_adpcm` (ET 0.774), `o2_dvi`, `msadpcm`, `wav-ms-adpcm` | = ffprobe | wrong | mostly = ours | = ours |
+| ExifTool/MediaInfo read the AIFF-C `ima4` frame count from COMM, which counts blocks, not frames | `aifc-ima4-stereo` (ours 3.001; both 0.047) | = ffprobe | 0.047 | 0.047 | = ours |
+| Both tools add the encoder delay or count MPEG frames differently | `wav-mp3` (3.025 vs 3.030), `wav-ac3` (3.000 vs 3.008) | frame walk = ffprobe | +0.005 | +0.005 | = ours |
+| GSM 06.10 in AIFF-C: ffprobe's duration is wrong (272 s, 5.88 s); ours agrees with both tools | `aif-gsm610` (1.712), `o2_gsm` (0.040) | 1.712 / 0.040 | 1.701 / 0.037 | same | 272.1 / 5.88 |
+| G.726 (4 bits per sample in the header): ours and MediaInfo use the header; ffprobe and ExifTool use 3 bits | `wav-g721` | 0.854 | 1.709 | 0.854 | 1.709 |
+| `fact` chunk says 1.0 s, data holds 12.5 s | `try1.wav` | 12.485 after this round's fact check (was 1.000) | 104.064 (average-rate) | 1.000 | 12.485 |
+| Stated frame count in COMM smaller than the sound data | `aiff-count-short` (the sound data decides: 0.250) | 0.250 | 0.063 | 0.062 | 0.0625 (ffprobe plays the stated count when it is shorter) |
+| Streaming sizes | `stream-ffffffff` (ours 0.250 = ffprobe; ET 268435.456, MI 1.15e15 read the size literally), `stream-zero` (ours 0.250 = ffprobe, ET 0.253, MI 0.000) | = ffprobe | wrong | wrong | = ours |
+| Truncated data | `truncated-data.wav` (0.187 = MediaInfo = ffprobe; ExifTool trusts the header, 0.250) | = ffprobe | 0.250 | 0.187 | = ours |
+| No usable data chunk | `huge-chunk-size`, `no-data` (ours 0, ExifTool 0.002–0.003, others nothing) | 0 | tiny | none | none |
+| Wave64 MS ADPCM: ffprobe prints N/A; our block arithmetic gives 1.723, MediaInfo 1.769 | `w64-ms-adpcm` | 1.723 | none | 1.769 | N/A |
+| Wave64 files whose first outer size is too small | `w64-alaw`, `w64-gsm610`, `w64-ima-adpcm`, `w64-pcmu8`, `w64-ulaw` | = ffprobe | none | within 0.04 | = ours |
+| **Ours is wrong:** an AIFF-C whose `COMM` size omits the compression type bytes (`digit0v0.aiff`): the stray bytes shift the next chunk header, so no sound data is found and the duration is 0 (ffprobe, ExifTool and MediaInfo all give 0.560) | `digit0v0.aiff` | 0 | 0.560 | 0.560 | 0.560 |
+| Garbage frame count (0xFFFFFFF6 frames) | `bad_length.aifc` (ours 0; ET and MI 194,783 s; ffprobe rejects) | 0 | wrong | wrong | rejects |
+
+`digit0v0.aiff` is a known gap, not an exception: a resynchronising chunk search for AIFF (scanning for `SSND` after a chunk whose size runs past its parent) would fix it, and is left as a follow-up.
+
+**ATL.NET** (final build): 119 of 120 field comparisons agree or are explained as above. The `tagged-aiff.aiff` Title difference is ATL's: the file's `NAME` chunk is 10 bytes, `Tone test` plus a NUL pad inside the size, and ATL keeps the NUL (`Tone test `) where we, ExifTool and MediaInfo end the string at the NUL.
