@@ -738,9 +738,9 @@ public sealed class RemuxSession : IDisposable
             }
         }
 
-        if (s.Input.Codec == CodecId.Opus && p.Pts.IsKnown)
+        if (p.Pts.IsKnown && s.Input.Kind == TrackKind.Audio && s.Input.Codec.Name is "opus" or "ac3" or "aac" or "mp3")
         {
-            p = RetimeOpus(s, p, data);
+            p = RetimeLaced(s, p, data);
         }
 
         _options.Observer?.Invoke(p, payload);
@@ -748,14 +748,14 @@ public sealed class RemuxSession : IDisposable
         s.Packets++;
     }
 
-    // Matroska stores one timestamp per block, and a laced block of Opus frames without a DefaultDuration leaves its frames with the
-    // block's time and no duration. The Opus TOC (RFC 6716 §3.1) gives each packet's length, so frames that would start before the
-    // previous one ended are placed where it ended.
-    private PacketInfo RetimeOpus(TrackState s, PacketInfo p, ReadOnlySpan<byte> data)
+    // Matroska stores one timestamp per block, and a laced block of audio frames without a DefaultDuration leaves its frames with the
+    // block's time and no duration. The length of each frame is fixed by the codec (the Opus TOC byte, RFC 6716 §3.1; 1536 samples for
+    // AC-3; 1024 for AAC; 1152 or 576 for MPEG audio), so a frame that would start before the previous one ended is placed where it ended.
+    private PacketInfo RetimeLaced(TrackState s, PacketInfo p, ReadOnlySpan<byte> data)
     {
-        if (!p.Duration.IsKnown && Codecs.Opus.OpusToc.TryGetSamples(data, out int samples))
+        if (!p.Duration.IsKnown && FrameLength(s.Input, data) is { } length)
         {
-            p = p with { Duration = new MediaTime(samples, 48000) };
+            p = p with { Duration = length };
             if (s.NextPts.IsKnown && p.Pts < s.NextPts)
             {
                 MediaTime at = s.NextPts;
@@ -763,13 +763,31 @@ public sealed class RemuxSession : IDisposable
                 if (!s.ReportedRetime)
                 {
                     s.ReportedRetime = true;
-                    _changes.Add($"Track {s.Input.Index}: packets of laced blocks without a duration were spaced by their Opus frame lengths.");
+                    _changes.Add($"Track {s.Input.Index}: packets of laced blocks without a duration were spaced by their frame lengths.");
                 }
             }
         }
 
         s.NextPts = p.Duration.IsKnown ? p.Pts.Add(p.Duration, MediaRounding.NearestAwayFromZero) : MediaTime.Unknown;
         return p;
+    }
+
+    private static MediaTime? FrameLength(MediaTrack t, ReadOnlySpan<byte> data)
+    {
+        int rate = t.Audio?.SampleRate ?? 0;
+        switch (t.Codec.Name)
+        {
+            case "opus":
+                return Codecs.Opus.OpusToc.TryGetSamples(data, out int samples) ? new MediaTime(samples, 48000) : null;
+            case "ac3" when rate > 0 && data.Length > 2 && data[0] == 0x0B && data[1] == 0x77:
+                return new MediaTime(1536, rate);
+            case "aac" when rate > 0:
+                return new MediaTime(1024, rate);
+            case "mp3" when rate > 0:
+                return new MediaTime(rate >= 32000 ? 1152 : 576, rate);
+            default:
+                return null;
+        }
     }
 
     /// <summary>Annex B access unit to 4-byte length-prefixed NAL units, leaving out parameter sets that the sample entry already holds.</summary>
