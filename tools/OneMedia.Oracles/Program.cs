@@ -64,6 +64,10 @@ internal static class Program
             case "atlcompare": return AtlCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "asfinfo": return AsfInfo.Run(o.Files);
             case "asfseek": return AsfSeekCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, "asf"));
+            case "atl": return AtlSummary.Run(o.Files);
+            case "oneaudio-ogg": return OggCompare.Run(o.Files);
+            case "defects": return AllocCheck.Defects(o.Files);
+            case "alloc": return AllocCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
@@ -137,6 +141,8 @@ internal static class Program
             "ac3" => [".ac3", ".eac3", ".ec3"],
             "amr" => [".amr", ".awb"],
             "audio-es" => [".mp3", ".mp2", ".mpa", ".aac", ".ac3", ".eac3", ".ec3", ".amr", ".awb"],
+            "xiph" => [".ogg", ".oga", ".ogv", ".opus", ".spx", ".flac"],
+            "flv" => [".flv"],
             _ => [.. IsoExtensions, .. MatroskaExtensions, .. AsfExtensions],
         };
         List<string> files = [];

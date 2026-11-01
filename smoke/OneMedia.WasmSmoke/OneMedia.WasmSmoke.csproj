@@ -33,6 +33,10 @@
     <EmbeddedResource Include="../../testdata/audio-es/ac3.ac3" LogicalName="ac3.ac3" />
     <EmbeddedResource Include="../../testdata/audio-es/nb.amr" LogicalName="nb.amr" />
     <EmbeddedResource Include="../../testdata/audio-es/tagged/id3v24-basic.mp3" LogicalName="id3v24-basic.mp3" />
+    <EmbeddedResource Include="../../testdata/audio/opus.ogg" LogicalName="opus.ogg" />
+    <EmbeddedResource Include="../../testdata/audio/vorbis.ogg" LogicalName="vorbis.ogg" />
+    <EmbeddedResource Include="../../testdata/xiph-flv/tags.flac" LogicalName="tags.flac" />
+    <EmbeddedResource Include="../../testdata/xiph-flv/tiny.flv" LogicalName="tiny.flv" />
   </ItemGroup>
 
 </Project>

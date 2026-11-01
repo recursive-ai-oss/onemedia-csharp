@@ -166,3 +166,12 @@ matroska	info-codec	file=test1.mkv	ignore	ours	vfw-fourcc-unmapped: a V_MS/VFW/F
 matroska	info-codec	file=test6.mkv	ignore	ours	vfw-fourcc-unmapped.
 matroska	info-codec	file=wmaproEOF	ignore	ours	acm-format-tag-unmapped: an A_MS/ACM track carries a WAVEFORMATEX whose format tag (WMA Pro) has no neutral codec id here; the codec stays unknown with its tag.
 *	info-duration	file=ext-	ignore	ours	duration-from-file-size: these ten-frame files carry no Xing/Info frame, so ffprobe estimates the duration from the file size and the first frame's bit rate, which counts tag bytes (the APE and ID3 tags are 4 to 40 percent of a 4 to 6 KB file); ours counts the frames (10 x 1152 samples at 44.1 kHz = 0.261224 s).
+ogg	pos	*	ignore	neither	payload-range: ffprobe reports the offset of the page that ends the packet; ours is the range of the packet payload itself, which can start on an earlier page (docs/ogg.md).
+flv	pos	*	ignore	neither	payload-range: ffprobe reports the offset of the tag header; ours is the range of the payload after the tag and codec headers (docs/flv.md).
+flv	duration	*	ours-na	neither	parser-derived-duration: a tag carries no duration; ffprobe fills in one from the frame rate (video) or the audio frame length (AAC, MP3), rounded to milliseconds; ours is unknown (docs/flv.md).
+ogg	count	file=chained-	ignore	neither	chained-link-tracks: a chained file's later links are tracks of their own here; ffprobe 7.0.2 merges a link with the same codec into stream 0 (its header packets included) and stops at a link with another codec (docs/ogg.md).
+ogg	pts	codec=vorbis	tolerance=4096	ours	vorbis-page-end-packet: ffprobe times the packet that ends a page as granule minus the previous packet's length, so it is early (or late) by the difference between the two lengths and leaves a gap before the next packet; ours is continuous with the granule (docs/ogg.md).
+ogg	dts	codec=vorbis	tolerance=4096	ours	vorbis-page-end-packet: same as pts (docs/ogg.md).
+ogg	duration	codec=vorbis	tolerance=4096	ours	vorbis-page-end-packet: ffprobe gives the page-ending packet the previous packet's length; ours is the block-size rule of Vorbis I section 1.3.2.3 (docs/ogg.md).
+flac	count	file=cover	ignore	neither	attached-picture: ffprobe lists a PICTURE block as a one-packet video stream; here it is a tag with its byte range (docs/flac.md).
+flac	count	file=all-blocks	ignore	neither	attached-picture: the all-blocks fixture carries a PICTURE block; see the cover rule (docs/flac.md).

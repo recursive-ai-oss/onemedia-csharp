@@ -255,6 +255,8 @@ internal static class InfoCheck
         "dvb_subtitle" => "dvb-subtitle",
         "pcm_dvd" => "pcm-dvd",
         "pcm_bluray" => "hdmv-lpcm",
+        "theora" or "speex" or "flv1" or "vp6f" or "vp6a" or "nellymoser" or "adpcm_swf" => ffprobe,
+        "flashsv" or "flashsv2" => ffprobe,
         "amr_nb" => "amr-nb",
         "amr_wb" => "amr-wb",
         "mov_text" => "tx3g",

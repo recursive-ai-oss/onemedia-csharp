@@ -30,9 +30,9 @@ public static class MediaFormats
         registry.Add(new AsfFormat());
         registry.Add(new RecursiveAI.OneMedia.MpegTs.MpegTsFormat());
         registry.Add(new RecursiveAI.OneMedia.MpegPs.MpegPsFormat());
-        registry.Add(new FlvSniffer());
-        registry.Add(new OggSniffer());
-        registry.Add(new FlacSniffer());
+        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
+        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
         registry.Add(new AiffSniffer());
         registry.Add(new CafSniffer());
         registry.Add(new AudioStreams.Id3AudioFormat());

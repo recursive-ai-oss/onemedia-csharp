@@ -26,6 +26,9 @@ internal static class Readers
         registry.Add(new RecursiveAI.OneMedia.AudioStreams.AdtsFormat());
         registry.Add(new RecursiveAI.OneMedia.AudioStreams.Ac3Format());
         registry.Add(new RecursiveAI.OneMedia.AudioStreams.AmrFormat());
+        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
         return registry;
     }
 }

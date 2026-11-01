@@ -119,6 +119,12 @@ internal sealed class FactsBuilder(DefectLog defects)
             case TagSystems.Id3v2 when t.Key is "TSSE" or "TSS":
                 AddString(Software, 70, t, text, source);
                 break;
+            case TagSystems.VorbisComment when t.TrackId == 0 && string.Equals(t.Key, "DATE", StringComparison.OrdinalIgnoreCase):
+                AddTime(RankDayTag, t, text, source, "Vorbis comment DATE (a year or an ISO 8601 date)");
+                break;
+            case TagSystems.VorbisComment when t.TrackId == 0 && string.Equals(t.Key, "ENCODER", StringComparison.OrdinalIgnoreCase):
+                AddString(Software, 30, t, text, source);
+                break;
             case TagSystems.ITunes when t.Key == "©day":
                 AddTime(RankDayTag, t, text, source, "iTunes date text");
                 break;

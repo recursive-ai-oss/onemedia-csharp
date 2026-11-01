@@ -1,5 +1,7 @@
+using RecursiveAI.OneMedia.Flac;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
+using RecursiveAI.OneMedia.Ogg;
 
 namespace RecursiveAI.OneMedia.Audio;
 
@@ -179,11 +181,35 @@ public sealed class AsfAudioFormat : OneMediaContainerFormat
     }
 }
 
+/// <summary>Ogg files (Vorbis, Opus, FLAC in Ogg; .ogg, .oga, .opus) read by OneMedia's Ogg reader.</summary>
+public sealed class OggAudioFormat : OneMediaContainerFormat
+{
+    /// <summary>The shared instance.</summary>
+    public static OggAudioFormat Instance { get; } = new();
+
+    private OggAudioFormat()
+        : base(new OggFormat(), "Ogg (OneMedia)", [".ogg", ".oga", ".opus"])
+    {
+    }
+}
+
+/// <summary>Native FLAC files read by OneMedia's FLAC reader.</summary>
+public sealed class FlacAudioFormat : OneMediaContainerFormat
+{
+    /// <summary>The shared instance.</summary>
+    public static FlacAudioFormat Instance { get; } = new();
+
+    private FlacAudioFormat()
+        : base(new FlacFormat(), "FLAC (OneMedia)", [".flac"])
+    {
+    }
+}
+
 /// <summary>Registers OneMedia's containers with a OneAudio registry.</summary>
 public static class OneMediaRegistryExtensions
 {
     /// <summary>
-    /// Registers the MP4/MOV/3GP, Matroska/WebM and ASF readers of OneMedia. Codecs (AAC, Opus, Vorbis, FLAC, AMR) are registered separately
+    /// Registers the MP4/MOV/3GP, Matroska/WebM, ASF, Ogg and native FLAC readers of OneMedia. Codecs (AAC, Opus, Vorbis, FLAC, AMR) are registered separately
     /// as usual. Register these before OneAudio's own MP4 reader if OneMedia's should open MP4 files.
     /// </summary>
     /// <param name="registry">The registry to add to.</param>
@@ -191,6 +217,6 @@ public static class OneMediaRegistryExtensions
     public static global::OneAudio.AudioCodecRegistry AddOneMedia(this global::OneAudio.AudioCodecRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        return registry.Add(IsoBmffAudioFormat.Instance).Add(MatroskaAudioFormat.Instance).Add(AsfAudioFormat.Instance);
+        return registry.Add(IsoBmffAudioFormat.Instance).Add(MatroskaAudioFormat.Instance).Add(AsfAudioFormat.Instance).Add(OggAudioFormat.Instance).Add(FlacAudioFormat.Instance);
     }
 }

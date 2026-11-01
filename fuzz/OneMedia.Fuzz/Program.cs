@@ -20,6 +20,7 @@ Dictionary<string, FuzzTarget> targets = new(StringComparer.OrdinalIgnoreCase)
 CodecFuzz.Register(targets);
 MpegTarget.Register(targets);
 AudioStreamFuzz.Register(targets);
+XiphFlvTargets.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;

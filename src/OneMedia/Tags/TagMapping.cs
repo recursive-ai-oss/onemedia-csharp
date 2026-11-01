@@ -30,6 +30,8 @@ public static class TagMappingTable
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
     private const string DvbDoc = "ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor)";
     private const string ExifToolH264 = "ExifTool H264 tags (MDPM)";
+    private const string FlvDoc = "ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E";
+    private const string VorbisDoc = "Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string AsfDoc = "ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media";
     private const string PicardId3 = "Picard tag map, ID3v2.3/2.4 column (CC0)";
@@ -231,6 +233,38 @@ public static class TagMappingTable
         Row(CommonField.Artist, TagSystems.Lyrics3, Lyrics3Doc, "extended artist", "EAR"),
         Row(CommonField.Album, TagSystems.Lyrics3, Lyrics3Doc, "extended album", "EAL"),
         Row(CommonField.Lyrics, TagSystems.Lyrics3, Lyrics3Doc, "version 2.00 field LYR; the whole block in version 1", "LYR", "LYRICS"),
+
+        Row(CommonField.Title, TagSystems.VorbisComment, VorbisDoc, "", "TITLE"),
+        Row(CommonField.Artist, TagSystems.VorbisComment, VorbisDoc, "PERFORMER is the spec's name for the performing artist", "ARTIST", "PERFORMER"),
+        Row(CommonField.AlbumArtist, TagSystems.VorbisComment, VorbisDoc, "", "ALBUMARTIST", "ALBUM ARTIST"),
+        Row(CommonField.Album, TagSystems.VorbisComment, VorbisDoc, "", "ALBUM"),
+        Row(CommonField.Composer, TagSystems.VorbisComment, VorbisDoc, "", "COMPOSER"),
+        Row(CommonField.Author, TagSystems.VorbisComment, VorbisDoc, "lyricist", "LYRICIST"),
+        Row(CommonField.Director, TagSystems.VorbisComment, VorbisDoc, "", "DIRECTOR"),
+        Row(CommonField.Genre, TagSystems.VorbisComment, VorbisDoc, "", "GENRE"),
+        Row(CommonField.Comment, TagSystems.VorbisComment, VorbisDoc, "", "COMMENT"),
+        Row(CommonField.Description, TagSystems.VorbisComment, VorbisDoc, "the spec's short description of the contents", "DESCRIPTION"),
+        Row(CommonField.Date, TagSystems.VorbisComment, VorbisDoc, "a year or an ISO 8601 date, as written", "DATE"),
+        Row(CommonField.Copyright, TagSystems.VorbisComment, VorbisDoc, "", "COPYRIGHT"),
+        Row(CommonField.Encoder, TagSystems.VorbisComment, VorbisDoc, "", "ENCODER"),
+        Row(CommonField.EncodedBy, TagSystems.VorbisComment, VorbisDoc, "", "ENCODEDBY", "ENCODED-BY"),
+        Row(CommonField.Grouping, TagSystems.VorbisComment, VorbisDoc, "", "GROUPING"),
+        Row(CommonField.Lyrics, TagSystems.VorbisComment, VorbisDoc, "", "LYRICS", "UNSYNCEDLYRICS"),
+        Row(CommonField.Rating, TagSystems.VorbisComment, VorbisDoc, "", "RATING"),
+        Row(CommonField.TrackNumber, TagSystems.VorbisComment, VorbisDoc, "the spec's TRACKNUMBER may read number/total", "TRACKNUMBER", "TRACK"),
+        Row(CommonField.TrackTotal, TagSystems.VorbisComment, VorbisDoc, "TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER", "TRACKTOTAL", "TOTALTRACKS", "TRACKNUMBER"),
+        Row(CommonField.DiscNumber, TagSystems.VorbisComment, VorbisDoc, "may read number/total", "DISCNUMBER"),
+        Row(CommonField.DiscTotal, TagSystems.VorbisComment, VorbisDoc, "DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER", "DISCTOTAL", "TOTALDISCS", "DISCNUMBER"),
+        Row(CommonField.Title, TagSystems.Flv, FlvDoc, "", "title"),
+        Row(CommonField.Artist, TagSystems.Flv, FlvDoc, "", "artist"),
+        Row(CommonField.Author, TagSystems.Flv, FlvDoc, "", "author"),
+        Row(CommonField.Album, TagSystems.Flv, FlvDoc, "", "album"),
+        Row(CommonField.Genre, TagSystems.Flv, FlvDoc, "", "genre"),
+        Row(CommonField.Comment, TagSystems.Flv, FlvDoc, "", "comment"),
+        Row(CommonField.Description, TagSystems.Flv, FlvDoc, "", "description"),
+        Row(CommonField.Copyright, TagSystems.Flv, FlvDoc, "", "copyright"),
+        Row(CommonField.Date, TagSystems.Flv, FlvDoc, "as written by the muxer", "creationdate", "date"),
+        Row(CommonField.Encoder, TagSystems.Flv, FlvDoc, "the muxer's name and version", "encoder", "metadatacreator"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

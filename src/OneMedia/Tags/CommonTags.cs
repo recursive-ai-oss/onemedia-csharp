@@ -243,7 +243,7 @@ public sealed class CommonTags
                 List<CommonValue> found = [];
                 foreach (NativeTag tag in _native)
                 {
-                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.Ape or TagSystems.Id3v2 ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
+                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.Ape or TagSystems.Id3v2 or TagSystems.VorbisComment or TagSystems.Flv ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
                     if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text && !(text.Length == 0 && tag.System == TagSystems.Asf))
                     {
                         found.Add(new CommonValue(field, text, tag));
@@ -456,7 +456,7 @@ public sealed class CommonTags
             return tag.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.Asf or TagSystems.Id3v2 or TagSystems.Id3v1 or TagSystems.Ape)
+        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.Asf or TagSystems.Id3v2 or TagSystems.Id3v1 or TagSystems.Ape or TagSystems.VorbisComment)
         {
             // Matroska writes the number as text, sometimes as "3/12" (ffmpeg's track tag); the total fields read the number after the slash or the whole text.
             string t = tag.Text ?? "";

@@ -41,6 +41,14 @@ public static class TagSystems
 
     /// <summary>Lyrics3 v2.00 fields (and the block itself when it cannot be split), keyed by the three-letter field code.</summary>
     public const string Lyrics3 = "lyrics3";
+    /// <summary>Vorbis comments, in Ogg (Vorbis, Opus, FLAC, Theora, Speex) and in native FLAC files.</summary>
+    public const string VorbisComment = "vorbis";
+
+    /// <summary>FLAC metadata blocks other than the Vorbis comment: PICTURE, APPLICATION, CUESHEET, SEEKTABLE.</summary>
+    public const string Flac = "flac";
+
+    /// <summary>The properties of an FLV <c>onMetaData</c> script data tag.</summary>
+    public const string Flv = "flv";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>
