@@ -18,10 +18,10 @@ internal static class AsfInfo
                 using AsfDemuxer d = AsfDemuxer.Open(source, new MediaOpenOptions { LeaveOpen = true, Defects = log });
                 AsfFileProperties? fp = d.Header.FileProperties;
                 Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                    $"  protection={d.Protection} flags=0x{fp?.Flags:X} packet={fp?.MinPacketSize}/{fp?.MaxPacketSize} preroll={fp?.PrerollMs} packets(hdr)={d.Header.DataPacketCount} seek={d.CanSeek}"));
+                    $"  protection={d.Protection} flags=0x{fp?.Flags:X} packet={fp?.MinPacketSize}/{fp?.MaxPacketSize} preroll={fp?.PrerollMs} play={fp?.PlayDuration100ns / 10000} send={fp?.SendDuration100ns / 10000} fsize={fp?.FileSize} actual={source.Length} ours={d.Duration} packets(hdr)={d.Header.DataPacketCount} seek={d.CanSeek}"));
                 foreach (AsfStreamEntry s in d.Header.Streams)
                 {
-                    Console.WriteLine($"  stream {s.StreamNumber} kind={s.Kind} encrypted={s.IsEncrypted} ext={s.HasExtendedProperties} at {s.Range.Offset}");
+                    Console.WriteLine($"  stream {s.StreamNumber} kind={s.Kind} encrypted={s.IsEncrypted} ext={s.HasExtendedProperties} start={s.StartTimeMs} end={s.EndTimeMs} at {s.Range.Offset}");
                 }
 
                 foreach (IStructureNode n in d.Header.Root.Children)

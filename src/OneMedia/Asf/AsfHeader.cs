@@ -473,7 +473,10 @@ internal static class AsfHeaderParser
         int at = 2;
         for (int i = 0; i < count && at < b.Length; i++)
         {
-            s.Languages.Add(ReadCountedString(b, ref at, 1, wide: true));
+            // The one-byte length counts bytes of UTF-16 text (observed: 12 for "en-gb" and its NUL), unlike the character counts elsewhere.
+            int bytes = Math.Min(b[at], b.Length - at - 1);
+            s.Languages.Add(Encoding.Unicode.GetString(b, at + 1, bytes & ~1).TrimEnd('\0'));
+            at += 1 + bytes;
         }
     }
 
