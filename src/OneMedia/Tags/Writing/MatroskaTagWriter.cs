@@ -71,6 +71,7 @@ internal static class MatroskaTagWriter
         List<byte[]> newSimples = [];
         List<byte[]> inserts = [];
         HashSet<long> consumed = [];
+        HashSet<long> blocked = [];
         bool created = false;
         foreach (KeyOp op in ops)
         {
@@ -80,6 +81,7 @@ internal static class MatroskaTagWriter
                 foreach (var m in matches)
                 {
                     editor.Remove(m.Simple);
+                    blocked.Add(TopOf(m.Simple, seg));
                     consumed.Add(m.Simple.Offset);
                 }
 
@@ -92,6 +94,7 @@ internal static class MatroskaTagWriter
             if (primary.Simple is not null)
             {
                 editor.Replace(primary.Simple, BuildSimple(primary.Simple, op.Key, op.Values[next++], src));
+                blocked.Add(TopOf(primary.Simple, seg));
                 consumed.Add(primary.Simple.Offset);
             }
 
@@ -113,15 +116,18 @@ internal static class MatroskaTagWriter
                 if (old is not null)
                 {
                     editor.Remove(old);
+                    blocked.Add(info.Offset);
                 }
             }
             else if (old is not null)
             {
                 editor.Replace(old, EbmlWriter.Element(InfoTitle, Encoding.UTF8.GetBytes(title[0])));
+                blocked.Add(info.Offset);
             }
             else
             {
                 editor.AppendChild(info, EbmlWriter.Element(InfoTitle, Encoding.UTF8.GetBytes(title[0])));
+                blocked.Add(info.Offset);
             }
 
             reports.Add(new SystemWriteReport(TagSystems.MatroskaInfo, title.Count > 0 ? [CommonField.Title] : [], title.Count == 0 ? [CommonField.Title] : [], [], [], false));
@@ -134,11 +140,13 @@ internal static class MatroskaTagWriter
                 foreach (byte[] s in newSimples)
                 {
                     editor.AppendChild(home, s);
+                    blocked.Add(TopOf(home, seg));
                 }
             }
             else if (children.FirstOrDefault(c => c.Id == Tags) is { } tagsEl)
             {
                 editor.AppendChild(tagsEl, Wrap(newSimples));
+                blocked.Add(tagsEl.Offset);
             }
             else
             {
@@ -149,10 +157,15 @@ internal static class MatroskaTagWriter
 
         // Pictures.
         List<string> conv = [.. rep.Conversions];
-        PlanPictures(src, seg, children, edits, editor, conv, limits, inserts);
+        if (removed.Contains(CommonField.Encoder))
+        {
+            conv.Add("Encoder: the ENCODER tag was removed; the Segment's MuxingApp and WritingApp belong to the muxer and are kept");
+        }
+
+        PlanPictures(src, seg, children, edits, editor, conv, limits, inserts, blocked);
         if (inserts.Count > 0)
         {
-            InsertBeforeClusters(src, seg, children, inserts, editor, limits);
+            InsertBeforeClusters(src, seg, children, inserts, editor, limits, blocked);
         }
 
         reports.Insert(0, rep with { Written = written, Removed = removed, Conversions = conv, Created = created });
@@ -162,7 +175,7 @@ internal static class MatroskaTagWriter
 
     // New top-level elements go in front of the first Cluster, where readers look for them without scanning: beside the last element before it, which
     // is copied (it is small) and followed by the new elements. A Void element after it absorbs the growth. When that is not possible they go at the end.
-    private static void InsertBeforeClusters(IMediaSource src, EbmlElement seg, IReadOnlyList<EbmlElement> children, List<byte[]> inserts, EbmlEditor editor, MediaLimits limits)
+    private static void InsertBeforeClusters(IMediaSource src, EbmlElement seg, IReadOnlyList<EbmlElement> children, List<byte[]> inserts, EbmlEditor editor, MediaLimits limits, HashSet<long> blocked)
     {
         List<EbmlElement> candidates = [];
         foreach (EbmlElement c in children)
@@ -172,7 +185,7 @@ internal static class MatroskaTagWriter
                 break;
             }
 
-            if (c.Id != 0xEC)
+            if (c.Id != 0xEC && !blocked.Contains(c.Offset))
             {
                 candidates.Add(c);
             }
@@ -204,6 +217,17 @@ internal static class MatroskaTagWriter
         {
             editor.AppendChild(seg, x);
         }
+    }
+
+    private static long TopOf(EbmlElement e, EbmlElement seg)
+    {
+        EbmlElement t = e;
+        while (t.Parent is { } p && p.Offset != seg.Offset)
+        {
+            t = p;
+        }
+
+        return t.Offset;
     }
 
     private static byte[] Wrap(List<byte[]> simples) => EbmlWriter.Element(Tag, [.. EbmlWriter.Element(Targets, []), .. simples.SelectMany(s => s)]);
@@ -266,7 +290,7 @@ internal static class MatroskaTagWriter
         return EbmlWriter.Element(SimpleTag, [.. payload]);
     }
 
-    private static void PlanPictures(IMediaSource src, EbmlElement seg, IReadOnlyList<EbmlElement> children, TagEdits edits, EbmlEditor editor, List<string> conv, MediaLimits limits, List<byte[]> inserts)
+    private static void PlanPictures(IMediaSource src, EbmlElement seg, IReadOnlyList<EbmlElement> children, TagEdits edits, EbmlEditor editor, List<string> conv, MediaLimits limits, List<byte[]> inserts, HashSet<long> blocked)
     {
         if (!edits.PictureEdits.Any())
         {
@@ -296,6 +320,7 @@ internal static class MatroskaTagWriter
                 foreach (EbmlElement c in covers.Where(c => touched.Add(c.Offset)))
                 {
                     editor.Remove(c);
+                    blocked.Add(attachments!.Offset);
                 }
 
                 continue;
@@ -322,6 +347,7 @@ internal static class MatroskaTagWriter
             if (same is not null)
             {
                 editor.Replace(same, file);
+                blocked.Add(attachments!.Offset);
                 touched.Add(same.Offset);
             }
             else
@@ -337,6 +363,7 @@ internal static class MatroskaTagWriter
                 foreach (byte[] a in additions)
                 {
                     editor.AppendChild(attachments, a);
+                    blocked.Add(attachments.Offset);
                 }
             }
             else

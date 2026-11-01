@@ -56,9 +56,9 @@ internal static class Checker
 
     private static string Edit(string input, string output)
     {
-        CommonField? remove = RemovableField(input);
+        CommonField? remove = Environment.GetEnvironmentVariable("TAGCHECK_NOREMOVE") == "1" ? null : RemovableField(input);
         TagEdits e = new();
-        e.Set(CommonField.Title, "Edited Title \u00fc");
+        e.Set(CommonField.Title, Environment.GetEnvironmentVariable("TAGCHECK_TITLE") ?? "Edited Title \u00fc");
         e.Set(CommonField.Artist, "Edited Artist");
         e.Set(CommonField.Comment, "An edited comment");
         e.SetPicture(Png, "image/png");
@@ -67,13 +67,15 @@ internal static class Checker
             e.Remove(r);
         }
 
-        TagWritePlan plan = TagWriter.Plan(input, e);
+        using MemoryMediaSource planSource = new(File.ReadAllBytes(input));
+        TagWritePlan plan = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1" ? TagWriter.Plan(planSource, e) : TagWriter.Plan(input, e);
         File.Delete(output);
         plan.Report.Write = SafeWriter.SaveAs(plan.Plan, input, output, true);
         string copies = VerifyCopies(plan.Plan, input, output);
         string before = Hash(input);
         string after = Hash(output);
-        using MediaFile m = Media.Open(output);
+        using MemoryMediaSource mem = new(File.ReadAllBytes(output));
+        using MediaFile m = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1" ? MediaFile.Open(mem) : Media.Open(output);
         string readBack = $"title={Flag(m.Tags.Title == "Edited Title \u00fc")} artist={Flag(m.Tags.Artist == "Edited Artist")} comment={Flag(m.Tags.Comment == "An edited comment")} picture={Flag(m.Tags.Pictures.Any(p => p.Length == Png.Length))} removed={(remove is { } rr ? Flag(m.Tags.First(rr) is null) + ":" + rr : "none")}";
         long changed = plan.Plan.Pieces.Where(p => p.Kind != OutputPieceKind.Copy).Sum(p => p.Length);
         string systems = string.Join(",", plan.Report.Systems.Select(s => s.System + (s.Created ? "+" : "")));

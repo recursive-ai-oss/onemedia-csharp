@@ -126,6 +126,17 @@ public sealed class EbmlEditor
             }
         }
 
+        // An element appended inside something that is replaced or removed would vanish with it; refuse instead of losing it silently.
+        foreach (Request other in _requests)
+        {
+            (EbmlElement? replaced, EbmlElement? appendedTo) = request.Kind == RequestKind.Append ? (other.Kind != RequestKind.Append ? other.Element : null, request.Element)
+                : (request.Element, other.Kind == RequestKind.Append ? other.Element : null);
+            if (replaced is not null && appendedTo is not null && (replaced.Offset == appendedTo.Offset || IsAncestor(replaced, appendedTo)))
+            {
+                throw new ArgumentException("An element cannot be added inside an element that is replaced or removed by another edit.");
+            }
+        }
+
         _requests.Add(request);
     }
 
