@@ -125,8 +125,30 @@ public sealed class EbmlEditor
     /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
     public EditPlan Build(CancellationToken cancellationToken = default)
     {
+        // How far elements move decides what the stored positions must say, and the positions' own widths can change how far elements
+        // move. Plan, read the movement off the plan, plan again with positions fixed, until the two agree.
+        ShiftMap map = new();
+        for (int round = 0; ; round++)
+        {
+            EditPlan plan = BuildRound(map, cancellationToken);
+            ShiftMap next = ShiftMap.FromChanges(plan.Changes);
+            if (next.Signature() == map.Signature())
+            {
+                return plan;
+            }
+
+            if (round >= 8)
+            {
+                throw new UnsupportedMediaException("The positions in the Segment did not settle after the edit.");
+            }
+
+            map = next;
+        }
+    }
+
+    private EditPlan BuildRound(ShiftMap map, CancellationToken cancellationToken)
+    {
         Rewriter rw = new(_document, _source, RewriteHeaders, cancellationToken);
-        ShiftMap shift = new();
         HashSet<EbmlElement> consumed = new(NodeComparer<EbmlElement>.Instance);
         long used = 0;
         long available = 0;
@@ -136,20 +158,20 @@ public sealed class EbmlEditor
             switch (r.Kind)
             {
                 case RequestKind.Replace:
-                    PlanReplace(rw, shift, consumed, r, ref used, ref available, ref required);
+                    PlanReplace(rw, consumed, r, ref used, ref available, ref required);
                     break;
                 case RequestKind.Remove:
-                    PlanRemove(rw, shift, r);
+                    PlanRemove(rw, r);
                     break;
                 default:
-                    PlanAppend(rw, shift, consumed, r, ref used, ref available, ref required);
+                    PlanAppend(rw, consumed, r, ref used, ref available, ref required);
                     break;
             }
         }
 
-        if (!shift.IsEmpty)
+        if (!map.IsEmpty)
         {
-            AddPositionFixups(rw, shift, cancellationToken);
+            AddPositionFixups(rw, map, cancellationToken);
         }
 
         if (RewriteHeaders)
@@ -182,7 +204,7 @@ public sealed class EbmlEditor
 
     private static bool Fits(long remainder) => remainder == 0 || remainder >= 2;
 
-    private void PlanReplace(Rewriter rw, ShiftMap shift, HashSet<EbmlElement> consumed, Request r, ref long used, ref long available, ref long required)
+    private void PlanReplace(Rewriter rw, HashSet<EbmlElement> consumed, Request r, ref long used, ref long available, ref long required)
     {
         EbmlElement node = r.Element!;
         ReadOnlyMemory<byte> bytes = r.Bytes;
@@ -224,24 +246,19 @@ public sealed class EbmlEditor
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? TotalSize(next) : 0;
                 available += free;
                 required += m > n ? Math.Max(1, m - n - free) : 1;
-                shift.Add(node.Range.End, m - n);
             }
         }
 
         rw.AddSlot(node, last, repl, name);
     }
 
-    private static void PlanRemove(Rewriter rw, ShiftMap shift, Request r)
+    private static void PlanRemove(Rewriter rw, Request r)
     {
         EbmlElement node = r.Element!;
         long n = TotalSize(node);
         PieceList repl = new();
         string name = node.Name ?? $"0x{node.Id:X}";
-        if (r.Reclaim)
-        {
-            shift.Add(node.Range.End, -n);
-        }
-        else
+        if (!r.Reclaim)
         {
             repl.AddData(EbmlWriter.Void(n));
         }
@@ -249,7 +266,7 @@ public sealed class EbmlEditor
         rw.AddSlot(node, node, repl, r.Reclaim ? $"remove {name}" : $"clear {name} to a Void element");
     }
 
-    private void PlanAppend(Rewriter rw, ShiftMap shift, HashSet<EbmlElement> consumed, Request r, ref long used, ref long available, ref long required)
+    private void PlanAppend(Rewriter rw, HashSet<EbmlElement> consumed, Request r, ref long used, ref long available, ref long required)
     {
         EbmlElement? parent = r.Element;
         ReadOnlyMemory<byte> bytes = r.Bytes;
@@ -286,8 +303,6 @@ public sealed class EbmlEditor
         required += Math.Max(1, m - free);
         PieceList added = new();
         added.AddData(bytes);
-        long at = kids.Count > 0 ? kids[^1].Range.End : parent is null ? _source.Length : parent.Offset + parent.HeaderSize;
-        shift.Add(at, m);
         rw.AddAppendElement(parent, added);
     }
 
@@ -295,7 +310,7 @@ public sealed class EbmlEditor
 
     private sealed record Patch(EbmlElement Target, long NewLength, Func<PieceList> Make);
 
-    private void AddPositionFixups(Rewriter rw, ShiftMap userShift, CancellationToken ct)
+    private void AddPositionFixups(Rewriter rw, ShiftMap shift, CancellationToken ct)
     {
         foreach (EbmlElement seg in _document.Elements)
         {
@@ -305,41 +320,12 @@ public sealed class EbmlEditor
             }
 
             long segStart = seg.Offset + seg.HeaderSize;
-            long segEnd = seg.Range.End;
-            if (!userShift.HasChangeIn(segStart, segEnd))
+            if (!shift.HasChangeIn(segStart, seg.Range.End))
             {
                 continue;
             }
 
-            // A patch that changes an element's size moves what follows it, which can change other positions: repeat until the sizes settle.
-            ShiftMap shift = userShift;
-            List<Patch> patches = [];
-            string? previous = null;
-            for (int round = 0; round < 8; round++)
-            {
-                ct.ThrowIfCancellationRequested();
-                patches = ComputePatches(rw, seg, segStart, shift, ct);
-                ShiftMap next = userShift.Clone();
-                foreach (Patch p in patches)
-                {
-                    next.Add(p.Target.Range.End, p.NewLength - TotalSize(p.Target));
-                }
-
-                string signature = next.Signature();
-                shift = next;
-                if (signature == previous)
-                {
-                    break;
-                }
-
-                previous = signature;
-                if (round == 7)
-                {
-                    throw new UnsupportedMediaException("The positions in the Segment did not settle after an edit.") { Offset = seg.Offset };
-                }
-            }
-
-            foreach (Patch p in patches)
+            foreach (Patch p in ComputePatches(rw, seg, segStart, shift, ct))
             {
                 rw.AddSlot(p.Target, p.Target, p.Make(), $"move positions in {p.Target.Name ?? $"0x{p.Target.Id:X}"}");
             }

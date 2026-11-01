@@ -103,6 +103,24 @@ internal sealed class ShiftMap
         return string.Join(';', _items.ConvertAll(static i => $"{i.Position}:{i.Delta}"));
     }
 
+    /// <summary>
+    /// Reads the movement off a finished plan: each change moves everything that follows its source range by the difference between the new
+    /// content's length and the old range's length. An insertion is a change with an empty source range at the insertion point.
+    /// </summary>
+    public static ShiftMap FromChanges(IReadOnlyList<WriteChange> changes)
+    {
+        ShiftMap map = new();
+        foreach (WriteChange c in changes)
+        {
+            if (!c.Source.IsNone)
+            {
+                map.Add(c.Source.End, c.Output.Length - c.Source.Length);
+            }
+        }
+
+        return map;
+    }
+
     public ShiftMap Clone()
     {
         ShiftMap copy = new();
@@ -305,7 +323,7 @@ internal abstract class TreeRewriter<TNode>
             {
                 long outStart = area.Length;
                 area.Add(a);
-                area.NoteChange("insert", ByteRange.None, outStart);
+                area.NoteChange("insert", new ByteRange(at, 0), outStart);
             }
         }
 
@@ -325,7 +343,14 @@ internal abstract class TreeRewriter<TNode>
     {
         PieceList area = RewriteArea(node);
         PieceList result = new();
+        long region = ChildStart(node) - node.Offset;
         EmitHeader(node, area.Length, result);
+        if (result.Length != region)
+        {
+            // A wider size field makes the header longer: everything after it moves, and stored offsets must know.
+            result.NoteChange("header size changed", new ByteRange(node.Offset, region), 0);
+        }
+
         result.Add(area);
         EmitTrailer(node, area.Length, result);
         return result;

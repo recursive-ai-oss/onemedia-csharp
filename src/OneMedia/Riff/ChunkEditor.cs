@@ -307,6 +307,12 @@ public sealed class ChunkEditor
         ReadOnlyMemory<byte> bytes = r.Chunk;
         long m = bytes.Length;
         IReadOnlyList<ChunkNode> kids = parent.Chunks;
+        if (kids.Count > 0 && kids[^1].IsSizeInferred)
+        {
+            // A chunk that runs to the end of the file (an unbounded or cut-off size) would swallow whatever is added after it.
+            throw new UnsupportedMediaException($"The last chunk '{kids[^1].Id}' has no stated end, so nothing can be added after it.") { Offset = kids[^1].Offset };
+        }
+
         ChunkNode? padding = null;
         for (int i = kids.Count - 1; i >= 0; i--)
         {

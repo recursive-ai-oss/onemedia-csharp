@@ -157,6 +157,8 @@ internal static class Checker
         return 0;
     }
 
+    private static int InputErrors;
+
     private static EditPlan PlanFor(Family family, FileMediaSource src, bool strictHeaders, bool edit)
     {
         switch (family)
@@ -170,7 +172,9 @@ internal static class Checker
                         BasicIso(tree, e);
                     }
 
-                    return e.Build();
+                    EditPlan plan = e.Build();
+                    InputErrors = tree.Defects.Count(d => d.Severity == DefectSeverity.Error);
+                    return plan;
                 }
 
             case Family.Matroska:
@@ -182,19 +186,24 @@ internal static class Checker
                         BasicMatroska(doc, e);
                     }
 
-                    return e.Build();
+                    EditPlan plan = e.Build();
+                    InputErrors = doc.Defects.Count(d => d.Severity == DefectSeverity.Error);
+                    return plan;
                 }
 
             default:
                 {
-                    ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog()) ?? throw new MediaFormatException("Not a chunk file.");
+                    DefectLog log = new();
+                    ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, log) ?? throw new MediaFormatException("Not a chunk file.");
                     ChunkEditor e = new(cf, src) { RewriteHeaders = strictHeaders };
                     if (edit)
                     {
                         BasicRiff(cf, e);
                     }
 
-                    return e.Build();
+                    EditPlan plan = e.Build();
+                    InputErrors = log.Count(d => d.Severity >= DefectSeverity.Warning);
+                    return plan;
                 }
         }
     }
@@ -218,7 +227,8 @@ internal static class Checker
     private static byte[] MatroskaTags(string title)
     {
         byte[] simple = EbmlWriter.Element(0x67C8, [.. EbmlWriter.Element(0x45A3, "TITLE"u8), .. EbmlWriter.Element(0x4487, Encoding.UTF8.GetBytes(title))]);
-        return EbmlWriter.Element(TagsId, EbmlWriter.Element(0x7373, simple));
+        byte[] targets = EbmlWriter.Element(0x63C0, []); // a Tag needs its Targets element, even an empty one (applies to the whole file)
+        return EbmlWriter.Element(TagsId, EbmlWriter.Element(0x7373, [.. targets, .. simple]));
     }
 
     private const uint TagsId = 0x1254C367;
@@ -264,7 +274,16 @@ internal static class Checker
         if (info is not null)
         {
             // A Title in the Segment Info: it sits in front of the Clusters, so everything after it moves.
-            e.AppendChild(info, EbmlWriter.Element(0x7BA9, "Deposition, day 2"u8));
+            byte[] title = EbmlWriter.Element(0x7BA9, "Deposition, day 2"u8);
+            EbmlElement? oldTitle = info.ChildElements.FirstOrDefault(c => c.Id == 0x7BA9);
+            if (oldTitle is not null)
+            {
+                e.Replace(oldTitle, title);
+            }
+            else
+            {
+                e.AppendChild(info, title);
+            }
         }
 
         EbmlElement? tags = seg.ChildElements.FirstOrDefault(c => c.Id == TagsId);
@@ -322,7 +341,7 @@ internal static class Checker
             at += p.Length;
         }
 
-        Console.WriteLine($"{(verify == "ok" ? "OK" : "FAIL")}\t{family}\t{input}\tsameLayout={plan.IsSameLayout}\tsrc={plan.SourceLength}\tout={plan.Length}\tchangedBytes={changedBytes}\tcopied={report.BytesCopied}\tcopies={verify}\tchanges={plan.Changes.Count}\t{diff}\t{sw.ElapsedMilliseconds}ms");
+        Console.WriteLine($"{(verify == "ok" ? "OK" : "FAIL")}\t{family}\t{input}\tinputErrors={InputErrors}\tsameLayout={plan.IsSameLayout}\tsrc={plan.SourceLength}\tout={plan.Length}\tchangedBytes={changedBytes}\tcopied={report.BytesCopied}\tcopies={verify}\tchanges={plan.Changes.Count}\t{diff}\t{sw.ElapsedMilliseconds}ms");
         return 0;
     }
 

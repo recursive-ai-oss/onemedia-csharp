@@ -128,8 +128,31 @@ public sealed class BoxEditor
     /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
     public EditPlan Build(CancellationToken cancellationToken = default)
     {
+        // The plan decides how far things move (a rewritten header can grow, a table can be promoted), and how far they move decides what the
+        // stored offsets must say. Plan, read the movement off the plan, plan again with the offsets fixed, until the two agree.
+        ShiftMap map = new();
+        HashSet<long> promoted = [];
+        for (int round = 0; ; round++)
+        {
+            EditPlan plan = BuildRound(map, promoted, cancellationToken);
+            ShiftMap next = ShiftMap.FromChanges(plan.Changes);
+            if (next.Signature() == map.Signature())
+            {
+                return plan;
+            }
+
+            if (round >= 8)
+            {
+                throw new UnsupportedMediaException("The stored offsets did not settle after the edit.");
+            }
+
+            map = next;
+        }
+    }
+
+    private EditPlan BuildRound(ShiftMap map, HashSet<long> promoted, CancellationToken cancellationToken)
+    {
         Rewriter rw = new(_tree, _source, _limits, RewriteHeaders, cancellationToken);
-        ShiftMap shift = new();
         HashSet<BoxNode> consumed = new(NodeComparer<BoxNode>.Instance);
         long used = 0;
         long available = 0;
@@ -139,20 +162,20 @@ public sealed class BoxEditor
             switch (r.Kind)
             {
                 case RequestKind.Replace:
-                    PlanReplace(rw, shift, consumed, r, ref used, ref available, ref required);
+                    PlanReplace(rw, consumed, r, ref used, ref available, ref required);
                     break;
                 case RequestKind.Remove:
-                    PlanRemove(rw, shift, r);
+                    PlanRemove(rw, r);
                     break;
                 default:
-                    PlanAppend(rw, shift, consumed, r, ref used, ref available, ref required);
+                    PlanAppend(rw, consumed, r, ref used, ref available, ref required);
                     break;
             }
         }
 
-        if (!shift.IsEmpty)
+        if (!map.IsEmpty)
         {
-            AddOffsetFixups(rw, shift, cancellationToken);
+            AddOffsetFixups(rw, map, promoted, cancellationToken);
         }
 
         if (RewriteHeaders)
@@ -160,8 +183,7 @@ public sealed class BoxEditor
             rw.MarkAllContainers();
         }
 
-        PieceList list = rw.Rewrite();
-        return list.ToPlan(_tree.Length, used, available, required);
+        return rw.Rewrite().ToPlan(_tree.Length, used, available, required);
     }
 
     private static bool IsPadding(BoxNode n) => n.Type is BoxTypes.Free or BoxTypes.Skip;
@@ -184,7 +206,7 @@ public sealed class BoxEditor
         return null;
     }
 
-    private void PlanReplace(Rewriter rw, ShiftMap shift, HashSet<BoxNode> consumed, Request r, ref long used, ref long available, ref long required)
+    private void PlanReplace(Rewriter rw, HashSet<BoxNode> consumed, Request r, ref long used, ref long available, ref long required)
     {
         BoxNode node = r.Node!;
         ReadOnlyMemory<byte> box = r.Box;
@@ -227,23 +249,18 @@ public sealed class BoxEditor
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? TotalSize(next) : 0;
                 available += free;
                 required += m > n ? Math.Max(1, m - n - free) : 1;
-                shift.Add(node.Header.End, m - n);
             }
         }
 
         rw.AddSlot(node, last, repl, name);
     }
 
-    private static void PlanRemove(Rewriter rw, ShiftMap shift, Request r)
+    private static void PlanRemove(Rewriter rw, Request r)
     {
         BoxNode node = r.Node!;
         long n = TotalSize(node);
         PieceList repl = new();
-        if (r.Reclaim)
-        {
-            shift.Add(node.Header.End, -n);
-        }
-        else
+        if (!r.Reclaim)
         {
             repl.AddData(BoxBuilder.CreateFree(n));
         }
@@ -251,12 +268,18 @@ public sealed class BoxEditor
         rw.AddSlot(node, node, repl, r.Reclaim ? $"remove '{node.TypeName}'" : $"clear '{node.TypeName}' to a free box");
     }
 
-    private void PlanAppend(Rewriter rw, ShiftMap shift, HashSet<BoxNode> consumed, Request r, ref long used, ref long available, ref long required)
+    private void PlanAppend(Rewriter rw, HashSet<BoxNode> consumed, Request r, ref long used, ref long available, ref long required)
     {
         BoxNode? parent = r.Node;
         ReadOnlyMemory<byte> box = r.Box;
         long m = box.Length;
         IReadOnlyList<BoxNode> kids = parent is null ? _tree.TopLevel : parent.Children;
+        if (kids.Count > 0 && (kids[^1].IsSizeInferred || kids[^1].Header.IsClamped))
+        {
+            // A box that runs to the end of the file (size 0, or a size cut back to fit) would swallow whatever is added after it.
+            throw new UnsupportedMediaException($"The last box '{kids[^1].TypeName}' has no stated end, so nothing can be added after it.") { Offset = kids[^1].Offset };
+        }
+
         BoxNode? padding = null;
         for (int i = kids.Count - 1; i >= 0; i--)
         {
@@ -288,14 +311,12 @@ public sealed class BoxEditor
         required += Math.Max(1, m - free);
         PieceList added = new();
         added.AddData(box);
-        long at = kids.Count > 0 ? kids[^1].Header.End : parent?.ChildrenOffset ?? _tree.Length;
-        shift.Add(at, m);
         rw.AddAppendBox(parent, added);
     }
 
     // ---- stored offsets ----
 
-    private void AddOffsetFixups(Rewriter rw, ShiftMap userShift, CancellationToken ct)
+    private void AddOffsetFixups(Rewriter rw, ShiftMap shift, HashSet<long> promoted, CancellationToken ct)
     {
         List<OffsetTable> tables = [];
         bool hasFragments = false;
@@ -311,52 +332,24 @@ public sealed class BoxEditor
             }
         }
 
-        // Promoting a stco to co64 makes the movie box larger, which moves the media further: repeat until no new table needs promoting.
-        ShiftMap shift = userShift;
-        while (true)
-        {
-            ct.ThrowIfCancellationRequested();
-            ShiftMap current = userShift.Clone();
-            foreach (OffsetTable t in tables)
-            {
-                if (t.Promote)
-                {
-                    current.Add(t.Box.Header.End, t.Count * 4);
-                }
-            }
-
-            bool changed = false;
-            foreach (OffsetTable t in tables)
-            {
-                if (t.Is64 || t.Promote)
-                {
-                    continue;
-                }
-
-                (long max, _) = Scan(t, current, ct);
-                if (max > uint.MaxValue)
-                {
-                    t.Promote = true;
-                    changed = true;
-                }
-            }
-
-            shift = current;
-            if (!changed)
-            {
-                break;
-            }
-        }
-
         foreach (OffsetTable t in tables)
         {
-            (_, bool any) = Scan(t, shift, ct);
-            if (!any && !t.Promote)
+            ct.ThrowIfCancellationRequested();
+            // Promoting a stco to co64 makes the movie box larger, which moves the media further; the next round sees that. A table once
+            // promoted stays promoted, so the rounds cannot flip back and forth.
+            (long max, bool any) = Scan(t, shift, ct);
+            if (!t.Is64 && max > uint.MaxValue)
+            {
+                promoted.Add(t.Box.Offset);
+            }
+
+            bool promote = promoted.Contains(t.Box.Offset);
+            if (!any && !promote)
             {
                 continue;
             }
 
-            bool to64 = t.Is64 || t.Promote;
+            bool to64 = t.Is64 || promote;
             long payload = 8 + (t.Count * (to64 ? 8 : 4));
             long total = payload + 8;
             byte[] head = new byte[16];
@@ -370,7 +363,7 @@ public sealed class BoxEditor
             BinaryPrimitives.WriteUInt32BigEndian(head.AsSpan(12), (uint)t.Count);
             PieceList repl = new();
             repl.AddGenerated(total, new ChunkOffsetGenerator(t, to64, shift.Clone(), head));
-            rw.AddSlot(t.Box, t.Box, repl, t.Promote ? $"move chunk offsets, '{t.Box.TypeName}' becomes 'co64'" : $"move chunk offsets in '{t.Box.TypeName}'");
+            rw.AddSlot(t.Box, t.Box, repl, promote && !t.Is64 ? $"move chunk offsets, '{t.Box.TypeName}' becomes 'co64'" : $"move chunk offsets in '{t.Box.TypeName}'");
         }
 
         if (hasFragments)
@@ -488,7 +481,7 @@ public sealed class BoxEditor
                         BoxNode? tfhd = ChildOf(traf, BoxTypes.Tfhd);
                         if (tfhd is not null)
                         {
-                            PatchTfhd(rw, shift, tfhd);
+                            PatchTfhd(rw, shift, traf, tfhd);
                         }
                     }
 
@@ -520,8 +513,10 @@ public sealed class BoxEditor
         return bytes;
     }
 
-    // ISO/IEC 14496-12 §8.8.7: with flag 0x000001 the track fragment header carries an absolute base_data_offset after track_ID.
-    private void PatchTfhd(Rewriter rw, ShiftMap shift, BoxNode tfhd)
+    // ISO/IEC 14496-12 §8.8.7: with flag 0x000001 the track fragment header carries an absolute base_data_offset after track_ID. The data
+    // a fragment points at is at base_data_offset plus the first run's data_offset (§8.8.8), and files exist (observed) whose base is 0 and
+    // whose runs hold absolute offsets; so the base moves by however far that data moved.
+    private void PatchTfhd(Rewriter rw, ShiftMap shift, BoxNode traf, BoxNode tfhd)
     {
         if (tfhd.PayloadSize < 16)
         {
@@ -536,7 +531,18 @@ public sealed class BoxEditor
         }
 
         long old = (long)BinaryPrimitives.ReadUInt64BigEndian(box.AsSpan(p + 8));
-        long mapped = shift.Map(old);
+        long dataPosition = old;
+        BoxNode? trun = ChildOf(traf, BoxTypes.Trun);
+        if (trun is not null && trun.PayloadSize >= 12)
+        {
+            byte[] run = ReadBox(trun);
+            if ((run[trun.HeaderSize + 3] & 1) != 0)
+            {
+                dataPosition += BinaryPrimitives.ReadInt32BigEndian(run.AsSpan(trun.HeaderSize + 8));
+            }
+        }
+
+        long mapped = old + shift.Shift(dataPosition);
         if (mapped == old)
         {
             return;

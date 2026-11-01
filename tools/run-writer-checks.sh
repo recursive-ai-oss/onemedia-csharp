@@ -69,6 +69,8 @@ edit)
     esac
     ok=OK; [ "$hi" = "$ho" ] || ok=HASHDIFF; [ "$pi" = "$po" ] || ok=FFPROBEDIFF
     case "$v" in *DIFF*|*WORSE*) ok=VALIDATORDIFF ;; esac
+    # Files that already carry structural errors (cut-off downloads, crafted damage) are edited best-effort; their differences are classed apart.
+    if [ "$ok" != OK ] && [[ "$r" =~ inputErrors=([1-9][0-9]*) ]]; then ok="DAMAGED-INPUT:$ok"; fi
     printf '%s\t%s\tour-hash=%s\tffprobe=%s\t%s\t%s\n' "$ok" "$f" "$([ "$hi" = "$ho" ] && echo equal || echo DIFF)" "$([ "$pi" = "$po" ] && echo equal || echo DIFF)" "$v" "$r" | cut -c1-600
     rm -f "$o"
   }
