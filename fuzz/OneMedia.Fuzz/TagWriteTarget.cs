@@ -31,13 +31,35 @@ internal static class TagWriteTarget
         edits.Set(CommonField.Title, "Fuzz title");
         edits.Set(CommonField.Artist, "Fuzz artist");
         edits.Set(CommonField.Comment, "Fuzz comment");
+        edits.Set(CommonField.Description, "Fuzz description");
         edits.Set(CommonField.TrackNumber, 3);
         edits.SetPicture(Picture, "image/png");
         edits.Remove(CommonField.Genre);
+        byte[]? once = Pass(file, edits, new TagWriteOptions { Limits = Limits });
+        if (once is null)
+        {
+            return;
+        }
+
+        // The output is edited again, naming the XML systems, which creates XMP and iXML where the format has a place for them and edits them the
+        // second time round.
+        TagEdits xml = new();
+        xml.Set(CommonField.Title, "Second <&> title");
+        xml.SetNative(TagSystems.IXml, "PROJECT", "Fuzz");
+        TagWriteOptions named = new() { Limits = Limits, Systems = [TagSystems.Xmp, TagSystems.IXml] };
+        byte[]? twice = Pass(once, xml, named);
+        if (twice is not null)
+        {
+            _ = Pass(twice, xml, named);
+        }
+    }
+
+    private static byte[]? Pass(byte[] file, TagEdits edits, TagWriteOptions options)
+    {
         try
         {
             MemoryMediaSource src = new(file);
-            TagWritePlan plan = TagWriter.Plan(src, edits, new TagWriteOptions { Limits = Limits });
+            TagWritePlan plan = TagWriter.Plan(src, edits, options);
             using MemoryStream output = new();
             SafeWriter.Write(plan.Plan, src, output);
             if (output.Length != plan.Plan.Length)
@@ -57,17 +79,22 @@ internal static class TagWriteTarget
                 pos += p.Length;
             }
 
-            if (Opens(file))
+            if (Opens(file) && !Opens(result))
             {
-                if (!Opens(result))
-                {
-                    throw new InvalidOperationException("a file that opened no longer opens after the tag write");
-                }
+                throw new InvalidOperationException("a file that opened no longer opens after the tag write");
             }
+
+            return result;
         }
         catch (MediaException)
         {
             // A typed refusal: the input is damaged or outside what the writer edits.
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // A native key that is not an element path is the caller's mistake, not a finding in the parser.
+            return null;
         }
     }
 
