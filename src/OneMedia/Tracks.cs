@@ -307,7 +307,7 @@ public sealed record MediaTrack
     /// <see cref="CodecParameters.Rfc6381"/> when the configuration yields one, else a fixed string for codecs that have one without a configuration.
     /// </summary>
     /// <remarks>
-    /// Without a configuration: VP8 is <c>vp8</c> (a VP8 track has no configuration record to build the <c>vp08.PP.LL.DD</c> form from), and the
+    /// Without a configuration: VP8 is <c>vp8</c> and VP9 <c>vp9</c> (such a track has no configuration record to build the <c>vp08.PP.LL.DD</c> or <c>vp09.PP.LL.DD</c> form from), and the
     /// ISO timed-text sample entries are named by their sample entry code, as RFC 6381 §3.3 says for the ISO base media file format family:
     /// <c>tx3g</c> (3GPP timed text), <c>wvtt</c> (WebVTT) and <c>stpp</c> (XML subtitles; the TTML profile suffix such as <c>.ttml.im1t</c> is not derived, because
     /// this library does not read the sample entry's namespace and schema strings). QuickTime <c>text</c>, Matroska text codecs (SRT, SSA/ASS, WebVTT,
@@ -318,12 +318,29 @@ public sealed record MediaTrack
     {
         if (DescribeCodec()?.Rfc6381 is { } described)
         {
-            return described;
+            // RFC 6381 §3.3 names the sample entry, so a file whose parameter sets travel in the stream (hev1, avc3) says so;
+            // browsers treat the two forms differently.
+            return (Codec.Name, CodecTag) switch
+            {
+                ("hevc", "hev1") when described.StartsWith("hvc1.", StringComparison.Ordinal) => string.Concat("hev1", described.AsSpan(4)),
+                ("h264", "avc3") when described.StartsWith("avc1.", StringComparison.Ordinal) => string.Concat("avc3", described.AsSpan(4)),
+                // A VP9 level of 0 means the level is not known (a frame header carries none); browsers reject vp09.PP.00.DD, and the
+                // short name is accepted by all of them.
+                ("vp9", _) when described.StartsWith("vp09.", StringComparison.Ordinal) && described.AsSpan(8, 2).SequenceEqual("00") => "vp9",
+                _ => described,
+            };
         }
 
         if (Codec == CodecId.Vp8)
         {
             return "vp8";
+        }
+
+        if (Codec == CodecId.Vp9)
+        {
+            // A VP9 track without a configuration record (WebM carries none): the short name the WebM project documents, since the
+            // vp09.PP.LL.DD form needs the profile, level and depth a configuration record states.
+            return "vp9";
         }
 
         return (Codec.Name, CodecTag) switch

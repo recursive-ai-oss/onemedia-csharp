@@ -262,6 +262,15 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <summary>The asynchronous demuxer, or null when the file was opened from a seekable source.</summary>
     public IAsyncDemuxer? AsyncDemuxer => _async;
 
+    /// <summary>The facts that decide browser playability: container key, content type, <c>codecs</c> string, segmentation and per-track profile data.</summary>
+    /// <returns>The description. Reads nothing beyond what opening the file read.</returns>
+    public Playback.PlaybackDescription DescribePlayback() => Playback.PlaybackDescription.Of(this);
+
+    /// <summary>Whether the file plays in a browser profile, and if not, why not, per mode and per track.</summary>
+    /// <param name="profile">One of <see cref="Playback.BrowserProfiles"/> or a profile built by the caller.</param>
+    /// <returns>The verdict; its blockers say whether a remux or an audio transcode would fix each reason.</returns>
+    public Playback.PlaybackVerdict CanPlay(Playback.BrowserProfile profile) => Playback.Playability.Check(DescribePlayback(), profile);
+
     private MediaTrack? FirstOf(TrackKind kind)
     {
         MediaTrack? first = null;
