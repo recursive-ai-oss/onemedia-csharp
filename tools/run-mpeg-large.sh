@@ -6,7 +6,7 @@ set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 O="${1:-$HOME/onemedia/u13-mpeg/out-large}"; mkdir -p "$O"
 G="${ONEMEDIA_HOME:-$HOME/onemedia}/corpus/generated/mpeg"
-LARGE=1 FILTER=large bash "$here/corpus/generate-mpeg.sh" large 2>&1 | tail -3
+LARGE=1 bash "$here/corpus/generate-mpeg.sh" large 2>&1 | tail -3
 ls -l "$G"/large/
 bash "$here/run-mpeg-diff.sh" build 2>&1 | tail -3
 f="$G/large/ts-2gb.ts"

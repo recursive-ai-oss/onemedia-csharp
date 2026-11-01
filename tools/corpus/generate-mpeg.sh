@@ -130,9 +130,14 @@ ff es/h264-4k-noparam-first.264 $(vid 1280x720 25 2) "${X264[@]}" -g 20 -x264-pa
 # --- large files (I/O and memory checks) -------------------------------------------------------
 if [ "${LARGE:-0}" = 1 ]; then
   ff large/ts-2gb-seed.ts $(vid 1280x720 25 120) $(tone 440 48000 120) "${X264[@]}" -g 50 -bf 2 -b:v 12M -maxrate 12M -bufsize 6M -c:a ac3 -f mpegts
+  # The pinned ffmpeg and ffprobe crash on the SDT that ffmpeg itself writes, so the seed is stripped before it is looped and the result again.
   if [ -s "$G/large/ts-2gb-seed.ts" ] && [ ! -s "$G/large/ts-2gb.ts" ]; then
     reps=$(( 2100000000 / $(stat -c %s "$G/large/ts-2gb-seed.ts") + 1 ))
-    gen large/ts-2gb.ts "$ffv" "$FF" "${FFG[@]}" -stream_loop "$reps" -i "$G/large/ts-2gb-seed.ts" -c copy -f mpegts @OUT@
+    "$PY" "$TOOLS/ts_tools.py" stripsdt "$G/large/ts-2gb-seed.ts" "$G/large/ts-seed-nosdt.ts" &&
+      "$FF" "${FFG[@]}" -stream_loop "$reps" -i "$G/large/ts-seed-nosdt.ts" -c copy -f mpegts "$G/large/ts-2gb-sdt.ts" &&
+      "$PY" "$TOOLS/ts_tools.py" stripsdt "$G/large/ts-2gb-sdt.ts" "$G/large/ts-2gb.ts" &&
+      record large/ts-2gb.ts "$ffv" "ffmpeg -stream_loop $reps -c copy, then ts_tools.py stripsdt" && ok=$((ok+1)) || failed=$((failed+1))
+    rm -f "$G/large/ts-2gb-sdt.ts" "$G/large/ts-seed-nosdt.ts"
   fi
 fi
 
