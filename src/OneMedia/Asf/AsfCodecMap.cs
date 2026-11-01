@@ -9,6 +9,9 @@ internal static class AsfCodecMap
     public static CodecId AudioCodec(int formatTag) => formatTag switch
     {
         0x0001 or 0x0003 => CodecId.Pcm,
+        0x0002 => CodecId.AdpcmMs,
+        0x0011 => CodecId.AdpcmImaWav,
+        0x0045 => new CodecId("adpcm_g726"),
         0x0160 => CodecId.WmaV1,
         0x0161 => CodecId.WmaV2,
         0x0162 => CodecId.WmaPro,

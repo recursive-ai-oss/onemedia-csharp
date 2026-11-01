@@ -143,6 +143,8 @@ public static class WaveCodecs
                 return CodecId.AdpcmMs;
             case 0x0011:
                 return CodecId.AdpcmImaWav;
+            case 0x0040 or 0x0045:
+                return new CodecId("adpcm_g726");
             case 0x0050:
                 return CodecId.Mp2;
             case 0x0055:

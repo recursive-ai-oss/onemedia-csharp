@@ -147,7 +147,7 @@ internal static class InfoCheck
                     {
                         string text = $"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s";
                         bool audioWithoutDuration = streams.Any(e => e.GetProperty("codec_type").GetString() == "audio" && !e.TryGetProperty("duration", out _));
-                        if (media.Defects.Any(x => x.Code == "riff.size-past-end") && theirs < micro / 1e6)
+                        if (media.Defects.Any(x => x.Code is "riff.size-exceeds-file" or "riff.truncated-data") && theirs < micro / 1e6)
                         {
                             // A file cut short: ffprobe estimates the length from the data present, ours is the length the headers state.
                             explained.Add(text + " (truncated-estimate)");
@@ -180,6 +180,19 @@ internal static class InfoCheck
             catch (Exception e) when (e is MediaException or JsonException or IOException or InvalidOperationException or KeyNotFoundException)
             {
                 problems.Add(e.GetType().Name + ": " + e.Message + (Environment.GetEnvironmentVariable("ONEMEDIA_TRACE") is null ? "" : " " + e.StackTrace));
+                if (formatName == "*")
+                {
+                    // ffprobe's output failed to parse before the file was opened; name the format so a scoped rule can still apply.
+                    try
+                    {
+                        using MediaFile named = Media.Open(file);
+                        formatName = named.Native.Reader is IDemuxer nd ? nd.Format.Name : "*";
+                    }
+                    catch (Exception ex) when (ex is MediaException or IOException)
+                    {
+                        // The file does not open here either; the rule's format stays "*".
+                    }
+                }
             }
 
             // A scoped rule (fields info-duration, info-streams, info-codec, info-open) excuses a problem of that kind.
@@ -288,7 +301,8 @@ internal static class InfoCheck
         "adpcm_ms" => "adpcm-ms",
         "adpcm_ima_wav" => "adpcm-ima-wav",
         "adpcm_ima_qt" => "adpcm-ima-qt",
-        var a when a.StartsWith("adpcm_", StringComparison.Ordinal) => ffprobe,
+        // Only the ADPCM variants some reader names; the others (OKI, G.726 little-endian in AIFF-C, ...) have no neutral id.
+        "adpcm_g722" or "adpcm_g726" or "adpcm_swf" => ffprobe,
         "h264" or "hevc" or "av1" or "vp8" or "vp9" or "aac" or "mp3" or "opus" or "vorbis" or "flac" or "ac3" or "eac3" or "mjpeg" => ffprobe,
         "mpeg2video" => "mpeg2video",
         "mp1" => "mp1",

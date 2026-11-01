@@ -10,11 +10,11 @@ where it matters). Raw DV and the DV frame layout are in [dv.md](dv.md).
 
 | Layer | Types | Notes |
 |---|---|---|
-| RIFF structure | `RiffChunk` (`Riff` namespace) | Lazy tree of byte ranges: `RIFF`/`LIST` containers with children read on first use, data chunks as ranges. Odd sizes are padded to even offsets (§ RIFF File Format). Sizes past the end of the file are clamped. `JUNK` and every unknown chunk is kept as a node. |
+| RIFF structure | `RiffChunk` (`Riff` namespace), a thin AVI view over the shared `ChunkNode` walker | Lazy tree of byte ranges: `RIFF`/`LIST` containers with children read on first use, data chunks as ranges. Odd sizes are padded to even offsets (§ RIFF File Format). Sizes past the end of the file are clamped. `JUNK` and every unknown chunk is kept as a node. |
 | Format model | `AviMainHeader`, `AviStreamHeader`, `BitmapInfoHeader`, `WaveFormat`, `VideoPropertiesHeader`, `OpenDmlHeader`, `SuperIndexEntry`, `AviStreamInfo`, `AviHeaderList` | Parsed from `hdrl` by `AviHeaderParser`. The raw `strf` bytes are kept on the stream info; `strn` names and `strd` data are ranges. |
 | Index | internal `Idx1Cursor`, `OdmlCursor` | Forward cursors that read a block of entries at a time; nothing is loaded whole. |
 | Neutral demux | `AviDemuxer` (seekable, forward-only and ranged), `AviFormat` | Tracks, packets, seeking. |
-| Metadata | `RiffInfoList` | `LIST INFO`, `IDIT`, and for DV type 1 the DV packs of the first frame. |
+| Metadata | `Tags.Riff.RiffTagReader` (shared with WAVE) | `LIST INFO`, `IDIT`, and for DV type 1 the DV packs of the first frame. |
 
 ## What is read
 
@@ -72,7 +72,7 @@ where it matters). Raw DV and the DV frame layout are in [dv.md](dv.md).
 into the common view through the table rows in [tag-mapping.md](tag-mapping.md) (`INAM` title, `IART` artist, `IPRD` album, `ICMT` comment,
 `ICRD` date, `IGNR` genre, `ICOP` copyright, `ISFT` encoder, …). `IDIT` (the creation date as `ctime` text such as
 `Wed Jan 02 02:03:55 1990`, or an ISO date) and `ICRD` are capture-time candidates (zone unknown). The Riff tag layer proper is shared with
-WAV; until it is merged this reader keeps its own small INFO reader.
+WAV: one reader (`Tags.Riff.RiffTagReader`) serves both containers, and `IDIT` is read through it as a loose chunk.
 
 ## Defects
 
@@ -82,8 +82,10 @@ All carry a byte offset; reading continues where it safely can.
 |---|---|---|---|
 | `riff.truncated-header` | `Truncated` | The file ends inside a chunk or list header | The list ends. |
 | `riff.truncated-data` | `Truncated` | A chunk's data ends early | The present bytes are used. |
-| `riff.size-past-end` | `SizeExceedsFile` | A chunk or list size runs past the end of the file | Clamped to the file. |
-| `riff.trailing-bytes` | `UnaccountedBytes` | Stray bytes at the end of a list | Reported, not read. |
+| `riff.size-exceeds-file` | `InvalidSize` | A chunk or list size runs past the end of the file | Clamped to the file. |
+| `riff.size-exceeds-parent` | `InvalidSize` | A chunk or list ends after the list that holds it does | Read in full when the file has the bytes, else clamped. |
+| `riff.unbounded-size` | `InvalidSize` | A size of 0xFFFFFFFF, or an outer chunk with no usable size | Taken to run to the end of the parent (or the file). |
+| `riff.trailing` | `UnaccountedBytes` | Fewer bytes at the end of a list than a chunk header needs | Reported, not read. |
 | `avi.missing-avih`, `avi.short-avih`, `avi.stream-count` | `MissingRequired`/`InvalidSize`/`Inconsistent` | Main header missing, short or disagreeing with the stream lists | Stream lists decide. |
 | `avi.missing-strh`, `avi.short-strh`, `avi.missing-strf`, `avi.strf-too-large` | `MissingRequired`/`InvalidSize`/`LimitReached` | Stream header problems | A stream without `strh` is ignored; an oversized `strf` is cut at the limit. |
 | `avi.short-indx`, `avi.indx-not-super`, `avi.indx-entry-count`, `avi.indx-offset` | various | Super index problems | The entries that fit are used. |
@@ -124,3 +126,7 @@ OpenDML files of 1.29 GB and 4.65 GB), 164,648 ffprobe packets, no unexplained d
 | `subtitle-events` | for text streams (`ass`) emits the script header and each event as its own packet, timed from the script | the chunk bytes at the chunk's clock | A chunk of a text stream is opaque to the container; splitting scripts into events is the subtitle layer's job. |
 | `damaged-resync` | skips stretches of garbage in `movi` by its own rules | skips them by the rule in *Damaged and unaligned chunks* | After a damaged stretch the two readers can continue at different chunk headers: `mp_seek_failed.avi` lists 4 video chunks ffprobe does not, `a.avi` (a sample with a deliberately damaged video stream) lists 364 video packets to ffprobe's 367 with a different packet near each stretch. Scoped by file. |
 | `truncated-last-chunk` | an empty packet for the cut chunk | the present bytes with `Corrupt` | The reader is lossless: bytes that exist are returned and flagged. |
+
+## Header comparison (`infocheck`) against ffprobe 7.0.2
+
+70 files, 0 unexplained. Classes printed as `explained`: `truncated-estimate` (a file cut short: ffprobe estimates from the data present, ours is the length the headers state; recognised by `riff.size-exceeds-file` or `riff.truncated-data`), `audio-stream-duration` (ffprobe gives MP3/MP2/AC-3 in AVI no duration and takes the video's), `dv-embedded-audio` and `mjpeg-frame-size`. One file is scoped in `exceptions.tsv`: `verona60avi56k.avi`, whose audio stream header states 30,864 s of samples for a 1.9 MB file; ours is the longest stream header, ffprobe's the video's.

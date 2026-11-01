@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Tests.Avi;
 using RecursiveAI.OneMedia.Tests.AudioStreams;
 
 namespace RecursiveAI.OneMedia.Tests;
@@ -41,6 +42,33 @@ public class EmbeddedId3Tests
     private static MediaFile Open(byte[] data) => MediaFile.Open(new MemoryMediaSource(data));
 
     private static byte[] Fixture(string dir, string name) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", dir, name));
+
+    // AVI and WAVE share one INFO reader and one tag system, so the same INFO list reads the same in both and feeds the same common view.
+    [Fact]
+    public void AviInfoAndIditShareTheRiffInfoSystemWithWave()
+    {
+        byte[] info = AviBuilder.List("LIST", "INFO", AviBuilder.Chunk("INAM", Encoding.ASCII.GetBytes("Deposition\0")), AviBuilder.Chunk("IART", Encoding.ASCII.GetBytes("A. Speaker\0")));
+        AviBuilder b = new()
+        {
+            InfoList = info,
+            Idit = AviBuilder.Chunk("IDIT", Encoding.ASCII.GetBytes("Tue Mar 08 21:11:35 2005\n\0")),
+        };
+        b.Streams.Add(new AviBuilder.StreamSpec("vids", "MJPG", 1, 25, 0, AviBuilder.Bitmap(8, 8, "MJPG")));
+        b.Chunks.Add(new AviBuilder.ChunkSpec(0, new byte[16]));
+        using MediaFile avi = Open(b.Build());
+        using MediaFile wav = Open(Wav(info));
+        Assert.Equal(MediaFormatId.Avi, avi.Format);
+        Assert.Equal(MediaFormatId.Wav, wav.Format);
+        foreach (MediaFile f in new[] { avi, wav })
+        {
+            Assert.Equal("Deposition", f.Native[TagSystems.RiffInfo, "INAM"]?.Text);
+            Assert.Equal("Deposition", f.Tags.Title);
+            Assert.Equal("A. Speaker", f.Tags.Artist);
+        }
+
+        Assert.Equal("Tue Mar 08 21:11:35 2005", avi.Native[TagSystems.RiffInfo, "IDIT"]?.Text?.Trim());
+        Assert.Equal(new DateTime(2005, 3, 8, 21, 11, 35), avi.CaptureTime.Candidates[0].Value.Value);
+    }
 
     [Theory]
     [InlineData("id3 ")]

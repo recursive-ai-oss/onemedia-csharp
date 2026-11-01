@@ -15,6 +15,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - Ogg (Vorbis, Opus, FLAC, Theora, Speex; all logical streams, chained files, forward-only and ranged sources), native FLAC, and FLV (`RecursiveAI.OneMedia.Ogg`, `.Flac`, `.Flv`, `Tags.VorbisComment`; `docs/ogg.md`, `docs/flac.md`, `docs/flv.md`, `docs/vorbis-comment.md`): packets, seeks, Vorbis comments and FLAC blocks as native tags in the common view, `onMetaData` as `flv` tags.
 - WAVE (WAV, BWF, RF64, Wave64), AIFF/AIFC and CAF reading (`RecursiveAI.OneMedia.Riff`, `.Aiff`, `.Caf`, `Tags.Riff`; `docs/pcm-files.md`): PCM and compressed-in-WAVE packetization, `LIST INFO`, `bext`, `iXML`, `axml`, `cart`, AIFF text chunks and CAF `info` as native tags, cue points as chapters.
 - ID3v2 tags in a WAVE or AIFF `id3 `/`ID3 ` chunk and in front of a FLAC or Ogg stream are read as `id3v2` native tags beside the raw block. In FLAC and Ogg the stream's Vorbis comments come before ID3 in the common view; in WAVE and AIFF ID3 comes before `LIST INFO`. A FLAC or Ogg file behind an ID3 tag longer than the sniffed head now opens as its own format on a seekable source.
+- One codec id per codec across WAVE, AVI and ASF: ADPCM (Microsoft, IMA, G.726) now has the same neutral id in every container.
+- AVI: `RecursiveAI.OneMedia.Avi` reads AVI and OpenDML (`AVIX`, super and standard indexes, `idx1`, index-less files by a bounded `movi` scan), DV in AVI (type 1 and type 2) and `LIST INFO`/`IDIT` tags; raw DV (`.dv`) through `RecursiveAI.OneMedia.Dv`; key frames from the index or the picture header; the reader registers with `AddOneMedia()` in the audio adapter. DV audio inside frames is not de-shuffled (no audio track for DV type 1 and raw DV). See `docs/avi.md` and `docs/dv.md`. AVI `LIST INFO` and `IDIT` are read by the same `Tags.Riff` reader as WAVE, and AVI shares the WAVE reader's chunk walker, so AVI defect codes are the shared `riff.*` codes (`riff.size-exceeds-file`, `riff.size-exceeds-parent`, `riff.unbounded-size`, `riff.trailing`).
 
 ### Fixed
 
@@ -79,7 +81,6 @@ First preview: reading MP4/MOV/3GP (including fragmented MP4) and Matroska/WebM,
 
 ### Added
 
-- AVI: `RecursiveAI.OneMedia.Avi` reads AVI and OpenDML (`AVIX`, super and standard indexes, `idx1`, index-less files by a bounded `movi` scan), DV in AVI (type 1 and type 2) and `LIST INFO`/`IDIT` tags; raw DV (`.dv`) through `RecursiveAI.OneMedia.Dv`; key frames from the index or the picture header; the reader registers with `AddOneMedia()` in the audio adapter. DV audio inside frames is not de-shuffled (no audio track for DV type 1 and raw DV). See `docs/avi.md` and `docs/dv.md`.
 - `MediaFile.Tags`, `CaptureTime`, `Location`, `Device`, `Rotation`, `Native[...]` and `ReadMetadataAsync`, and tags and facts in `onemedia info` (text and `--json`).
 - `MediaFile.ContainerDuration`, `TracksDuration` and `ExactDuration`; `Duration` is the container's figure unless a track without an edit list is longer.
 - Matroska: zlib-compressed frames are inflated on read; `OutputSamplingFrequency` is the audio rate; `V_MS/VFW/FOURCC` tracks are named by their FourCC.
