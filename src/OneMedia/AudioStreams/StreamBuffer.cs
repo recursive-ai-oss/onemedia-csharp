@@ -14,7 +14,8 @@ internal sealed class StreamBuffer : IDisposable
     private readonly IMediaSource? _media;
     private readonly IForwardMediaSource? _forward;
     private readonly IDisposable? _owned;
-    private readonly byte[] _buffer = new byte[Capacity];
+    // Rented rather than allocated: opening a file only to read its tags would otherwise allocate (and zero) 256 KiB each time.
+    private byte[] _buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(Capacity);
     private int _start;
     private int _end;
     private long _startOffset;
@@ -178,5 +179,15 @@ internal sealed class StreamBuffer : IDisposable
         }
     }
 
-    public void Dispose() => _owned?.Dispose();
+    public void Dispose()
+    {
+        byte[] buffer = _buffer;
+        _buffer = [];
+        if (buffer.Length != 0)
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        _owned?.Dispose();
+    }
 }
