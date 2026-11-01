@@ -71,8 +71,41 @@ namespace MfCheck
     }
 
     [ComImport, Guid("44ae0fa8-ea31-4109-8d2e-4cae4997c555"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMFMediaType : IMFAttributes
+    interface IMFMediaType
     {
+        // COM interop does not flatten interface inheritance into the vtable: the 30 IMFAttributes slots are
+        // declared here as placeholders so the methods below land on their real slots (mfobjects.h order).
+        // Attribute access goes through a cast to IMFAttributes, which queries that interface separately.
+        void Attr00();
+        void Attr01();
+        void Attr02();
+        void Attr03();
+        void Attr04();
+        void Attr05();
+        void Attr06();
+        void Attr07();
+        void Attr08();
+        void Attr09();
+        void Attr10();
+        void Attr11();
+        void Attr12();
+        void Attr13();
+        void Attr14();
+        void Attr15();
+        void Attr16();
+        void Attr17();
+        void Attr18();
+        void Attr19();
+        void Attr20();
+        void Attr21();
+        void Attr22();
+        void Attr23();
+        void Attr24();
+        void Attr25();
+        void Attr26();
+        void Attr27();
+        void Attr28();
+        void Attr29();
         void GetMajorType(out Guid type);
         [PreserveSig] int IsCompressedFormat([MarshalAs(UnmanagedType.Bool)] out bool compressed);
         [PreserveSig] int IsEqual(IMFMediaType other, out uint flags);
@@ -91,8 +124,41 @@ namespace MfCheck
     }
 
     [ComImport, Guid("c40a00f2-b93a-4d80-ae8c-5a1c634f58e4"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMFSample : IMFAttributes
+    interface IMFSample
     {
+        // COM interop does not flatten interface inheritance into the vtable: the 30 IMFAttributes slots are
+        // declared here as placeholders so the methods below land on their real slots (mfobjects.h order).
+        // Attribute access goes through a cast to IMFAttributes, which queries that interface separately.
+        void Attr00();
+        void Attr01();
+        void Attr02();
+        void Attr03();
+        void Attr04();
+        void Attr05();
+        void Attr06();
+        void Attr07();
+        void Attr08();
+        void Attr09();
+        void Attr10();
+        void Attr11();
+        void Attr12();
+        void Attr13();
+        void Attr14();
+        void Attr15();
+        void Attr16();
+        void Attr17();
+        void Attr18();
+        void Attr19();
+        void Attr20();
+        void Attr21();
+        void Attr22();
+        void Attr23();
+        void Attr24();
+        void Attr25();
+        void Attr26();
+        void Attr27();
+        void Attr28();
+        void Attr29();
         void GetSampleFlags(out uint flags);
         void SetSampleFlags(uint flags);
         void GetSampleTime(out long time);
@@ -121,15 +187,81 @@ namespace MfCheck
     }
 
     [ComImport, Guid("56c03d9c-9dbb-45f5-ab4b-d80f47c05938"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMFStreamDescriptor : IMFAttributes
+    interface IMFStreamDescriptor
     {
+        // COM interop does not flatten interface inheritance into the vtable: the 30 IMFAttributes slots are
+        // declared here as placeholders so the methods below land on their real slots (mfobjects.h order).
+        // Attribute access goes through a cast to IMFAttributes, which queries that interface separately.
+        void Attr00();
+        void Attr01();
+        void Attr02();
+        void Attr03();
+        void Attr04();
+        void Attr05();
+        void Attr06();
+        void Attr07();
+        void Attr08();
+        void Attr09();
+        void Attr10();
+        void Attr11();
+        void Attr12();
+        void Attr13();
+        void Attr14();
+        void Attr15();
+        void Attr16();
+        void Attr17();
+        void Attr18();
+        void Attr19();
+        void Attr20();
+        void Attr21();
+        void Attr22();
+        void Attr23();
+        void Attr24();
+        void Attr25();
+        void Attr26();
+        void Attr27();
+        void Attr28();
+        void Attr29();
         void GetStreamIdentifier(out uint id);
         void GetMediaTypeHandler(out IMFMediaTypeHandler handler);
     }
 
     [ComImport, Guid("03cb2711-24d7-4db6-a17f-f3a7a479a536"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMFPresentationDescriptor : IMFAttributes
+    interface IMFPresentationDescriptor
     {
+        // COM interop does not flatten interface inheritance into the vtable: the 30 IMFAttributes slots are
+        // declared here as placeholders so the methods below land on their real slots (mfobjects.h order).
+        // Attribute access goes through a cast to IMFAttributes, which queries that interface separately.
+        void Attr00();
+        void Attr01();
+        void Attr02();
+        void Attr03();
+        void Attr04();
+        void Attr05();
+        void Attr06();
+        void Attr07();
+        void Attr08();
+        void Attr09();
+        void Attr10();
+        void Attr11();
+        void Attr12();
+        void Attr13();
+        void Attr14();
+        void Attr15();
+        void Attr16();
+        void Attr17();
+        void Attr18();
+        void Attr19();
+        void Attr20();
+        void Attr21();
+        void Attr22();
+        void Attr23();
+        void Attr24();
+        void Attr25();
+        void Attr26();
+        void Attr27();
+        void Attr28();
+        void Attr29();
         void GetStreamDescriptorCount(out uint count);
         void GetStreamDescriptorByIndex(uint index, [MarshalAs(UnmanagedType.Bool)] out bool selected, out IMFStreamDescriptor descriptor);
         void SelectStream(uint index);
@@ -195,8 +327,41 @@ namespace MfCheck
     }
 
     [ComImport, Guid("d267bf6a-028b-4e0d-903d-43f0ef82d0d4"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMFASFProfile : IMFAttributes
+    interface IMFASFProfile
     {
+        // COM interop does not flatten interface inheritance into the vtable: the 30 IMFAttributes slots are
+        // declared here as placeholders so the methods below land on their real slots (mfobjects.h order).
+        // Attribute access goes through a cast to IMFAttributes, which queries that interface separately.
+        void Attr00();
+        void Attr01();
+        void Attr02();
+        void Attr03();
+        void Attr04();
+        void Attr05();
+        void Attr06();
+        void Attr07();
+        void Attr08();
+        void Attr09();
+        void Attr10();
+        void Attr11();
+        void Attr12();
+        void Attr13();
+        void Attr14();
+        void Attr15();
+        void Attr16();
+        void Attr17();
+        void Attr18();
+        void Attr19();
+        void Attr20();
+        void Attr21();
+        void Attr22();
+        void Attr23();
+        void Attr24();
+        void Attr25();
+        void Attr26();
+        void Attr27();
+        void Attr28();
+        void Attr29();
         void GetStreamCount(out uint count);
         void GetStream(uint index, out ushort streamNumber, out IMFASFStreamConfig config);
         void GetStreamByNumber(ushort streamNumber, out IMFASFStreamConfig config);
@@ -216,8 +381,41 @@ namespace MfCheck
     }
 
     [ComImport, Guid("9e8ae8d2-dbbd-4200-9aca-06e6df484913"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMFASFStreamConfig : IMFAttributes
+    interface IMFASFStreamConfig
     {
+        // COM interop does not flatten interface inheritance into the vtable: the 30 IMFAttributes slots are
+        // declared here as placeholders so the methods below land on their real slots (mfobjects.h order).
+        // Attribute access goes through a cast to IMFAttributes, which queries that interface separately.
+        void Attr00();
+        void Attr01();
+        void Attr02();
+        void Attr03();
+        void Attr04();
+        void Attr05();
+        void Attr06();
+        void Attr07();
+        void Attr08();
+        void Attr09();
+        void Attr10();
+        void Attr11();
+        void Attr12();
+        void Attr13();
+        void Attr14();
+        void Attr15();
+        void Attr16();
+        void Attr17();
+        void Attr18();
+        void Attr19();
+        void Attr20();
+        void Attr21();
+        void Attr22();
+        void Attr23();
+        void Attr24();
+        void Attr25();
+        void Attr26();
+        void Attr27();
+        void Attr28();
+        void Attr29();
         void GetStreamType(out Guid type);
         [PreserveSig] ushort GetStreamNumber();
         void SetStreamNumber(ushort number);
