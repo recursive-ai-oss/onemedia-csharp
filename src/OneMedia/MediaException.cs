@@ -105,3 +105,29 @@ public sealed class MediaLimitExceededException : MediaException
     /// <summary>The amount the data asked for.</summary>
     public long Requested { get; }
 }
+
+/// <summary>Why a <see cref="MediaReadStateException"/> was raised.</summary>
+public enum MediaReadStateReason
+{
+    /// <summary>The file was already read and its source cannot seek, so it cannot start again from the beginning.</summary>
+    CannotRewind = 1,
+
+    /// <summary>A newer read of the same file (packets of another track, a decoder) took over the demuxer, so this reader would no longer see its own position.</summary>
+    Superseded,
+}
+
+/// <summary>
+/// A read of a <see cref="MediaFile"/> cannot proceed from the state the file is in. This is a caller error (not bad data), raised instead
+/// of returning no packets: a file reads one track at a time, starts again from the beginning on each new read when its source can seek,
+/// and refuses when it cannot.
+/// </summary>
+public sealed class MediaReadStateException : InvalidOperationException
+{
+    /// <summary>Creates the exception.</summary>
+    /// <param name="reason">Why the read cannot proceed.</param>
+    /// <param name="message">What happened and what to do.</param>
+    public MediaReadStateException(MediaReadStateReason reason, string message) : base(message) { Reason = reason; }
+
+    /// <summary>Why the read cannot proceed.</summary>
+    public MediaReadStateReason Reason { get; }
+}

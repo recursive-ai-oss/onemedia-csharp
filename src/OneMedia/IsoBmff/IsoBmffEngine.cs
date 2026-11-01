@@ -639,7 +639,8 @@ internal sealed class IsoBmffEngine
 
         SampleCursor pc = primary.Cursor!;
         long ts = primary.Info.Timescale;
-        long targetTicks = target.TryRescale(ts, MediaRounding.Floor, out MediaTime scaled) ? scaled.Ticks : (target.Ticks < 0 ? 0 : long.MaxValue / 4);
+        // Decode times in the sample tables start at zero, so a target before the start (a rewind passes one far in the past) means the first sample.
+        long targetTicks = target.TryRescale(ts, MediaRounding.Floor, out MediaTime scaled) ? Math.Max(scaled.Ticks, 0) : (target.Ticks < 0 ? 0 : long.MaxValue / 4);
         long found = pc.FindSampleByDecodeTime(targetTicks);
         long sync = mode == SeekMode.PreviousKeyframe ? pc.SyncAtOrBefore(found) : pc.SyncAtOrAfter(found);
         if (mode == SeekMode.PreviousKeyframe)

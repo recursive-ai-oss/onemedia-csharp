@@ -6,7 +6,7 @@ The goal is the depth of libavformat, GPAC, mkvtoolnix, MediaInfo and ExifTool i
 
 ## Status
 
-**Preview, version `0.1.0-preview.2`: reading MP4/MOV/3GP (including fragmented MP4) and Matroska/WebM.** Writing, tag editing, every other container, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
+**Preview, version `0.1.0-preview.3`: reading MP4/MOV/3GP (including fragmented MP4) and Matroska/WebM.** Writing, tag editing, every other container, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
 
 ```csharp
 using RecursiveAI.OneMedia;

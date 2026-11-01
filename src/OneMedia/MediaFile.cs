@@ -246,13 +246,76 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         return first;
     }
 
+    // A file has one read position. The first read starts from where Open left it; every later read first returns to the start, when the
+    // source can seek, and otherwise fails. Each read takes a new generation number, and an older reader that is still alive fails on its next
+    // call instead of returning packets from a position someone else moved. Silent empty output is never the result.
+    private bool _readStarted;
+    private int _generation;
+
+    /// <summary>Starts a read: returns the file to its beginning if it was read before, and returns the read's generation. Other tracks must already be switched off.</summary>
+    internal int BeginRead()
+    {
+        if (_readStarted)
+        {
+            if (_sync is null || !_sync.CanSeek)
+            {
+                throw new MediaReadStateException(MediaReadStateReason.CannotRewind, "The file was already read and its source cannot seek, so it cannot be read again. Open it again to read it twice.");
+            }
+
+            _sync.Seek(StartOfFile, SeekMode.PreviousKeyframe);
+        }
+
+        _readStarted = true;
+        return ++_generation;
+    }
+
+    private async ValueTask<int> BeginReadAsync(CancellationToken cancellationToken)
+    {
+        if (_readStarted)
+        {
+            if (!Container.CanSeek)
+            {
+                throw new MediaReadStateException(MediaReadStateReason.CannotRewind, "The file was already read and its source cannot seek, so it cannot be read again. Open it again to read it twice.");
+            }
+
+            if (_async is { } a)
+            {
+                await a.SeekAsync(StartOfFile, SeekMode.PreviousKeyframe, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                _sync!.Seek(StartOfFile, SeekMode.PreviousKeyframe);
+            }
+        }
+
+        _readStarted = true;
+        return ++_generation;
+    }
+
+    // Earlier than any packet can be: about 34 years before zero, small enough that every container timescale rescales it without overflow.
+    private static MediaTime StartOfFile => new(-(1L << 30), 1);
+
+    /// <summary>Throws when a newer read has taken over the file since the read with this generation began.</summary>
+    internal void EnsureCurrentRead(int generation)
+    {
+        if (generation != _generation)
+        {
+            throw new MediaReadStateException(MediaReadStateReason.Superseded, "This reader was superseded: the file was read again (another track, another decoder) after it began. Read one track at a time, and finish or dispose a reader before starting the next.");
+        }
+    }
+
     /// <summary>
-    /// Reads the remaining packets of one track as owned packets. Other tracks are switched off while the enumeration runs, so their
-    /// payloads are not read, and switched on again when it ends. The consumer disposes each packet.
+    /// Reads the packets of one track as owned packets. Other tracks are switched off while the enumeration runs, so their payloads are not
+    /// read, and switched on again when it ends. The consumer disposes each packet.
     /// </summary>
+    /// <remarks>
+    /// The first read of a file starts at its beginning. Every later read of the same file (another <c>Packets</c> pass, another track, or
+    /// <c>Decode</c>) starts again from the beginning, which needs a source that can seek. Nothing is checked until the enumeration starts.
+    /// </remarks>
     /// <param name="track">The track.</param>
     /// <returns>The packets in storage order.</returns>
     /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source; use <see cref="PacketsAsync"/>.</exception>
+    /// <exception cref="MediaReadStateException">When enumeration starts: the file was read before and its source cannot seek (<see cref="MediaReadStateReason.CannotRewind"/>); or while enumerating: another read of the file began (<see cref="MediaReadStateReason.Superseded"/>).</exception>
     public IEnumerable<OwnedPacket> Packets(MediaTrack track)
     {
         ArgumentNullException.ThrowIfNull(track);
@@ -262,10 +325,17 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
             demuxer.SetTrackEnabled(t.Index, t.Index == track.Index);
         }
 
+        int generation = BeginRead();
         try
         {
-            while (demuxer.TryReadPacket(out PacketView view))
+            while (true)
             {
+                EnsureCurrentRead(generation);
+                if (!demuxer.TryReadPacket(out PacketView view))
+                {
+                    break;
+                }
+
                 IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(Math.Max(view.Data.Length, 1));
                 view.Data.CopyTo(owner.Memory.Span);
                 yield return new OwnedPacket(view.Info, owner);
@@ -273,17 +343,21 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         }
         finally
         {
-            foreach (MediaTrack t in demuxer.Tracks)
+            if (generation == _generation)
             {
-                demuxer.SetTrackEnabled(t.Index, true);
+                foreach (MediaTrack t in demuxer.Tracks)
+                {
+                    demuxer.SetTrackEnabled(t.Index, true);
+                }
             }
         }
     }
 
-    /// <summary>Reads the remaining packets of one track as owned packets, from either kind of source.</summary>
+    /// <summary>Reads the packets of one track as owned packets, from either kind of source. Later reads start again from the beginning, as for <see cref="Packets"/>.</summary>
     /// <param name="track">The track.</param>
     /// <param name="cancellationToken">Checked before each packet.</param>
     /// <returns>The packets in storage order. The consumer disposes each one.</returns>
+    /// <exception cref="MediaReadStateException">As for <see cref="Packets"/>.</exception>
     public async IAsyncEnumerable<OwnedPacket> PacketsAsync(MediaTrack track, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(track);
@@ -293,12 +367,14 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
             container.SetTrackEnabled(t.Index, t.Index == track.Index);
         }
 
+        int generation = await BeginReadAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_async is { } asyncDemuxer)
             {
                 await foreach (OwnedPacket p in asyncDemuxer.ReadPacketsAsync(null, cancellationToken).ConfigureAwait(false))
                 {
+                    EnsureCurrentRead(generation);
                     yield return p;
                 }
             }
@@ -306,15 +382,19 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
             {
                 await foreach (OwnedPacket p in _sync!.ReadPacketsAsync(null, cancellationToken).ConfigureAwait(false))
                 {
+                    EnsureCurrentRead(generation);
                     yield return p;
                 }
             }
         }
         finally
         {
-            foreach (MediaTrack t in container.Tracks)
+            if (generation == _generation)
             {
-                container.SetTrackEnabled(t.Index, true);
+                foreach (MediaTrack t in container.Tracks)
+                {
+                    container.SetTrackEnabled(t.Index, true);
+                }
             }
         }
     }
