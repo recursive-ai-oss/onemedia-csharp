@@ -36,11 +36,13 @@ internal static class MatroskaTagWriter
         List<SystemWriteReport> reports = [];
         IReadOnlyList<EbmlElement> children = seg.ChildElements;
 
-        // Bytes that no element accounts for (the reader found its way past them by searching) or a SeekHead whose entries were cut back leave the reader's picture of the
-        // file resting on luck; moving anything could change what it finds. Such a file is repaired first, not edited.
-        if (doc.Defects.Any(d => d.Kind == DefectKind.UnaccountedBytes && d.Offset >= seg.Offset) || children.Any(c => c.Id == 0x114D9B74 && HasCutBackSize(c)))
+        // Damage in front of the first Cluster (bytes that no element accounts for, sizes that run past their parent or are unknown where they cannot be, a SeekHead whose entries were cut back; a wrong CRC-32 is no bar, the editor recomputes it) leaves the
+        // reader's picture of the file resting on luck: it found its way by searching, and moving anything could change what it finds. Such a file is repaired first, not
+        // edited. Damage after the head (a cut-off last Cluster) does not matter here.
+        long firstCluster = children.FirstOrDefault(c => c.Id == 0x1F43B675)?.Offset ?? seg.Range.End;
+        if (doc.Defects.Any(d => d.Kind != DefectKind.ChecksumMismatch && d.Offset >= seg.Offset && d.Offset < firstCluster) || children.Any(c => c.Id == 0x114D9B74 && HasCutBackSize(c)))
         {
-            throw new UnsupportedMediaException("The Segment has bytes that no element accounts for, or a damaged SeekHead; repair the file before editing its tags.");
+            throw new UnsupportedMediaException("The Segment has damage in front of its first Cluster (bytes no element accounts for, or a damaged SeekHead); repair the file before editing its tags.");
         }
 
         List<EbmlElement> fileTags = [];

@@ -92,6 +92,11 @@ internal static class Mp3TagWriter
         // ---- APEv2 and ID3v1 at the end ----
         HasEnd(src, length, out ApeTag? ape, out bool hasV1);
         long v1Start = hasV1 ? length - Id3v1Tag.Length : length;
+        if (hasV1 && v1Start < audioStart)
+        {
+            // The ID3v2 tag claims bytes that the ID3v1 tag also occupies; moving either would cut into the other.
+            throw new UnsupportedMediaException("The ID3v2 tag overlaps the ID3v1 tag at the end of the file; the file is not edited.") { Offset = v1Start };
+        }
         if (ape is not null && options.Wants(TagSystems.Ape) && ape.Range.Offset >= audioStart)
         {
             (byte[] apeBytes, SystemWriteReport r) = BuildApe(ape, src, edits, limits);
