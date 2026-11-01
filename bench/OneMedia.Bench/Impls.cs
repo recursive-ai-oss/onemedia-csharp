@@ -352,12 +352,12 @@ internal static class Impls
     {
         AacInput input = LoadAac(path);
         using MemoryStream output = new(1 << 20);
-        SharpMP4.Builders.IMp4Builder builder = new SharpMP4.Builders.Mp4Builder(new SharpMP4.Builders.SingleStreamOutput(output));
-        SharpMP4.Tracks.AACTrack track = new(input.Track.Audio!.Value.Channels, input.Track.Audio!.Value.SampleRate, 16);
+        SharpMP4.Builders.Mp4Builder builder = new SharpMP4.Builders.Mp4Builder(new SharpMP4.Builders.SingleStreamOutput(output));
+        SharpMP4.Tracks.AACTrack track = new((byte)input.Track.Audio!.Value.Channels, (uint)input.Track.Audio!.Value.SampleRate, 16);
         builder.AddTrack(track);
         foreach (byte[] frame in input.Frames)
         {
-            builder.ProcessTrackSample(track.TrackID, frame);
+            builder.ProcessTrackSample(track.TrackID, frame, 1024);
         }
 
         builder.FinalizeMedia();
