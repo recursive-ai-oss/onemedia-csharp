@@ -35,3 +35,7 @@ thread over a ranged source, reading in 64 KiB windows), `FlacMetadataBlock`, `F
 
 STREAMINFO may hold 0 as the number of samples; the length is then read from the last frame found in the final 64 KiB (ours 4.000 s for the fixture,
 ffprobe prints none). A PICTURE block is a tag with its byte range; ffprobe makes it a second (video) stream with one packet, which is why `count` is excepted for those fixtures.
+
+## Gap: decoding through OneAudio's file opener
+
+`AudioDecoder.OpenFile` picks a reader from the first 512 bytes. A FLAC file that starts with an ID3v2 block longer than that (the `all-blocks` fixture has 600 bytes) shows no `fLaC` in that window, so the opener tries another reader and fails. `Media.Open(...)` followed by `Decode()` does not have the problem: the file's own demuxer has already skipped the ID3 block, and the decoder reads its packets. The behaviour is covered by a test (`FlacBehindALargeId3BlockDecodesThroughMediaFile…`).

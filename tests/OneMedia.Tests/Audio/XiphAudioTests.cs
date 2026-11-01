@@ -41,4 +41,20 @@ public class XiphAudioTests
         Assert.True(ours.Length >= theirs.Length && ours.Length - theirs.Length < 4096 * 6, $"{ours.Length} vs {theirs.Length}");
         Assert.True(ours.AsSpan(0, n).SequenceEqual(theirs.AsSpan(0, n)));
     }
+
+    [Fact]
+    public void FlacBehindALargeId3BlockDecodesThroughMediaFileButNotThroughTheSniffWindow()
+    {
+        // OneAudio looks at the first 512 bytes to pick a reader, which a big ID3v2 block fills; the file's own demuxer has already found the format.
+        byte[] flac = File.ReadAllBytes(Path("xiph-flv", "tags.flac"));
+        byte[] id3 = new byte[10 + 600];
+        "ID3"u8.CopyTo(id3);
+        id3[3] = 4;
+        id3[8] = 600 / 128;
+        id3[9] = 600 % 128;
+        byte[] file = [.. id3, .. flac];
+        using MediaFile media = MediaFile.Open(new MemoryMediaSource(file));
+        float[] pcm = ReadAll(media.Decode());
+        Assert.Equal(44100, pcm.Length);
+    }
 }

@@ -929,8 +929,11 @@ internal sealed class OggEngine : ISequentialEngine
                 }
 
                 at += from;
+                // A page is taken when its header is plausible and the next bytes are another page or the end of the file; the checksum is left
+                // for the packet reader, so that a tag read does not run a CRC over 72 KiB. A false match inside packet data would also need
+                // a valid header, a fitting length and a following capture pattern.
                 if (OggPageReader.TryParseHeader(span[at..], length - size + at, out OggPageHeader h) && at + h.TotalSize <= span.Length
-                    && OggPageReader.Crc(span.Slice(at, h.TotalSize)) == h.Checksum)
+                    && (at + h.TotalSize == span.Length || span.Slice(at + h.TotalSize).StartsWith("OggS"u8)))
                 {
                     if (!_bySerial.ContainsKey(h.SerialNumber))
                     {
