@@ -294,7 +294,7 @@ public sealed class WavDemuxer : AudioFileDemuxer
             perBlock = 1;
         }
 
-        frames = unknownLength ? -1 : (dataBytes / unit * perBlock) + (dataBytes % unit * perBlock / unit);
+        frames = unknownLength ? -1 : dataBytes / unit * perBlock;
         if (!blocks && f.AverageBytesPerSecond > 0 && !unknownLength)
         {
             // No block structure known: the length follows from the average data rate.

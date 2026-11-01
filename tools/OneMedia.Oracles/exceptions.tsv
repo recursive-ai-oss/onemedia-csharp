@@ -68,3 +68,26 @@ caf	duration	*	ffprobe-na	ours	ffprobe prints N/A for the duration of packets in
 *	count	file=sf/Pmiscck.aif	ignore	n/a	as for Fnonull.aif.
 *	count	file=sf/Poffset.aif	ignore	n/a	as for Fnonull.aif.
 *	count	file=sf/Ptjunk.aif	ignore	n/a	as for Fnonull.aif.
+wav	pts	*	ffprobe-na	ours	ffprobe prints N/A for the last packet of some block-coded streams; we time it from the block size.
+wav	dts	*	ffprobe-na	ours	ffprobe prints N/A for the last packet of some block-coded streams; we time it from the block size.
+wav	duration	*	ffprobe-na	ours	ffprobe prints N/A for the last packet of some block-coded streams; we time it from the block size.
+*	count	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	size	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	hash	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pos	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pts	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	dts	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	duration	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	key	file=sf/voxware.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	count	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	size	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	hash	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pos	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	pts	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	dts	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	duration	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	key	file=sf/truspech.wav	ignore	n/a	TrueSpeech/VOXware streams are cut by ffprobe's own frame parser (27 and 64-byte packets); we have no parser for them and deliver the data in 4096-byte packets with the frames spread evenly.
+*	duration	file=sf/oki.wav	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+*	duration	file=sf/o2_726.aiff	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+*	pts	file=libsndfile-samples/wav-g721.wav	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.
+*	dts	file=libsndfile-samples/wav-g721.wav	ignore	n/a	ffprobe counts frames with its own parser for this codec (header-derived rate here); the packet bytes agree.

@@ -39,7 +39,7 @@ internal sealed class FixedPlan(int unitBytes, long unitFrames, int unitsPerPack
     public override bool Next(long remaining, out int bytes, out long frames)
     {
         // The last packet takes every byte that is left, including a part-unit tail: the reference tool delivers those bytes, and a decoder can
-        // decide what to do with them. The frames counted are those of the whole units plus the tail's share of a unit.
+        // decide what to do with them. The frames counted are those of the whole units.
         long n = Math.Min(_packetBytes, remaining);
         if (n <= 0)
         {
@@ -49,7 +49,7 @@ internal sealed class FixedPlan(int unitBytes, long unitFrames, int unitsPerPack
         }
 
         bytes = (int)n;
-        frames = (n / unitBytes * unitFrames) + (n % unitBytes * unitFrames / unitBytes);
+        frames = n / unitBytes * unitFrames;
         return true;
     }
 
