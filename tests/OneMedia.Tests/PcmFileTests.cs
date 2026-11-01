@@ -323,4 +323,39 @@ public class PcmFileTests
 
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }
+
+    [Fact]
+    public void IXmlWithAMisleadingEncodingDeclarationIsRejectedAsXmlNotCrashed()
+    {
+        // Found by fuzzing: the XML reader threw ArgumentOutOfRangeException while switching encodings; the chunk is now decoded before parsing.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "riff-wav", "ixml-encoding-switch.bin"));
+        using WavDemuxer d = WavDemuxer.Open(new MemoryMediaSource(input.AsMemory(1)));
+        _ = d.ReadMetadata();
+    }
+
+    [Fact]
+    public void EveryCraftedFixtureOpensOrIsRejectedWithATypedError()
+    {
+        string dir = Path.Combine(AppContext.BaseDirectory, "testdata", "pcm");
+        MediaFormatRegistry registry = MediaFormats.Create();
+        int opened = 0;
+        foreach (string file in Directory.GetFiles(dir))
+        {
+            try
+            {
+                using IDemuxer d = registry.Open(new MemoryMediaSource(File.ReadAllBytes(file)));
+                while (d.TryReadPacket(out _))
+                {
+                }
+
+                _ = ((IMetadataProvider)d).ReadMetadata();
+                opened++;
+            }
+            catch (MediaException)
+            {
+            }
+        }
+
+        Assert.True(opened >= 24, $"{opened} fixtures opened");
+    }
 }

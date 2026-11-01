@@ -215,8 +215,10 @@ public static class RiffTagReader
         try
         {
             XmlReaderSettings settings = new() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = limits.MaxTagBytes, IgnoreComments = true, IgnoreProcessingInstructions = true };
-            using MemoryStream ms = new(xml, 0, length, writable: false);
-            using XmlReader reader = XmlReader.Create(ms, settings);
+            // The bytes are decoded here, not by the XML reader: a reader given a stream switches encodings on the declaration, and that path
+            // throws a non-XML exception on some malformed input (found by fuzzing). A text reader ignores the declaration.
+            using StringReader text = new(DecodeXml(xml.AsSpan(0, length)));
+            using XmlReader reader = XmlReader.Create(text, settings);
             List<string> path = [];
             List<StringBuilder> texts = [];
             List<bool> hasChild = [];
@@ -271,6 +273,27 @@ public static class RiffTagReader
         }
 
         return new ChunkTagSet(TagSystems.IXml, chunk.Id, chunk.Range, tags);
+    }
+
+    // A byte-order mark picks UTF-8, UTF-16 or UTF-32-less UTF-16; without one the text is UTF-8 when valid and Latin-1 otherwise.
+    private static string DecodeXml(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+        {
+            return Encoding.Unicode.GetString(bytes[2..]);
+        }
+
+        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+        {
+            return Encoding.BigEndianUnicode.GetString(bytes[2..]);
+        }
+
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+        {
+            bytes = bytes[3..];
+        }
+
+        return Utf8.IsValid(bytes) ? Encoding.UTF8.GetString(bytes) : Encoding.Latin1.GetString(bytes);
     }
 
     /// <summary>Reads an <c>axml</c> chunk (EBU Tech 3285 supplement 5: an XML document of the Audio Definition Model) as one text tag read on demand.</summary>
