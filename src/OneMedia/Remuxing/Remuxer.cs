@@ -1,4 +1,5 @@
 using System.Linq;
+using RecursiveAI.OneMedia.Codecs.Pcm;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Tags;
 
@@ -273,6 +274,11 @@ public static class Remuxer
             {
                 session.IsoOptions = t => IsoTrackOptionsFor(iso, t, session);
             }
+            else
+            {
+                object? demuxer = (object?)input.Demuxer ?? input.AsyncDemuxer;
+                session.IsoOptions = t => PcmOptionsFor(demuxer, t);
+            }
 
             Inspect(input, session);
             return session;
@@ -282,6 +288,31 @@ public static class Remuxer
             session.Dispose();
             throw;
         }
+    }
+
+    // The PCM layout (integer or float, width, byte order) is not in the neutral track; the audio-file readers and FLV's codec tag state it.
+    private static IsoTrackOptions? PcmOptionsFor(object? demuxer, MediaTrack t)
+    {
+        if (t.Codec != CodecId.Pcm || t.Kind != TrackKind.Audio)
+        {
+            return null;
+        }
+
+        PcmSampleFormat? pcm = demuxer switch
+        {
+            Riff.WavDemuxer w => w.Pcm,
+            Aiff.AiffDemuxer a => a.Pcm,
+            Caf.CafDemuxer c => c.Pcm,
+            _ => null,
+        };
+        pcm ??= t.CodecTag switch
+        {
+            "pcm_s16be" => new PcmSampleFormat(PcmEncoding.SignedInteger, 16, 16, true),
+            "pcm_s16le" => new PcmSampleFormat(PcmEncoding.SignedInteger, 16, 16, false),
+            "pcm_u8" => new PcmSampleFormat(PcmEncoding.UnsignedInteger, 8, 8, false),
+            _ => null,
+        };
+        return pcm is { } p ? new IsoTrackOptions { Pcm = p } : null;
     }
 
     /// <summary>Sample entry boxes that the ISO muxer does not write itself and that can be passed through; reports the ones that cannot.</summary>

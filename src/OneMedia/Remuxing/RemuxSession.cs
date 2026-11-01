@@ -59,6 +59,10 @@ public sealed class RemuxSession : IDisposable
         public long Packets { get; set; }
 
         public bool ReportedAnnexB { get; set; }
+
+        public MediaTime NextPts { get; set; } = MediaTime.Unknown;
+
+        public bool ReportedRetime { get; set; }
     }
 
     private readonly struct Held(PacketInfo info, byte[] data)
@@ -193,6 +197,37 @@ public sealed class RemuxSession : IDisposable
 
         s.Resolved = true;
         s.FramingDecided = true;
+    }
+
+    // The ISO 'alac' box holds a version/flags word and the 24-byte ALACSpecificConfig. CAF and QuickTime movies store the cookie as atoms
+    // (frma 'alac', then an 'alac' atom of that same content, then a terminator), and bare 24-byte configs also occur.
+    private static byte[]? AlacBoxPayload(ReadOnlySpan<byte> cookie)
+    {
+        if (cookie.Length == 24)
+        {
+            byte[] r = new byte[28];
+            cookie.CopyTo(r.AsSpan(4));
+            return r;
+        }
+
+        int at = 0;
+        while (at + 8 <= cookie.Length)
+        {
+            long size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(cookie[at..]);
+            if (size < 8 || at + size > cookie.Length)
+            {
+                break;
+            }
+
+            if (cookie.Slice(at + 4, 4).SequenceEqual("alac"u8) && size == 36)
+            {
+                return cookie.Slice(at + 8, 28).ToArray();
+            }
+
+            at += (int)size;
+        }
+
+        return null;
     }
 
     private TrackEdit? Edit(int index) => _options.Edits is { } e && e.TryGetValue(index, out TrackEdit? edit) ? edit : null;
@@ -448,6 +483,12 @@ public sealed class RemuxSession : IDisposable
         MediaTrack t = s.Input;
         TrackEdit? edit = Edit(t.Index);
         CodecConfiguration config = s.Derived.IsEmpty ? t.Configuration : s.Derived;
+        if (t.Codec == CodecId.Alac && s.Derived.IsEmpty && AlacBoxPayload(config.Data.Span) is { } alac && !alac.AsSpan().SequenceEqual(config.Data.Span))
+        {
+            config = new CodecConfiguration(alac, "alac");
+            _changes.Add($"Track {t.Index}: the ALAC magic cookie was unwrapped to the configuration the ISO 'alac' box holds.");
+        }
+
         MediaTrack declared = t with { Configuration = config };
         if (edit?.Language is { } lang)
         {
@@ -528,9 +569,38 @@ public sealed class RemuxSession : IDisposable
             }
         }
 
+        if (s.Input.Codec == CodecId.Opus && p.Pts.IsKnown)
+        {
+            p = RetimeOpus(s, p, data);
+        }
+
         _options.Observer?.Invoke(p, payload);
         _muxer!.WritePacket(p, payload, cancellationToken);
         s.Packets++;
+    }
+
+    // Matroska stores one timestamp per block, and a laced block of Opus frames without a DefaultDuration leaves its frames with the
+    // block's time and no duration. The Opus TOC (RFC 6716 §3.1) gives each packet's length, so frames that would start before the
+    // previous one ended are placed where it ended.
+    private PacketInfo RetimeOpus(TrackState s, PacketInfo p, ReadOnlySpan<byte> data)
+    {
+        if (!p.Duration.IsKnown && Codecs.Opus.OpusToc.TryGetSamples(data, out int samples))
+        {
+            p = p with { Duration = new MediaTime(samples, 48000) };
+            if (s.NextPts.IsKnown && p.Pts < s.NextPts)
+            {
+                MediaTime at = s.NextPts;
+                p = p with { Pts = at, Dts = p.Dts.IsKnown ? at : p.Dts };
+                if (!s.ReportedRetime)
+                {
+                    s.ReportedRetime = true;
+                    _changes.Add($"Track {s.Input.Index}: packets of laced blocks without a duration were spaced by their Opus frame lengths.");
+                }
+            }
+        }
+
+        s.NextPts = p.Duration.IsKnown ? p.Pts.Add(p.Duration, MediaRounding.NearestAwayFromZero) : MediaTime.Unknown;
+        return p;
     }
 
     /// <summary>Annex B access unit to 4-byte length-prefixed NAL units, leaving out parameter sets that the sample entry already holds.</summary>

@@ -371,6 +371,39 @@ public class RemuxTests
         Assert.Throws<UnsupportedMediaException>(() => Remuxer.Faststart(new MemoryMediaSource(data), new MemoryStream()));
     }
 
+    [Fact]
+    public void FloatingPointWaveSamplesGetAFloatingPointSampleEntry()
+    {
+        // WAVE_FORMAT_IEEE_FLOAT, one channel, 8 kHz, 64-bit samples: the layout is not in the neutral track, so the remuxer takes it from the reader.
+        using MemoryStream wav = new();
+        using (BinaryWriter w = new(wav))
+        {
+            w.Write("RIFF"u8);
+            w.Write(36 + 64);
+            w.Write("WAVEfmt "u8);
+            w.Write(16);
+            w.Write((short)3);
+            w.Write((short)1);
+            w.Write(8000);
+            w.Write(64000);
+            w.Write((short)8);
+            w.Write((short)64);
+            w.Write("data"u8);
+            w.Write(64);
+            for (int i = 0; i < 8; i++)
+            {
+                w.Write(i * 0.125);
+            }
+        }
+
+        using MediaFile input = Media.Open(wav.ToArray());
+        using MemoryStream ms = new();
+        Remuxer.Remux(input, ms, RemuxFormat.Mp4);
+        byte[] bytes = ms.ToArray();
+        Assert.True(bytes.AsSpan().IndexOf("fpcm"u8) > 0);
+        Assert.True(bytes.AsSpan().IndexOf("ipcm"u8) < 0);
+    }
+
     private static List<string> TopLevel(byte[] data)
     {
         List<string> names = [];
