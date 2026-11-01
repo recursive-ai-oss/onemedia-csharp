@@ -125,7 +125,8 @@ internal sealed class OggPageReader
     private readonly SequentialInput _input;
     private readonly DefectLog _defects;
     private readonly bool _verify;
-    private readonly byte[] _page = new byte[MaxPageSize];
+    // Rented, because a reader that only looks at the headers would otherwise allocate 64 KiB per open.
+    private byte[] _page = System.Buffers.ArrayPool<byte>.Shared.Rent(MaxPageSize);
     private OggPageHeader _header;
 
     public OggPageReader(SequentialInput input, DefectLog defects, bool verifyChecksum = true)
@@ -133,6 +134,17 @@ internal sealed class OggPageReader
         _input = input;
         _defects = defects;
         _verify = verifyChecksum;
+    }
+
+    /// <summary>Gives the page buffer back to the pool; the reader is not used afterwards.</summary>
+    public void Release()
+    {
+        byte[] page = _page;
+        _page = [];
+        if (page.Length > 0)
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(page);
+        }
     }
 
     public OggPageHeader Header => _header;

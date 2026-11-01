@@ -1276,6 +1276,7 @@ internal sealed class OggEngine : ISequentialEngine
         }
 
         _disposed = true;
+        _pages.Release();
         _input.Dispose();
     }
 }
