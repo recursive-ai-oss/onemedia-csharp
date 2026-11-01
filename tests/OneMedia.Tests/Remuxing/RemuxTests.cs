@@ -439,6 +439,15 @@ public class RemuxTests
     }
 
     [Fact]
+    public void TheMovieTimescaleCanBeSet()
+    {
+        (byte[] output, _) = Remux(Data("mpeg", "h264-aac.ts"), RemuxFormat.Mp4, new RemuxOptions { MovieTimescale = 600 });
+        int at = output.AsSpan().IndexOf("mvhd"u8);
+        Assert.True(at > 0);
+        Assert.Equal(600u, System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(output.AsSpan(at + 4 + 4 + 8)));
+    }
+
+    [Fact]
     public void PacketsOfAnUndeclaredTrackAreSkippedAndReportedOnce()
     {
         using MediaFile input = Media.Open(Data("audio-es", "lc.aac"));

@@ -27,7 +27,9 @@ Everything the output does not hold is listed in `RemuxReport.Losses`.
 | `Remuxer.Faststart(source, stream)` / `Media.Faststart(in, out)` | the movie box to the front, without a remux |
 
 `RemuxOptions`: `Faststart` (default true), `Select` and `Edits` (drop a track; change language, name, disposition, display rotation), `AllowDrop` (default true),
-`Limits`, `ConfigurationProbeBytes`, `CreationTime`, `Overwrite`, `Observer` (every packet as written).
+`Limits`, `ConfigurationProbeBytes`, `CreationTime`, `Overwrite`, `MovieTimescale` (ISO targets; 0 lets the muxer choose), `Observer` (every packet as written).
+
+For callers that drive a `RemuxSession` themselves (trim, split, concatenation): a track's `Edit` (priming, start time, edit list segments) reaches the muxer unchanged, apart from the Ogg-style priming shift described below; `RemuxSession.IsoOptions` is the hook for per-track ISO settings (extra sample entry boxes, PCM layout, track id), and `Remuxer.IsoTrackOptionsFor` builds the sample entry boxes of an ISO input track.
 
 ### Targets
 

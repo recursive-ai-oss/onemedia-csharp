@@ -36,6 +36,7 @@ internal static class RemuxMuxers
                     return new IsoMuxer(output, new IsoMuxOptions
                     {
                         Kind = kind,
+                        MovieTimescale = options.MovieTimescale,
                         Layout = layout,
                         Cmaf = format == RemuxFormat.Cmaf,
                         Limits = options.Limits,

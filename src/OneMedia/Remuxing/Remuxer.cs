@@ -315,8 +315,12 @@ public static class Remuxer
         return pcm is { } p ? new IsoTrackOptions { Pcm = p } : null;
     }
 
-    /// <summary>Sample entry boxes that the ISO muxer does not write itself and that can be passed through; reports the ones that cannot.</summary>
-    private static IsoTrackOptions? IsoTrackOptionsFor(IsoBmffDemuxer iso, MediaTrack t, RemuxSession session)
+    /// <summary>Sample entry boxes of an ISO input track that the ISO muxer does not write itself and that can be passed through (<c>colr clap fiel gama btrt chnl srat mdcv clli</c>); adds a loss to <paramref name="session"/> for the ones that cannot, and for sample descriptions after the first.</summary>
+    /// <param name="iso">The open ISO input.</param>
+    /// <param name="t">One of its tracks.</param>
+    /// <param name="session">Receives the losses.</param>
+    /// <returns>Options to give the ISO muxer, or null when there is nothing to pass.</returns>
+    public static IsoTrackOptions? IsoTrackOptionsFor(IsoBmffDemuxer iso, MediaTrack t, RemuxSession session)
     {
         if ((uint)t.Index >= (uint)iso.Movie.Tracks.Count)
         {

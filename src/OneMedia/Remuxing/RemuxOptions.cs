@@ -97,4 +97,7 @@ public sealed record RemuxOptions
 
     /// <summary>For the path overloads: replace an existing output file (default false: refuse).</summary>
     public bool Overwrite { get; init; }
+
+    /// <summary>The timescale of the movie header for the ISO targets, in ticks per second; 0 (the default) lets the muxer choose. Edit list durations are stated in it.</summary>
+    public long MovieTimescale { get; init; }
 }

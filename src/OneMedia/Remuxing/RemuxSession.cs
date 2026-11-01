@@ -140,8 +140,12 @@ public sealed class RemuxSession : IDisposable
         }
     }
 
-    /// <summary>Per-track ISO sample entry extras, supplied by <see cref="Remuxer"/> for ISO input.</summary>
-    internal Func<MediaTrack, IsoTrackOptions?>? IsoOptions { get; set; }
+    /// <summary>
+    /// Per-track ISO settings for the ISO targets: extra sample entry boxes, PCM layout, track id. Asked once per written input track when the output
+    /// tracks are declared. <see cref="Remuxer"/> sets it from the input (see <see cref="Remuxer.IsoTrackOptionsFor"/>); callers that drive a session
+    /// themselves may set it before the first packet. Ignored by the Matroska targets, which report the entry boxes they cannot write.
+    /// </summary>
+    public Func<MediaTrack, IsoTrackOptions?>? IsoOptions { get; set; }
 
     /// <summary>Whether the packets of each input track are wanted, by input index. Turn the others off in the demuxer to skip reading them.</summary>
     public IReadOnlyList<bool> Wanted
