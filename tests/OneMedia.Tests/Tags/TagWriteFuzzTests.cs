@@ -10,6 +10,7 @@ public sealed class TagWriteFuzzTests
 
     [Theory]
     [InlineData("matroska-open-then-not.bin")]
+    [InlineData("matroska-void-hides-seekhead.bin")]
     public void AFileThatOpenedStillOpensAfterTheTagWrite(string name)
     {
         byte[] file = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "tagwrite", name));

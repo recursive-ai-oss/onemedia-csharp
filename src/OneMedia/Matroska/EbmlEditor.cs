@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneMedia.Matroska;
@@ -218,7 +219,36 @@ public sealed class EbmlEditor
     }
 
     // A Void whose stated size was cut down to fit (a damaged file) may hide real elements inside the bytes it claims; it is not padding to reuse.
-    private static bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred;
+    // A Void that a SeekHead entry points into hides an element the reader reaches by that entry, so it is no padding either.
+    private bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred && !SeekTargets().Any(t => t >= e.Offset && t < e.Range.End);
+
+    private List<long>? _seekTargets;
+
+    private List<long> SeekTargets()
+    {
+        if (_seekTargets is not null)
+        {
+            return _seekTargets;
+        }
+
+        List<long> found = [];
+        foreach (EbmlElement seg in _document.Elements.Where(x => x.Id == MatroskaIds.Segment))
+        {
+            long segStart = seg.Offset + seg.HeaderSize;
+            foreach (EbmlElement head in seg.ChildElements.Where(x => x.Id == MatroskaIds.SeekHead))
+            {
+                bool changed = false;
+                // Rebuilding with an identity map reads every position in the SeekHead and changes nothing.
+                EbmlPositions.Rebuild(ReadElement(head), rel =>
+                {
+                    found.Add(segStart + rel);
+                    return rel;
+                }, ref changed);
+            }
+        }
+
+        return _seekTargets = found;
+    }
 
     private static long TotalSize(EbmlElement e) => e.HeaderSize + e.PayloadSize;
 
