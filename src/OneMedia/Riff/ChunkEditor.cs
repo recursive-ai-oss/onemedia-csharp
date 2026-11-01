@@ -22,6 +22,7 @@ public sealed class ChunkEditor
     private readonly IMediaSource _source;
     private readonly MediaLimits _limits;
     private readonly List<Request> _requests = [];
+    private readonly HashSet<long> _padAdded = [];
     private Dictionary<ChunkNode, ChunkNode>? _parents;
 
     /// <summary>Creates an editor over a chunk file.</summary>
@@ -198,6 +199,7 @@ public sealed class ChunkEditor
     public EditPlan Build(CancellationToken cancellationToken = default)
     {
         ChunkNode root = _file.Root;
+        _padAdded.Clear();
         Rewriter rw = new(_file, _source, Parents(), RewriteHeaders, cancellationToken);
         ShiftMap shift = new();
         HashSet<ChunkNode> consumed = new(NodeComparer<ChunkNode>.Instance);
@@ -360,7 +362,8 @@ public sealed class ChunkEditor
             ChunkNode lastKid = kids[^1];
             long payloadEnd = lastKid.Offset + lastKid.HeaderSize + lastKid.PayloadSize;
             long missing = lastKid.NextOffset - Math.Max(payloadEnd, Math.Min(lastKid.NextOffset, _source.Length));
-            if (missing > 0)
+            // Only the first chunk added after it carries the pad byte; the ones after that start on an even offset already.
+            if (missing > 0 && _padAdded.Add(lastKid.Offset))
             {
                 added.AddData(new byte[missing]);
             }

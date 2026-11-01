@@ -17,23 +17,33 @@ def run(cmd, timeout=300):
         return 124, "", "timeout"
 
 
-def attached_pics(path):
+def stream_ranks(path):
+    """Returns (pictures, ranks): the indices of cover-picture streams and each other stream's position among the non-picture streams."""
     rc, out, err = run(["ffprobe", "-v", "error", "-show_entries", "stream=index:stream_disposition=attached_pic", "-of", "csv", path])
-    pics = set()
+    pics, ranks = set(), {}
     for l in out.splitlines():
         p = l.split(",")
-        if len(p) >= 3 and p[2] == "1":
-            pics.add(p[1])
-    return pics
+        if len(p) >= 3:
+            if p[2] == "1":
+                pics.add(p[1])
+            else:
+                ranks[p[1]] = str(len(ranks))
+    return pics, ranks
 
 
 def ffprobe_hashes(path):
-    pics = attached_pics(path)
+    pics, ranks = stream_ranks(path)
     rc, out, err = run(["ffprobe", "-v", "error", "-show_entries", "packet=stream_index,pts,dts,duration,size,flags,data_hash",
                         "-show_data_hash", "sha256", "-of", "csv", path], 600)
-    # Cover pictures show up as one-packet video streams; the edit changes them on purpose, so they are left out of the comparison.
-    out = "\n".join(l for l in out.splitlines() if l.split(",")[1:2] and l.split(",")[1] not in pics)
-    return out, len([l for l in err.splitlines() if l.strip()])
+    # Cover pictures show up as one-packet video streams; the edit changes them on purpose, so they are left out of the comparison, and the
+    # other streams are numbered by their order among the rest (ffprobe puts a cover stream where the metadata box sits, which can shift later indices).
+    rows = []
+    for l in out.splitlines():
+        f = l.split(",")
+        if len(f) > 1 and f[1] in ranks:
+            f[1] = ranks[f[1]]
+            rows.append(",".join(f))
+    return "\n".join(rows), len([l for l in err.splitlines() if l.strip()])
 
 
 def exif(path):

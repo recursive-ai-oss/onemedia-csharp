@@ -339,4 +339,23 @@ public sealed class TagWriteTests
         c1.AppendChild(first, ChunkBuilder.Create(cf.Layout, "junk", new byte[4]));
         Assert.Throws<ArgumentException>(() => c1.Remove(first));
     }
+
+    [Fact]
+    public void ChunksAppendedAfterAnOddUnpaddedDataChunkAllStartOnEvenOffsets()
+    {
+        // A data chunk of odd length whose pad byte the file lacks: one pad byte is added, not one per new chunk.
+        byte[] fmt = ChunkBuilder.Create(ChunkLayout.Riff, "fmt ", [1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0, 1, 0, 8, 0]);
+        byte[] data = [.. "data"u8, 3, 0, 0, 0, 1, 2, 3];
+        byte[] wave = [.. "RIFF"u8, .. BitConverter.GetBytes(4 + fmt.Length + data.Length), .. "WAVE"u8, .. fmt, .. data];
+        TagEdits e = new();
+        e.Set(CommonField.Title, "T");
+        e.SetPicture(Png, "image/png");
+        byte[] result = Apply(wave, e);
+        using MemoryMediaSource src = new(result);
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog(MediaLimits.Default))!;
+        Assert.Equal(["fmt ", "data", "LIST", "id3 "], cf.Chunks.Select(c => c.Id).ToArray());
+        Assert.All(cf.Chunks, c => Assert.Equal(0, c.Offset % 2));
+        using MediaFile m = MediaFile.Open(src);
+        Assert.Single(m.Tags.Pictures);
+    }
 }
