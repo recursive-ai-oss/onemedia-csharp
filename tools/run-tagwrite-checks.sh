@@ -65,8 +65,8 @@ cross)
   # Edits each file of a family, then reads the result with ATL.NET and TagLib# (comparators only).
   fam=${2:?family}
   list_files "$fam" > "$OUT/$fam.list"
-  CROSS="dotnet $HOME/onemedia/u30-tagwrite/bin-cross/OneMedia.TagCrossRead.dll"
-  (cd "$HERE" && dotnet build tools/OneMedia.TagCrossRead -c Release -v quiet -clp:NoSummary -m:4 -o "$HOME/onemedia/u30-tagwrite/bin-cross" 2>&1 | grep -E 'error|warning' | head -3)
+  CROSS="dotnet $HOME/onemedia/u30-tagwrite/bin-cross/OneMedia.Bench.dll crossread"
+  (cd "$HERE" && dotnet build bench/OneMedia.Bench -c Release -v quiet -clp:NoSummary -m:4 -o "$HOME/onemedia/u30-tagwrite/bin-cross" 2>&1 | grep -E 'error|warning' | head -3)
   mkdir -p "$WORK/cross"; : > "$OUT/$fam.cross.tsv"
   while read -r f; do
     o="$WORK/cross/$(basename "$f")"

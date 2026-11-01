@@ -1,7 +1,7 @@
-// crossread <file>: prints what ATL.NET and TagLib# read for title, artist, comment and the number of pictures, tab separated, for the file the
+// crossread FILE: prints what ATL.NET and TagLib# read for title, artist, comment and the number of pictures, tab separated, for a file the
 // tag-write check wrote (title "Edited Title ü", artist "Edited Artist", comment "An edited comment", one picture). A reader that does not support the
-// format, or throws, is reported as such; "ok" per field means it read exactly the written value.
-return CrossRead.Run(args);
+// format, or throws, is reported as such; "ok" per field means it read exactly the written value. Comparators only, run black-box, never shipped.
+namespace RecursiveAI.OneMedia.Bench;
 
 internal static class CrossRead
 {
