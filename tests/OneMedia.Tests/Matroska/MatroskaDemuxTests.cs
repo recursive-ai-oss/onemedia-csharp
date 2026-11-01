@@ -615,16 +615,36 @@ public class MatroskaDemuxTests
         long sum = 0;
         int count = 0;
         long before = GC.GetAllocatedBytesForCurrentThread();
+        long last = before;
+        int[] where = new int[16];
+        long[] sizes = new long[16];
+        int hits = 0;
         while (d.TryReadPacket(out PacketView p))
         {
             sum += p.Data.Length + p.Info.Pts.Ticks;
             count++;
+            long now = GC.GetAllocatedBytesForCurrentThread();
+            if (now != last && hits < where.Length)
+            {
+                where[hits] = count;
+                sizes[hits] = now - last;
+                hits++;
+            }
+
+            last = now;
         }
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(count > 10_000);
         Assert.NotEqual(0, sum);
-        Assert.Equal(0, allocated);
+        // On failure, name the packets after which the allocation counter moved, so a one-off allocation can be told from a per-packet one.
+        var detail = new System.Text.StringBuilder();
+        for (int i = 0; i < hits; i++)
+        {
+            detail.Append("packet ").Append(where[i]).Append(": ").Append(sizes[i]).Append(" B; ");
+        }
+
+        Assert.True(allocated == 0, $"{allocated} B allocated over {count} packets; {detail}");
     }
 
     private sealed class NonSeekableStream(byte[] data) : Stream
