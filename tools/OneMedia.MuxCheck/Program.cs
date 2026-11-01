@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -170,7 +171,7 @@ int Copy(string inPath, string outPath)
             mux.WritePacket(info, v.Data);
             if (packets < 3_000_000)
             {
-                reader.WriteLine($"{info.TrackIndex} {info.Dts.Ticks} {info.Pts.Ticks} {(info.Duration.IsKnown ? info.Duration.Ticks : -1)} {v.Data.Length} {(info.IsKeyframe ? 1 : 0)} {((info.Flags & PacketAttributes.Disposable) != 0 ? 1 : 0)}");
+                reader.WriteLine($"{info.TrackIndex} {info.Dts.Ticks} {info.Pts.Ticks} {(info.Duration.IsKnown ? info.Duration.Ticks : -1)} {v.Data.Length} {(info.IsKeyframe ? 1 : 0)} {((info.Flags & PacketAttributes.Disposable) != 0 ? 1 : 0)} {Convert.ToHexStringLower(SHA256.HashData(v.Data))}");
             }
 
             packets++;

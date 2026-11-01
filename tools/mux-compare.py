@@ -3,7 +3,7 @@
 
 usage: mux-compare.py [-v] <ffprobe> <input> <output>
   <output>.map   one line per output track: "<output index> <input index>" (written by OneMedia.MuxCheck)
-  <output>.pkts  optional, one line per packet in output order: "<output index> <dts> <pts> <duration> <size> <key> <disposable>" as the
+  <output>.pkts  optional, one line per packet in output order: "<output index> <dts> <pts> <duration> <size> <key> <disposable> <sha256>" as the
                  container reader of the input delivered it (raw track ticks, -1 for an unknown duration)
 
 Per stream the packets of both files are compared in order on pts, dts, duration, size, flags and the SHA-256 of the data. A difference is
@@ -14,7 +14,12 @@ Per stream the packets of both files are compared in order on pts, dts, duration
   dur-reader the output's duration is the one the container reader delivered for that packet
   dur-gap    the output's duration is the distance to the next decode time (the sample table can say nothing else)
   key-reader the output's key flag is the one the container reader delivered
-  disc-frag  a discard flag from an edit list on a fragment sample (ffprobe applies edit lists to the sample tables of the movie box only)
+  disc-frag  a discard flag from an edit list that ffprobe applies to the sample tables of a movie box and not to fragment samples, so the two
+             files differ whenever one is fragmented and the other not
+  in-reader  the packets of the stream differ from ffprobe's reading of the *input*, but ffprobe's reading of the output equals the container
+             reader's own view of the input: same count, sizes, SHA-256, key flags, and decode and presentation times moved by constants
+             (durations too unless the output is fragmented, where ffprobe derives them differently; set FRAGMENTED=1). The muxer then
+             wrote what the reader delivered, and the difference is between ffprobe and the reader on the input (docs/isobmff.md).
 Everything else is counted as a difference. Exit status 1 when any difference remains.
 """
 import os
@@ -56,8 +61,29 @@ def load_reader(path):
     with open(path) as fh:
         for line in fh:
             f = line.split()
-            tracks[int(f[0])].append(tuple(int(x) for x in f[1:]))
+            tracks[int(f[0])].append(tuple(int(x) for x in f[1:7]) + (f[7] if len(f) > 7 else "",))
     return tracks
+
+
+def reader_tier(pb, pr):
+    """True when ffprobe's packets of the output equal the container reader's view of the input (see in-reader above)."""
+    if not pr or len(pr) != len(pb):
+        return False
+    fragmented = os.environ.get("FRAGMENTED") == "1"
+    dts_shift = pts_shift = None
+    for (rdts, rpts, rdur, rsize, rkey, _disp, rhash), (pts, dts, dur, size, flags, h) in zip(pr, pb):
+        if to_int(size) != rsize or h != "SHA256:" + rhash or (flags[:1] == "K") != bool(rkey):
+            return False
+        if to_int(pts) is None or to_int(dts) is None:
+            return False
+        a, b = to_int(dts) - rdts, to_int(pts) - rpts
+        if dts_shift is None:
+            dts_shift, pts_shift = a, b
+        elif (a, b) != (dts_shift, pts_shift):
+            return False
+        if not fragmented and rdur >= 0 and dur != "N/A" and to_int(dur) != rdur:
+            return False
+    return True
 
 
 def main():
@@ -84,6 +110,14 @@ def main():
             else:
                 classes[kind] += 1
                 diff += abs(len(pa) - len(pb))
+        if reader_tier(pb, pr):
+            n_in = sum(1 for x, y in zip(pa, pb) if x != y) + abs(len(pa) - len(pb))
+            if n_in:
+                classes["explained:in-reader"] += n_in
+                for x, y in zip(pa, pb):
+                    total += 1
+                    match += 1
+                continue
         pairs = list(zip(pa, pb))
         shifts = set()
         for x, y in pairs:
@@ -113,7 +147,7 @@ def main():
                 elif k == 4:
                     if pr and n < len(pr) and x[4][0] != y[4][0] and (y[4][0] == "K") == bool(pr[n][4]):
                         cls = "key-reader"
-                    elif x[4][0] == y[4][0] and x[4][1:2] == "D" and y[4][1:2] == "_":
+                    elif x[4][0] == y[4][0] and x[4][1:2] != y[4][1:2] and {x[4][1:2], y[4][1:2]} == {"D", "_"}:
                         cls = "disc-frag"
                 if cls:
                     classes["explained:" + cls] += 1
