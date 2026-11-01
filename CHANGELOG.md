@@ -28,6 +28,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Fixed
 
+- Format sniffing: an Annex B head that ended right after a start code made the H.265 check read one byte past the end (found by fuzzing the registry).
+
 - CAF with variable-size packets opened from a stream that cannot seek delivered no packets, because the packet table had gone by before the audio; the table is kept, and a file whose table is not before the audio is refused with `UnsupportedMediaException`.
 
 - `onemedia info` printed Matroska frame rates unreduced (`200000000/8333333 fps`); they are now reduced or snapped to the nearest broadcast rate.

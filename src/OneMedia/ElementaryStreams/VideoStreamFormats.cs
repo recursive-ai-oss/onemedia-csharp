@@ -157,6 +157,11 @@ public sealed class VideoStreamFormat : IMediaFormat
             }
 
             pos += at + 3;
+            if (pos + 1 >= head.Length)
+            {
+                return false; // the head ends at the start code
+            }
+
             int t = (head[pos] >> 1) & 0x3F;
             if (t is 32 or 33 or 34 or 35)
             {
