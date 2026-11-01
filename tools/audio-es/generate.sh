@@ -69,6 +69,18 @@ SRC="$G/_src/plain.mp3"
 mkdir -p "$G/tagged-info"
 [ -s "$G/tagged-info/id3v24-basic.mp3" ] || "$PY" "$HERE/make_tags.py" "$G/_src/info.mp3" "$G/tagged-info"
 
+# Tags written by ExifTool (an independent writer of ID3v1, ID3v2 and APE), on copies of the plain file. A missing or failing ExifTool skips them.
+EXIF="${EXIFTOOL:-$O/oracles/bin/exiftool}"
+if [ -x "$EXIF" ]; then
+  mkdir -p "$G/tagged-exiftool"
+  T="$G/tagged-exiftool"
+  common=(-overwrite_original -q)
+  [ -s "$T/et-id3v2.mp3" ] || { cp "$SRC" "$T/et-id3v2.mp3" && "$EXIF" "${common[@]}" -ID3:Title="Eté title" -ID3:Artist="Artist One" -ID3:Album="The Album" -ID3:Year=2019 -ID3:Comment="A comment" -ID3:Genre=Jazz -ID3:Track=4/12 -ID3:Band="Album Artist" -ID3:Composer="A Composer" "$T/et-id3v2.mp3" || rm -f "$T/et-id3v2.mp3"; }
+  [ -s "$T/et-id3v1.mp3" ] || { cp "$SRC" "$T/et-id3v1.mp3" && "$EXIF" "${common[@]}" -ID3v1:Title="V1 title" -ID3v1:Artist="V1 artist" -ID3v1:Album="V1 album" -ID3v1:Year=1999 -ID3v1:Comment="v1 comment" -ID3v1:Genre=Rock -ID3v1:Track=7 "$T/et-id3v1.mp3" || rm -f "$T/et-id3v1.mp3"; }
+  [ -s "$T/et-ape.mp3" ] || { cp "$SRC" "$T/et-ape.mp3" && "$EXIF" "${common[@]}" -APE:Title="APE title" -APE:Artist="APE artist" -APE:Album="APE album" -APE:Year=2001 -APE:Genre=Blues -APE:Track=3 -APE:Comment="ape comment" "$T/et-ape.mp3" || rm -f "$T/et-ape.mp3"; }
+  [ -s "$T/et-all.mp3" ] || { cp "$SRC" "$T/et-all.mp3" && "$EXIF" "${common[@]}" -ID3:Title="All title" -ID3:Artist="All artist" -ID3v1:Title="All v1" -APE:Title="All APE" -APE:Artist="All APE artist" "$T/et-all.mp3" || rm -f "$T/et-all.mp3"; }
+fi
+
 # AAC in ADTS
 A=(-c:a aac -f adts)
 enc "$G/aac/lc-44k-mono.aac"       44100 mono   "${A[@]}" -b:a 64k

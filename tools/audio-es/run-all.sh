@@ -9,7 +9,8 @@ export PATH=~/dotnet10:$PATH DOTNET_ROOT=~/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=
 O="${ONEMEDIA_HOME:-$HOME/onemedia}"
 export ONEMEDIA_HOME="$O"
 OUT="${OUT:-$O/u12-mp3-es/results}"
-export ONEMEDIA_ARTIFACTS="${ONEMEDIA_ARTIFACTS:-$O/u12-mp3-es/artifacts}"
+export ONEMEDIA_SCRATCH="${ONEMEDIA_SCRATCH:-$O/u12-mp3-es}"
+ART="$ONEMEDIA_SCRATCH/artifacts"
 G="$O/corpus/generated/audio-es"
 export PATH="$O/oracles/bin:$PATH"
 mkdir -p "$OUT"
@@ -17,7 +18,7 @@ steps=("$@"); [ ${#steps[@]} -eq 0 ] && steps=(gen diff info decode tags io allo
 want() { local s; for s in "${steps[@]}"; do [ "$s" = "$1" ] && return 0; done; return 1; }
 
 dotnet build tools/OneMedia.Oracles/OneMedia.Oracles.csproj -c Release -v q -clp:NoSummary 2>&1 | tail -3
-T="$ONEMEDIA_ARTIFACTS/bin/OneMedia.Oracles/release/OneMedia.Oracles.dll"
+T="$ART/bin/OneMedia.Oracles/release/OneMedia.Oracles.dll"
 FILES=$(find "$G" -type f \( -name '*.mp3' -o -name '*.mp2' -o -name '*.aac' -o -name '*.ac3' -o -name '*.eac3' -o -name '*.amr' -o -name '*.awb' \) ! -path '*/_*' | sort)
 
 if want gen; then
@@ -68,8 +69,8 @@ fi
 
 if want tags; then
   dotnet build bench/OneMedia.Bench/OneMedia.Bench.csproj -c Release -v q -clp:NoSummary 2>&1 | tail -3
-  BN="$ONEMEDIA_ARTIFACTS/bin/OneMedia.Bench/release/OneMedia.Bench.dll"
-  dotnet "$BN" tagcompare "$OUT/tagcompare.tsv" $(find "$G/tagged" "$G/tagged-info" "$G/mp3" "$G/aac" -type f \( -name '*.mp3' -o -name '*.aac' \) | sort) | head -80
+  BN="$ART/bin/OneMedia.Bench/release/OneMedia.Bench.dll"
+  dotnet "$BN" tagcompare "$OUT/tagcompare.tsv" $(find "$G/tagged" "$G/tagged-info" "$G/tagged-exiftool" "$G/mp3" "$G/aac" -type f \( -name '*.mp3' -o -name '*.aac' \) | sort) | head -80
 fi
 
 if want io; then
@@ -79,7 +80,7 @@ if want io; then
 fi
 
 if want alloc; then
-  BN="$ONEMEDIA_ARTIFACTS/bin/OneMedia.Bench/release/OneMedia.Bench.dll"
+  BN="$ART/bin/OneMedia.Bench/release/OneMedia.Bench.dll"
   [ -f "$BN" ] || dotnet build bench/OneMedia.Bench/OneMedia.Bench.csproj -c Release -v q -clp:NoSummary 2>&1 | tail -3
   dotnet "$BN" pullalloc generated/audio-es/mp3/long-60s.mp3 generated/audio-es/mp3/cbr128-44k-info.mp3 generated/audio-es/aac/lc-48k-stereo.aac generated/audio-es/ac3/ac3-48k-stereo-192k.ac3 generated/audio-es/amr/nb-12200.amr generated/audio-es-big/big-noxing.mp3 generated/audio-es-big/big-xing.mp3 | tee "$OUT/pullalloc.txt"
   /usr/bin/time -v dotnet "$BN" pullalloc generated/audio-es-big/big-xing.mp3 2>&1 | grep -E 'Maximum resident|packets' | tee -a "$OUT/pullalloc.txt"
