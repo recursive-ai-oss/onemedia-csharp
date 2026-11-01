@@ -125,3 +125,7 @@ mpegps	pos	*	ffprobe-na	neither	pos-of-leading-fragment.
 mpegts	duration	file=foxksaz	tolerance=1	neither	measured-spacing: the video starts without a sequence header, so no frame rate is known until one appears and ours takes durations from the stamps' spacing (1501/1502 alternating at 59.94 Hz); ffprobe says 1501.
 mpegts	pts	file=vid_0x80	ignore	ours	leading-fragment-stamp.
 mpegts	dts	file=vid_0x80	ignore	ours	leading-fragment-stamp.
+mpegts	pts	kind=audio	tolerance=1	neither	audio-pts-interpolation: frames after the first in a PES are placed by the codec frame length; ffprobe's rounding differs by at most one 90 kHz tick (docs/mpeg.md).
+mpegts	dts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for pts.
+mpegps	pts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for mpegts.
+mpegps	dts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for mpegts.

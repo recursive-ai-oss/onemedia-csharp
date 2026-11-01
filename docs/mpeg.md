@@ -124,6 +124,7 @@ Sweep (`tools/run-mpeg-sweep.sh`): 149 files (generated transport, program and e
 | `raw-stream-dts`, `raw-mpeg2-pts`, `raw-stream-duration-rounding` | `h264`, `hevc`, `vvc`, `mpegvideo` | a raw stream has no timestamps: ffprobe prints N/A (or derives pts from temporal references, or rounds the frame duration in its 1/1200000 base); ours counts frames at the stream's rate |
 | `ivf-pos` | `ivf` | ffprobe's `pos` is the frame header, ours the payload (the packet's source range) |
 | `nav-packets` | `mpegps` `dvd_nav_packet` | ffprobe lists no packets for the navigation stream |
+| `audio-pts-interpolation` | TS/PS audio | frames after the first in a PES are placed by frame length; rounding differs by at most one tick (16 frames in `dvd-pcm.vob` and `last_samurai.ts`) |
 | `unstamped-units` | TS/PS video | a picture inside a PES without a timestamp has none in ffprobe; ours continues decode time and, for MPEG-2, places the picture by temporal reference |
 | `pts-only-with-reordering` | `Aladin.mpg` | PES packets with PTS only on a reordered stream: ours `dts = pts` per H.222.0, ffprobe derives a monotonic dts |
 | `pts-from-neighbour` | TS subtitle/data | ffprobe gives a teletext PES without PTS the time of its neighbours; ours leaves it unknown |
