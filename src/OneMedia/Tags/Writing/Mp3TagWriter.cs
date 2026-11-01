@@ -148,8 +148,10 @@ internal static class Mp3TagWriter
             end -= Id3v1Tag.Length;
         }
 
-        if (end >= ApeTag.BlockSize && ApeTag.TryReadFromFooter(src, end - ApeTag.BlockSize, out ApeTag? a))
+        DefectLog defects = new();
+        if (end >= ApeTag.BlockSize && ApeTag.TryReadFromFooter(src, end - ApeTag.BlockSize, out ApeTag? a, null, defects) && !defects.HasErrors)
         {
+            // A tag whose items do not parse (a key that is no key, an item past the tag's end) may be audio or other data that merely ends in an APE-looking footer; it is left alone.
             ape = a;
         }
 
