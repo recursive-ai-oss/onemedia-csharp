@@ -488,8 +488,10 @@ public class IsoMuxerTests
         byte[] payload = new byte[96];
         foreach (IsoLayout layout in new[] { IsoLayout.MoovFirst, IsoLayout.MoovLast, IsoLayout.Fragmented })
         {
+            // The smallest of three runs: a per-packet allocation shows in all of them, while a one-off (a runtime type load or a
+            // tiered-compilation step landing on this thread) shows in one.
             _ = Run(layout, payload, 30_000);
-            long allocated = Run(layout, payload, 30_000);
+            long allocated = Math.Min(Run(layout, payload, 30_000), Math.Min(Run(layout, payload, 30_000), Run(layout, payload, 30_000)));
             Assert.True(allocated == 0, $"{layout}: {allocated} bytes");
         }
     }
