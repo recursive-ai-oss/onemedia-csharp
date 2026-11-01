@@ -29,7 +29,7 @@ public static class MediaAudioExtensions
     /// <param name="registry">Codecs to use; <see cref="CreateRegistry"/> when null.</param>
     /// <param name="limits">Limits for untrusted input; <see cref="global::OneAudio.AudioLimits.Default"/> when null.</param>
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
-    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (the message names the signalling).</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (OneAudio has no SBR or PS decoder and refuses the track; its message says how the file signals it).</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
     /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source.</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
@@ -92,7 +92,7 @@ public static class MediaAudioExtensions
     /// <param name="registry">Codecs to use; <see cref="CreateRegistry"/> when null.</param>
     /// <param name="limits">Limits for untrusted input; <see cref="global::OneAudio.AudioLimits.Default"/> when null.</param>
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
-    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (the message names the signalling).</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (OneAudio has no SBR or PS decoder and refuses the track; its message says how the file signals it).</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
     /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source.</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, out AudioDecodeReport report, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
@@ -135,24 +135,8 @@ public static class MediaAudioExtensions
         return source;
     }
 
-    // A configuration that signals SBR or PS is refused with UnsupportedAudioFormatException whatever OneAudio threw: its parser reports some
-    // of them (MP4Box writes explicit signalling one bit short) as invalid, and words its own refusal as 'explicit' also for the
-    // backward-compatible form, so neither says what the track signals. A OneAudio that decodes them in a later version is not blocked,
-    // since the refusal only follows a failure.
-    private static global::OneAudio.IAudioDecoder CreateDecoder(MediaTrackPacketSource source, global::OneAudio.AudioCodecRegistry registry, global::OneAudio.AudioLimits? limits)
-    {
-        try
-        {
-            return registry.GetCodec(source.Codec).CreateDecoder(source, limits ?? global::OneAudio.AudioLimits.Default);
-        }
-        catch (global::OneAudio.AudioFormatException) when (source.SbrSignalling is SbrSignalling.Explicit or SbrSignalling.BackwardCompatible)
-        {
-            bool ps = (source.Limitations & AudioSeamLimitations.PsNotApplied) != 0;
-            string how = source.SbrSignalling == SbrSignalling.Explicit
-                ? "explicitly (the AudioSpecificConfig starts with audio object type 5 or 29)"
-                : "by the backward-compatible extension after the core configuration";
-            throw new global::OneAudio.UnsupportedAudioFormatException(
-                $"The AAC track signals {(ps ? "SBR and parametric stereo (HE-AACv2)" : "SBR (HE-AAC)")} {how}. OneAudio has no SBR or PS decoder, so it refuses the track instead of returning the core coder's audio.");
-        }
-    }
+    // OneAudio refuses a configuration that signals SBR or PS with UnsupportedAudioFormatException itself (since 1.5.1, also for the
+    // MP4Box form that lacks the trailing extension flag); the track's own signalling is reported by AudioDecodeReport.Signalling.
+    private static global::OneAudio.IAudioDecoder CreateDecoder(MediaTrackPacketSource source, global::OneAudio.AudioCodecRegistry registry, global::OneAudio.AudioLimits? limits) =>
+        registry.GetCodec(source.Codec).CreateDecoder(source, limits ?? global::OneAudio.AudioLimits.Default);
 }

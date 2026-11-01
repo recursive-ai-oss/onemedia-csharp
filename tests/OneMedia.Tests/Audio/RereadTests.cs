@@ -237,21 +237,21 @@ public class RereadTests
         Assert.Throws<MediaReadStateException>(() => once.Packets(once.Audio!).Count());
     }
 
+    // OneAudio 1.5.1 refuses SBR/PS-signalled AAC itself, with its own typed exception; this library only reports how the file signals it.
     [Theory]
-    [InlineData("sbr-compatible.m4a", false, "backward-compatible extension")]
-    [InlineData("sbr-explicit.m4a", false, "explicitly")]
-    [InlineData("sbrps-explicit.m4a", true, "explicitly")]
-    public void SignalledHeAacIsRefusedWithTheTypedExceptionNamingTheSignalling(string file, bool ps, string how)
+    [InlineData("sbr-compatible.m4a", SbrSignalling.BackwardCompatible, "backward-compatible SBR")]
+    [InlineData("sbr-explicit.m4a", SbrSignalling.Explicit, "explicit SBR signalling")]
+    [InlineData("sbrps-explicit.m4a", SbrSignalling.Explicit, "explicit SBR and parametric stereo")]
+    public void SignalledHeAacIsRefusedByOneAudioWithItsTypedException(string file, SbrSignalling signalling, string wording)
     {
         using MediaFile media = Media.Open(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "heaac", file));
         UnsupportedAudioFormatException e = Assert.Throws<UnsupportedAudioFormatException>(() => media.Decode());
-        Assert.Contains(how, e.Message, StringComparison.Ordinal);
-        Assert.Equal(ps, e.Message.StartsWith("The AAC track signals SBR and parametric stereo", StringComparison.Ordinal));
-        Assert.StartsWith("The AAC track signals SBR", e.Message, StringComparison.Ordinal);
         Assert.Throws<UnsupportedAudioFormatException>(() => media.Decode(out _));
+        Assert.Contains(wording, e.Message, StringComparison.Ordinal);
+        Assert.Equal(signalling != SbrSignalling.BackwardCompatible, e.Message.Contains("explicit", StringComparison.Ordinal));
 
         AudioDecodeReport report = media.DescribeDecode();
-        Assert.Equal(how == "explicitly" ? SbrSignalling.Explicit : SbrSignalling.BackwardCompatible, report.Signalling);
+        Assert.Equal(signalling, report.Signalling);
         Assert.Equal(report.Signalling, media.Audio!.DescribeCodec()!.SbrSignalling);
     }
 
