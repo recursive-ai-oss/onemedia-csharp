@@ -50,21 +50,43 @@ internal static class Mp3TagWriter
         long padAvail = 0;
 
         // ---- ID3v2 ----
-        Id3Tag? tag = null;
+        // Some files carry several ID3v2 tags back to back; each is edited so that every reader sees the same values.
+        List<Id3Tag> tags = [];
         Span<byte> head = stackalloc byte[Id3Header.HeaderSize]; // the fixed tag header
-        if (src.Read(0, head, ct) == head.Length && Id3Header.TryParse(head, out _) && Id3Tag.TryRead(src, 0, out tag, limits))
+        while (src.Read(audioStart, head, ct) == head.Length && Id3Header.TryParse(head, out _) && Id3Tag.TryRead(src, audioStart, out Id3Tag? next, limits) && next is not null)
         {
-            audioStart = tag!.Range.Length;
-            padAvail = tag.Padding.IsNone ? 0 : tag.Padding.Length;
+            tags.Add(next);
+            audioStart += next.Range.Length;
         }
 
-        bool wantV2 = options.Wants(TagSystems.Id3v2) && (tag is not null || options.Systems is not null || !HasEnd(src, length, out _, out _) );
+        Id3Tag? tag = tags.Count > 0 ? tags[0] : null;
+        padAvail = tag is null || tag.Padding.IsNone ? 0 : tag.Padding.Length;
+        bool wantV2 = options.Wants(TagSystems.Id3v2) && (tag is not null || options.Systems is not null || !HasEnd(src, length, out _, out _));
         if (wantV2)
         {
-            (byte[] newTag, SystemWriteReport r, List<string> n) = BuildId3v2(src, tag, edits, options, limits, audioStart);
-            notes.AddRange(n);
-            reports.Add(r);
-            reps.Add(new Replacement(0, audioStart, newTag, "ID3v2 tag"));
+            if (tags.Count == 0)
+            {
+                (byte[] fresh, SystemWriteReport created, List<string> n0) = BuildId3v2(src, null, edits, options, limits, 0);
+                notes.AddRange(n0);
+                reports.Add(created);
+                reps.Add(new Replacement(0, 0, fresh, "ID3v2 tag"));
+            }
+
+            for (int i = 0; i < tags.Count; i++)
+            {
+                (byte[] newTag, SystemWriteReport r, List<string> n) = BuildId3v2(src, tags[i], edits, options, limits, tags[i].Range.Length);
+                notes.AddRange(n);
+                if (i == 0)
+                {
+                    reports.Add(r);
+                }
+                else
+                {
+                    notes.Add($"A further ID3v2 tag follows the first (at {tags[i].Range.Offset}); it received the same edits.");
+                }
+
+                reps.Add(new Replacement(tags[i].Range.Offset, tags[i].Range.Length, newTag, "ID3v2 tag"));
+            }
         }
 
         // ---- APEv2 and ID3v1 at the end ----
@@ -376,7 +398,14 @@ internal static class Mp3TagWriter
                     id = newId!;
                 }
 
-                frames.Add(new FrameOut(id, raw, f.Native?.Key, f.Native?.Description));
+                // The key a frame is known by follows its upgraded identifier (TT2 becomes TIT2, TXX:desc becomes TXXX:desc).
+                string? key = f.Native?.Key;
+                if (tag.Header.MajorVersion == 2 && key is not null && key.StartsWith(f.Id, StringComparison.Ordinal))
+                {
+                    key = id + key[f.Id.Length..];
+                }
+
+                frames.Add(new FrameOut(id, raw, key, f.Native?.Description));
             }
         }
 

@@ -91,10 +91,10 @@ internal static class IsoTagWriter
             }
         }
 
-        if (!didIlst && !didMdta && (!anyUdtaText || edits.PictureEdits.Any()) && options.Wants(TagSystems.ITunes))
+        if (!didIlst && !didMdta && (!(anyUdtaText || didMdta) || edits.PictureEdits.Any()) && options.Wants(TagSystems.ITunes))
         {
             // Pictures cannot live in udta: with only © atoms in the file, an item list is created for them alone.
-            TagEdits forList = anyUdtaText ? PicturesOnly(edits) : edits;
+            TagEdits forList = anyUdtaText || didMdta ? PicturesOnly(edits) : edits;
             SystemWriteReport created = CreateItunes(src, moov, udta, forList, editor, limits);
             reports.Add(created);
         }
@@ -461,14 +461,7 @@ internal static class IsoTagWriter
             editor.Replace(keysBox, BoxBuilder.CreateFull(Keys, 0, 0, [.. count, .. ms.ToArray()]));
         }
 
-        List<(CommonField, string)> not = [.. rep.NotRepresentable];
-        foreach (TagEdit e in edits.PictureEdits)
-        {
-            not.Add((CommonField.Title, "pictures are not stored in key-table metadata"));
-            break;
-        }
-
-        return rep with { NotRepresentable = not };
+        return rep;
     }
 
     // ---- udta: QuickTime © text atoms and 3GPP text boxes ----
