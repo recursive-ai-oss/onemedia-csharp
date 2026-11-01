@@ -215,7 +215,7 @@ public class AviDemuxTests
     {
         AviBuilder b = new();
         b.Streams.Add(new AviBuilder.StreamSpec("vids", "MJPG", 1, 10, 0, AviBuilder.Bitmap(8, 8, "MJPG")));
-        b.Streams.Add(new AviBuilder.StreamSpec("auds", "    ", 1152, 44100, 0, AviBuilder.Wave(0x55, 2, 44100, 1, 0)));
+        b.Streams.Add(new AviBuilder.StreamSpec("auds", "\0\0\0\0", 1152, 44100, 0, AviBuilder.Wave(0x55, 2, 44100, 1, 0)));
         b.Chunks.Add(new AviBuilder.ChunkSpec(0, Payload(10, 1)));
         b.Chunks.Add(new AviBuilder.ChunkSpec(0, [], false));
         b.Chunks.Add(new AviBuilder.ChunkSpec(0, Payload(10, 2)));

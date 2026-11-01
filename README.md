@@ -6,7 +6,7 @@ The goal is the depth of libavformat, GPAC, mkvtoolnix, MediaInfo and ExifTool i
 
 ## Status
 
-**Preview, version `0.2.0-preview.1`: reading every container below (MP4/MOV/3GP, Matroska/WebM, MPEG-TS/PS and elementary streams, ASF, AVI, DV, Ogg, FLAC, FLV, MP3/ADTS/AC-3/AMR, WAV/AIFF/CAF).** Structure writers (preview) are included; tag editing, muxing and remux, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
+**Preview, version `0.2.0-preview.2`: reading every container below (MP4/MOV/3GP, Matroska/WebM, MPEG-TS/PS and elementary streams, ASF, AVI, DV, Ogg, FLAC, FLV, MP3/ADTS/AC-3/AMR, WAV/AIFF/CAF).** Structure writers (preview) are included; tag editing, muxing and remux, subtitles, repair and packaging are planned and not in this release. The table below lists what works and how it was checked; gaps are listed, not hidden.
 
 ```csharp
 using RecursiveAI.OneMedia;

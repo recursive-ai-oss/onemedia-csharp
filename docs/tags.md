@@ -45,21 +45,32 @@ item keeps its source range, and values are fetched from the source by range, ne
 
 A candidate list is ordered by rank, lower first, then file order. The rank is fixed and documented here; a replaceable resolver is a later feature.
 
-| Fact | Rank | Source |
-|---|---|---|
-| Capture time | 10 | `com.apple.quicktime.creationdate` (carries an offset) |
-| | 20 | XMP `exif:DateTimeOriginal`, `xmp:CreateDate`, `photoshop:DateCreated` with a zone |
-| | 25 | `mdta` `creation_time` |
-| | 30 | `©day` (`udta`, `ilst`) |
-| | 40 | the same XMP properties without a zone |
-| | 45 | Matroska `DATE_RECORDED` tag |
-| | 50 | Matroska Info `DateUTC` (when the file was muxed) |
-| | 60 | `mvhd` creation time, as UTC |
-| Location | 10 / 20 / 30 / 40 | `mdta` ISO 6709 / `©xyz` / 3GPP `loci` / XMP GPS |
-| Make, model, software | 10 (12 for `com.android.*`) / 20 / 30 | `mdta` / `udta` `©mak`, `©mod`, `©swr` / XMP; Matroska `WritingApp` 50, `MuxingApp` 51 |
-| Orientation | – | `tkhd` matrix of the first video track → 0/90/180/270 plus mirror |
-| Frame size | – | first video sample entry (ISO) or `TrackEntry.Video` (Matroska): coded and display size |
-| Duration | – | movie header or Segment Info |
+| Fact | Rank | Format | Source |
+|---|---|---|---|
+| Capture time | 10 | ISO BMFF / QuickTime | `com.apple.quicktime.creationdate` (carries an offset) |
+|  | 20 | any with XMP (ISO, RIFF/AVI, MP3 and others that carry a packet) | XMP `exif:DateTimeOriginal`, `xmp:CreateDate`, `photoshop:DateCreated` with a zone |
+|  | 25 | ISO BMFF / QuickTime | `mdta` `creation_time` |
+|  | 25 | ASF / WMV / WMA | `WM/MediaOriginalBroadcastDateTime` (recorder-written broadcast date and time) |
+|  | 30 | ISO BMFF / QuickTime | `©day` (`udta`, `ilst`) |
+|  | 30 | Ogg, FLAC (Vorbis comments) | `DATE`, when it is a full date (a bare year is not an instant) |
+|  | 30 | WAV/BWF/RF64, AVI (RIFF INFO) | `ICRD` creation date |
+|  | 30 | CAF | information chunk `recorded date` |
+|  | 35 | WAV/BWF/RF64 | `bext` OriginationDate and OriginationTime (local time, zone unknown) |
+|  | 35 | DV, DV-in-AVI | VAUX recording date and time packs (local time, zone unknown) |
+|  | 35 | MPEG-TS / M2TS (AVCHD) | MDPM `DateTimeOriginal` in the H.264 SEI (local time, zone unknown) |
+|  | 40 | as rank 20 | the same XMP properties without a zone |
+|  | 45 | Matroska / WebM | `DATE_RECORDED` tag |
+|  | 45 | AVI | RIFF INFO `IDIT` (local time of the writer, zone unknown) |
+|  | 50 | Matroska / WebM | Info `DateUTC` (when the file was muxed) |
+|  | 55 | MP3 and other ID3 carriers (WAV, AIFF, FLAC, Ogg) | ID3v2.4 `TDRC`, when it is more than a year |
+|  | 56 | MP3 and other ID3 carriers | ID3v2.3 `TYER` with `TDAT` (and `TIME`) |
+|  | 60 | ISO BMFF / QuickTime | `mvhd` creation time, as UTC |
+|  | 60 | ASF / WMV / WMA | File Properties creation date, as UTC |
+| Location | 10 / 20 / 30 / 40 | ISO BMFF / QuickTime; XMP anywhere | `mdta` ISO 6709 / `©xyz` / 3GPP `loci` / XMP GPS |
+| Make, model, software | 10 (12 for `com.android.*`) / 20 / 30 | ISO BMFF; Matroska; XMP | `mdta` / `udta` `©mak`, `©mod`, `©swr` / XMP; Matroska `WritingApp` 50, `MuxingApp` 51 |
+| Orientation | – | ISO BMFF; Matroska | `tkhd` matrix of the first video track → 0/90/180/270 plus mirror |
+| Frame size | – | ISO BMFF; Matroska | first video sample entry (ISO) or `TrackEntry.Video` (Matroska): coded and display size |
+| Duration | – | every format | movie header or Segment Info for these two; the other formats' own length or packet times (see their pages) |
 
 ## Defects
 

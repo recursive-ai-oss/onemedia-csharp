@@ -106,6 +106,11 @@ internal static class MatroskaIds
     public const uint DisplayUnit = 0x54B2;
     public const uint UncompressedFourCc = 0x2EB524;
     public const uint Colour = 0x55B0;
+    public const uint MatrixCoefficients = 0x55B1;
+    public const uint BitsPerChannel = 0x55B2;
+    public const uint Range = 0x55B9;
+    public const uint TransferCharacteristics = 0x55BA;
+    public const uint ColourPrimaries = 0x55BB;
     public const uint Projection = 0x7670;
     public const uint Audio = 0xE1;
     public const uint SamplingFrequency = 0xB5;

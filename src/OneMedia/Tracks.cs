@@ -281,6 +281,13 @@ public sealed record MediaTrack
     public long BitRate { get; init; }
 
     /// <summary>
+    /// What the container's reader learned about the codec from parameter sets inside the stream itself, for formats that carry no
+    /// configuration record (an H.264 track in MPEG-TS or AVI has its SPS and PPS in the first access unit and no <c>avcC</c>). Null when
+    /// the reader did not look, or <see cref="Configuration"/> already describes the codec. <see cref="DescribeCodec"/> falls back to it.
+    /// </summary>
+    public CodecParameters? StreamParameters { get; init; }
+
+    /// <summary>
     /// Describes the track's codec from its configuration (see <see cref="CodecParameterReader.TryDescribe(CodecId, CodecConfiguration, out CodecParameters?)"/>)
     /// and, for AAC, adds what only the container's declared rate can show: when the configuration shows no SBR and the container declares
     /// twice its rate, <see cref="CodecParameters.ContainerDeclaresDoubleRate"/> is set and <see cref="CodecParameters.SampleRate"/> is the declared
@@ -291,7 +298,7 @@ public sealed record MediaTrack
     {
         if (!CodecParameterReader.TryDescribe(Codec, Configuration, out CodecParameters? p) || p is null)
         {
-            return null;
+            return StreamParameters;
         }
 
         if (Codec == CodecId.Aac && !p.SbrPresent && p.CoreSampleRate > 0 && Audio is { } a && a.SampleRate == 2 * p.CoreSampleRate)
