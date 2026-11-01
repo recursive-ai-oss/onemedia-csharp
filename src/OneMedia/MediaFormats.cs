@@ -27,8 +27,8 @@ public static class MediaFormats
         registry.Add(new WavSniffer());
         registry.Add(new AviSniffer());
         registry.Add(new AsfSniffer());
-        registry.Add(new MpegTsSniffer());
-        registry.Add(new MpegPsSniffer());
+        registry.Add(new RecursiveAI.OneMedia.MpegTs.MpegTsFormat());
+        registry.Add(new RecursiveAI.OneMedia.MpegPs.MpegPsFormat());
         registry.Add(new FlvSniffer());
         registry.Add(new OggSniffer());
         registry.Add(new FlacSniffer());
@@ -38,7 +38,12 @@ public static class MediaFormats
         registry.Add(new MpegAudioSniffer());
         registry.Add(new AdtsSniffer());
         registry.Add(new AmrSniffer());
-        registry.Add(new IvfSniffer());
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.IvfFormat());
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.H264));
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Hevc));
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Vvc));
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.MpegVideo));
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Av1Obu));
         return registry;
     }
 }

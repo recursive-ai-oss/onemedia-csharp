@@ -13,6 +13,13 @@ internal static class Readers
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.MpegTs.MpegTsFormat());
+        registry.Add(new RecursiveAI.OneMedia.MpegPs.MpegPsFormat());
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.IvfFormat());
+        foreach (RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind k in Enum.GetValues<RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind>())
+        {
+            registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(k));
+        }
         return registry;
     }
 }
