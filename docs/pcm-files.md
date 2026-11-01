@@ -68,4 +68,34 @@ bytes delivered. See the tables below for how packets, durations and tags compar
 
 ## Differential results
 
-RESULTS_PLACEHOLDER
+Method: `OneMedia.Oracles diff --family pcm` against ffprobe 7.0.2 (static build), packet by packet (track, pts, dts, duration, size, file position, key flag,
+SHA-256 of the payload). Corpus: 65 files made by ffmpeg 7.0.2 from a sine input (PCM s8 to f64, extensible 5.1/7.1, µ-law, A-law, MS and IMA ADPCM, MP3 and
+AC-3 in WAVE, RF64, Wave64, AIFF, AIFF-C, CAF with PCM/ALAC/Opus/IMA4, tagged variants), 32 crafted files (`tools/gen-pcm-fixtures.py`: iXML, cart, smpl, cue,
+streaming sizes, damage) and 122 published samples (libsndfile test files, Core Audio samples, ffmpeg's sample collection).
+
+| Result | Files |
+|---|---|
+| Packets equal ffprobe's, no exception needed | the rest |
+| Equal after a documented exception (`tools/OneMedia.Oracles/exceptions.tsv`) | see below |
+| ffprobe reports no streams (we read or reject, no comparison) | 14 |
+| Not RIFF at all (NIST SPHERE files named `.wav`) | 3 |
+
+**Exceptions**, each from an experiment on the worker:
+
+- *CAF with a packet table*: ffprobe prints N/A for the duration; we report the table's frames per packet.
+- *Last packet of a block-coded WAVE stream*: ffprobe prints N/A timestamps.
+- *VOXware, TrueSpeech*: ffprobe cuts them with its own frame parser (27 and 64-byte packets); we deliver 4096-byte packets (bytes identical).
+- *OKI ADPCM, G.726 in WAVE and AIFF-C*: the same data and packet bytes; ffprobe's parser counts more frames than the header implies.
+- *Four libsndfile AIFF-C test files* (`Fnonull`, `Pmiscck`, `Poffset`, `Ptjunk`): ffprobe delivers no packets (still none after removing the odd chunk, the FVER chunk or the SSND offset, so the
+  cause is not one of those); the sound data is intact and we deliver it.
+- *Files ffprobe rejects* (`ffprobe reports no streams`): COMM missing, bad channel count or rate, pakt missing, chunk sizes past the file; we report a defect or raise a typed exception.
+- *NIST SPHERE* (`sw1038t_short.wav`, `swb.wav`, `telephone.wav`): ffprobe reads them; the container is not RIFF and not in scope.
+
+**Larger than 4 GB** (generated, `tools/corpus/generate.sh` with `LARGE=1`): RF64 4.4 GB, Wave64 4.4 GB, CAF 4.4 GB, AIFF 2.3 GB. Packets equal ffprobe's on all four (2,179,689
+packets), 0 bytes allocated per packet in steady state, peak working set 38–41 MB. Probe plus metadata read of the RF64 file: 20,480 bytes in 3 range requests
+(ffprobe: 1,032,192 B in 2; MediaInfo 344,064 B in 1); the same file read from disk: 4,216 B in 9 reads (ffprobe 884,816 B in 27; MediaInfo 1,048,576 B in 16; ExifTool 22,256 B in 5).
+
+**Tags** against ExifTool 13.60 and MediaInfo 26.10 on 219 files (`meta`): see `tags.md` for the method. Differences are explained: MediaInfo's CAF durations are
+wrong for PCM (ffprobe and we agree); ExifTool computes ADPCM durations from the average data rate; both show mojibake for UTF-8 in INFO strings where we decode UTF-8;
+the `id3 ` chunk of AIFF/WAVE is kept as raw bytes until the ID3 reader is connected (artist, album, genre from it are "ours-missing"). ATL.NET (7.19, `bench tagcompare`):
+99 of 120 field comparisons equal; the others are ATL's file-name title fallback, its `0001-01-01` placeholder date, ID3 chunks, joined AIFF comments, and CAF comments it does not read.
