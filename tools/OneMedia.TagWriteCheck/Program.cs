@@ -26,6 +26,9 @@ internal static class Checker
                 case "inplace":
                     Console.WriteLine(InPlace(args[1], args[2]));
                     return 0;
+                case "mapping":
+                    Console.Write(TagMappingTable.RenderMarkdown());
+                    return 0;
                 case "hash":
                     Console.WriteLine(Hash(args[1]));
                     return 0;

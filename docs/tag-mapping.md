@@ -148,6 +148,18 @@ generated from it, and a test fails when they differ.
 | TrackTotal | vorbis | `TRACKTOTAL`, `TOTALTRACKS`, `TRACKNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER |
 | DiscNumber | vorbis | `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | may read number/total |
 | DiscTotal | vorbis | `DISCTOTAL`, `TOTALDISCS`, `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER |
+| ReplayGainTrackGain | vorbis | `REPLAYGAIN_TRACK_GAIN` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| ReplayGainTrackPeak | vorbis | `REPLAYGAIN_TRACK_PEAK` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| ReplayGainAlbumGain | vorbis | `REPLAYGAIN_ALBUM_GAIN` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| ReplayGainAlbumPeak | vorbis | `REPLAYGAIN_ALBUM_PEAK` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| ReplayGainTrackGain | ilst | `----:com.apple.iTunes:replaygain_track_gain` | Picard tag map, iTunes MP4 | freeform item of iTunes' own mean |
+| ReplayGainTrackPeak | ilst | `----:com.apple.iTunes:replaygain_track_peak` | Picard tag map, iTunes MP4 |  |
+| ReplayGainAlbumGain | ilst | `----:com.apple.iTunes:replaygain_album_gain` | Picard tag map, iTunes MP4 |  |
+| ReplayGainAlbumPeak | ilst | `----:com.apple.iTunes:replaygain_album_peak` | Picard tag map, iTunes MP4 |  |
+| ReplayGainTrackGain | mkv | `REPLAYGAIN_TRACK_GAIN` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | not in the tag list; ffmpeg and others write it |
+| ReplayGainTrackPeak | mkv | `REPLAYGAIN_TRACK_PEAK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 |  |
+| ReplayGainAlbumGain | mkv | `REPLAYGAIN_ALBUM_GAIN` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 |  |
+| ReplayGainAlbumPeak | mkv | `REPLAYGAIN_ALBUM_PEAK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 |  |
 | Title | id3v2 | `TIT2`, `TT2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | Artist | id3v2 | `TPE1`, `TP1` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | AlbumArtist | id3v2 | `TPE2`, `TP2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |

@@ -26,6 +26,7 @@ AudioStreamFuzz.Register(targets);
 XiphFlvTargets.Register(targets);
 PcmTargets.Register(targets);
 WriterTarget.Register(targets);
+TagWriteTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;
