@@ -137,12 +137,20 @@ internal static class FaststartWriter
                 bool container = type is BoxTypes.Moov or BoxTypes.Trak or BoxTypes.Mdia or BoxTypes.Minf or BoxTypes.Stbl;
                 if (container)
                 {
+                    // The header keeps the form it had (a 64-bit size stays one), so a movie box that needs no promotion keeps its length.
                     int sizeAt = dst.Count;
-                    Span<byte> h = dst.Reserve(8);
-                    BinaryPrimitives.WriteUInt32BigEndian(h, 0);
+                    Span<byte> h = dst.Reserve(header);
+                    BinaryPrimitives.WriteUInt32BigEndian(h, header == 16 ? 1u : 0u);
                     BinaryPrimitives.WriteUInt32BigEndian(h[4..], type);
                     EmitBox(src, at + header, next, depth + 1, dst);
-                    dst.PatchUInt32(sizeAt, (uint)(dst.Count - sizeAt));
+                    if (header == 16)
+                    {
+                        dst.PatchUInt64(sizeAt + 8, (ulong)(dst.Count - sizeAt));
+                    }
+                    else
+                    {
+                        dst.PatchUInt32(sizeAt, (uint)(dst.Count - sizeAt));
+                    }
                 }
                 else if (type == BoxTypes.Stco || type == BoxTypes.Co64)
                 {
@@ -170,7 +178,14 @@ internal static class FaststartWriter
             uint count32 = BinaryPrimitives.ReadUInt32BigEndian(s[(p + 4)..]);
             int entry = is64 ? 8 : 4;
             long available = (next - (p + 8)) / entry;
-            long n = Math.Min(count32, available);
+            if (count32 > available)
+            {
+                // The table cannot be moved correctly if its length is a guess; a file whose offsets cannot be trusted is not rewritten.
+                throw new MediaFormatException("A chunk offset table claims more entries than its box holds.") { Offset = oldMoovStart + at };
+            }
+
+            long n = count32;
+            int trailing = (int)(next - (p + 8) - (n * entry));
             bool promote = !is64 && promoted.Contains(at);
             if (!is64 && !promote)
             {
@@ -190,12 +205,22 @@ internal static class FaststartWriter
 
             bool out64 = is64 || promote;
             int entrySize = out64 ? 8 : 4;
-            int bodyLength = 8 + (int)(n * entrySize);
-            Span<byte> head = dst.Reserve(16);
-            BinaryPrimitives.WriteUInt32BigEndian(head, (uint)(8 + bodyLength));
-            BinaryPrimitives.WriteUInt32BigEndian(head[4..], out64 ? BoxTypes.Co64 : BoxTypes.Stco);
-            BinaryPrimitives.WriteUInt32BigEndian(head[8..], BinaryPrimitives.ReadUInt32BigEndian(s[p..]));
-            BinaryPrimitives.WriteUInt32BigEndian(head[12..], (uint)n);
+            int bodyLength = 8 + (int)(n * entrySize) + trailing;
+            Span<byte> head = dst.Reserve(header + 8);
+            if (header == 16)
+            {
+                BinaryPrimitives.WriteUInt32BigEndian(head, 1);
+                BinaryPrimitives.WriteUInt32BigEndian(head[4..], out64 ? BoxTypes.Co64 : BoxTypes.Stco);
+                BinaryPrimitives.WriteUInt64BigEndian(head[8..], (ulong)(header + bodyLength));
+            }
+            else
+            {
+                BinaryPrimitives.WriteUInt32BigEndian(head, (uint)(header + bodyLength));
+                BinaryPrimitives.WriteUInt32BigEndian(head[4..], out64 ? BoxTypes.Co64 : BoxTypes.Stco);
+            }
+
+            BinaryPrimitives.WriteUInt32BigEndian(head[header..], BinaryPrimitives.ReadUInt32BigEndian(s[p..]));
+            BinaryPrimitives.WriteUInt32BigEndian(head[(header + 4)..], (uint)n);
             Span<byte> body = dst.Reserve((int)(n * entrySize));
             for (long i = 0; i < n; i++)
             {
@@ -218,6 +243,10 @@ internal static class FaststartWriter
                 }
             }
 
+            if (trailing > 0)
+            {
+                dst.Write(s[(next - trailing)..next]);
+            }
         }
 
         bool Moves(long offset) => offset >= insertAt && offset < oldMoovStart;
@@ -273,6 +302,8 @@ internal sealed class ByteSink(int capacity)
     }
 
     public void PatchUInt32(int at, uint value) => BinaryPrimitives.WriteUInt32BigEndian(_buffer.AsSpan(at), value);
+
+    public void PatchUInt64(int at, ulong value) => BinaryPrimitives.WriteUInt64BigEndian(_buffer.AsSpan(at), value);
 
     public byte[] ToArray() => _buffer.AsSpan(0, Count).ToArray();
 }

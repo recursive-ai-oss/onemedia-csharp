@@ -365,6 +365,38 @@ public class RemuxTests
     }
 
     [Fact]
+    public void FaststartRefusesAnOffsetTableThatClaimsMoreEntriesThanItHolds()
+    {
+        using MediaFile source = Media.Open(Data("isobmff", "bframes_aac.mp4"));
+        using MemoryStream last = new();
+        Remuxer.Remux(source, last, RemuxFormat.Mp4, new RemuxOptions { Faststart = false });
+        byte[] bytes = last.ToArray();
+        int at = bytes.AsSpan().IndexOf("stco"u8);
+        Assert.True(at > 0);
+        bytes[at + 8] = 0x7f; // after the type come the version/flags word and then the entry count
+        Assert.ThrowsAny<MediaException>(() => Remuxer.Faststart(new MemoryMediaSource(bytes), new MemoryStream()));
+    }
+
+    [Fact]
+    public void PacketsOfAnUndeclaredTrackAreSkippedAndReportedOnce()
+    {
+        using MediaFile input = Media.Open(Data("audio-es", "lc.aac"));
+        using MemoryStream ms = new();
+        using RemuxSession session = new(input.Tracks, ms, RemuxFormat.Mp4);
+        PacketInfo stray = new(5, MediaTime.FromSeconds(0), MediaTime.FromSeconds(0), MediaTime.FromSeconds(1), PacketAttributes.Keyframe, default, 3, default);
+        session.WritePacket(stray, new byte[3]);
+        session.WritePacket(stray, new byte[3]);
+        IDemuxer d = input.Demuxer!;
+        while (d.TryReadPacket(out PacketView v))
+        {
+            session.WritePacket(v.Info, v.Data);
+        }
+
+        RemuxReport report = session.Finish();
+        Assert.Single(report.Losses, l => l.InputTrack == 5);
+    }
+
+    [Fact]
     public void FaststartRefusesFragmentedFiles()
     {
         byte[] data = File.ReadAllBytes(Data("isobmff", "frag.mp4"));

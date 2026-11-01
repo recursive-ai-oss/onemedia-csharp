@@ -81,6 +81,7 @@ public sealed class RemuxSession : IDisposable
     private readonly List<TrackState> _tracks = [];
     private readonly List<RemuxLoss> _losses = [];
     private readonly List<string> _changes = [];
+    private readonly HashSet<int> _unlisted = [];
     private readonly List<Held> _held = [];
     private long _heldBytes;
     private IMuxer? _muxer;
@@ -238,7 +239,7 @@ public sealed class RemuxSession : IDisposable
     /// <param name="info">The packet; <see cref="PacketInfo.TrackIndex"/> is the <b>input</b> track index.</param>
     /// <param name="data">The payload as the reader delivered it. Copied before the call returns.</param>
     /// <param name="cancellationToken">Checked before the packet is accepted.</param>
-    /// <exception cref="InvalidOperationException">After <see cref="Finish"/>, or an index that is not an input track.</exception>
+    /// <exception cref="InvalidOperationException">After <see cref="Finish"/>, or a negative track index. Packets of a track number past the list are skipped and reported once.</exception>
     /// <exception cref="MuxRefusedException">The muxer refused the packet (<see cref="MuxRefusalReason.NonMonotonicDts"/>, a missing time).</exception>
     /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
     public void WritePacket(in PacketInfo info, ReadOnlySpan<byte> data, CancellationToken cancellationToken = default)
@@ -249,9 +250,21 @@ public sealed class RemuxSession : IDisposable
             throw new InvalidOperationException("The session is finished.");
         }
 
-        if ((uint)info.TrackIndex >= (uint)_tracks.Count)
+        if (info.TrackIndex < 0)
         {
             throw new InvalidOperationException($"Packet for track {info.TrackIndex}, which is not an input track.");
+        }
+
+        if (info.TrackIndex >= _tracks.Count)
+        {
+            // A reader met a stream after it had listed its tracks (a logical stream that begins late in an Ogg file, say): nothing declares it,
+            // so its packets cannot be written. Say so once.
+            if (_unlisted.Add(info.TrackIndex))
+            {
+                _losses.Add(new RemuxLoss(LossKind.Track, LossReason.NotInspected, info.TrackIndex, $"stream {info.TrackIndex}", "The input has packets of a stream that its track list does not declare; they were skipped."));
+            }
+
+            return;
         }
 
         TrackState s = _tracks[info.TrackIndex];
