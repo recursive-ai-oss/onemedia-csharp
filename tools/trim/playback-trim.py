@@ -36,10 +36,19 @@ async ({url, frames, fps}) => {
   const g = c.getContext('2d', {willReadFrequently: true});
   const read = () => { g.drawImage(v, 0, 0, 320, 180); const d = g.getImageData(0, 0, 320, 180).data; let n = 0;
     for (let b = 0; b < 10; b++) { const i = (32 * 320 + b * 32 + 16) * 4; if ((d[i] + d[i+1] + d[i+2]) / 3 > 128) n |= 1 << b; } return n; };
-  const seek = (t) => new Promise((res) => { v.onseeked = res; v.currentTime = t; });
-  const out = {duration: v.duration, shown: []};
-  for (const k of frames) { await seek(k < 0 ? v.duration - 0.5 / fps : (k + 0.5) / fps); await new Promise(r => setTimeout(r, 120)); out.shown.push(read()); }
-  return out;
+  // The frame shown before playback starts is the one at time 0.
+  await new Promise(r => setTimeout(r, 300));
+  const initial = read();
+  // Play the clip once and read every frame as it is presented; the media time of the first one says where the browser put the start.
+  const seen = [];
+  const done = new Promise((res) => { v.onended = res; setTimeout(res, 20000); });
+  const tick = (now, meta) => { seen.push({t: meta.mediaTime, n: read()}); v.requestVideoFrameCallback(tick); };
+  v.requestVideoFrameCallback(tick);
+  await v.play();
+  await done;
+  const dur = v.duration;
+  const pick = (t) => seen.reduce((best, s) => Math.abs(s.t - t) < Math.abs(best.t - t) ? s : best, seen[0]);
+  return {duration: dur, firstTime: seen.length ? seen[0].t : null, count: seen.length, initial, shown: [initial, pick(dur / 2).n, seen[seen.length - 1].n]};
 }
 """
 
@@ -55,6 +64,7 @@ def main():
     p.add_argument("--tool", required=True)
     p.add_argument("--work", required=True)
     p.add_argument("--codecs", default="")
+    p.add_argument("--channel", default="", help="use an installed browser (chrome, msedge) instead of the one Playwright installed")
     a = p.parse_args()
     ffmpeg = os.path.join(a.oracles, "ffmpeg")
     os.makedirs(a.work, exist_ok=True)
@@ -81,7 +91,11 @@ def main():
         first = (f // 48) * 48 if key else f
         clips.append((name, out, first, t - 1))
 
-    handler = lambda *x, **k: SimpleHTTPRequestHandler(*x, directory=a.work, **k)
+    class Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+    handler = lambda *x, **k: Quiet(*x, directory=a.work, **k)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
@@ -89,7 +103,7 @@ def main():
     from playwright.sync_api import sync_playwright
     bad = 0
     with sync_playwright() as pw:
-        browser = getattr(pw, a.browser).launch()
+        browser = getattr(pw, a.browser).launch(**({"channel": a.channel} if a.channel else {}))
         for name, path, first, last in clips:
             page = browser.new_page()
             page.goto(f"http://127.0.0.1:{port}/")
@@ -102,7 +116,7 @@ def main():
                 want = [first, first + mid, last]
                 if shown != want:
                     verdict = "DIFFERENT"
-                detail = f"dur={res['duration']:.3f}"
+                detail = f"dur={res['duration']:.3f} firstFrameTime={res['firstTime']:.3f} frames={res['count']}"
             except Exception as e:  # noqa: BLE001
                 shown, want, verdict = [], [first, first + mid, last], "ERROR"
                 detail = str(e)[:100]
