@@ -193,6 +193,11 @@ if [ "${LARGE:-0}" = 1 ]; then
   if [ -s "$G/large/noise-2gb.flac" ]; then
     ffo large/noise-2gb.oga -i "$G/large/noise-2gb.flac" -c copy -f ogg
   fi
+  # A long FLV: an H.264/AAC file from the corpus looped and copied into FLV without re-encoding.
+  BBB="$O/corpus/blender/big_buck_bunny_1080p_h264.mov"
+  if [ -s "$BBB" ]; then
+    ffo large/loop-2gb.flv -stream_loop 4 -i "$BBB" -c copy -f flv
+  fi
 fi
 
 echo "generated $ok, kept $skipped, failed $failed (manifest: $MAN)"
