@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a file of more than 4 GiB of real (incompressible) media by joining copies of a generated clip with `onemedia concat`, then trims it in the
+# Builds a file of more than 4 GiB of real (incompressible) media by looping a generated clip with a stream copy, then trims it in the
 # middle and across most of it, splits it, and prints the peak resident memory of every run, the output sizes and ffprobe's view of the results.
 # Constant memory means the peaks do not grow with the file.
 #
@@ -22,9 +22,8 @@ CLIP=$(stat -c %s "$B/clip.mp4")
 N=$(python3 -c "import math; print(math.ceil($GIB*1024**3/$CLIP))")
 echo "clip $CLIP bytes, joining $N copies"
 if [ ! -e "$B/big.mp4" ]; then
-  # shellcheck disable=SC2046
-  /usr/bin/time -v -o "$B/concat.time" $TOOL concat "$B/big.mp4" $(for _ in $(seq "$N"); do printf '%s ' "$B/clip.mp4"; done) | head -2
-  echo "concat of $N copies: peak RSS $(rss "$B/concat.time")"
+  # Looped stream copy gives one continuous timeline with a single edit segment per track (a concat of clips keeps one segment per clip, which trim refuses).
+  /usr/bin/time -v -o "$B/loop.time" "$ORACLES/ffmpeg" -v error -y -stream_loop $((N - 1)) -i "$B/clip.mp4" -c copy "$B/big.mp4"
 fi
 ls -l "$B/big.mp4"
 DUR=$("$ORACLES/ffprobe" -v error -show_entries format=duration -of csv=p=0 "$B/big.mp4")
