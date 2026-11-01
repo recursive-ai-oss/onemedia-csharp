@@ -102,6 +102,19 @@ seed() {
               { printf "\\$(printf '%03o' $((b | 2)))"; cat "$f"; } > "$corpus/$(basename "$f").seed"
               { printf "\\$(printf '%03o' $((b | 1)))"; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
             done ;;
+    writer-iso|writer-ebml|writer-riff) # The first byte picks the path (bit 0: re-emit every header; bit 1: append padding and read back); the rest is the file.
+             case "$target" in
+               writer-iso) pats="$here/testdata/isobmff/*.mp4 $here/testdata/isobmff/*.mov $here/testdata/isobmff/*.3gp $here/testdata/metadata/*.mp4";;
+               writer-ebml) pats="$here/testdata/matroska/*.mkv $here/testdata/metadata/*.mkv $here/testdata/metadata/*.webm";;
+               *) pats="$here/testdata/pcm/*.wav $here/testdata/pcm/*.aif* $here/testdata/avi/*.avi";;
+             esac
+             for f in $pats; do
+               [ -f "$f" ] || continue
+               [ "$(stat -c %s "$f")" -le 262144 ] || continue
+               { printf '\000'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+               { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-strict.seed"
+               { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f")-append.seed"
+             done ;;
     mdpm) # The SEI payload as the reader gets it (after the NAL header): one message of type 5 holding the MDPM block.
           printf '\005\044\027\356\214\140\370\115\021\331\214\326\010\000\040\014\232\146MDPM\003\030\000\040\022\001\031\046\011\030\065\340\001\003\005\221\200' > "$corpus/mdpm.seed" ;;
     id3|ape) # The first byte picks the path (id3: bit 0 reads a tag at the start rather than a tail; ape: bit 0 reads from the footer); the rest is the file.
