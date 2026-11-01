@@ -132,6 +132,15 @@ public readonly record struct CodecId(string Name)
     /// <summary>Windows Media Audio Voice (format tags 0x000A and 0x000B).</summary>
     public static CodecId WmaVoice => new("wmavoice");
 
+    /// <summary>Apple Lossless (ALAC).</summary>
+    public static CodecId Alac => new("alac");
+    /// <summary>Microsoft ADPCM.</summary>
+    public static CodecId AdpcmMs => new("adpcm-ms");
+    /// <summary>IMA ADPCM as stored in WAVE (format tag 0x0011).</summary>
+    public static CodecId AdpcmImaWav => new("adpcm-ima-wav");
+    /// <summary>IMA ADPCM as stored in QuickTime, AIFF-C and CAF (<c>ima4</c>).</summary>
+    public static CodecId AdpcmImaQt => new("adpcm-ima-qt");
+
     /// <summary>3GPP timed text (tx3g).</summary>
     public static CodecId TimedText => new("tx3g");
     /// <summary>WebVTT.</summary>

@@ -40,6 +40,7 @@ internal static class Program
     private static readonly string[] IsoExtensions = [".mp4", ".m4a", ".m4v", ".mov", ".3gp", ".3g2", ".ismv", ".qt"];
     private static readonly string[] OggExtensions = [".ogg", ".opus", ".oga"];
     private static readonly string[] MatroskaExtensions = [".mkv", ".mka", ".webm", ".mk3d", ".mks"];
+    private static readonly string[] PcmExtensions = [".wav", ".wave", ".w64", ".rf64", ".bwf", ".aif", ".aiff", ".aifc", ".caf"];
 
     private static readonly string[] AsfExtensions = [".asf", ".wma", ".wmv", ".wm", ".dvr-ms"];
 
@@ -143,6 +144,7 @@ internal static class Program
             "audio-es" => [".mp3", ".mp2", ".mpa", ".aac", ".ac3", ".eac3", ".ec3", ".amr", ".awb"],
             "xiph" => [".ogg", ".oga", ".ogv", ".opus", ".spx", ".flac"],
             "flv" => [".flv"],
+            "pcm" => PcmExtensions,
             _ => [.. IsoExtensions, .. MatroskaExtensions, .. AsfExtensions],
         };
         List<string> files = [];
@@ -214,7 +216,7 @@ internal static class Program
                     }
                 }
             }
-            catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception)
+            catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
             {
                 report = new FileReport { File = file, Status = "error", Message = e.GetType().Name + ": " + e.Message };
             }

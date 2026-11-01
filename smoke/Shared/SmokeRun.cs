@@ -120,6 +120,7 @@ internal static class SmokeRun
 
         await MatroskaSmoke.RunAsync(Check);
         await AsfSmoke.RunAsync(Check);
+        await PcmSmoke.RunAsync(Check);
         SmokeAudio.Run(Check);
         MpegSmoke.Run(Check);
         await AudioStreamSmoke.RunAsync(Check);

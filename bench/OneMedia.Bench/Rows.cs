@@ -81,6 +81,18 @@ internal static class Rows
         "blender/big_buck_bunny_480p_stereo.ogg",
     ];
 
+    private static readonly string[] PcmFiles =
+    [
+        "generated/pcm/tagged-wav-info.wav",
+        "generated/pcm/tagged-wav-bext.wav",
+        "generated/pcm/tagged-wav-id3.wav",
+        "generated/pcm/wav-pcm_s16le-mono44k.wav",
+        "generated/pcm/tagged-aiff.aiff",
+        "generated/pcm/tagged-aiff-id3.aiff",
+        "generated/pcm/aiff-pcm_s16be-mono44k.aiff",
+        "generated/pcm/tagged-caf.caf",
+    ];
+
     private static NativeTool FfmpegCopy { get; } = new("ffmpeg -c copy -f null", "ffmpeg", f => ["-v", "error", "-nostdin", "-i", f, "-map", "0", "-c", "copy", "-f", "null", "-"]);
 
     private static NativeTool Ffprobe { get; } = new("ffprobe -show_format -show_streams", "ffprobe", f => ["-v", "error", "-show_format", "-show_streams", "-of", "json", f]);
@@ -126,6 +138,9 @@ internal static class Rows
             [Ffprobe, MediaInfo, ExifTool, new("mkvmerge -J", "mkvmerge", f => ["-J", f]), new("mkvinfo", "mkvinfo", f => [f])]),
         new("asf-tags", "0.2", "ASF/WMA/WMV: open and read the tags (title, artist, album, genre, pictures)", AsfFiles,
             [new("OneMedia", Role.Ours, Impls.OursTags), new("TagLib#", Role.Gate, Impls.TagLibTags), new("ATL.NET", Role.Gate, Impls.AtlTags)],
+            [Ffprobe, MediaInfo, ExifTool]),
+        new("pcm-tags", "0.2", "WAVE/AIFF/CAF: open, duration, tags", PcmFiles,
+            [new("OneMedia", Role.Ours, Impls.OursTags), new("TagLib#", Role.Gate, Impls.TagLibProbe), new("ATL.NET", Role.Gate, Impls.AtlProbe)],
             [Ffprobe, MediaInfo, ExifTool]),
     ];
 }

@@ -13,7 +13,7 @@ namespace RecursiveAI.OneMedia;
 public static class MediaFormats
 {
     /// <summary>
-    /// The shared registry: ISO BMFF and Matroska/WebM can be opened; every other format OneMedia knows is recognised by content, so
+    /// The shared registry: ISO BMFF, Matroska/WebM, WAVE (RIFF, RF64, Wave64), AIFF and CAF can be opened; every other format OneMedia knows is recognised by content, so
     /// opening one reports the format by name in an <see cref="UnsupportedMediaException"/>. Do not add to it; use <see cref="Create"/> for that.
     /// </summary>
     public static MediaFormatRegistry Default { get; } = Create();
@@ -25,7 +25,7 @@ public static class MediaFormats
         MediaFormatRegistry registry = new();
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());
-        registry.Add(new WavSniffer());
+        registry.Add(new RecursiveAI.OneMedia.Riff.WavFileFormat());
         registry.Add(new AviSniffer());
         registry.Add(new AsfFormat());
         registry.Add(new RecursiveAI.OneMedia.MpegTs.MpegTsFormat());
@@ -33,8 +33,8 @@ public static class MediaFormats
         registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
         registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
         registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
-        registry.Add(new AiffSniffer());
-        registry.Add(new CafSniffer());
+        registry.Add(new RecursiveAI.OneMedia.Aiff.AiffFileFormat());
+        registry.Add(new RecursiveAI.OneMedia.Caf.CafFileFormat());
         registry.Add(new AudioStreams.Id3AudioFormat());
         registry.Add(new AudioStreams.MpegAudioFormat());
         registry.Add(new AudioStreams.AdtsFormat());

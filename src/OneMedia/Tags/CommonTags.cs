@@ -456,7 +456,7 @@ public sealed class CommonTags
             return tag.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.Asf or TagSystems.Id3v2 or TagSystems.Id3v1 or TagSystems.Ape or TagSystems.VorbisComment)
+        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.Asf or TagSystems.Id3v2 or TagSystems.Id3v1 or TagSystems.Ape or TagSystems.VorbisComment or TagSystems.RiffInfo or TagSystems.CafInfo)
         {
             // Matroska writes the number as text, sometimes as "3/12" (ffmpeg's track tag); the total fields read the number after the slash or the whole text.
             string t = tag.Text ?? "";

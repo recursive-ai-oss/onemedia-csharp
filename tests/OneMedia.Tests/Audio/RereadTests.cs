@@ -267,3 +267,43 @@ public class RereadTests
         Assert.Equal(SbrSignalling.ContainerRate, report.Signalling);
     }
 }
+
+public class PcmRereadTests
+{
+    [Theory]
+    [InlineData("bwf-v0.wav")]
+    [InlineData("aifc-sowt.aifc")]
+    [InlineData("caf-info-chan.caf")]
+    public void PacketsTwiceThenDecodeGivesTheTypedRefusalForPcm(string file)
+    {
+        using MediaFile media = Media.Open(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "pcm", file));
+        MediaTrack track = media.Audio!;
+        List<byte[]> first = [];
+        foreach (OwnedPacket p in media.Packets(track))
+        {
+            using (p)
+            {
+                first.Add(p.Data.ToArray());
+            }
+        }
+
+        List<byte[]> second = [];
+        foreach (OwnedPacket p in media.Packets(track))
+        {
+            using (p)
+            {
+                second.Add(p.Data.ToArray());
+            }
+        }
+
+        Assert.NotEmpty(first);
+        Assert.Equal(first.Count, second.Count);
+        for (int i = 0; i < first.Count; i++)
+        {
+            Assert.True(first[i].AsSpan().SequenceEqual(second[i]), $"packet {i} differs");
+        }
+
+        // OneAudio has no packet decoder for PCM: the refusal is typed, not silence.
+        Assert.Throws<UnsupportedAudioFormatException>(() => media.Decode());
+    }
+}

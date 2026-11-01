@@ -10,6 +10,7 @@
 # existing files. Output is bit-exact where the tools allow it.
 set -uo pipefail
 
+HERE_GEN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 O="${ONEMEDIA_HOME:-$HOME/onemedia}"
 G="$O/corpus/generated"
 FF="${FFMPEG:-$O/oracles/bin/ffmpeg}"
@@ -296,7 +297,69 @@ ff "asf/mp3-tagged-unicode.wma" "${NOISE[@]}" -t 4 "${A_MP3[@]}" -metadata title
 if echo asf | grep -qE "$FILTER|asf"; then
   mkdir -p "$G/_src"
   [ -s "$G/_src/cover.png" ] || "$FF" "${FFG[@]}" -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" -frames:v 1 "$G/_src/cover.png" 2>/dev/null
-  ff "asf/wmav2-cover.wma" "${SINE[@]}" -i "$G/_src/cover.png" -t 4 -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic "${A_WMA2[@]}" -metadata title="With cover" -f asf
+  ff "asf/wmav2-cover.wma" "${SINE[@]}" -i "$G/_src/cover.png" -t 4 -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic "${A_WMA2[@]}" -metadata title="With cover" -f asffi
+fi
+
+# --- uncompressed and companded audio files: WAVE, RF64, Wave64, AIFF, AIFF-C, CAF --------------------------------------------
+# One tone per file; the tagged variants keep their metadata (the other files drop it with -map_metadata -1).
+TONE=(-f lavfi -i "sine=frequency=440:sample_rate=48000:duration=3")
+TONE44=(-f lavfi -i "sine=frequency=440:sample_rate=44100:duration=3")
+TONE8=(-f lavfi -i "sine=frequency=440:sample_rate=8000:duration=3")
+TONE96=(-f lavfi -i "sine=frequency=440:sample_rate=96000:duration=2")
+META=(-metadata title="Tone test" -metadata artist="Test Artist" -metadata album="Test Album" -metadata comment="A generated tone" -metadata genre=Test -metadata date=2020-05-17 -metadata track=3/12 -metadata copyright="(c) Test")
+for c in pcm_s16le pcm_s24le pcm_s32le pcm_f32le pcm_f64le pcm_u8; do
+  ff "pcm/wav-$c-stereo48k.wav" "${TONE[@]}" -ac 2 -c:a $c -f wav
+  ff "pcm/w64-$c-stereo48k.w64" "${TONE[@]}" -ac 2 -c:a $c -f w64
+done
+ff "pcm/wav-pcm_s16le-mono44k.wav" "${TONE44[@]}" -ac 1 -c:a pcm_s16le -f wav
+ff "pcm/wav-pcm_s16le-mono8k.wav" "${TONE8[@]}" -ac 1 -c:a pcm_s16le -f wav
+ff "pcm/wav-pcm_s24le-stereo96k.wav" "${TONE96[@]}" -ac 2 -c:a pcm_s24le -f wav
+ff "pcm/wav-pcm_s16le-51-extensible.wav" "${TONE[@]}" -ac 6 -c:a pcm_s16le -f wav
+ff "pcm/wav-pcm_s24le-51-extensible.wav" "${TONE[@]}" -ac 6 -c:a pcm_s24le -f wav
+ff "pcm/wav-pcm_s24le-71-extensible.wav" "${TONE[@]}" -ac 8 -c:a pcm_s24le -f wav
+ff "pcm/w64-pcm_s16le-51.w64" "${TONE[@]}" -ac 6 -c:a pcm_s16le -f w64
+ff "pcm/wav-mulaw-8k.wav" "${TONE8[@]}" -ac 1 -c:a pcm_mulaw -f wav
+ff "pcm/wav-alaw-8k.wav" "${TONE8[@]}" -ac 1 -c:a pcm_alaw -f wav
+ff "pcm/wav-adpcm_ms-stereo.wav" "${TONE44[@]}" -ac 2 -c:a adpcm_ms -f wav
+ff "pcm/wav-adpcm_ms-mono-256.wav" "${TONE44[@]}" -ac 1 -c:a adpcm_ms -block_size 256 -f wav
+ff "pcm/wav-adpcm_ima_wav-stereo.wav" "${TONE44[@]}" -ac 2 -c:a adpcm_ima_wav -f wav
+ff "pcm/wav-adpcm_ima_wav-mono-512.wav" "${TONE44[@]}" -ac 1 -c:a adpcm_ima_wav -block_size 512 -f wav
+ff "pcm/wav-mp3.wav" "${TONE44[@]}" -ac 2 "${A_MP3[@]}" -f wav
+ff "pcm/wav-ac3.wav" "${TONE[@]}" -ac 2 "${A_AC3[@]}" -f wav
+ff "pcm/rf64-pcm_s16le-stereo48k.wav" "${TONE[@]}" -ac 2 -c:a pcm_s16le -rf64 always -f wav
+ff "pcm/rf64-pcm_s24le-51.wav" "${TONE[@]}" -ac 6 -c:a pcm_s24le -rf64 always -f wav
+for c in pcm_s16be pcm_s24be pcm_s32be pcm_f32be pcm_f64be pcm_s8; do
+  ff "pcm/aiff-$c-stereo48k.aiff" "${TONE[@]}" -ac 2 -c:a $c -f aiff
+done
+ff "pcm/aiff-pcm_s16be-mono44k.aiff" "${TONE44[@]}" -ac 1 -c:a pcm_s16be -f aiff
+ff "pcm/aiff-pcm_s24be-51.aiff" "${TONE[@]}" -ac 6 -c:a pcm_s24be -f aiff
+ff "pcm/aifc-sowt-stereo48k.aifc" "${TONE[@]}" -ac 2 -c:a pcm_s16le -f aiff
+ff "pcm/aifc-mulaw-8k.aifc" "${TONE8[@]}" -ac 1 -c:a pcm_mulaw -f aiff
+ff "pcm/aifc-alaw-8k.aifc" "${TONE8[@]}" -ac 1 -c:a pcm_alaw -f aiff
+ff "pcm/aifc-ima4-stereo.aifc" "${TONE44[@]}" -ac 2 -c:a adpcm_ima_qt -f aiff
+for c in pcm_s16le pcm_s16be pcm_s24le pcm_s24be pcm_s32le pcm_f32le pcm_f32be pcm_f64le pcm_s8; do
+  ff "pcm/caf-$c-stereo48k.caf" "${TONE[@]}" -ac 2 -c:a $c -f caf
+done
+ff "pcm/caf-pcm_s16le-51.caf" "${TONE[@]}" -ac 6 -c:a pcm_s16le -f caf
+ff "pcm/caf-mulaw-8k.caf" "${TONE8[@]}" -ac 1 -c:a pcm_mulaw -f caf
+ff "pcm/caf-alaw-8k.caf" "${TONE8[@]}" -ac 1 -c:a pcm_alaw -f caf
+ff "pcm/caf-alac-stereo48k.caf" "${TONE[@]}" -ac 2 "${A_ALAC[@]}" -f caf
+ff "pcm/caf-alac-mono44k.caf" "${TONE44[@]}" -ac 1 "${A_ALAC[@]}" -f caf
+ff "pcm/caf-opus-stereo48k.caf" "${TONE[@]}" -ac 2 "${A_OPUS[@]}" -f caf
+ff "pcm/caf-ima4-stereo.caf" "${TONE44[@]}" -ac 2 -c:a adpcm_ima_qt -f caf
+# Tagged variants: the metadata options of the muxers (INFO, bext, ID3, AIFF text chunks, the CAF info chunk).
+FFT=(-bitexact -fflags +bitexact -flags:a +bitexact -strict -2)
+gen "pcm/tagged-wav-info.wav" "$ffv" "$FF" "${FFG[@]}" "${TONE44[@]}" -ac 2 -c:a pcm_s16le "${FFT[@]}" "${META[@]}" -f wav @OUT@
+gen "pcm/tagged-wav-bext.wav" "$ffv" "$FF" "${FFG[@]}" "${TONE[@]}" -ac 2 -c:a pcm_s24le "${FFT[@]}" -write_bext 1 -metadata description="Scene 12 take 3" -metadata originator="OneMedia test" -metadata originator_reference="REF0001" -metadata origination_date=2020-01-31 -metadata origination_time=14:03:59 -metadata time_reference=172800000 -metadata coding_history="A=PCM,F=48000,W=24,M=stereo" "${META[@]}" -f wav @OUT@
+gen "pcm/tagged-wav-id3.wav" "$ffv" "$FF" "${FFG[@]}" "${TONE44[@]}" -ac 2 -c:a pcm_s16le "${FFT[@]}" -write_id3v2 1 "${META[@]}" -f wav @OUT@
+gen "pcm/tagged-rf64-bext.wav" "$ffv" "$FF" "${FFG[@]}" "${TONE[@]}" -ac 2 -c:a pcm_s16le "${FFT[@]}" -rf64 always -write_bext 1 -metadata description="RF64 take" -metadata origination_date=2021-02-03 -metadata origination_time=04:05:06 "${META[@]}" -f wav @OUT@
+gen "pcm/tagged-aiff.aiff" "$ffv" "$FF" "${FFG[@]}" "${TONE44[@]}" -ac 2 -c:a pcm_s16be "${FFT[@]}" "${META[@]}" -f aiff @OUT@
+gen "pcm/tagged-aiff-id3.aiff" "$ffv" "$FF" "${FFG[@]}" "${TONE44[@]}" -ac 2 -c:a pcm_s16be "${FFT[@]}" -write_id3v2 1 "${META[@]}" -f aiff @OUT@
+gen "pcm/tagged-caf.caf" "$ffv" "$FF" "${FFG[@]}" "${TONE44[@]}" -ac 2 -c:a pcm_s16le "${FFT[@]}" "${META[@]}" -f caf @OUT@
+gen "pcm/tagged-caf-alac.caf" "$ffv" "$FF" "${FFG[@]}" "${TONE44[@]}" -ac 2 -c:a alac "${FFT[@]}" "${META[@]}" -f caf @OUT@
+# Hand-built chunks ffmpeg cannot write (iXML, axml, cart, smpl, cue/adtl, inst, odd sizes, damage): tools/gen-pcm-fixtures.py.
+if [ -f "$HERE_GEN/gen-pcm-fixtures.py" ] && echo "pcm/crafted" | grep -qE "$FILTER|pcm"; then
+  mkdir -p "$G/pcm/crafted"; python3 "$HERE_GEN/gen-pcm-fixtures.py" "$G/pcm/crafted" || failed=$((failed+1))
 fi
 
 # --- large files by stream-copy concatenation --------------------------------------------------------
@@ -328,6 +391,12 @@ if [ "${LARGE:-1}" = 1 ]; then
     : > "$G/_src/large-asf-list.txt"; for _ in $(seq "$n"); do echo "file '$ABASE'" >> "$G/_src/large-asf-list.txt"; done
     ff "large/over2gb.wmv" -f concat -safe 0 -i "$G/_src/large-asf-list.txt" -c copy -f asf
   fi
+  # Long tones as uncompressed audio: RF64 and Wave64 past 4 GiB, AIFF past 2 GiB (its sizes are 32-bit), CAF past 4 GiB.
+  LONG=(-f lavfi -i "sine=frequency=440:sample_rate=48000:duration=23000" -ac 2 -c:a pcm_s16le)
+  ff "large/over4gb-rf64.wav" "${LONG[@]}" -rf64 auto -f wav
+  ff "large/over4gb.w64" "${LONG[@]}" -f w64
+  ff "large/over4gb.caf" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=23000" -ac 2 -c:a pcm_s16le -f caf
+  ff "large/over2gb.aiff" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=12000" -ac 2 -c:a pcm_s16be -f aiff
 fi
 
 echo "generated $ok, kept $skipped, failed $failed (manifest: $MAN)"

@@ -66,6 +66,9 @@ internal static class Impls
         registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
         registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
         registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
+        registry.Add(new RecursiveAI.OneMedia.Riff.WavFileFormat());
+        registry.Add(new RecursiveAI.OneMedia.Aiff.AiffFileFormat());
+        registry.Add(new RecursiveAI.OneMedia.Caf.CafFileFormat());
         foreach (IMediaFormatSniffer s in registry.Formats)
         {
             if (s is IMediaFormat)
