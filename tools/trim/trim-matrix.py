@@ -45,12 +45,22 @@ AUDIO = {
 }
 
 
-def generate(ff, path, vcodec, acodec, fps, gop, bf, seconds=12):
+VARIANTS = {
+    "mp4": (["-movflags", "+faststart"], ".mp4"),
+    "last": ([], ".mp4"),  # movie box at the end
+    "frag": (["-movflags", "+frag_keyframe+empty_moov+default_base_moof"], ".mp4"),
+    "mov": (["-f", "mov"], ".mov"),
+}
+
+
+def generate(ff, path, vcodec, acodec, fps, gop, bf, variant="mp4", seconds=12):
     cmd = [ff, "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size=320x180:rate={parse_rate(fps)}",
            "-f", "lavfi", "-i", f"aevalsrc=0.5*sin(2*PI*(200+150*t)*t):s={SAMPLE_RATE}:c=mono",
-           "-t", str(seconds), "-pix_fmt", "yuv420p", *VIDEO[vcodec](gop, bf), *AUDIO[acodec], "-movflags", "+faststart", path]
+           "-t", str(seconds), "-pix_fmt", "yuv420p", *VIDEO[vcodec](gop, bf), *AUDIO[acodec], *VARIANTS[variant][0], path]
     r = run(cmd)
     if r.returncode != 0:
+        if os.path.exists(path):
+            os.remove(path)
         raise RuntimeError(f"generate failed: {r.stderr[-400:]}")
 
 
@@ -117,7 +127,10 @@ def check_case(a, src, idx, kind, frames, keys, src_pcm, from_t, to_t, keyframe)
             problems.append("frame spacing differs")
     # Audio: the expected span is [S, E) in the source's timeline, S = first shown frame, E = the first frame not shown (or the end).
     audio = ""
-    if expected:
+    # ffmpeg's fragmented files carry the lead-in as one long first audio sample, so the decoded PCM no longer matches the timeline: video only there.
+    if expected and "-frag" in kind:
+        audio = "audio-unchecked"
+    elif expected:
         S = expected[0][0]
         nxt = [f for f in frames if f[0] >= expected[-1][0] + Fraction(1, 10**9) and f[0] >= to_t]
         E = nxt[0][0] if nxt else expected[-1][0] + expected[-1][1]
@@ -160,6 +173,7 @@ def main():
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--per-file", type=int, default=3)
     p.add_argument("--only", default="")
+    p.add_argument("--variants", default="mp4", help="container layouts: mp4 (faststart), last (moov at the end), frag (fragmented), mov")
     p.add_argument("--quick", action="store_true")
     p.add_argument("--keep", action="store_true")
     a = p.parse_args()
@@ -172,13 +186,17 @@ def main():
     gops = [(25, 2)] if a.quick else [(12, 0), (48, 2), (120, 3)]
     total = ok = 0
     n = 0
-    for vc, ac, fps, (gop, bf) in itertools.product(vcodecs, AUDIO, fpss, gops):
+    for vc, ac, fps, (gop, bf), variant in itertools.product(vcodecs, AUDIO, fpss, gops, a.variants.split(",")):
         if a.quick and ac == "opus" and vc != "h264":
             continue
-        name = f"{vc}-{ac}-{fps}-g{gop}b{bf}"
-        src = os.path.join(a.work, name + ".mp4")
+        name = f"{vc}-{ac}-{fps}-g{gop}b{bf}" + ("" if variant == "mp4" else "-" + variant)
+        src = os.path.join(a.work, name + VARIANTS[variant][1])
         if not os.path.exists(src):
-            generate(a.ffmpeg, src, vc, ac, fps, gop, bf)
+            try:
+                generate(a.ffmpeg, src, vc, ac, fps, gop, bf, variant)
+            except RuntimeError as e:
+                print(f"SKIP\t{name}\t{str(e)[-80:]}")
+                continue
         frames = framemd5(a.ffmpeg, src)
         keys = keyframe_times(a.ffprobe, src)
         src_pcm = pcm(a.ffmpeg, src)
