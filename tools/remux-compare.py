@@ -37,6 +37,20 @@ def probe(ffprobe, path):
     return streams
 
 
+def concat_hash(ffprobe, path, index):
+    """SHA-256 of one stream's packets laid end to end, as ffmpeg copies them (None when ffmpeg fails)."""
+    import hashlib
+    ffmpeg = os.path.join(os.path.dirname(ffprobe), "ffmpeg")
+    h = hashlib.sha256()
+    p = subprocess.Popen([ffmpeg, "-v", "error", "-threads", "1", "-i", path, "-map", "0:%d" % index, "-c", "copy", "-f", "data", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    while True:
+        chunk = p.stdout.read(1 << 20)
+        if not chunk:
+            break
+        h.update(chunk)
+    return h.hexdigest() if p.wait() == 0 else None
+
+
 def to_int(v):
     try:
         return int(v)
@@ -211,6 +225,7 @@ def main():
     first = []
     for o, i in mapping:
         pa, pb, pr = a.get(i, []), b.get(o, []), reader.get(o, [])
+        count_kind, count_diff = None, 0
         if modes.get(o, "none") != "none" and len(pa) == len(pr):
             # Re-framed track: the expected size and hash are the ones written, not the input's.
             pa = [(x[0], x[1], x[2], str(r[3]), x[4], "SHA256:" + r[6]) for x, r in zip(pa, pr)]
@@ -221,6 +236,8 @@ def main():
             else:
                 classes[kind] += 1
                 diff += abs(len(pa) - len(pb))
+                count_kind = kind
+                count_diff = abs(len(pa) - len(pb))
         sc = defaultdict(int)
         st = sm = sd = 0
         sf = []
@@ -253,6 +270,8 @@ def main():
                         cls = "dur-reader"
                     elif nxt and to_int(nxt[1]) is not None and to_int(y[1]) is not None and to_int(y[2]) == to_int(nxt[1]) - to_int(y[1]):
                         cls = "dur-gap"
+                    elif nxt is None:
+                        cls = "last-dur"  # the last sample's duration is the distance to the end of the track; ffprobe derives it from the edit list and stream duration
                 elif k == 4:
                     if pr and n < len(pr) and x[4][0] != y[4][0] and (y[4][0] == "K") == bool(pr[n][4]):
                         cls = "key-reader"
@@ -274,6 +293,17 @@ def main():
             # Every packet still different is ffprobe reading the input differently from the container reader (see in-reader above).
             sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
             sc["explained:in-reader"] += sd
+            sm += sd
+            sd = 0
+            sf = []
+        if (count_diff or sc.get("size") or sc.get("hash")) and modes.get(o, "none") == "none" and concat_hash(ffprobe, src, i) == concat_hash(ffprobe, dst, o) is not None:
+            # ffprobe's parser cut the stream into packets differently from the container's own framing (or the reverse), but the bytes of the
+            # stream are the same: the difference is framing only.
+            if count_kind:
+                del classes[count_kind]
+                diff -= count_diff
+            sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
+            sc["explained:framing-only"] += sd + count_diff
             sm += sd
             sd = 0
             sf = []
