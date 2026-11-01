@@ -81,12 +81,38 @@ internal static class RiffTagWriter
             any = true;
         }
 
+        if (layout != ChunkLayout.Iff && edits.NativeFor(TagSystems.IXml).Any() && options.Wants(TagSystems.IXml))
+        {
+            ChunkNode? ixml = cf.Chunks.FirstOrDefault(c => c.Id is "iXML" or "IXML");
+            (byte[] doc, SystemWriteReport r) = IXmlEditor.Edit(ixml is null ? null : ReadPayload(src, ixml, limits), edits, limits);
+            byte[] chunk = ChunkBuilder.Create(layout, ixml?.Id ?? "iXML", doc);
+            if (ixml is null)
+            {
+                editor.AppendChild(null, chunk);
+            }
+            else
+            {
+                editor.Replace(ixml, chunk);
+            }
+
+            reports.Add(r);
+            any = true;
+        }
+
         if (!any && reports.Count == 0)
         {
             notes.Add("The file has no tag system this writer can edit.");
         }
 
         return new TagWritePlan(editor.Build(ct), new TagWriteReport(reports, notes));
+    }
+
+    private static byte[] ReadPayload(IMediaSource src, ChunkNode chunk, MediaLimits limits)
+    {
+        limits.CheckTag(chunk.PayloadSize, chunk.Offset);
+        byte[] b = new byte[chunk.PayloadSize];
+        src.ReadExactly(chunk.Payload.Offset, b);
+        return b;
     }
 
     private static TagEdits PicturesOnly(TagEdits edits)

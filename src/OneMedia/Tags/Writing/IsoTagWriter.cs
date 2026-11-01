@@ -99,8 +99,52 @@ internal static class IsoTagWriter
             reports.Add(created);
         }
 
+        if (options.Wants(TagSystems.Xmp))
+        {
+            SystemWriteReport? xmp = EditXmp(src, tree, moov, edits, editor, limits, options.Systems is not null);
+            if (xmp is not null)
+            {
+                reports.Add(xmp);
+            }
+        }
+
         EditPlan plan = editor.Build(ct);
         return new TagWritePlan(plan, new TagWriteReport(reports, notes));
+    }
+
+    // XMP lives in a uuid box (BE7ACFCB-97A9-42E8-9C71-999491E3AFAC) beside the movie box or inside it. An existing packet is edited in place of
+    // its box; one is created at the end of the file only when the caller names XMP, because no other system asks for it.
+    private static SystemWriteReport? EditXmp(IMediaSource src, BoxTree tree, BoxNode moov, TagEdits edits, BoxEditor editor, MediaLimits limits, bool named)
+    {
+        BoxNode? box = tree.TopLevel.Concat(moov.Children).FirstOrDefault(b => b.Type == BoxTypes.Uuid && b.Header.UserType == Xmp.XmpNamespaces.BoxUserType);
+        if (box is null && !named)
+        {
+            return null;
+        }
+
+        byte[]? existing = null;
+        if (box is not null)
+        {
+            limits.CheckTag(box.PayloadSize, box.Offset);
+            existing = new byte[box.PayloadSize];
+            src.ReadExactly(box.Header.PayloadOffset, existing);
+        }
+
+        (byte[] packet, SystemWriteReport report) = XmpEditor.Edit(existing, edits, limits);
+        long total = BoxBuilder.HeaderSize(BoxTypes.Uuid, packet.Length + 32L > uint.MaxValue) + packet.Length;
+        byte[] bytes = new byte[total];
+        int h = BoxBuilder.WriteHeader(bytes, BoxTypes.Uuid, total, Xmp.XmpNamespaces.BoxUserType);
+        packet.CopyTo(bytes, h);
+        if (box is null)
+        {
+            editor.AppendChild(null, bytes);
+        }
+        else
+        {
+            editor.Replace(box, bytes);
+        }
+
+        return report;
     }
 
     private static TagEdits PicturesOnly(TagEdits edits)

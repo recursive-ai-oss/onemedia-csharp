@@ -1,3 +1,5 @@
+using RecursiveAI.OneMedia.IsoBmff;
+using RecursiveAI.OneMedia.Riff;
 using RecursiveAI.OneMedia.Tags;
 using Xunit;
 
@@ -254,5 +256,87 @@ public sealed class TagWriteTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void XmpPacketsAreCreatedEditedAndKeepTheirOtherProperties()
+    {
+        TagEdits create = new();
+        create.Set(CommonField.Title, "First <&> title");
+        create.Set(CommonField.Artist, "An artist");
+        create.Set(CommonField.Keywords, ["a", "b"]);
+        byte[] once = Apply("audio/aac.m4a", create, new TagWriteOptions { Systems = [TagSystems.Xmp] });
+        using (MemoryMediaSource src = new(once))
+        using (MediaFile m = MediaFile.Open(src))
+        {
+            Assert.Contains(m.Tags.Values(CommonField.Title), v => v.Source.System == TagSystems.Xmp && v.Text == "First <&> title");
+        }
+
+        TagEdits edit = new();
+        edit.Set(CommonField.Title, "Second");
+        edit.Set(CommonField.Date, "2024-05-06T07:08:09Z");
+        byte[] twice = Apply(once, edit, new TagWriteOptions { Systems = [TagSystems.Xmp] });
+        using (MemoryMediaSource src = new(twice))
+        using (MediaFile m = MediaFile.Open(src))
+        {
+            Assert.Contains(m.Tags.Values(CommonField.Title), v => v.Source.System == TagSystems.Xmp && v.Text == "Second");
+            Assert.Contains(m.Tags.Values(CommonField.Artist), v => v.Source.System == TagSystems.Xmp && v.Text == "An artist");
+            Assert.Contains(m.Tags.Values(CommonField.Date), v => v.Source.System == TagSystems.Xmp);
+        }
+
+        // The second packet fits the first one's padding: the file does not change size.
+        Assert.Equal(once.Length, twice.Length);
+    }
+
+    [Fact]
+    public void IXmlElementsAreCreatedAndEditedByPath()
+    {
+        TagEdits create = new();
+        create.SetNative(TagSystems.IXml, "PROJECT", "Feature <1>");
+        create.SetNative(TagSystems.IXml, "BEXT/BWF_ORIGINATOR", "Recorder");
+        byte[] once = Apply("pcm/bwf-v0.wav", create, new TagWriteOptions { Systems = [TagSystems.IXml] });
+        string Read(byte[] file, string key)
+        {
+            using MemoryMediaSource src = new(file);
+            using MediaFile m = MediaFile.Open(src);
+            return m.Metadata.NativeTags.First(t => t.System == TagSystems.IXml && t.Key == key).Text!;
+        }
+
+        Assert.Equal("Feature <1>", Read(once, "PROJECT"));
+        Assert.Equal("Recorder", Read(once, "BEXT/BWF_ORIGINATOR"));
+        TagEdits edit = new();
+        edit.SetNative(TagSystems.IXml, "PROJECT", "P");
+        edit.RemoveNative(TagSystems.IXml, "BEXT/BWF_ORIGINATOR");
+        byte[] twice = Apply(once, edit, new TagWriteOptions { Systems = [TagSystems.IXml] });
+        Assert.Equal("P", Read(twice, "PROJECT"));
+        Assert.Equal(once.Length, twice.Length);
+    }
+
+    [Fact]
+    public void AnAppendInsideAReplacedOrRemovedElementIsRefusedInsteadOfLost()
+    {
+        // ISO: a udta box with a child; replacing udta and appending into it cannot both happen.
+        byte[] udta = BoxBuilder.Create(BoxTypes.Udta, BoxBuilder.Create(BoxTypes.Free, new byte[8]));
+        byte[] file = [.. BoxBuilder.Create(BoxTypes.Make("ftyp"), new byte[8]), .. BoxBuilder.Create(BoxTypes.Moov, udta)];
+        MemoryMediaSource src = new(file);
+        BoxTree tree = new(src);
+        BoxNode moov = tree.TopLevel.First(b => b.Type == BoxTypes.Moov);
+        BoxNode u = moov.Children[0];
+        BoxEditor e1 = new(tree, src);
+        e1.Replace(u, udta);
+        Assert.Throws<ArgumentException>(() => e1.AppendChild(u, BoxBuilder.Create(BoxTypes.Free, new byte[8])));
+        BoxEditor e2 = new(tree, src);
+        e2.AppendChild(u, BoxBuilder.Create(BoxTypes.Free, new byte[8]));
+        Assert.Throws<ArgumentException>(() => e2.Remove(moov));
+
+        // RIFF: the same for a LIST chunk.
+        byte[] list = ChunkBuilder.CreateList(ChunkLayout.Riff, "INFO", ChunkBuilder.Create(ChunkLayout.Riff, "INAM", "x\0"u8));
+        byte[] wave = [.. "RIFF"u8, .. BitConverter.GetBytes(4 + list.Length), .. "WAVE"u8, .. list];
+        MemoryMediaSource wsrc = new(wave);
+        ChunkFile cf = ChunkFile.TryOpen(wsrc, MediaLimits.Default, new DefectLog(MediaLimits.Default))!;
+        ChunkNode first = cf.Chunks.First(c => c.Id == "LIST");
+        ChunkEditor c1 = new(cf, wsrc, MediaLimits.Default);
+        c1.AppendChild(first, ChunkBuilder.Create(cf.Layout, "junk", new byte[4]));
+        Assert.Throws<ArgumentException>(() => c1.Remove(first));
     }
 }
