@@ -147,6 +147,9 @@ public readonly record struct AudioSpecificConfig
         }
 
         bool frame960 = false;
+        // Observed in files written by MP4Box with explicit SBR signalling: the configuration is cut after the last whole byte, one bit short of
+        // the GASpecificConfig's extension flag. Everything this layer reports precedes those bits, so a shortfall there is tolerated.
+        bool headerIntact = !r.Overrun;
         int channels = chan < 16 ? ChannelCounts[chan] : 0;
         if (coreAot is 1 or 2 or 3 or 4 or 6 or 7 or 17 or 19 or 20 or 21 or 22 or 23)
         {
@@ -223,7 +226,7 @@ public readonly record struct AudioSpecificConfig
             }
         }
 
-        if (r.Overrun)
+        if (r.Overrun && !(headerIntact && chan != 0 && explicitSignal))
         {
             return false;
         }
@@ -312,6 +315,8 @@ public readonly record struct AudioSpecificConfig
         ProfileName = ProfileName,
         SampleRate = OutputSamplingFrequency,
         CoreSampleRate = SamplingFrequency,
+        SbrPresent = SbrPresent,
+        PsPresent = PsPresent,
         Channels = Channels,
         SamplesPerFrame = (FrameLength960 ? 960 : 1024) * (SbrPresent ? 2 : 1),
     };

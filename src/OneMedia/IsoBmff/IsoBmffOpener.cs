@@ -458,4 +458,31 @@ internal static class ForwardBoxes
 
     public static bool SkipPayload(IForwardMediaSource source, long count, CancellationToken cancellationToken) =>
         count <= 0 || source.Skip(count, cancellationToken) == count;
+
+    /// <summary>
+    /// Skips with a scratch buffer the caller keeps for its lifetime, so a demuxer that skips between every sample or fragment takes
+    /// nothing from the shared pool per skip. The buffer is allocated on the first skip that needs it.
+    /// </summary>
+    public static bool SkipPayload(IForwardMediaSource source, long count, ref byte[]? scratch, CancellationToken cancellationToken)
+    {
+        if (count <= 0)
+        {
+            return true;
+        }
+
+        scratch ??= new byte[8192];
+        long skipped = 0;
+        while (skipped < count)
+        {
+            int n = source.Read(scratch.AsSpan(0, (int)Math.Min(scratch.Length, count - skipped)), cancellationToken);
+            if (n == 0)
+            {
+                return false;
+            }
+
+            skipped += n;
+        }
+
+        return true;
+    }
 }

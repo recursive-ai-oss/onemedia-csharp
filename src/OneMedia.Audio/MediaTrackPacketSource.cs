@@ -17,11 +17,38 @@ public enum AudioSeamLimitations
     /// <summary>A block asked to cut audio from its start (negative DiscardPadding); OneAudio has no way to receive that and the audio is kept.</summary>
     LeadingDiscardPadding = 1 << 0,
 
-    /// <summary>A block that is not the last of its track carried DiscardPadding. Opus gets it as an end position; other codecs keep the audio.</summary>
+    /// <summary>Never set since DiscardPadding on any block is applied through OneAudio's per-packet trim. Kept so code written against 0.1.0-preview.2 still compiles.</summary>
+    [Obsolete("DiscardPadding on any block is now applied; this flag is never set.")]
     MidStreamDiscardPadding = 1 << 1,
 
-    /// <summary>The track ends with DiscardPadding for a codec whose OneAudio decoder cannot take an end position from a non-Ogg source (Vorbis); the last packet decodes in full.</summary>
+    /// <summary>Never set since end padding is applied for every codec through OneAudio's per-packet trim. Kept so code written against 0.1.0-preview.2 still compiles.</summary>
+    [Obsolete("End DiscardPadding is now applied; this flag is never set.")]
     EndPaddingNotApplied = 1 << 2,
+
+    /// <summary>
+    /// The AAC configuration signals spectral band replication (HE-AAC) and OneAudio's AAC decoder does not apply it. It decodes the core coder
+    /// only, so the PCM comes out at the core sampling rate (typically half the signalled output rate) and without the high band.
+    /// <see cref="MediaTrackPacketSource.SampleRate"/> is that core rate; <see cref="MediaTrackPacketSource.SignalledSampleRate"/> is the rate the file asks for.
+    /// </summary>
+    SbrNotApplied = 1 << 3,
+
+    /// <summary>
+    /// The AAC configuration signals parametric stereo (HE-AACv2) and it is not applied: the decoded audio has the core's channel count
+    /// (one) where the file signals two.
+    /// </summary>
+    PsNotApplied = 1 << 4,
+}
+
+/// <summary>What a decode of an audio track will and will not do, known before any audio is read.</summary>
+/// <param name="Limitations">What OneAudio could not be told or did not apply that is already known from the track's configuration (the HE-AAC flags). Discard-padding flags are only known after reading, on <see cref="MediaTrackPacketSource.Limitations"/>.</param>
+/// <param name="DecodedSampleRate">The sampling rate of the PCM the decoder returns, in Hz (0 when the container does not say).</param>
+/// <param name="SignalledSampleRate">The rate the file asks for when it differs from <paramref name="DecodedSampleRate"/> (HE-AAC output rate); 0 when the same.</param>
+/// <param name="DecodedChannels">The channel count of the returned PCM (0 when unknown).</param>
+/// <param name="SignalledChannels">The channel count the file asks for when it differs from <paramref name="DecodedChannels"/> (HE-AACv2); 0 when the same.</param>
+public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations, int DecodedSampleRate, int SignalledSampleRate, int DecodedChannels, int SignalledChannels)
+{
+    /// <summary>True when the file signals SBR or PS and the decoder returns the core coder's audio only.</summary>
+    public bool IsCoreOnly => (Limitations & (AudioSeamLimitations.SbrNotApplied | AudioSeamLimitations.PsNotApplied)) != 0;
 }
 
 /// <summary>
@@ -45,13 +72,14 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     private readonly byte[][] _headers;
     private int _nextHeader;
     private readonly int _rate;
+    private int _signalledRate;
+    private int _signalledChannels;
     private readonly int _priming;
     private readonly long _length;
     private readonly int _timeScale;
-    private bool _pendingMidStream;
+    private readonly int _discardRate; // output rate DiscardPadding is converted at; 0 when the codec's rate is not known here
     private long _opusEnd = -1;
     private long _opusGranule;
-    private long _opusRun; // frames of Opus audio delivered so far, -1 after a seek
     private bool _disposed;
 
     private MediaTrackPacketSource(IDemuxer demuxer, MediaTrack track, bool ownsDemuxer, global::OneAudio.CodecId codec, byte[][] headers, ReadOnlyMemory<byte> config, int rate, int channels, int priming, long length)
@@ -68,6 +96,8 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         _priming = priming;
         _length = length;
         _timeScale = track.Timescale is > 0 and <= int.MaxValue ? (int)track.Timescale : rate;
+        // DiscardPadding is nanoseconds of decoded output. Opus always decodes at 48 kHz (RFC 7845 section 5.1); the others use the container's rate.
+        _discardRate = codec.Name == "opus" ? 48000 : rate > 0 ? rate : track.Audio?.SampleRate ?? 0;
         for (int i = 0; i < demuxer.Tracks.Count; i++)
         {
             demuxer.SetTrackEnabled(i, i == track.Index);
@@ -121,6 +151,9 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         int priming = 0;
         long length = -1;
         long opusEnd = -1;
+        int signalledRate = 0;
+        int signalledChannels = 0;
+        AudioSeamLimitations limitations = AudioSeamLimitations.None;
 
         switch (track.Codec.Name)
         {
@@ -141,6 +174,23 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 
                 // ISO priming truncates, as OneAudio's own MP4 reader does. Matroska CodecDelay is in nanoseconds and 1024 frames at 48 kHz
                 // is 21333333 ns, which truncates to 1023, so it rounds to the nearest frame.
+                // ISO/IEC 14496-3 §1.6.2.1: with SBR or PS signalled, the file's sample entry and the configuration's extension rate describe the
+                // output of a full HE-AAC decoder. OneAudio decodes the core coder only, so frames, priming and channels are counted at the core
+                // rate and the difference is reported, never hidden.
+                if (track.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.SbrImplied) && heaac.CoreSampleRate > 0)
+                {
+                    signalledRate = heaac.SampleRate;
+                    limitations = AudioSeamLimitations.SbrNotApplied | (heaac.PsPresent ? AudioSeamLimitations.PsNotApplied : 0);
+                    rate = heaac.CoreSampleRate;
+                    if (heaac.Channels > 0)
+                    {
+                        channels = heaac.PsPresent && heaac.Channels == 2 ? 1 : heaac.Channels;
+                        signalledChannels = heaac.Channels != channels ? heaac.Channels : 0;
+                    }
+
+                    rawFrames = iso && track.Duration.IsKnown ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
+                }
+
                 (priming, length) = TrimOf(track, rate, rawFrames, iso ? MediaRounding.Floor : MediaRounding.NearestAwayFromZero);
                 break;
 
@@ -188,7 +238,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 break;
         }
 
-        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd };
+        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd, _signalledRate = signalledRate, _signalledChannels = signalledChannels, Limitations = limitations };
     }
 
     // Priming and length in frames at the track's rate, from what the container states. With an edit list the first non-empty edit gives both
@@ -321,7 +371,19 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     /// <summary>The track this source reads.</summary>
     public MediaTrack Track => _track;
 
-    /// <summary>What OneAudio could not be told about the packets read so far.</summary>
+    /// <summary>
+    /// The sampling rate the file asks for when it differs from the rate OneAudio decodes at: the output rate of an HE-AAC configuration.
+    /// Zero when the two are the same. <see cref="SampleRate"/> is always the rate of the PCM the decoder returns.
+    /// </summary>
+    public int SignalledSampleRate => _signalledRate;
+
+    /// <summary>The channel count the file asks for when it differs from <see cref="Channels"/> (HE-AACv2 parametric stereo); zero when the same.</summary>
+    public int SignalledChannels => _signalledChannels;
+
+    /// <summary>
+    /// What OneAudio could not be told about the track, or did not apply. The HE-AAC flags are set as soon as the source is created; the
+    /// discard-padding flags are collected while packets are read.
+    /// </summary>
     public AudioSeamLimitations Limitations { get; private set; }
 
     /// <inheritdoc />
@@ -346,7 +408,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             long ts = stamp.IsKnown ? stamp.Rescale(_timeScale, MediaRounding.NearestAwayFromZero).Ticks : 0;
             long dur = info.Duration.IsKnown ? info.Duration.Rescale(_timeScale, MediaRounding.NearestAwayFromZero).Ticks : 0;
             long end = EndFrameOf(info, view.Data);
-            packet = new global::OneAudio.PacketView(view.Data, end, false, ts, dur);
+            packet = new global::OneAudio.PacketView(view.Data, end, false, ts, dur, DiscardEndFramesOf(info));
             return true;
         }
 
@@ -354,57 +416,35 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         return false;
     }
 
-    private long EndFrameOf(PacketInfo info, ReadOnlySpan<byte> data)
+    // Matroska DiscardPadding (RFC 9559 section 5.1.3.5.7) is the nanoseconds of decoded audio to drop from the end of the block, on any block of
+    // the track, not only the last. OneAudio takes it per packet as DiscardEndFrames, which trims the decoded output of that packet and leaves
+    // the codec's state and overlap alone. Nanoseconds become frames at the output rate, rounded to the nearest frame (halves away from zero).
+    // A negative value asks to cut the start of the block, which the packet interface cannot carry: the audio is kept and the limitation noted.
+    private int DiscardEndFramesOf(PacketInfo info)
     {
-        if (_pendingMidStream)
+        if (!info.DiscardPadding.IsKnown || info.DiscardPadding.Ticks == 0)
         {
-            Limitations |= AudioSeamLimitations.MidStreamDiscardPadding;
-            _pendingMidStream = false;
+            return 0;
         }
 
-        long runBefore = _opusRun;
-        if (Codec.Name == "opus" && _opusRun >= 0)
-        {
-            _opusRun = OpusToc.TryGetSamples(data, out int packetFrames) ? _opusRun + packetFrames : -1;
-        }
-
-        bool padded = info.DiscardPadding.IsKnown && info.DiscardPadding.Ticks != 0;
-        if (padded && info.DiscardPadding.Ticks < 0)
+        if (info.DiscardPadding.Ticks < 0)
         {
             Limitations |= AudioSeamLimitations.LeadingDiscardPadding;
+            return 0;
         }
 
-        if (padded && info.DiscardPadding.Ticks > 0)
+        if (_discardRate <= 0)
         {
-            _pendingMidStream = true;
-            if (Codec.Name == "opus" && OpusToc.TryGetSamples(data, out int samples))
-            {
-                // OneAudio's Opus decoder takes the end of the real audio as a position in 48 kHz frames counted from the start of the
-                // stream including the pre-skip (RFC 7845 §4.4). Matroska has already subtracted CodecDelay from the block time.
-                // Block times are rounded to container ticks (1 ms in most files), so a 6.5 ms CodecDelay cannot be added back exactly. The frames
-                // delivered so far are exact (every packet is a whole number of 48 kHz frames) and, with the pre-skip included, are where this
-                // packet starts. After a seek the running count is lost and the block time is used instead.
-                long startFrames;
-                if (runBefore >= 0)
-                {
-                    startFrames = runBefore;
-                }
-                else
-                {
-                    MediaTime start = info.Pts.Add(_track.Edit.Priming, MediaRounding.NearestAwayFromZero);
-                    startFrames = start.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
-                }
-
-                long padFrames = info.DiscardPadding.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks;
-                return Math.Max(0, startFrames + samples - padFrames);
-            }
-
-            if (Codec.Name == "vorbis")
-            {
-                Limitations |= AudioSeamLimitations.EndPaddingNotApplied;
-            }
+            return 0;
         }
 
+        return (int)Math.Min(info.DiscardPadding.Rescale(_discardRate, MediaRounding.NearestAwayFromZero).Ticks, int.MaxValue);
+    }
+
+    // The end position of the stream where the container states one for the packet: Opus in MP4 from the edit list, and AAC/AMR in MP4 from
+    // the movie timeline. Other packets return -1.
+    private long EndFrameOf(PacketInfo info, ReadOnlySpan<byte> data)
+    {
         if (Codec.Name == "opus" && _opusEnd >= 0 && _opusGranule >= 0)
         {
             if (!OpusToc.TryGetSamples(data, out int samples))
@@ -441,7 +481,6 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 
         int rate = _rate > 0 ? _rate : 48000;
         _nextHeader = _headers.Length;
-        _opusRun = -1;
         _opusGranule = -1; // the running position is lost; the end limit is not applied after a seek
         if (_length >= 0 && frame >= _length)
         {
