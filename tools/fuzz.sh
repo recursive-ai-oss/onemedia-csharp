@@ -63,6 +63,12 @@ seed() {
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
                { printf '\014'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
              done ;;
+    registry) # The first byte picks the path (bit 0: seek around; bit 1: read the metadata); the rest is the file. Seeds: one of every format we have.
+             for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/audio/* "$here"/testdata/xiph-flv/* "$here"/testdata/pcm/* "$here"/testdata/asf/* "$here"/testdata/mpeg/* "$here"/testdata/audio-es/*.* "$here"/testdata/audio-es/tagged/*.mp3 "$here"/testdata/matroska/*.mkv; do
+               [ -f "$f" ] || continue
+               [ "$(stat -c %s "$f")" -le 262144 ] || continue
+               { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+             done ;;
     tags) # The first byte picks the path (bit 0: Matroska rather than ISO BMFF; bit 1: the asynchronous reader); the rest is the file.
           for f in "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mov "$here"/testdata/metadata/*.m4a "$here"/testdata/metadata/*.3gp "$here"/testdata/isobmff/*.mp4; do
             [ -f "$f" ] || continue

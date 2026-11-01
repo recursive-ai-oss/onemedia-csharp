@@ -37,6 +37,14 @@ def fmt_ext(channels, rate, bits, valid, mask, tag):
     return base + struct.pack('<HHI', 22, valid, mask) + guid
 
 
+def id3_tag(frames):
+    """An ID3v2.4 tag of UTF-8 text frames."""
+    def synchsafe(n):
+        return bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F])
+    body = b''.join(fid + synchsafe(1 + len(t.encode('utf-8'))) + b'\x00\x00\x03' + t.encode('utf-8') for fid, t in frames)
+    return b'ID3\x04\x00\x00' + synchsafe(len(body)) + body
+
+
 def riff(chunks, form=b'WAVE', magic=b'RIFF'):
     body = form + b''.join(chunks)
     return magic + struct.pack('<I', len(body)) + body
@@ -148,6 +156,7 @@ def main(out):
     w('bwf-ixml-cart.wav', riff([fmt, chunk(b'bext', bext(2)), chunk(b'iXML', ixml()), chunk(b'axml', b'<ebuCoreMain/>'), chunk(b'cart', cart()),
                                    info_list([(b'INAM', 'Fixture \u00e9'), (b'IART', 'Test Artist'), (b'ICMT', 'A comment'), (b'ICRD', '2020-05-17'), (b'ISFT', 'gen-pcm-fixtures'), (b'ITRK', '3/12')]),
                                    chunk(b'id3 ', b'ID3\x04\x00\x00\x00\x00\x00\x00'), data]))
+    w('wav-id3-frames.wav', riff([fmt, chunk(b'LIST', b'INFO' + chunk(b'INAM', b'Info title\0')), data, chunk(b'id3 ', id3_tag([(b'TIT2', 'Fixture title'), (b'TPE1', 'Test Artist'), (b'TALB', 'Test Album'), (b'TRCK', '3/12'), (b'TDRC', '2020-05-17')]))]))
     w('bwf-v0.wav', riff([fmt, chunk(b'bext', bext(0)), data]))
     w('cue-smpl.wav', riff([fmt, chunk(b'fact', struct.pack('<I', 2000))] + cue_chunks() + [data]))
     w('odd-padding.wav', riff([fmt, chunk(b'junk', b'abc'), chunk(b'zzzz', b'x'), chunk(b'JUNK', bytes(27)), chunk(b'data', pcm[:-1] if len(pcm) % 2 == 0 else pcm), chunk(b'LIST', b'INFOINAM\x03\x00\x00\x00ab\0\0')]))
@@ -181,6 +190,8 @@ def main(out):
     w('aiff-text-mark.aiff', aiff([comm(1, 2000, 16, RATE)] + texts + [comt, mark, inst_a, chunk(b'APPL', b'test', True), ssnd]))
     w('aiff-ssnd-offset.aiff', aiff([comm(1, 1000, 16, RATE), chunk(b'SSND', struct.pack('>II', 6, 0) + b'\xaa' * 6 + be16(1000), True)]))
     w('aiff-id3.aiff', aiff([comm(1, 2000, 16, RATE), chunk(b'ID3 ', b'ID3\x04\x00\x00\x00\x00\x00\x00', True), ssnd]))
+    # Real ID3v2.4 tags in the chunk (the ones above hold a bare, too-short header).
+    w('aiff-id3-frames.aiff', aiff([comm(1, 2000, 16, RATE), chunk(b'ID3 ', id3_tag([(b'TIT2', 'Fixture title'), (b'TPE1', 'Test Artist'), (b'TALB', 'Test Album'), (b'TRCK', '3/12'), (b'TDRC', '2020-05-17')]), True), ssnd]))
     w('aifc-sowt.aifc', aiff([chunk(b'FVER', struct.pack('>I', 0xA2805140), True), comm(1, 2000, 16, RATE, b'sowt', b'little-endian'), chunk(b'SSND', struct.pack('>II', 0, 0) + pcm, True)], b'AIFC'))
     w('aifc-fl32.aifc', aiff([chunk(b'FVER', struct.pack('>I', 0xA2805140), True), comm(1, 100, 32, 44100, b'fl32', b'32-bit float'), chunk(b'SSND', struct.pack('>II', 0, 0) + bytes(400), True)], b'AIFC'))
     w('aiff-count-short.aiff', aiff([comm(1, 500, 16, RATE), ssnd]))

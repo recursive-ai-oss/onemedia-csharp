@@ -16,6 +16,7 @@ Dictionary<string, FuzzTarget> targets = new(StringComparer.OrdinalIgnoreCase)
     ["matroska"] = MatroskaTarget.Run,
     ["tags"] = TagsTarget.Run,
     ["asf"] = AsfTarget.Run,
+    ["registry"] = RegistryTarget.Run,
 };
 CodecFuzz.Register(targets);
 MpegTarget.Register(targets);
