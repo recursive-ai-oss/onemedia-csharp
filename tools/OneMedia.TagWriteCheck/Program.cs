@@ -113,15 +113,16 @@ internal static class Checker
             e.Remove(r);
         }
 
-        using MemoryMediaSource planSource = new(File.ReadAllBytes(input));
-        TagWritePlan plan = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1" ? TagWriter.Plan(planSource, e) : TagWriter.Plan(input, e);
+        bool inMemory = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1";
+        using MemoryMediaSource? planSource = inMemory ? new(File.ReadAllBytes(input)) : null;
+        TagWritePlan plan = planSource is not null ? TagWriter.Plan(planSource, e) : TagWriter.Plan(input, e);
         File.Delete(output);
         plan.Report.Write = SafeWriter.SaveAs(plan.Plan, input, output, true);
         string copies = VerifyCopies(plan.Plan, input, output);
         string before = Hash(input);
         string after = Hash(output);
-        using MemoryMediaSource mem = new(File.ReadAllBytes(output));
-        using MediaFile m = Environment.GetEnvironmentVariable("TAGCHECK_MEMORY") == "1" ? MediaFile.Open(mem) : Media.Open(output);
+        using MemoryMediaSource? mem = inMemory ? new(File.ReadAllBytes(output)) : null;
+        using MediaFile m = mem is not null ? MediaFile.Open(mem) : Media.Open(output);
         string readBack = $"title={Flag(m.Tags.Title == "Edited Title \u00fc")} artist={Flag(m.Tags.Artist == "Edited Artist")} comment={Flag(CommentOf(m, input) == "An edited comment")} picture={(Path.GetExtension(input).Equals(".webm", StringComparison.OrdinalIgnoreCase) ? "none(webm)" : Flag(m.Tags.Pictures.Any(p => p.Length == Png.Length)))} removed={(remove is { } rr ? Flag(m.Tags.First(rr) is null) + ":" + rr : "none")}";
         long changed = plan.Plan.Pieces.Where(p => p.Kind != OutputPieceKind.Copy).Sum(p => p.Length);
         string systems = string.Join(",", plan.Report.Systems.Select(s => s.System + (s.Created ? "+" : "")));
