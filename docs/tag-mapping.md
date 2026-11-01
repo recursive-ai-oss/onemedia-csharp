@@ -13,8 +13,10 @@ generated from it, and a test fails when they differ.
   comes first, then levels below 30; tags with no language or `und` come before language-specific ones; tags of the file itself
   come before tags of the only track.
 - 3GPP boxes and QuickTime user-data atoms share four-character codes with different layouts; the reader tells them apart as described in `docs/tags.md`.
-- Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime tag documentation (read as tables of facts), the Matroska
-  tag-name list, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
+- Vorbis comments (Ogg Vorbis, Opus, FLAC, Theora, Speex) use upper-case field names matched case-insensitively; `TRACKNUMBER` and `DISCNUMBER` may read
+  `number/total` (see `docs/vorbis-comment.md`). FLV script properties (`onMetaData`) are matched case-insensitively by name.
+- Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime and FLV tag documentation (read as tables of facts), the Matroska
+  tag-name list, the Vorbis comment specification, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
 
 | Field | System | Keys (in precedence order) | Document | Note |
 |---|---|---|---|---|
@@ -103,3 +105,34 @@ generated from it, and a test fails when they differ.
 | DiscNumber | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | ffmpeg writes DISC, optionally as number/total |
 | DiscTotal | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of DISC |
 | TrackTotal | mkv | `TOTAL_PARTS`, `TRACK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of TRACK when TOTAL_PARTS is absent |
+| Title | vorbis | `TITLE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Artist | vorbis | `ARTIST`, `PERFORMER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | PERFORMER is the spec's name for the performing artist |
+| AlbumArtist | vorbis | `ALBUMARTIST`, `ALBUM ARTIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Album | vorbis | `ALBUM` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Composer | vorbis | `COMPOSER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Author | vorbis | `LYRICIST` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | lyricist |
+| Director | vorbis | `DIRECTOR` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Genre | vorbis | `GENRE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Comment | vorbis | `COMMENT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Description | vorbis | `DESCRIPTION` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's short description of the contents |
+| Date | vorbis | `DATE` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | a year or an ISO 8601 date, as written |
+| Copyright | vorbis | `COPYRIGHT` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Encoder | vorbis | `ENCODER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| EncodedBy | vorbis | `ENCODEDBY`, `ENCODED-BY` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Grouping | vorbis | `GROUPING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Lyrics | vorbis | `LYRICS`, `UNSYNCEDLYRICS` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| Rating | vorbis | `RATING` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments |  |
+| TrackNumber | vorbis | `TRACKNUMBER`, `TRACK` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | the spec's TRACKNUMBER may read number/total |
+| TrackTotal | vorbis | `TRACKTOTAL`, `TOTALTRACKS`, `TRACKNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER |
+| DiscNumber | vorbis | `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | may read number/total |
+| DiscTotal | vorbis | `DISCTOTAL`, `TOTALDISCS`, `DISCNUMBER` | Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments | DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER |
+| Title | flv | `title` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Artist | flv | `artist` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Author | flv | `author` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Album | flv | `album` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Genre | flv | `genre` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Comment | flv | `comment` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Description | flv | `description` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Copyright | flv | `copyright` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E |  |
+| Date | flv | `creationdate`, `date` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E | as written by the muxer |
+| Encoder | flv | `encoder`, `metadatacreator` | ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E | the muxer's name and version |

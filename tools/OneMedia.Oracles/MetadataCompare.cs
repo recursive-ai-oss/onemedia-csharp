@@ -80,8 +80,10 @@ internal static partial class MetadataCompare
               comes first, then levels below 30; tags with no language or `und` come before language-specific ones; tags of the file itself
               come before tags of the only track.
             - 3GPP boxes and QuickTime user-data atoms share four-character codes with different layouts; the reader tells them apart as described in `docs/tags.md`.
-            - Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime tag documentation (read as tables of facts), the Matroska
-              tag-name list, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
+            - Vorbis comments (Ogg Vorbis, Opus, FLAC, Theora, Speex) use upper-case field names matched case-insensitively; `TRACKNUMBER` and `DISCNUMBER` may read
+              `number/total` (see `docs/vorbis-comment.md`). FLV script properties (`onMetaData`) are matched case-insensitively by name.
+            - Sources: the MusicBrainz Picard tag-mapping table (CC0), the ExifTool QuickTime and FLV tag documentation (read as tables of facts), the Matroska
+              tag-name list, the Vorbis comment specification, Apple's QuickTime File Format specification and 3GPP TS 26.244 §8.
 
 
             """;

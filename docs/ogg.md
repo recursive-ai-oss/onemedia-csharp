@@ -8,9 +8,9 @@ forward-only source); the synchronous demuxer completes the same code without wa
 
 - A page is `OggS`, version 0, 27 fixed bytes, the lacing table and a body of at most 255 × 255 bytes (RFC 3533 §6). The CRC-32 (polynomial 0x04C11DB7,
   no reflection, no final XOR) is checked on every page. A page that fails the check is still used and reported (`ChecksumMismatch`, code
-  `ogg.crc`); a stream that loses sync is searched for the next `OggS` that has a plausible header (`ogg.resync`, `UnaccountedBytes`).
+  `ogg.crc`); bytes that are not a page are skipped up to the next `OggS` that has a plausible header (`ogg.skipped`, `UnaccountedBytes`).
 - A packet that spans pages is assembled from the lacing values; a continued-packet flag with nothing to continue, a sequence-number gap, a page after the
-  end-of-stream page and pages with no first page each raise a defect (`ogg.continued-orphan`, `ogg.sequence-gap`, `ogg.after-eos`, `ogg.orphan`) and reading goes on.
+  end-of-stream page and pages with no first page each raise a defect (`ogg.continuation-orphan`, `ogg.continuation-missing`, `ogg.sequence-gap`, `ogg.after-eos`, `ogg.orphan`) and reading goes on.
 - Logical bitstreams are told apart by serial number. Multiplexed streams become one track each in the order of their first pages. A chained file
   (a first page that follows the last page of every earlier stream) appends the tracks of the next link as the reader reaches it; times continue after the
   earlier links, so the timeline is the concatenation.
