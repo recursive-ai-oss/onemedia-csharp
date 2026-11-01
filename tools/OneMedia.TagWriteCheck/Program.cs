@@ -32,6 +32,9 @@ internal static class Checker
                 case "writemap":
                     Console.Write(WriteMap());
                     return 0;
+                case "mkvdefects":
+                    MkvDefects(args[1]);
+                    return 0;
                 case "hash":
                     Console.WriteLine(Hash(args[1]));
                     return 0;
@@ -129,6 +132,20 @@ internal static class Checker
         string notRep = string.Join(",", plan.Report.Systems.SelectMany(s => s.NotRepresentable.Select(n => s.System + ":" + n.Field)));
         string ranges = string.Join(";", plan.Plan.Changes.Take(12).Select(c => $"{c.Description}[{c.Source.Offset}+{c.Source.Length}->{c.Output.Offset}+{c.Output.Length}]"));
         return string.Join('\t', "EDIT", input, new FileInfo(input).Length, new FileInfo(output).Length, readBack, "payload=" + Flag(before == after) + (before == after ? "" : ":" + before.Length + "/" + after.Length), "copies=" + copies, "changedBytes=" + changed, "sameLayout=" + plan.Plan.IsSameLayout, "systems=" + systems, "notRep=" + notRep, "ranges=" + ranges);
+    }
+
+    // Diagnostic: the defects the Matroska reader logs for the Segment's top level, with the first Cluster's offset.
+    private static void MkvDefects(string path)
+    {
+        using FileMediaSource src = FileMediaSource.Open(path);
+        RecursiveAI.OneMedia.Matroska.EbmlDocument doc = RecursiveAI.OneMedia.Matroska.EbmlDocument.Open(src);
+        RecursiveAI.OneMedia.Matroska.EbmlElement seg = doc.Segment!;
+        long first = seg.ChildElements.FirstOrDefault(c => c.Id == 0x1F43B675)?.Offset ?? -1;
+        Console.WriteLine($"{path}\tsegment@{seg.Offset} firstCluster@{first}");
+        foreach (MediaDefect d in doc.Defects)
+        {
+            Console.WriteLine("  " + d);
+        }
     }
 
     private static string Flag(bool ok) => ok ? "ok" : "FAIL";
