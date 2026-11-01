@@ -16,6 +16,7 @@ internal static class InfoCheck
         {
             total++;
             List<string> problems = [];
+            List<string> explained = [];
             string name = Path.GetFileName(file);
             try
             {
@@ -25,7 +26,10 @@ internal static class InfoCheck
                 List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment")];
                 if (streams.Count != media.Tracks.Count)
                 {
-                    problems.Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}");
+                    // ffprobe synthesizes the audio streams of DV frames (the sound is shuffled across the frame and needs a decoder step to extract).
+                    bool dvAudio = media.Tracks.Any(t => t.Codec.Name == "dvvideo") && streams.Count > media.Tracks.Count
+                        && streams.Skip(media.Tracks.Count).All(e => e.TryGetProperty("codec_name", out JsonElement c) && c.GetString() == "pcm_s16le");
+                    (dvAudio ? explained : problems).Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}" + (dvAudio ? " (dv-embedded-audio)" : ""));
                 }
 
                 int i = 0;
@@ -36,7 +40,7 @@ internal static class InfoCheck
                         break;
                     }
 
-                    Compare(media.Tracks[i], s, problems);
+                    Compare(media.Tracks[i], s, problems, explained);
                     i++;
                 }
 
@@ -48,7 +52,22 @@ internal static class InfoCheck
                     long tick = Math.Max(1, 1_000_000 / media.ExactDuration.Timescale);
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
                     {
-                        problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
+                        string text = $"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s";
+                        bool audioWithoutDuration = streams.Any(e => e.GetProperty("codec_type").GetString() == "audio" && !e.TryGetProperty("duration", out _));
+                        if (media.Defects.Any(x => x.Code == "riff.size-past-end") && theirs < micro / 1e6)
+                        {
+                            // A file cut short: ffprobe estimates the length from the data present, ours is the length the headers state.
+                            explained.Add(text + " (truncated-estimate)");
+                        }
+                        else if (audioWithoutDuration && Math.Abs((micro / 1e6) - theirs) < 0.5)
+                        {
+                            // ffprobe gives MPEG audio and AC-3 streams in AVI no duration and takes the file's from the video; ours is the longest stream header.
+                            explained.Add(text + " (audio-stream-duration)");
+                        }
+                        else
+                        {
+                            problems.Add(text);
+                        }
                     }
                 }
                 else if (media.ExactDuration.IsKnown != doc.RootElement.GetProperty("format").TryGetProperty("duration", out _))
@@ -62,14 +81,14 @@ internal static class InfoCheck
             }
 
             bad += problems.Count > 0 ? 1 : 0;
-            Console.WriteLine(problems.Count == 0 ? $"same\t{name}" : $"DIFF\t{name}\t{string.Join("; ", problems)}");
+            Console.WriteLine(problems.Count > 0 ? $"DIFF\t{name}\t{string.Join("; ", problems.Concat(explained))}" : explained.Count > 0 ? $"explained\t{name}\t{string.Join("; ", explained)}" : $"same\t{name}");
         }
 
-        Console.WriteLine($"infocheck: {total} files, {bad} with differences");
+        Console.WriteLine($"infocheck: {total} files, {bad} with unexplained differences");
         return 0;
     }
 
-    private static void Compare(MediaTrack t, JsonElement s, List<string> problems)
+    private static void Compare(MediaTrack t, JsonElement s, List<string> problems, List<string> explained)
     {
         string kind = s.GetProperty("codec_type").GetString() ?? "";
         string expectKind = t.Kind switch { TrackKind.Video => "video", TrackKind.Audio => "audio", TrackKind.Subtitle => "subtitle", TrackKind.Data => "data", _ => "" };
@@ -90,7 +109,9 @@ internal static class InfoCheck
 
         if (t.Video is { } v && s.TryGetProperty("width", out JsonElement w) && s.TryGetProperty("height", out JsonElement h) && (w.GetInt32() != v.Width || h.GetInt32() != v.Height))
         {
-            problems.Add($"#{t.Index} size {w.GetInt32()}x{h.GetInt32()} vs {v.Width}x{v.Height}");
+            // ffprobe reads the frame size of motion JPEG from the first frame; the container header may state another height (observed in AVI).
+            (codec == "mjpeg" && t.Codec == CodecId.Mjpeg && w.GetInt32() == v.Width && Math.Abs(h.GetInt32() - v.Height) <= 16 ? explained : problems)
+                .Add($"#{t.Index} size {w.GetInt32()}x{h.GetInt32()} vs {v.Width}x{v.Height}" + (codec == "mjpeg" ? " (mjpeg-frame-size)" : ""));
         }
 
         if (t.Audio is { } a)
@@ -117,6 +138,8 @@ internal static class InfoCheck
     // ffprobe codec names that have a neutral id; null for everything else (not compared).
     private static string? Mapped(string ffprobe) => ffprobe switch
     {
+        "mpeg4" or "msmpeg4v1" or "msmpeg4v2" or "msmpeg4v3" or "dvvideo" or "huffyuv" or "ffvhuff" or "ffv1" or "mp2" or "mpeg1video" or "wmv1" or "wmv2" or "wmv3" or "cinepak" or "theora" or "svq1" or "svq3" or "msvideo1" or "msrle" or "tscc" => ffprobe,
+        var a when a.StartsWith("adpcm_", StringComparison.Ordinal) => ffprobe,
         "h264" or "hevc" or "av1" or "vp8" or "vp9" or "aac" or "mp3" or "opus" or "vorbis" or "flac" or "ac3" or "eac3" or "mjpeg" => ffprobe,
         "mpeg2video" => "mpeg2video",
         "amr_nb" => "amr-nb",

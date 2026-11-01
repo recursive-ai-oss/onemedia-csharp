@@ -35,6 +35,16 @@ internal static class Rows
         "generated/large/over4gb.mkv",
     ];
 
+    // AVI: ffmpeg-written files, published samples (two of them with an OpenDML index and DV-in-AVI) and the generated OpenDML file past 4 GiB.
+    private static readonly string[] AviFiles =
+    [
+        "generated/avi/tagged-mpeg4-mp3.avi",
+        "samples/avi/AV36_1.AVI",
+        "samples/avi/GoneNutty.avi",
+        "samples/avi/DV-type1/dvformat2.avi",
+        "generated/avi/large/odml-4p6gb.avi",
+    ];
+
     private static NativeTool FfmpegCopy { get; } = new("ffmpeg -c copy -f null", "ffmpeg", f => ["-v", "error", "-nostdin", "-i", f, "-map", "0", "-c", "copy", "-f", "null", "-"]);
 
     private static NativeTool Ffprobe { get; } = new("ffprobe -show_format -show_streams", "ffprobe", f => ["-v", "error", "-show_format", "-show_streams", "-of", "json", f]);
@@ -65,5 +75,16 @@ internal static class Rows
         new("mkv-probe", "0.1", "Matroska/WebM: open, track list, duration", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursProbe), new("NEbml element reader", Role.Gate, Impls.NEbmlProbe)],
             [Ffprobe, MediaInfo, ExifTool, new("mkvmerge -J", "mkvmerge", f => ["-J", f]), new("mkvinfo", "mkvinfo", f => [f])]),
+        new("avi-demux", "0.2", "AVI: read every packet of every stream", AviFiles,
+            [new("OneMedia", Role.Ours, Impls.OursDemux)],
+            [FfmpegCopy]),
+        new("avi-probe", "0.2", "AVI: open, track list, duration, tags", AviFiles,
+            [
+                new("OneMedia", Role.Ours, Impls.OursProbe),
+                new("MetadataExtractor", Role.Gate, Impls.MetadataExtractorProbe),
+                new("TagLib#", Role.Gate, Impls.TagLibProbe),
+                new("ATL.NET", Role.Gate, Impls.AtlProbe),
+            ],
+            [Ffprobe, MediaInfo, ExifTool]),
     ];
 }
