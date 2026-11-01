@@ -16,8 +16,12 @@ internal abstract class AviIndexCursor
     private AviIndexEntry _current;
     private bool _has;
 
-    /// <summary>Moves to the first entry whose chunk header is at or after <paramref name="offset"/>; false when none is left.</summary>
-    public bool Seek(long offset, out AviIndexEntry entry)
+    /// <summary>
+    /// Moves to the first entry whose chunk header is at or after <paramref name="offset"/>; false when none is left. Entries passed over
+    /// that state a size of 0 are counted per stream in <paramref name="emptyBefore"/>: writers list dropped frames in the index without
+    /// writing a chunk for them, and those frames still take their place on the stream's clock.
+    /// </summary>
+    public bool Seek(long offset, out AviIndexEntry entry, int[] emptyBefore)
     {
         while (true)
         {
@@ -34,9 +38,24 @@ internal abstract class AviIndexCursor
                 return true;
             }
 
+            if (_current.Size == 0 && (uint)_current.Stream < (uint)emptyBefore.Length)
+            {
+                emptyBefore[_current.Stream]++;
+                HasEmpty = true;
+            }
+
             _has = false;
         }
     }
+
+    /// <summary>True when a <see cref="Seek"/> since the last <see cref="ClearEmpty"/> passed over entries of size 0.</summary>
+    public bool HasEmpty { get; private set; }
+
+    /// <summary>Forgets the empty entries counted so far.</summary>
+    public void ClearEmpty() => HasEmpty = false;
+
+    /// <summary>Moves past the entry the last <see cref="Seek"/> returned, once its chunk has been read.</summary>
+    public void Consume() => _has = false;
 
     /// <summary>Starts over at the first entry.</summary>
     public void Reset()

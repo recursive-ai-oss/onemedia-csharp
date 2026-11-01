@@ -169,7 +169,7 @@ internal sealed class Exceptions
         return key switch
         {
             "kind" => track is not null && string.Equals(track.Kind.ToString(), value, StringComparison.OrdinalIgnoreCase),
-            "codec" => codecName == value,
+            "codec" => value.EndsWith('*') ? codecName.StartsWith(value[..^1], StringComparison.Ordinal) : codecName == value,
             "file" => Path.GetFileName(file).Contains(value, StringComparison.OrdinalIgnoreCase) || file.Contains(value, StringComparison.OrdinalIgnoreCase),
             _ => false,
         };
@@ -219,6 +219,15 @@ internal static class Comparer
             long last = Math.Min(x.Count, y.Count) - 1;
             MediaTrack? t = ours.Tracks.FirstOrDefault(q => q.Index == track);
             string codec = streams.FirstOrDefault(s => s.Index == track)?.CodecName ?? "";
+            bool strict = t is not null && exceptions.Match(ours.Format, "reframed", file, t, codec, "", "", false, false, 0) is not null;
+            if (strict || (t is not null && exceptions.Match(ours.Format, "reframed-bytes", file, t, codec, "", "", false, false, 0) is not null))
+            {
+                // ffprobe cuts this track's chunks into other packets (blocks, 4096-byte pieces, codec frames). The same bytes must be covered
+                // and the track must start at the same time; where its pieces stay inside chunks they must also lie at the same places.
+                CompareReframed(report, shown, exceptions, ours.Format, file, t!, codec, track, x, y, strict);
+                continue;
+            }
+
             if (x.Count != y.Count)
             {
                 Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, -1, "count", x.Count.ToString(CultureInfo.InvariantCulture), y.Count.ToString(CultureInfo.InvariantCulture), false, false, 0);
@@ -254,6 +263,52 @@ internal static class Comparer
 
         report.Status = report.Differences.Count == 0 ? "ok" : "diff";
         return report;
+    }
+
+    // Packets in file order become runs of bytes: ours merge when one starts where the previous ended; ffprobe's also continue a run when
+    // the position is unknown (the later pieces of a chunk cut by a parser).
+    private static List<(long Pos, long Size)> Runs(List<PacketRecord> packets)
+    {
+        List<(long Pos, long Size)> runs = [];
+        foreach (PacketRecord p in packets)
+        {
+            if (runs.Count > 0 && (p.Pos < 0 || p.Pos == runs[^1].Pos + runs[^1].Size))
+            {
+                runs[^1] = (runs[^1].Pos, runs[^1].Size + p.Size);
+            }
+            else
+            {
+                runs.Add((p.Pos, p.Size));
+            }
+        }
+
+        return runs;
+    }
+
+    private static void CompareReframed(FileReport report, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, int track, List<PacketRecord> x, List<PacketRecord> y, bool strict)
+    {
+        report.Excepted["reframed"] = report.Excepted.GetValueOrDefault("reframed") + 1;
+        List<(long Pos, long Size)> a = Runs(x), b = Runs(y);
+        long bytesA = x.Sum(p => p.Size), bytesB = y.Sum(p => p.Size);
+        if (bytesA != bytesB)
+        {
+            Note(report, shown, ex, format, file, t, codec, 0, track, -1, "coverage", bytesA.ToString(CultureInfo.InvariantCulture) + " bytes", bytesB.ToString(CultureInfo.InvariantCulture) + " bytes", false, false, 0);
+        }
+        else if (strict && !a.SequenceEqual(b))
+        {
+            int i = 0;
+            while (i < Math.Min(a.Count, b.Count) && a[i] == b[i])
+            {
+                i++;
+            }
+
+            Note(report, shown, ex, format, file, t, codec, 0, track, i, "coverage", i < a.Count ? $"{a[i].Pos}+{a[i].Size}" : "-", i < b.Count ? $"{b[i].Pos}+{b[i].Size}" : "-", false, false, 0);
+        }
+
+        if (x.Count > 0 && y.Count > 0)
+        {
+            CompareTime(report, shown, ex, format, file, t, codec, 0, track, 0, "pts", x[0].Pts, y[0].Pts);
+        }
     }
 
     private static Dictionary<int, List<PacketRecord>> Group(IEnumerable<PacketRecord> packets)

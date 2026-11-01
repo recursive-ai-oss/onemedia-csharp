@@ -121,6 +121,7 @@ internal static class SmokeRun
         await MatroskaSmoke.RunAsync(Check);
         SmokeAudio.Run(Check);
         await MetadataSmoke.RunAsync(Check);
+        await AviSmoke.RunAsync(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.
         byte[] sps = Convert.FromHexString("6764000cacd941419f9f011000000300100000030320f1429960");
         byte[] pps = Convert.FromHexString("68ebe3cb22c0");

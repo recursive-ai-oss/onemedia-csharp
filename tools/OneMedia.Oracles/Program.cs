@@ -176,9 +176,11 @@ internal static class Program
                 {
                     // A file ffprobe finds no streams in is expected to be refused by us too (a typed error, never a crash).
                     OurResult refused = OurReader.Read(registry, file);
-                    report = refused.Status == "ok" && refused.Tracks.Count > 0
+                    bool weRead = refused.Status == "ok" && refused.Tracks.Count > 0;
+                    bool excused = weRead && exceptions.Match(refused.Format, "streams", file, null, "", "", "", false, false, 0) is not null;
+                    report = weRead && !excused
                         ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams, we do" }
-                        : new FileReport { File = file, Status = "ok", Message = "neither reads streams" };
+                        : new FileReport { File = file, Status = "ok", Message = weRead ? "only we read streams (excepted)" : "neither reads streams" };
                 }
                 else
                 {

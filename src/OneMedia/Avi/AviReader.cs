@@ -24,6 +24,7 @@ internal sealed class AviReader : IDisposable
     private readonly CancellationToken _cancellation;
     private readonly List<TrackState> _state = [];
     private byte[]? _head;
+    private int[] _emptyBefore = [];
     private byte[] _packet = [];
     private bool _unknownStreamReported;
 
@@ -129,7 +130,7 @@ internal sealed class AviReader : IDisposable
         }
 
         RiffChunk? root = RiffChunk.Read(source, 0, source.Length, _limits, _defects, 1, _cancellation);
-        if (root is null || root.ListType is not ("AVI " or "AVIX"))
+        if (root is null || root.ListType is not { } form || !form.StartsWith("AVI", StringComparison.Ordinal))
         {
             throw new MediaFormatException("The RIFF form is not AVI.") { Offset = 0 };
         }
@@ -168,8 +169,21 @@ internal sealed class AviReader : IDisposable
         BuildTracks();
         if (movi is null)
         {
-            _defects.Add(DefectKind.MissingRequired, DefectSeverity.Error, root.NextOffset, "The AVI file has no movi list; there are no packets.", "avi.missing-movi");
-            _finished = true;
+            // A file whose movi list header is gone (a damaged header area) may still hold the stream chunks: look for the first one.
+            long scanned = ScanForStreamChunks(source, hdrl.Offset + 12, source.Length);
+            if (scanned < 0)
+            {
+                _defects.Add(DefectKind.MissingRequired, DefectSeverity.Error, root.NextOffset, "The AVI file has no movi list; there are no packets.", "avi.missing-movi");
+                _finished = true;
+                return;
+            }
+
+            _defects.Add(DefectKind.MissingRequired, DefectSeverity.Warning, scanned, "The AVI file has no movi list; the stream chunks were found by scanning and are read from here without an index.", "avi.movi-scanned");
+            _firstMoviOffset = scanned - 12;
+            _firstMoviPayload = source.Length - scanned;
+            _pos = scanned;
+            _sectionEnd = source.Length;
+            _odml = new OdmlCursor?[Headers.Streams.Count];
             return;
         }
 
@@ -184,6 +198,64 @@ internal sealed class AviReader : IDisposable
 
         OpenIndexes(source, idx1, movi);
     }
+
+    // Looks for the first place where two stream chunks follow each other: a header "NNxx" of a described stream with a known type whose
+    // size leads to another such header (or to JUNK, a list, the index or the end of the file). Reads at most MaxScanBytes. Returns the
+    // offset of the first chunk header, or -1.
+    private const long MaxScanBytes = 4 * 1024 * 1024;
+
+    private long ScanForStreamChunks(IMediaSource source, long from, long length)
+    {
+        const int Block = 64 * 1024;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(Block + 16);
+        try
+        {
+            long start = (from + 1) & ~1L; // chunk headers start on even offsets
+            long stop = Math.Min(length, start + MaxScanBytes);
+            Span<byte> next = stackalloc byte[8]; // the header that must follow, fixed
+            for (long block = start; block < stop; block += Block)
+            {
+                _cancellation.ThrowIfCancellationRequested();
+                int got = source.Read(block, buffer.AsSpan(0, Block + 16), _cancellation);
+                for (int i = 0; i + 8 <= got && block + i < stop; i += 2)
+                {
+                    uint id = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(i));
+                    if (!AviChunkId.TryStreamNumber(id, out int stream, out ushort type) || stream >= _state.Count || !IsDataType(type))
+                    {
+                        continue;
+                    }
+
+                    uint size = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(i + 4));
+                    long after = block + i + 8 + size + (size & 1);
+                    if (after >= length)
+                    {
+                        continue;
+                    }
+
+                    if (source.Read(after, next, _cancellation) < 8)
+                    {
+                        continue;
+                    }
+
+                    uint nid = BinaryPrimitives.ReadUInt32LittleEndian(next);
+                    bool follows = nid == RiffChunk.Ids.List || nid == Idx1Id || nid == RiffChunk.Make("JUNK")
+                        || (AviChunkId.TryStreamNumber(nid, out int ns, out ushort nt) && ns < _state.Count && IsDataType(nt));
+                    if (follows)
+                    {
+                        return block + i;
+                    }
+                }
+            }
+
+            return -1;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static bool IsDataType(ushort type) => type == AviChunkId.Dc || type == AviChunkId.Db || type == AviChunkId.Wb || type == AviChunkId.Tx;
 
     private void OpenIndexes(IMediaSource source, RiffChunk? idx1, RiffChunk movi)
     {
@@ -211,7 +283,7 @@ internal sealed class AviReader : IDisposable
         // The header list and its neighbours come before the first movi data. They are collected into memory (with JUNK
         // padding left as zeros) so the same chunk reader as for a seekable source can parse them.
         Span<byte> head = stackalloc byte[12]; // RIFF header, fixed
-        if (_input.Read(head) < 12 || !head[..4].SequenceEqual("RIFF"u8) || !(head[8..12].SequenceEqual("AVI "u8) || head[8..12].SequenceEqual("AVIX"u8)))
+        if (_input.Read(head) < 12 || !head[..4].SequenceEqual("RIFF"u8) || !(head[8..11].SequenceEqual("AVI"u8)))
         {
             throw new MediaFormatException("The data is not an AVI file.") { Offset = 0 };
         }
@@ -334,6 +406,7 @@ internal sealed class AviReader : IDisposable
         }
 
         Tracks = tracks;
+        _emptyBefore = new int[_state.Count];
         for (int i = 0; i < tracks.Count && i < _state.Count; i++)
         {
             _state[i].Guess = AviKeyframes.For(tracks[i].Codec);
@@ -353,6 +426,7 @@ internal sealed class AviReader : IDisposable
         while (NextChunk(out ChunkHeader chunk))
         {
             TrackState st = _state[chunk.Stream];
+            bool indexed = LookUp(chunk, out AviIndexEntry entry);
             long ticksBefore = Account(st, chunk.Size);
             if (!st.Enabled)
             {
@@ -361,7 +435,7 @@ internal sealed class AviReader : IDisposable
             }
 
             ReadPayload(chunk, out int size, out bool complete);
-            PacketAttributes flags = KeyFlag(chunk, _packet.AsSpan(0, size)) ? PacketAttributes.Keyframe : PacketAttributes.None;
+            PacketAttributes flags = KeyFlag(chunk, indexed, entry, _packet.AsSpan(0, size)) ? PacketAttributes.Keyframe : PacketAttributes.None;
             if (!complete)
             {
                 flags |= PacketAttributes.Corrupt;
@@ -397,15 +471,47 @@ internal sealed class AviReader : IDisposable
         return before;
     }
 
+    // Finds the index entry of a chunk. The entries passed over on the way that state a size of 0 are dropped frames (listed in the index,
+    // no chunk in the file); each takes a video frame's place on its stream's clock. The entry found is consumed, so a chunk is counted once
+    // whether the file holds it or only the index does.
+    private bool LookUp(ChunkHeader chunk, out AviIndexEntry entry)
+    {
+        entry = default;
+        AviIndexCursor? cursor = _source is null ? null : _odml[chunk.Stream] ?? (AviIndexCursor?)_idx1;
+        if (cursor is null)
+        {
+            return false;
+        }
+
+        bool found = cursor.Seek(chunk.Offset, out entry, _emptyBefore) && entry.Offset == chunk.Offset;
+        if (cursor.HasEmpty)
+        {
+            cursor.ClearEmpty();
+            for (int i = 0; i < _emptyBefore.Length; i++)
+            {
+                for (; _emptyBefore[i] > 0; _emptyBefore[i]--)
+                {
+                    Account(_state[i], 0);
+                }
+            }
+        }
+
+        if (found)
+        {
+            cursor.Consume();
+        }
+
+        return found;
+    }
+
     // The index states key frames; where it states nothing for a chunk (no index, or a chunk it does not list) the picture header of
     // the chunk decides for the codecs that have one. payload is the chunk's bytes when they are at hand; empty makes this read the
     // start of the chunk (seeking walks only headers).
-    private bool KeyFlag(ChunkHeader chunk, ReadOnlySpan<byte> payload = default)
+    private bool KeyFlag(ChunkHeader chunk, bool indexed, AviIndexEntry entry, ReadOnlySpan<byte> payload = default)
     {
-        AviIndexCursor? cursor = _source is null ? null : _odml[chunk.Stream] ?? (AviIndexCursor?)_idx1;
-        if (cursor is not null && cursor.Seek(chunk.Offset, out AviIndexEntry e) && e.Offset == chunk.Offset)
+        if (indexed)
         {
-            return e.IsKeyframe;
+            return entry.IsKeyframe;
         }
 
         KeyframeGuess guess = _state[chunk.Stream].Guess;
@@ -447,16 +553,16 @@ internal sealed class AviReader : IDisposable
         _input.Seek(chunk.Offset + 8);
         int got = _input.Read(_packet.AsSpan(0, n));
         size = got;
-        complete = got == n;
+        complete = got == n && chunk.Declared == 0;
         _pos = chunk.Offset + 8 + chunk.Size + (chunk.Size & 1);
         if (!complete)
         {
-            _defects.Add(DefectKind.Truncated, DefectSeverity.Warning, chunk.Offset + 8 + got, $"The file ends {n - got} bytes into a {n}-byte chunk.", "avi.truncated-chunk");
+            _defects.Add(DefectKind.Truncated, DefectSeverity.Warning, chunk.Offset + 8 + got, chunk.Declared == 0 ? $"The file ends {n - got} bytes into a {n}-byte chunk." : $"The file ends after {got} of the {chunk.Declared} bytes of a chunk.", "avi.truncated-chunk");
             _finished = true;
         }
     }
 
-    private readonly record struct ChunkHeader(long Offset, uint Size, int Stream, ushort Type);
+    private readonly record struct ChunkHeader(long Offset, uint Size, int Stream, ushort Type, uint Declared = 0);
 
     private bool NextChunk(out ChunkHeader chunk)
     {
@@ -504,15 +610,34 @@ internal sealed class AviReader : IDisposable
                 continue;
             }
 
-            if (AviChunkId.TryStreamNumber(id, out int stream, out ushort type) && stream < _state.Count && (type == AviChunkId.Dc || type == AviChunkId.Db || type == AviChunkId.Wb || type == AviChunkId.Tx))
+            // Any two-character type is a data chunk of the stream except palette changes (Microsoft AVI RIFF file reference: db, dc, wb and
+            // pc are the defined ones; text and other streams use codes of their own, and some writers use none that make sense).
+            if (AviChunkId.TryStreamNumber(id, out int stream, out ushort type) && stream < _state.Count && type != AviChunkId.Pc)
             {
                 if (size == 0)
                 {
                     // An empty chunk is a dropped frame, not a packet. It still takes a video frame's place on the clock; an empty audio chunk does not
                     // (observed: the next audio packet continues the count without a gap).
+                    LookUp(new ChunkHeader(headerAt, 0, stream, type), out _);
                     Account(_state[stream], 0);
                     _pos = headerAt + 8;
                     continue;
+                }
+
+                // A chunk that runs past the end of the file is cut there; its clock step is what is present (observed: the last packet of a
+                // cut file lasts for the bytes that exist).
+                long available = _input.Length < 0 ? long.MaxValue : _input.Length - (headerAt + 8);
+                if (size > available)
+                {
+                    if (available <= 0)
+                    {
+                        _defects.Add(DefectKind.Truncated, DefectSeverity.Warning, headerAt + 8, "The file ends at a chunk header.", "avi.truncated-header");
+                        _finished = true;
+                        break;
+                    }
+
+                    chunk = new ChunkHeader(headerAt, (uint)available, stream, type, size);
+                    return true;
                 }
 
                 chunk = new ChunkHeader(headerAt, size, stream, type);
@@ -692,9 +817,10 @@ internal sealed class AviReader : IDisposable
         while (NextChunk(out ChunkHeader chunk))
         {
             TrackState st = _state[chunk.Stream];
+            bool indexed = LookUp(chunk, out AviIndexEntry entry);
             long before = Account(st, chunk.Size);
             _pos = chunk.Offset + 8 + chunk.Size + (chunk.Size & 1);
-            if (chunk.Stream != reference || !KeyFlag(chunk))
+            if (chunk.Stream != reference || !KeyFlag(chunk, indexed, entry))
             {
                 continue;
             }
@@ -732,6 +858,7 @@ internal sealed class AviReader : IDisposable
                 break;
             }
 
+            LookUp(chunk, out _);
             Account(_state[chunk.Stream], chunk.Size);
             _pos = chunk.Offset + 8 + chunk.Size + (chunk.Size & 1);
         }
@@ -746,6 +873,7 @@ internal sealed class AviReader : IDisposable
             s.Reset();
         }
 
+        Array.Clear(_emptyBefore);
         _finished = false;
         _pos = _firstMoviOffset + 12;
         _sectionEnd = _pos + _firstMoviPayload;
@@ -777,8 +905,10 @@ internal sealed class AviReader : IDisposable
             long g = (long)BigInteger.GreatestCommonDivisor(scale, rate);
             _scale = scale / g;
             _rate = rate / g;
-            SampleSize = s.Header.SampleSize;
             IsAudio = s.Header.Type == AviStreamHeader.Auds;
+            // Only sound is addressed in samples; a video chunk is one frame whatever its stream header says (observed in files whose
+            // video header states a sample size).
+            SampleSize = IsAudio ? s.Header.SampleSize : 0;
             _start = s.Header.Start;
             Enabled = true;
         }
