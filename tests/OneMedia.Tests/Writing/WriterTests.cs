@@ -443,3 +443,24 @@ public class RiffWriterTests
         }
     }
 }
+
+public class WriterFuzzRegressionTests
+{
+    [Fact]
+    public void SavedWriterInputsReplayWithoutAFinding()
+    {
+        string dir = Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "writer-ebml");
+        string[] files = Directory.Exists(dir) ? Directory.GetFiles(dir) : [];
+        Assert.NotEmpty(files);
+        foreach (string f in files)
+        {
+            byte[] input = File.ReadAllBytes(f);
+            // Every path byte (strict headers, appended padding) over the saved file.
+            for (byte path = 0; path < 4; path++)
+            {
+                input[0] = path;
+                RecursiveAI.OneMedia.Fuzz.WriterTarget.Run(input, RecursiveAI.OneMedia.Fuzz.WriterTarget.Family.Ebml);
+            }
+        }
+    }
+}

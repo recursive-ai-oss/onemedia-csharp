@@ -12,7 +12,7 @@ namespace RecursiveAI.OneMedia.Fuzz;
 /// Fuzz targets for the structure writers, one per family (ISO boxes, EBML, RIFF). The first input byte picks the path (bit 0: re-emit every
 /// header; bit 1: also append a padding element and read the result back); the rest is the file. The property: an untouched file written
 /// back is byte-identical, whatever its damage (headers are only re-emitted when asked, and then only well-formed input must come back
-/// identical). Anything other than a <see cref="MediaException"/> escaping is a finding.
+/// identical; EBML is exempt because re-emitting recomputes every CRC-32 element, so a stored checksum that is wrong changes, which is the intended repair). Anything other than a <see cref="MediaException"/> escaping is a finding.
 /// </summary>
 internal static class WriterTarget
 {
@@ -25,9 +25,9 @@ internal static class WriterTarget
         targets["writer-riff"] = span => Run(span, Family.Riff);
     }
 
-    private enum Family { Iso, Ebml, Riff }
+    internal enum Family { Iso, Ebml, Riff }
 
-    private static void Run(ReadOnlySpan<byte> input, Family family)
+    internal static void Run(ReadOnlySpan<byte> input, Family family)
     {
         if (input.Length < 9)
         {
@@ -49,7 +49,7 @@ internal static class WriterTarget
                 throw new InvalidOperationException($"the plan states {plan.Length} bytes but {output.Length} were written");
             }
 
-            if (!append && (!strict || clean) && !output.ToArray().AsSpan().SequenceEqual(file))
+            if (!append && (!strict || (clean && family != Family.Ebml)) && !output.ToArray().AsSpan().SequenceEqual(file))
             {
                 throw new InvalidOperationException("an untouched file did not come back byte-identical");
             }

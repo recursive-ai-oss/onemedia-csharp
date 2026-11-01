@@ -420,7 +420,8 @@ public sealed class EbmlEditor
         int at = 0;
         for (int step = 0; step < 6 && at < n; step++)
         {
-            if (!Ebml.TryReadId(head[at..n], out uint id, out int idLen) || !Ebml.TryReadSize(head[(at + idLen)..n], out long size, out int sizeLen) || size < 0)
+            // The header buffer may end inside an element header (a cut-off or hostile file): then there is nothing to patch.
+            if (!Ebml.TryReadId(head[at..n], out uint id, out int idLen) || at + idLen >= n || !Ebml.TryReadSize(head[(at + idLen)..n], out long size, out int sizeLen) || size < 0)
             {
                 return null;
             }
@@ -457,6 +458,11 @@ public sealed class EbmlEditor
 
                 byte[] rebuilt = EbmlWriter.UnsignedElement(MatroskaIds.Position, (ulong)mapped, (int)size);
                 return new Patch(target, rebuilt.Length, () => Data(rebuilt));
+            }
+
+            if (size > n)
+            {
+                return null; // longer than what was read: the Position, if any, is not before it
             }
 
             at += idLen + sizeLen + (int)size;
