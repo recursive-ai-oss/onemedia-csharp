@@ -106,7 +106,7 @@ EBML and chunk editors refuse (`ArgumentException`) an addition inside an elemen
 
 ## Not done
 
-Speex/Theora comments, ID3 tag-wide unsynchronisation, ID3v2 at the end of a file, QuickTime `mdta` key creation when the file has no `keys` box, picture dimensions in FLAC PICTURE blocks
+Speex/Theora comments, ID3 tag-wide unsynchronisation, ID3v2 at the end of a file, an ID3v2 tag in front of a FLAC stream (copied as it is; the report notes it, and readers that prefer it, such as ATL.NET, keep seeing the old values), QuickTime `mdta` key creation when the file has no `keys` box, picture dimensions in FLAC PICTURE blocks
 (written as 0), XMP in `XMP_` atoms and in files other than ISO BMFF, ASF Metadata/Metadata Library attributes, 3GPP text boxes.
 
 ## Checks

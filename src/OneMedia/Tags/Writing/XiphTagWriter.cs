@@ -333,7 +333,9 @@ internal static class FlacTagWriter
             reports[0] = reports[0] with { Written = reports[0].Written };
         }
 
-        return new TagWritePlan(plan, new TagWriteReport(reports, []));
+        // An ID3v2 tag in front of the stream is copied as it is, so readers that prefer it (ATL.NET does) keep seeing the old values.
+        List<string> notes = start > 0 ? ["An ID3v2 tag in front of the FLAC stream was not edited; it still holds the old values."] : [];
+        return new TagWritePlan(plan, new TagWriteReport(reports, notes));
     }
 
     private static byte[] Block(byte type, byte[] body, bool last)
