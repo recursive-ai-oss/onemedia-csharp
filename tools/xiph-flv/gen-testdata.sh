@@ -15,5 +15,7 @@ TAGS=(-metadata title="Tagged Title" -metadata artist="Some Artist" -metadata al
 "$FF" "${G[@]}" "${SINE[@]}" -c:a libvorbis -q:a 1 "${TAGS[@]}" -bitexact -fflags +bitexact -flags:a +bitexact "$OUT/tags.ogg"
 "$FF" "${G[@]}" "${SINE[@]}" -c:a flac -compression_level 0 "${TAGS[@]}" -bitexact -fflags +bitexact -flags:a +bitexact "$OUT/tags.flac"
 "$FF" "${G[@]}" -f lavfi -i "sine=frequency=330:sample_rate=48000:duration=1" -c:a libopus -b:a 24k "${TAGS[@]}" -bitexact -fflags +bitexact "$OUT/tags.opus"
+"$FF" "${G[@]}" -f lavfi -i "anoisesrc=seed=7:amplitude=0.3:sample_rate=48000:duration=0.4" -ac 6 -c:a libvorbis -q:a 3 -bitexact -fflags +bitexact -flags:a +bitexact "$OUT/vorbis-6ch.ogg"
+"$FF" "${G[@]}" -f lavfi -i "testsrc2=size=64x48:rate=30:duration=0.5" -c:v libtheora -q:v 2 -g 8 -bitexact -fflags +bitexact -flags:v +bitexact "$OUT/theora.ogv"
 "$FF" -version | head -1 > "$OUT/VERSIONS.txt"
 ls -l "$OUT"

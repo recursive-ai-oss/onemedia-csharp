@@ -65,7 +65,7 @@ public class XiphFlvTests
         return list;
     }
 
-    public static TheoryData<string> Files() => new() { "opus.ogg", "vorbis.ogg", "tags.ogg", "tags.opus", "tags.flac", "h264-aac.flv", "flv1-mp3.flv" };
+    public static TheoryData<string> Files() => new() { "opus.ogg", "vorbis.ogg", "tags.ogg", "tags.opus", "tags.flac", "h264-aac.flv", "flv1-mp3.flv", "vorbis-6ch.ogg", "theora.ogv" };
 
     private static string FileFor(string name) => name is "opus.ogg" or "vorbis.ogg" ? System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "audio", name) : Path(name);
 
@@ -153,6 +153,40 @@ public class XiphFlvTests
 
             previous = p.Info.Pts;
         }
+    }
+
+    [Fact]
+    public void VorbisSetupWithOrderedCodebooksGivesPacketDurations()
+    {
+        // A six-channel stream written by libvorbis has ordered codebooks whose code lengths skip values.
+        using OggDemuxer d = OggDemuxer.Open(new MemoryMediaSource(Bytes("vorbis-6ch.ogg")));
+        Assert.DoesNotContain(d.Defects, x => x.Code == "ogg.vorbis-setup");
+        MediaTime end = MediaTime.Zero;
+        int n = 0;
+        while (d.TryReadPacket(out PacketView p))
+        {
+            Assert.True(p.Info.Duration.Ticks > 0);
+            end = p.Info.Pts + p.Info.Duration;
+            n++;
+        }
+
+        Assert.True(n > 10);
+        Assert.Equal(0.4, end.Ticks / (double)end.Timescale, 2);
+    }
+
+    [Fact]
+    public void TheoraFramesAreNumberedFromZero()
+    {
+        using OggDemuxer d = OggDemuxer.Open(new MemoryMediaSource(Bytes("theora.ogv")));
+        MediaTrack t = Assert.Single(d.Tracks);
+        Assert.Equal("theora", t.Codec.Name);
+        long expected = 0;
+        while (d.TryReadPacket(out PacketView p))
+        {
+            Assert.Equal(expected++, p.Info.Pts.Ticks / t.Video!.Value.FrameRateDenominator);
+        }
+
+        Assert.Equal(15, expected);
     }
 
     [Fact]

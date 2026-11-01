@@ -701,9 +701,11 @@ internal sealed class OggEngine : ISequentialEngine
             return granule;
         }
 
-        // Theora §A.2.3: the granule is (keyframe index << shift) | frames since the keyframe.
+        // Theora §A.2.3: the granule is (keyframe number << shift) | frames since the keyframe. From version 3.2.1 the numbers count frames
+        // from 1, so the sum is already the number of frames up to the packet; before that they count from 0 and one is added.
+        // Observed in files written by libtheora 1.1 (first data page 0x40 for the first frame).
         long mask = (1L << s.TheoraShift) - 1;
-        return (granule >> s.TheoraShift) + (granule & mask) + (s.TheoraNewGranule ? 1 : 0);
+        return (granule >> s.TheoraShift) + (granule & mask) + (s.TheoraNewGranule ? 0 : 1);
     }
 
     private void FinishPage(OggLogicalBitstream s, OggPageHeader h)
@@ -1027,7 +1029,7 @@ internal sealed class OggEngine : ISequentialEngine
         PageAt found = await FindLastPageAsync(reference, g => EndOf(reference, g) <= targetUnits, ct).ConfigureAwait(false);
         if (reference.Kind == OggStreamKind.Theora && found.Offset >= 0)
         {
-            long keyframe = found.Granule >> reference.TheoraShift;
+            long keyframe = (found.Granule >> reference.TheoraShift) - (reference.TheoraNewGranule ? 1 : 0);
             PageAt before = await FindLastPageAsync(reference, g => EndOf(reference, g) <= keyframe, ct).ConfigureAwait(false);
             found = before;
             reference.WaitForKeyframe = true;

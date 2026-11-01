@@ -59,6 +59,17 @@ seed() {
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
           done ;;
+    ogg|flac|flv|vorbis-comment) # The first byte picks the path (bit 0: forward-only, bit 1: seeks, bit 2: asynchronous open); the rest is the file.
+          local pat
+          case "$target" in ogg) pat="*.ogg *.opus *.oga";; flac) pat="*.flac";; flv) pat="*.flv";; *) pat="*.ogg *.flac";; esac
+          for p in $pat; do
+            for f in "$here"/testdata/xiph-flv/$p "$here"/testdata/audio/$p; do
+              [ -f "$f" ] || continue
+              { printf '\000'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+              { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+              { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
+            done
+          done ;;
   esac
   if [ -z "$(ls -A "$corpus")" ]; then printf 'xxxxxxxxxx' > "$corpus/empty.seed"; fi
 }

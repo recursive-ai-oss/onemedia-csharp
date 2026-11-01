@@ -48,4 +48,35 @@ internal static class AllocCheck
 
         return bad == 0 ? 0 : 1;
     }
+
+    /// <summary>Opens each file and prints its tracks, first packets and every defect (for investigating a difference).</summary>
+    public static int Defects(IReadOnlyList<string> files)
+    {
+        foreach (string file in files)
+        {
+            using IDemuxer d = Readers.Create().Open(FileMediaSource.Open(file));
+            Console.WriteLine($"{Path.GetFileName(file)}: {d.Format} duration {d.Duration}");
+            foreach (MediaTrack t in d.Tracks)
+            {
+                Console.WriteLine($"  track {t.Index} {t.Kind} {t.Codec.Name} timescale {t.Timescale} duration {t.Duration}");
+            }
+
+            int n = 0;
+            while (d.TryReadPacket(out PacketView p))
+            {
+                if (n++ < 5)
+                {
+                    Console.WriteLine($"  packet {p.Info.TrackIndex} pts {p.Info.Pts} dts {p.Info.Dts} dur {p.Info.Duration} size {p.Info.Size} {p.Info.Flags}");
+                }
+            }
+
+            Console.WriteLine($"  {n} packets");
+            foreach (MediaDefect x in d.Defects)
+            {
+                Console.WriteLine($"  defect {x} [{x.Code}]");
+            }
+        }
+
+        return 0;
+    }
 }

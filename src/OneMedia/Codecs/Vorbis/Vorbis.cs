@@ -259,12 +259,13 @@ public sealed class VorbisModes
             {
                 b.Read(5);
                 long current = 0;
-                while (current < entries)
+                // Vorbis I §3.2.1: each pass handles one codeword length, starting at the initial length and growing by one, and a length may have
+                // no entries. Lengths are at most 32, which bounds the loop on corrupt tables.
+                for (int step = 0; current < entries; step++)
                 {
                     int number = b.Read(ILog((int)(entries - current)));
                     current += number;
-                    // A run of zero entries would never end, so it marks a corrupt table.
-                    if (b.Overrun || number <= 0)
+                    if (b.Overrun || step >= 32 || current > entries)
                     {
                         return false;
                     }
