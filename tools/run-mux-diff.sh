@@ -32,7 +32,7 @@ one() {
   o="$OUT/$base.mp4"
   copy=$(dotnet "$TOOL" copy "$f" "$o" --layout "$LAYOUT" $OPTS 2>&1 | head -1 | cut -f2- | tr '\t' ' ')
   if [ -f "$o.map" ] && [ -s "$o" ]; then
-    cmp=$(FRAGMENTED=$([ "$LAYOUT" = frag ] && echo 1 || echo 0) python3 tools/mux-compare.py "$ORACLES/ffprobe" "$f" "$o" | head -1 | cut -f2-)
+    cmp=$(SIDX=$([[ "$OPTS" == *--sidx* ]] && echo 1 || echo 0) FRAGMENTED=$([ "$LAYOUT" = frag ] && echo 1 || echo 0) python3 tools/mux-compare.py "$ORACLES/ffprobe" "$f" "$o" | head -1 | cut -f2-)
     # What the oracles say about the input is the same for every layout: keep it in $CACHE (optional) and compute it once.
     ic="${CACHE:-$o}"
     if [ -n "${CACHE:-}" ]; then mkdir -p "$CACHE"; ic="$CACHE/$base"; fi

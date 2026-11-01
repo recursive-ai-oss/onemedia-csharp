@@ -65,21 +65,27 @@ def load_reader(path):
     return tracks
 
 
-def reader_tier(pb, pr):
+def reader_tier(pa, pb, pr):
     """True when ffprobe's packets of the output equal the container reader's view of the input (see in-reader above)."""
     if not pr or len(pr) != len(pb):
         return False
     fragmented = os.environ.get("FRAGMENTED") == "1"
+    # With a segment index ffprobe moves the presentation times of the first fragment by an amount of its own (the same bytes with the
+    # index box renamed to 'free' read back with one constant shift), so only the decode times must keep one shift.
+    sidx = os.environ.get("SIDX") == "1"
     dts_shift = pts_shift = None
     for n, ((rdts, rpts, rdur, rsize, rkey, _disp, rhash), (pts, dts, dur, size, flags, h)) in enumerate(zip(pr, pb)):
-        if to_int(size) != rsize or h != "SHA256:" + rhash or (flags[:1] == "K") != bool(rkey):
+        if to_int(size) != rsize or h != "SHA256:" + rhash:
+            return False
+        # ffprobe marks every audio packet as a key frame whatever the container says; the output may agree with ffprobe's reading of the input.
+        if (flags[:1] == "K") != bool(rkey) and not (n < len(pa) and pa[n][4][:1] == flags[:1]):
             return False
         if to_int(pts) is None or to_int(dts) is None:
             return False
         a, b = to_int(dts) - rdts, to_int(pts) - rpts
         if dts_shift is None:
             dts_shift, pts_shift = a, b
-        elif (a, b) != (dts_shift, pts_shift):
+        elif a != dts_shift or (b != pts_shift and not sidx):
             return False
         if not fragmented and rdur >= 0 and dur != "N/A" and to_int(dur) != rdur:
             # The sample table cannot hold a gap in the timeline, so the muxer writes the distance to the next decode time (dur-gap);
@@ -163,7 +169,7 @@ def main():
                     sf.append("stream %d->%d packet %d: %s vs %s" % (i, o, n, x, y))
             else:
                 sm += 1
-        if sd and reader_tier(pb, pr):
+        if sd and reader_tier(pa, pb, pr):
             # Every packet still different is ffprobe reading the input differently from the container reader (see in-reader above).
             sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
             sc["explained:in-reader"] += sd
