@@ -118,6 +118,11 @@ A difference is explained only when it falls in one of these classes (counted se
 | `disc-frag` | ffprobe applies an edit list's discard to the tables of a movie box and not to fragment samples; the two files differ when one is fragmented and the other not |
 | `count-reader`, `in-reader` | ffprobe's reading of the input differs from the container reader's (fragment timelines with repeated `tfdt`, one-byte QuickTime MP3 samples, MP3 samples ffprobe splits in progressive files only), and ffprobe's reading of the *output* equals the reader's view in count, sizes, hashes, key flags and shifted times |
 
-## Results
+### Deviations seen in the corpus sweep
 
-Recorded in the unit report and refreshed at stage close; see `CHANGELOG.md`.
+- `in-reader` also covers: fragmented sources whose `tfdt` repeats (ffprobe collapses the timeline; the reader follows `tfdt`), QuickTime files with one-byte MP3 samples, and MP3 samples that ffprobe splits in progressive files only.
+- A segment index (`WriteSegmentIndex`) makes ffprobe 7.0.2 shift the presentation times of the first fragment by an amount of its own when composition offsets are negative. The same bytes with the `sidx` renamed to `free` read back with one constant shift. Decode times are unaffected.
+- A source that holds two samples at one decode time (`generated/fmp4/every-frame.mp4`) gives a progressive output with zero durations in `stts`; MP4Box refuses to open that file ("not enough bytes in box stts"; with the zero deltas patched it opens). The muxer notes it in the report and copies the source's timeline.
+- MP4Box `-info` prints "Error fetching sample: Bad Parameter" for fragmented MP3 tracks, ours and ffmpeg's alike.
+- ffprobe prints N/A as the duration of fragmented samples in places where the input, a progressive file, had one.
+- ffmpeg's null muxer repeats "non monotonically increasing dts" for outputs of sources that already trigger it, with other numbers.
