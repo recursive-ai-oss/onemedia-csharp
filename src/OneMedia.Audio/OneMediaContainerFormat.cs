@@ -63,7 +63,7 @@ public abstract class OneMediaContainerFormat : global::OneAudio.IContainerForma
             {
                 // OneAudio reads MP3 from a byte stream only, so the track's frames are handed over as one.
                 global::OneAudio.IContainerFormat mp3 = registry.Detect(Mp3Probe)!;
-                global::OneAudio.IAudioDecoder mp3Decoder = mp3.Open(new PacketConcatenationStream(demuxer, track.Index, leaveOpen ? null : stream), registry, limits, false, cancellationToken);
+                global::OneAudio.IAudioDecoder mp3Decoder = mp3.Open(new PacketConcatenationStream(demuxer, track.Index, leaveOpen ? null : stream, track.Configuration.Format == "mpeg-audio-info-frame" ? track.Configuration.Data : default), registry, limits, false, cancellationToken);
                 return mp3Decoder;
             }
 
@@ -85,7 +85,7 @@ public abstract class OneMediaContainerFormat : global::OneAudio.IContainerForma
 
     // OneAudio offers no way to ask whether MP3 is registered, so the registry is asked to recognise two valid back-to-back MPEG-1 Layer III
     // frame headers (128 kbit/s, 44.1 kHz, 417-byte frames).
-    private static readonly byte[] Mp3Probe = BuildMp3Probe();
+    internal static readonly byte[] Mp3Probe = BuildMp3Probe();
 
     private static byte[] BuildMp3Probe()
     {

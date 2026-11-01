@@ -147,3 +147,18 @@ mpegts	pts	kind=audio	tolerance=1	neither	audio-pts-interpolation: frames after 
 mpegts	dts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for pts.
 mpegps	pts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for mpegts.
 mpegps	dts	kind=audio	tolerance=1	neither	audio-pts-interpolation, as for mpegts.
+*	count	codec=mjpeg	ignore	ours	cover-art-as-stream: ffprobe lists an ID3v2 or APE picture as a video stream with one packet holding the image; pictures are tags here (docs/audio-es.md).
+*	count	codec=png	ignore	ours	cover-art-as-stream (docs/audio-es.md).
+*	count	codec=bmp	ignore	ours	cover-art-as-stream (docs/audio-es.md).
+*	count	codec=gif	ignore	ours	cover-art-as-stream (docs/audio-es.md).
+*	pts	codec=ac3	drift=1	ours	inexact-timebase (ffprobe truncates each packet duration to 1/90000, so its times drift): AC-3 and E-AC-3 packets are 1/48000, 1/44100 or 1/32000 apart; ffprobe's integer 1/90000 base rounds them, ours are exact in the stream's sample rate (docs/audio-es.md).
+*	dts	codec=ac3	drift=1	ours	inexact-timebase (docs/audio-es.md).
+*	duration	codec=ac3	drift=1	ours	inexact-timebase (docs/audio-es.md).
+*	pts	codec=eac3	drift=1	ours	inexact-timebase (docs/audio-es.md).
+*	dts	codec=eac3	drift=1	ours	inexact-timebase (docs/audio-es.md).
+*	duration	codec=eac3	drift=1	ours	inexact-timebase (docs/audio-es.md).
+mpegaudio	count	file=apev1-only	ignore	ffprobe	trailing-tag-as-packet: with no ID3v1 behind it a trailing APEv1/footer-only APEv2/Lyrics3 block is listed by ffprobe as one last packet holding the tag bytes; ours ends at the last frame and reports the tag (docs/audio-es.md).
+mpegaudio	count	file=apev2-footer-only	ignore	ffprobe	trailing-tag-as-packet: with no ID3v1 behind it a trailing APEv1/footer-only APEv2/Lyrics3 block is listed by ffprobe as one last packet holding the tag bytes; ours ends at the last frame and reports the tag (docs/audio-es.md).
+mpegaudio	count	file=apev2-lyrics3-v1	ignore	ffprobe	trailing-tag-as-packet: with no ID3v1 behind it a trailing APEv1/footer-only APEv2/Lyrics3 block is listed by ffprobe as one last packet holding the tag bytes; ours ends at the last frame and reports the tag (docs/audio-es.md).
+mpegaudio	count	file=lyrics3v1	ignore	ffprobe	trailing-tag-as-packet: with no ID3v1 behind it a trailing APEv1/footer-only APEv2/Lyrics3 block is listed by ffprobe as one last packet holding the tag bytes; ours ends at the last frame and reports the tag (docs/audio-es.md).
+mpegaudio	count	file=lyrics3v2-and-v1	ignore	ffprobe	trailing-tag-as-packet: with no ID3v1 behind it a trailing APEv1/footer-only APEv2/Lyrics3 block is listed by ffprobe as one last packet holding the tag bytes; ours ends at the last frame and reports the tag (docs/audio-es.md).

@@ -38,6 +38,8 @@ public readonly record struct MediaFormatId(string Name)
     public static MediaFormatId Adts => new("adts");
     /// <summary>AMR and AMR-WB storage files.</summary>
     public static MediaFormatId Amr => new("amr");
+    /// <summary>AC-3 and E-AC-3 elementary streams.</summary>
+    public static MediaFormatId Ac3 => new("ac3");
     /// <summary>IVF (VP8/VP9/AV1 frames).</summary>
     public static MediaFormatId Ivf => new("ivf");
 

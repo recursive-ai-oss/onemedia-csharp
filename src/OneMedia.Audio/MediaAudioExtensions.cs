@@ -38,6 +38,11 @@ public static class MediaAudioExtensions
         IDemuxer demuxer = media.Demuxer ?? throw new InvalidOperationException("Decoding needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
         registry ??= CreateRegistry();
+        if (track.Codec == CodecId.Mp3)
+        {
+            return OpenMp3(media, demuxer, track, registry, limits);
+        }
+
         MediaTrackPacketSource source = BeginSource(media, demuxer, track);
         return CreateDecoder(source, registry, limits);
     }
@@ -96,9 +101,26 @@ public static class MediaAudioExtensions
         IDemuxer demuxer = media.Demuxer ?? throw new InvalidOperationException("Decoding needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
         registry ??= CreateRegistry();
+        if (track.Codec == CodecId.Mp3)
+        {
+            global::OneAudio.IAudioDecoder mp3Decoder = OpenMp3(media, demuxer, track, registry, limits);
+            report = new AudioDecodeReport(AudioSeamLimitations.None, mp3Decoder.Format.SampleRate, 0, mp3Decoder.Format.Channels, 0);
+            return mp3Decoder;
+        }
+
         MediaTrackPacketSource source = BeginSource(media, demuxer, track);
         report = ReportOf(source);
         return CreateDecoder(source, registry, limits);
+    }
+
+    // OneAudio reads MP3 from a byte stream, so the track's frames go over as one, led by the Xing/Info frame that carries the gapless data.
+    // Like the packet-source path, the decode starts from the beginning of the file and is superseded by a later read of it.
+    private static global::OneAudio.IAudioDecoder OpenMp3(MediaFile media, IDemuxer demuxer, MediaTrack track, global::OneAudio.AudioCodecRegistry registry, global::OneAudio.AudioLimits? limits)
+    {
+        global::OneAudio.IContainerFormat mp3 = registry.Detect(OneMediaContainerFormat.Mp3Probe) ?? throw new global::OneAudio.UnsupportedAudioFormatException("MP3 is not registered with the OneAudio registry.");
+        int generation = media.BeginRead();
+        ReadOnlyMemory<byte> infoFrame = track.Configuration.Format == "mpeg-audio-info-frame" ? track.Configuration.Data : default;
+        return mp3.Open(new PacketConcatenationStream(demuxer, track.Index, null, infoFrame, ownsDemuxer: false) { Owner = media, Generation = generation }, registry, limits ?? global::OneAudio.AudioLimits.Default, false, default);
     }
 
     private static AudioDecodeReport ReportOf(MediaTrackPacketSource source) =>

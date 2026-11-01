@@ -23,11 +23,18 @@ internal static class InfoCheck
                 using MediaFile media = Media.Open(file);
                 formatName = media.Native.Reader is IDemuxer dm ? dm.Format.Name : "*";
                 using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
+                if (!doc.RootElement.TryGetProperty("streams", out _))
+                {
+                    // ffprobe cannot open the file (free-format MPEG audio); the packets are checked against the constant-bit-rate twin by the unit tests.
+                    Console.WriteLine("  skipped (ffprobe lists no streams): " + file);
+                    continue;
+                }
+
                 // ffprobe lists Matroska attachments (fonts, cover art) as streams; they are not tracks here.
                 bool asf = media.Format == MediaFormatId.Asf;
                 // ASF: ffprobe turns WM/Picture attributes into attached-picture streams; here they are tags (the packet differential compares their bytes).
-                List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => (!e.TryGetProperty("codec_type", out JsonElement streamType) || streamType.GetString() != "attachment")
-                    && !(asf && e.TryGetProperty("disposition", out JsonElement disposition) && disposition.TryGetProperty("attached_pic", out JsonElement attached) && attached.GetInt32() == 1))];
+                // ID3v2 and APE pictures are listed the same way, as video streams flagged attached_pic.
+                List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => (!e.TryGetProperty("codec_type", out JsonElement streamType) || streamType.GetString() != "attachment") && !IsAttachedPicture(e))];
                 if (streams.Count != media.Tracks.Count && !(asf && string.Equals(Path.GetExtension(file), ".dvr-ms", StringComparison.OrdinalIgnoreCase)))
                 {
                     problems.Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}");
@@ -92,6 +99,28 @@ internal static class InfoCheck
                     long micro = media.ExactDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
                     // "Within one tick": one tick of the container's own clock, never finer than ffprobe's microsecond.
                     long tick = Math.Max(1, 1_000_000 / media.ExactDuration.Timescale);
+                    // A stream with no frame count has only an estimate (bytes over the early bit rate) on both sides, and the two estimates weigh the
+                    // tags and the bit rate differently; they must agree within 2%.
+                    bool estimated = media.Native.Reader is RecursiveAI.OneMedia.AudioStreams.AudioStreamDemuxer { IsDurationEstimated: true };
+                    if (estimated)
+                    {
+                        tick = Math.Max(tick, (long)(micro * 0.02));
+                    }
+
+                    // ffprobe counts every frame of a LAME/Info stream; ours drops the encoder delay and padding the tag states (gapless length).
+                    if (media.Tracks.Count > 0)
+                    {
+                        TrackEditInfo e = media.Tracks[0].Edit;
+                        tick += (e.Priming.IsKnown ? e.Priming.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks : 0) +
+                                (e.EndPadding.IsKnown ? e.EndPadding.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks : 0);
+                    }
+
+                    // ffprobe divides the file size by the bit rate of the first AMR frame header and counts the magic bytes; ours counts frames.
+                    if (media.Format == MediaFormatId.Amr)
+                    {
+                        tick = Math.Max(tick, (long)(micro * 0.06));
+                    }
+
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
                     {
                         problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
@@ -158,6 +187,10 @@ internal static class InfoCheck
         using JsonDocument doc = JsonDocument.Parse(json);
         return !doc.RootElement.TryGetProperty("streams", out JsonElement streams) || streams.GetArrayLength() == 0;
     }
+
+    // ffprobe lists an ID3v2 or APE picture as a video stream flagged attached_pic; pictures are tags here.
+    private static bool IsAttachedPicture(JsonElement stream) =>
+        stream.TryGetProperty("disposition", out JsonElement d) && d.TryGetProperty("attached_pic", out JsonElement a) && a.GetInt32() == 1;
 
     private static void Compare(MediaTrack t, JsonElement s, List<string> problems)
     {

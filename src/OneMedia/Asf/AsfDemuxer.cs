@@ -3,6 +3,7 @@ using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags;
 using RecursiveAI.OneMedia.Tags.Asf;
+using RecursiveAI.OneMedia.Tags.Id3;
 
 namespace RecursiveAI.OneMedia.Asf;
 
@@ -300,6 +301,24 @@ internal static class AsfMetadataReader
                 catch (MediaLimitExceededException e)
                 {
                     defects.Add(DefectKind.LimitReached, DefectSeverity.Error, e.Offset, e.Message, "tags.limit");
+                }
+            }
+        }
+
+        // An 'ID3' attribute holds a whole ID3v2 tag (observed in WMA files tagged by common converters); its frames are read as native tags too.
+        // The binary attribute stays as it is.
+        if (bytes is not null)
+        {
+            foreach (ITagContainer c in containers.ToArray())
+            {
+                foreach (NativeTag t in c.Tags)
+                {
+                    if (t.System == TagSystems.Asf && t.Key == "ID3" && t.Kind == TagValueKind.Binary && t.ValueRange.Length >= Id3Header.HeaderSize
+                        && (bytes is not SparseSource sp || sp.Has(t.ValueRange.Offset))
+                        && Id3Tag.TryRead(bytes, t.ValueRange.Offset, out Id3Tag? id3, limits, defects) && id3 is not null)
+                    {
+                        containers.Add(id3);
+                    }
                 }
             }
         }

@@ -1,3 +1,4 @@
+using RecursiveAI.OneMedia;
 using System.Globalization;
 using System.Text;
 using OneAudio;
@@ -81,7 +82,7 @@ internal static class AudioDecodeCheck
         AudioCodecRegistry nativeRegistry = new AudioCodecRegistry().AddMp4().AddAac().AddAmrNb().AddAmrWb();
         if (!iso)
         {
-            string target = codec switch { "opus" or "vorbis" => ".ogg", "flac" => ".flac", "aac" => ".m4a", "mp3" => ".mp3", _ => ".mka" };
+            string target = codec switch { "opus" or "vorbis" => ".ogg", "flac" => ".flac", "aac" => ".m4a", "mp3" => ".mp3", "amr-nb" or "amr-wb" => ".3gp", _ => ".mka" };
             nativePath = Path.Combine(work, Path.GetFileNameWithoutExtension(file) + "-native" + target);
             using (System.Diagnostics.Process p = Oracle.Start("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-map", "0:" + streamIndex.ToString(CultureInfo.InvariantCulture), "-c", "copy", nativePath], redirectStdErr: true))
             {
@@ -93,14 +94,15 @@ internal static class AudioDecodeCheck
                 }
             }
 
-            nativeRegistry = new AudioCodecRegistry().AddOgg().AddVorbis().AddOpus().AddFlac().AddMp4().AddAac().AddMp3();
+            nativeRegistry = new AudioCodecRegistry().AddOgg().AddVorbis().AddOpus().AddFlac().AddMp4().AddAac().AddMp3().AddAmrNb().AddAmrWb();
         }
 
         AudioCodecRegistry ours = MediaAudioExtensions.CreateRegistry();
         IAudioDecoder a;
         try
         {
-            a = AudioDecoder.OpenFile(file, ours);
+            // Elementary streams go through the OneMedia reader and its decode path (the Xing frame leads MP3; ADTS headers are stripped).
+            a = ext is ".aac" or ".amr" or ".awb" or ".mp3" ? Media.Open(file).Decode(registry: ours) : AudioDecoder.OpenFile(file, ours);
         }
         catch (UnsupportedAudioFormatException e)
         {
@@ -144,7 +146,7 @@ internal static class AudioDecodeCheck
         {
             foreach (bool skipNative in new[] { true, false })
             {
-                using IAudioDecoder x = AudioDecoder.OpenFile(ourPath, ours);
+                using IAudioDecoder x = Path.GetExtension(ourPath).ToLowerInvariant() is ".aac" or ".amr" or ".awb" or ".mp3" ? Media.Open(ourPath).Decode(registry: ours) : AudioDecoder.OpenFile(ourPath, ours);
                 using IAudioDecoder y = AudioDecoder.OpenFile(nativePath, native);
                 if (x.Format.Channels != y.Format.Channels)
                 {

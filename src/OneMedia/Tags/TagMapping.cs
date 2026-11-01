@@ -32,6 +32,11 @@ public static class TagMappingTable
     private const string ExifToolH264 = "ExifTool H264 tags (MDPM)";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string AsfDoc = "ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media";
+    private const string PicardId3 = "Picard tag map, ID3v2.3/2.4 column (CC0)";
+    private const string PicardApe = "Picard tag map, APEv2 column (CC0)";
+    private const string ExifToolId3 = "ExifTool ID3 tags";
+    private const string Id3v1Doc = "ID3v1 and v1.1 (id3.org)";
+    private const string Lyrics3Doc = "Lyrics3 v2.00 (id3.org)";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
 
@@ -166,6 +171,66 @@ public static class TagMappingTable
         Row(CommonField.Title, MpegTs.MpegTsTagSystems.ServiceInformation, DvbDoc, "the present event's name first, then the service name", "event_name", "service_name"),
         Row(CommonField.Description, MpegTs.MpegTsTagSystems.ServiceInformation, DvbDoc, "the present event's short text", "event_text"),
         Row(CommonField.Date, MpegTs.MpegTsTagSystems.CameraData, ExifToolH264, "the camera clock in AVCHD; local time of unknown zone", "DateTimeOriginal"),
+
+        // ID3v2. The v2.2 identifier of each frame follows the v2.3/2.4 one; text values of several strings are joined with "; ".
+        Row(CommonField.Title, TagSystems.Id3v2, PicardId3, "", "TIT2", "TT2"),
+        Row(CommonField.Artist, TagSystems.Id3v2, PicardId3, "", "TPE1", "TP1"),
+        Row(CommonField.AlbumArtist, TagSystems.Id3v2, PicardId3, "", "TPE2", "TP2"),
+        Row(CommonField.Album, TagSystems.Id3v2, PicardId3, "", "TALB", "TAL"),
+        Row(CommonField.Composer, TagSystems.Id3v2, PicardId3, "", "TCOM", "TCM"),
+        Row(CommonField.Genre, TagSystems.Id3v2, PicardId3, "content type: (17) references, numbers and RX/CR are resolved to names (ID3v2.3 §4.2.1)", "TCON", "TCO"),
+        Row(CommonField.Comment, TagSystems.Id3v2, PicardId3, "the comment with an empty description; other descriptions stay on the native list", "COMM", "COM"),
+        Row(CommonField.Date, TagSystems.Id3v2, PicardId3, "2.4 recording time; 2.3 and 2.2 hold only the year here (the day and month are in TDAT)", "TDRC", "TYER", "TYE"),
+        Row(CommonField.Copyright, TagSystems.Id3v2, PicardId3, "", "TCOP", "TCR"),
+        Row(CommonField.Encoder, TagSystems.Id3v2, ExifToolId3, "TSSE is the software and settings used for encoding", "TSSE", "TSS"),
+        Row(CommonField.EncodedBy, TagSystems.Id3v2, PicardId3, "", "TENC", "TEN"),
+        Row(CommonField.Grouping, TagSystems.Id3v2, PicardId3, "iTunes writes GRP1; TIT1 is the content group description", "GRP1", "GP1", "TIT1", "TT1"),
+        Row(CommonField.Lyrics, TagSystems.Id3v2, PicardId3, "unsynchronised lyrics", "USLT", "ULT"),
+        Row(CommonField.TrackNumber, TagSystems.Id3v2, PicardId3, "the part before the slash of TRCK", "TRCK", "TRK"),
+        Row(CommonField.TrackTotal, TagSystems.Id3v2, PicardId3, "the part after the slash of TRCK", "TRCK", "TRK"),
+        Row(CommonField.DiscNumber, TagSystems.Id3v2, PicardId3, "the part before the slash of TPOS", "TPOS", "TPA"),
+        Row(CommonField.DiscTotal, TagSystems.Id3v2, PicardId3, "the part after the slash of TPOS", "TPOS", "TPA"),
+        Row(CommonField.ReplayGainTrackGain, TagSystems.Id3v2, PicardId3, "user text frames; the description is compared without regard to case", "TXXX:REPLAYGAIN_TRACK_GAIN", "TXX:REPLAYGAIN_TRACK_GAIN"),
+        Row(CommonField.ReplayGainTrackPeak, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_TRACK_PEAK", "TXX:REPLAYGAIN_TRACK_PEAK"),
+        Row(CommonField.ReplayGainAlbumGain, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_ALBUM_GAIN", "TXX:REPLAYGAIN_ALBUM_GAIN"),
+        Row(CommonField.ReplayGainAlbumPeak, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_ALBUM_PEAK", "TXX:REPLAYGAIN_ALBUM_PEAK"),
+
+        // APEv2. Keys are compared without regard to case, as the specification recommends for readers.
+        Row(CommonField.Title, TagSystems.Ape, PicardApe, "", "Title"),
+        Row(CommonField.Artist, TagSystems.Ape, PicardApe, "", "Artist"),
+        Row(CommonField.AlbumArtist, TagSystems.Ape, PicardApe, "", "Album Artist", "AlbumArtist"),
+        Row(CommonField.Album, TagSystems.Ape, PicardApe, "", "Album"),
+        Row(CommonField.Composer, TagSystems.Ape, PicardApe, "", "Composer"),
+        Row(CommonField.Genre, TagSystems.Ape, PicardApe, "", "Genre"),
+        Row(CommonField.Comment, TagSystems.Ape, PicardApe, "", "Comment"),
+        Row(CommonField.Date, TagSystems.Ape, PicardApe, "", "Year", "Date"),
+        Row(CommonField.Copyright, TagSystems.Ape, PicardApe, "", "Copyright"),
+        Row(CommonField.Grouping, TagSystems.Ape, PicardApe, "", "Grouping"),
+        Row(CommonField.Lyrics, TagSystems.Ape, PicardApe, "", "Lyrics", "Unsynced Lyrics"),
+        Row(CommonField.EncodedBy, TagSystems.Ape, PicardApe, "", "EncodedBy"),
+        Row(CommonField.TrackNumber, TagSystems.Ape, PicardApe, "the part before the slash", "Track"),
+        Row(CommonField.TrackTotal, TagSystems.Ape, PicardApe, "the part after the slash", "Track"),
+        Row(CommonField.DiscNumber, TagSystems.Ape, PicardApe, "the part before the slash", "Disc"),
+        Row(CommonField.DiscTotal, TagSystems.Ape, PicardApe, "the part after the slash", "Disc"),
+        Row(CommonField.ReplayGainTrackGain, TagSystems.Ape, PicardApe, "", "REPLAYGAIN_TRACK_GAIN"),
+        Row(CommonField.ReplayGainTrackPeak, TagSystems.Ape, PicardApe, "", "REPLAYGAIN_TRACK_PEAK"),
+        Row(CommonField.ReplayGainAlbumGain, TagSystems.Ape, PicardApe, "", "REPLAYGAIN_ALBUM_GAIN"),
+        Row(CommonField.ReplayGainAlbumPeak, TagSystems.Ape, PicardApe, "", "REPLAYGAIN_ALBUM_PEAK"),
+
+        // ID3v1 and v1.1: the fixed fields. After APEv2, so that its longer, untruncated values win when both tags are present.
+        Row(CommonField.Title, TagSystems.Id3v1, Id3v1Doc, "", "title"),
+        Row(CommonField.Artist, TagSystems.Id3v1, Id3v1Doc, "", "artist"),
+        Row(CommonField.Album, TagSystems.Id3v1, Id3v1Doc, "", "album"),
+        Row(CommonField.Comment, TagSystems.Id3v1, Id3v1Doc, "", "comment"),
+        Row(CommonField.Date, TagSystems.Id3v1, Id3v1Doc, "the year", "year"),
+        Row(CommonField.Genre, TagSystems.Id3v1, Id3v1Doc, "the genre number, resolved through the ID3v1 list with the Winamp extensions", "genre"),
+        Row(CommonField.TrackNumber, TagSystems.Id3v1, Id3v1Doc, "ID3v1.1 only", "track"),
+
+        // Lyrics3 v2.00 fields.
+        Row(CommonField.Title, TagSystems.Lyrics3, Lyrics3Doc, "extended title", "ETT"),
+        Row(CommonField.Artist, TagSystems.Lyrics3, Lyrics3Doc, "extended artist", "EAR"),
+        Row(CommonField.Album, TagSystems.Lyrics3, Lyrics3Doc, "extended album", "EAL"),
+        Row(CommonField.Lyrics, TagSystems.Lyrics3, Lyrics3Doc, "version 2.00 field LYR; the whole block in version 1", "LYR", "LYRICS"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

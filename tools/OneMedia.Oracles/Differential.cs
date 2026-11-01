@@ -21,6 +21,11 @@ internal static class Readers
         {
             registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(k));
         }
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Id3AudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.MpegAudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AdtsFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Ac3Format());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AmrFormat());
         return registry;
     }
 }
@@ -150,7 +155,7 @@ internal sealed class Exceptions
     }
 
     /// <summary>The rule excusing this difference, or null.</summary>
-    public Rule? Match(string format, string field, string file, MediaTrack? track, string codecName, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta, bool isLast = false)
+    public Rule? Match(string format, string field, string file, MediaTrack? track, string codecName, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta, bool isLast = false, long index = 0)
     {
         foreach (Rule r in _rules)
         {
@@ -162,7 +167,9 @@ internal sealed class Exceptions
             if (r.Kind == "ignore" ||
                 (r.Kind == "ffprobe-na" && theirsUnknown) ||
                 (r.Kind == "ours-na" && oursUnknown) ||
-                (r.Kind.StartsWith("tolerance=", StringComparison.Ordinal) && Math.Abs(delta) <= long.Parse(r.Kind.AsSpan(10), CultureInfo.InvariantCulture)))
+                (r.Kind.StartsWith("tolerance=", StringComparison.Ordinal) && Math.Abs(delta) <= long.Parse(r.Kind.AsSpan(10), CultureInfo.InvariantCulture)) ||
+                // drift=N: the other side truncates every packet duration to its integer scale, so the error grows by up to N ticks per packet.
+                (r.Kind.StartsWith("drift=", StringComparison.Ordinal) && Math.Abs(delta) <= long.Parse(r.Kind.AsSpan(6), CultureInfo.InvariantCulture) * (index + 1)))
             {
                 return r;
             }
@@ -373,7 +380,7 @@ internal static class Comparer
 
     private static void Note(FileReport r, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, long last, int track, long index, string field, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta)
     {
-        Exceptions.Rule? rule = ex.Match(format, field, file, t, codec, theirs, ours, theirsUnknown, oursUnknown, delta, index >= 0 && index == last);
+        Exceptions.Rule? rule = ex.Match(format, field, file, t, codec, theirs, ours, theirsUnknown, oursUnknown, delta, index >= 0 && index == last, index);
         Dictionary<string, long> bucket = rule is null ? r.Differences : r.Excepted;
         bucket[field] = bucket.GetValueOrDefault(field) + 1;
         if (rule is not null)

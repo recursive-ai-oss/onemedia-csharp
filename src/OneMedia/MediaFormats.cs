@@ -35,16 +35,17 @@ public static class MediaFormats
         registry.Add(new FlacSniffer());
         registry.Add(new AiffSniffer());
         registry.Add(new CafSniffer());
-        registry.Add(new Id3Sniffer());
-        registry.Add(new MpegAudioSniffer());
-        registry.Add(new AdtsSniffer());
-        registry.Add(new AmrSniffer());
+        registry.Add(new AudioStreams.Id3AudioFormat());
+        registry.Add(new AudioStreams.MpegAudioFormat());
+        registry.Add(new AudioStreams.AdtsFormat());
+        registry.Add(new AudioStreams.AmrFormat());
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.IvfFormat());
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.H264));
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Hevc));
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Vvc));
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.MpegVideo));
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Av1Obu));
+        registry.Add(new AudioStreams.Ac3Format());
         return registry;
     }
 }

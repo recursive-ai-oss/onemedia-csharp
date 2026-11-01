@@ -27,6 +27,11 @@
     <EmbeddedResource Include="../../testdata/mpeg/mpeg2-mp2.vob" LogicalName="mpeg2-mp2.vob" />
     <EmbeddedResource Include="../../testdata/mpeg/h264.264" LogicalName="h264.264" />
     <EmbeddedResource Include="../../testdata/mpeg/vp8.ivf" LogicalName="vp8.ivf" />
+    <EmbeddedResource Include="../../testdata/audio-es/lame-info.mp3" LogicalName="lame-info.mp3" />
+    <EmbeddedResource Include="../../testdata/audio-es/lc.aac" LogicalName="lc.aac" />
+    <EmbeddedResource Include="../../testdata/audio-es/ac3.ac3" LogicalName="ac3.ac3" />
+    <EmbeddedResource Include="../../testdata/audio-es/nb.amr" LogicalName="nb.amr" />
+    <EmbeddedResource Include="../../testdata/audio-es/tagged/id3v24-basic.mp3" LogicalName="id3v24-basic.mp3" />
   </ItemGroup>
 
 </Project>

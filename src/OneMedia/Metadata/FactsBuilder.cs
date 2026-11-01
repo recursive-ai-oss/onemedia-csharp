@@ -112,6 +112,13 @@ internal sealed class FactsBuilder(DefectLog defects)
             case TagSystems.Asf when t.TrackId == 0 && t.Key == "WM/ToolName":
                 AddString(Software, 20, t, text, source);
                 break;
+            case TagSystems.Id3v2 when t.Key == "TDRC":
+                // ID3v2.4 §4.2.5: an ISO 8601 timestamp, of which any trailing part may be missing; a bare year is not a capture time.
+                AddTime(55, t, text, source, "ID3v2.4 recording time");
+                break;
+            case TagSystems.Id3v2 when t.Key is "TSSE" or "TSS":
+                AddString(Software, 70, t, text, source);
+                break;
             case TagSystems.ITunes when t.Key == "©day":
                 AddTime(RankDayTag, t, text, source, "iTunes date text");
                 break;
