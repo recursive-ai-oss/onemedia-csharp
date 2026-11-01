@@ -626,6 +626,9 @@ public sealed class Av1CodecConfigurationRecord
         SequenceHeader.TryFind(ConfigObus.Span, out SequenceHeader h, out _);
         bool found = h.MaxFrameWidth != 0;
         ChromaFormat chroma = Monochrome ? ChromaFormat.Monochrome : !ChromaSubsamplingX && !ChromaSubsamplingY ? ChromaFormat.Yuv444 : ChromaSubsamplingX && !ChromaSubsamplingY ? ChromaFormat.Yuv422 : ChromaFormat.Yuv420;
+        (int rateN, int rateD) = found && h.EqualPictureInterval && h.NumUnitsInDisplayTick != 0
+            ? Mpeg.FrameRates.Reduce((int)Math.Min(h.TimeScale, int.MaxValue), (int)Math.Min((long)h.NumUnitsInDisplayTick * h.NumTicksPerPicture, int.MaxValue))
+            : (0, 0);
         parameters = new CodecParameters
         {
             Codec = CodecId.Av1,
@@ -638,8 +641,8 @@ public sealed class Av1CodecConfigurationRecord
             BitDepth = BitDepth,
             Chroma = chroma,
             Color = found ? h.Color : ColorInfo.Unspecified,
-            FrameRateNumerator = found && h.EqualPictureInterval && h.NumUnitsInDisplayTick != 0 ? (int)Math.Min(h.TimeScale, int.MaxValue) : 0,
-            FrameRateDenominator = found && h.EqualPictureInterval && h.NumUnitsInDisplayTick != 0 ? (int)Math.Min((long)h.NumUnitsInDisplayTick * h.NumTicksPerPicture, int.MaxValue) : 0,
+            FrameRateNumerator = rateN,
+            FrameRateDenominator = rateD,
         };
         return true;
     }

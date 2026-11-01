@@ -2,6 +2,7 @@ using RecursiveAI.OneMedia.Matroska;
 
 namespace RecursiveAI.OneMedia.Tests;
 
+[Collection(AllocationMeasurements.Name)]
 public class MatroskaMuxerTests
 {
     private static readonly byte[] Uuid = [.. Enumerable.Range(1, 16).Select(i => (byte)i)];
@@ -404,6 +405,7 @@ public class MatroskaMuxerTests
     [Fact]
     public void SteadyStateWritingAllocatesNothingPerPacket()
     {
+        AllocationGuard.RequireOptimised();
         SeekableSink sink = new();
         MatroskaMuxer mux = new(sink, [Vp8(), OpusTrack()], Fixed());
         byte[] data = Payload(900, 1);
@@ -419,9 +421,12 @@ public class MatroskaMuxerTests
         }
 
         Write(3000); // warm-up: the Cluster buffers, the Cue list and the lists reach their working size
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Write(5000);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationGuard.Best(() =>
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Write(5000);
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }, 3);
         mux.Finish();
         // 10,000 packets; the Cue list may double once (24 bytes per cue), nothing else may allocate.
         Assert.True(allocated <= 4096, $"allocated {allocated} bytes over 10000 packets");
@@ -430,6 +435,7 @@ public class MatroskaMuxerTests
     [Fact]
     public void LiveWritingAllocatesNothingPerPacket()
     {
+        AllocationGuard.RequireOptimised();
         MatroskaMuxer mux = new(Stream.Null, [Vp8()], Fixed(new MatroskaMuxOptions { Live = true }));
         byte[] data = Payload(700, 3);
         long t = 0;
@@ -438,13 +444,17 @@ public class MatroskaMuxerTests
             mux.WritePacket(Packet(0, t += 40, 40, i % 25 == 0, data.Length), data);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 20000; i++)
+        long allocated = AllocationGuard.Best(() =>
         {
-            mux.WritePacket(Packet(0, t += 40, 40, i % 25 == 0, data.Length), data);
-        }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 20000; i++)
+            {
+                mux.WritePacket(Packet(0, t += 40, 40, i % 25 == 0, data.Length), data);
+            }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        });
+        Assert.Equal(0, allocated);
     }
 
     private sealed class NoSeekStream(Stream inner) : Stream

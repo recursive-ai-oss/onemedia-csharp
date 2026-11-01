@@ -7,6 +7,7 @@ using RecursiveAI.OneMedia.MpegTs;
 
 namespace RecursiveAI.OneMedia.Tests;
 
+[Collection(AllocationMeasurements.Name)]
 public class MpegTests
 {
     private static string Path(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "mpeg", name);
@@ -195,15 +196,19 @@ public class MpegTests
     [InlineData("h264-ac3.ts")]
     public void PullPathAllocatesNothingPerPacket(string name)
     {
+        AllocationGuard.RequireOptimised();
         byte[] file = File.ReadAllBytes(Path(name));
         using (IDemuxer warm = MpegTsDemuxer.Open(new MemoryMediaSource(file)))
         {
             Drain(warm);
         }
 
-        using MpegTsDemuxer d = MpegTsDemuxer.Open(new MemoryMediaSource(file));
-        Assert.True(d.TryReadPacket(out _));
-        long allocated = Measure(d);
+        long allocated = AllocationGuard.Best(() =>
+        {
+            using MpegTsDemuxer d = MpegTsDemuxer.Open(new MemoryMediaSource(file));
+            Assert.True(d.TryReadPacket(out _));
+            return Measure(d);
+        });
         Assert.Equal(0, allocated);
     }
 

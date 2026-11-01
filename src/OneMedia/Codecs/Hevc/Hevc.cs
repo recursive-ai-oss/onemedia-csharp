@@ -973,6 +973,9 @@ public sealed class HevcDecoderConfigurationRecord
         {
             if (a.NalUnitType == HevcNalType.Sps && a.Units.Count > 0 && SequenceParameterSet.TryParse(a.Units[0].Span, out SequenceParameterSet sps))
             {
+                (int rateN, int rateD) = sps.HasTimingInfo && sps.NumUnitsInTick != 0
+                    ? Mpeg.FrameRates.Reduce((int)Math.Min(sps.TimeScale, int.MaxValue), (int)Math.Min(sps.NumUnitsInTick, int.MaxValue))
+                    : (0, 0);
                 parameters = new CodecParameters
                 {
                     Codec = CodecId.Hevc,
@@ -988,8 +991,8 @@ public sealed class HevcDecoderConfigurationRecord
                     IsInterlaced = sps.FieldSeq,
                     SarWidth = sps.SarWidth,
                     SarHeight = sps.SarHeight,
-                    FrameRateNumerator = sps.HasTimingInfo && sps.NumUnitsInTick != 0 ? (int)Math.Min(sps.TimeScale, int.MaxValue) : 0,
-                    FrameRateDenominator = sps.HasTimingInfo && sps.NumUnitsInTick != 0 ? (int)Math.Min(sps.NumUnitsInTick, int.MaxValue) : 0,
+                    FrameRateNumerator = rateN,
+                    FrameRateDenominator = rateD,
                     ReorderFrames = sps.MaxNumReorderPics,
                     NalLengthSize = LengthSize,
                 };
