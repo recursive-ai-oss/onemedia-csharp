@@ -196,15 +196,23 @@ adds leading empty edits) and lists the following as explained, never as agreeme
 
 Everything else (size, byte offset, key flag, durations, timestamps) matches on every packet of every compared file.
 
-## Windows Shell evidence (Media Foundation sample comparison pending)
+## Windows evidence: Media Foundation and the Shell
 
-The same Windows run (see docs/asf.md) asked the Shell about 8 MP4-family files (`h264-aac.mp4`, `h264-aac-negative-cts.mp4`, fragmented `frag-1000.mp4`, `cat-two-parts.mp4`, `h264-pcm16.mov`, `MOV00001_sonyk750i.3gp`, `audio-alac.m4a`, `tx3g-sub.mp4`).
+The Windows runs described in docs/asf.md also put 8 MP4-family files through the Media Foundation source reader and the Shell: `h264-aac.mp4` (edit list, B-frames), `h264-aac-negative-cts.mp4` (negative composition offsets),
+fragmented `frag-1000.mp4`, `cat-two-parts.mp4` (two sample entries), `h264-pcm16.mov`, `MOV00001_sonyk750i.3gp` (H.263 + AMR-NB), `audio-alac.m4a` and `tx3g-sub.mp4`. Raw output is not committed.
 
-- **Duration:** 8/8 equal to the millisecond, including the edit-listed, fragmented and two-part files (the Shell shows presentation time after edits, as we do).
-- **Streams and sizes:** video width/height and audio rate/channels agree on all files. Formats: `avc1` = FourCC `H264`, `s263` = `H263`, `mp4a` AAC = `{00001610-...}`, `samr` and `alac` come back as MPEG-4 sample-entry GUIDs (`{73616D72-767A-494D-B478-F29D25DC9037}`, `{616C6163-...}`); `sowt` PCM is plain PCM (`{00000001-...}`).
-- **Dates:** `System.Media.DateEncoded` equals `mvhd` creation time taken as UTC with no zone shift (`tx3g-sub.mp4` 2026-10-31 14:10:29, the 3GP 2005-10-09 13:05:01), the same as our capture time candidate.
-- **Tags:** none of these files carries `ilst` tags; the Shell shows no Title or Author and we report only the `Encoder` of `tx3g-sub.mp4`.
-- **Thumbnails:** produced for all files with video (176x144 to 320x240), none for the M4A without cover art.
-- **Text track:** `tx3g-sub.mp4`: the Shell says nothing of the `tx3g` track.
-
-Pending: Media Foundation's own packets (sample times, sizes, hashes) for these files against ours, including negative composition offsets, the fragmented file and the two sample entries of `cat-two-parts.mp4`.
+- **Streams:** all 8 files give the same kinds, codecs, sizes and audio rates and channels as ours. MF numbers the streams itself (audio 1, video 2) and not by `tkhd` track id, so ids are matched by kind. MF lists no
+  `tx3g` text stream (ours lists it). MF does not state rate and channels for AMR-NB (`samr`).
+- **Duration:** 8 of 8 equal to the 100 ns tick (MF applies the edit list's duration, as `MediaTrack.Edit` does).
+- **Samples:** 15 streams, every sample read. Counts equal on 14; the exception is the PCM track of `h264-pcm16.mov`, 118 MF samples against 188 of ours with the same 384,000 bytes (MF hands out PCM in larger units).
+  Byte totals equal on audio (AAC, ALAC, AMR-NB: first 20 sizes and SHA-256 equal on all) and on the H.263 video (all 20). **H.264:** MF delivers Annex B (`H264` subtype), ours the stored length-prefixed form. With our 4-byte NAL lengths
+  replaced by start codes, the first 20 samples equal MF's in size and SHA-256 on all 6 H.264 files except the IDR frame (19 of 20); the 20th (an IDR frame) differs by 35 bytes: MF prepends the SPS and PPS (4 key frames x 35 = 140 bytes: MF 160,627 against 160,487 of ours).
+  Key-frame counts equal (4, 8 for the two-part file).
+- **Times:** MF reports the exact time truncated to 100 ns, we round to nearest, so many times differ by exactly 1 tick (for example 426666 against 426667); the largest difference on the plain files is that 1 tick. **Edit lists:** every file here has `media_time` 1024
+  (video: first composition offset 666,667 ticks of 100 ns; audio: 21.3 ms of AAC priming) except the negative-offset file's video (0). On the three non-fragmented files MF's first times equal our packet times (video first sample 666,666, audio 0), i.e. it did not
+  shift by `media_time`. On the fragmented `frag-1000.mp4` (whose edit list states a duration of 0) MF *did* apply it: video starts at 0 (ours 666,667), audio's first two samples both come out at 0 (the priming sample at a negative time is clamped to 0, as on ASF). We keep packet times on the
+  media timeline and report edits separately (see Time), so this is a definition difference, not a defect; when a presentation-time comparison is wanted, `PresentationTime` gives ours after the edit.
+- **Frame rate:** MF reports the nominal rate; ours is the average over the track's media duration. They differ on two MP4Box-written files: `tx3g-sub.mp4` 30 against 1800/61 (29.51), `cat-two-parts.mp4` 29.92 against 3686400/124231 (29.67). The rest agree within
+  MF's 100 ns frame duration. Follow-up: report the nominal rate (the stts delta that most samples share, or the video's VUI timing) beside the average.
+- **Shell:** durations equal to the millisecond (8 of 8); sizes, rates and codec tags agree; `System.Media.DateEncoded` equals `mvhd` creation time read as UTC with no zone shift (`tx3g-sub.mp4` 2026-10-31 14:10:29, the 3GP 2005-10-09 13:05:01), the same as our capture-time candidate.
+  No file carries `ilst` tags; the Shell shows no Title or Author and we report only the `Encoder` of `tx3g-sub.mp4`. Thumbnails for all files with video (176x144 to 320x240), none for the M4A.

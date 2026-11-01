@@ -123,32 +123,62 @@ DVR-MS binary streams are listed as Binary tracks (no stream typing); no resync 
 (Simple Index only); an `ID3` attribute stays a binary tag and its ID3v2 frames are also read as `id3v2` native tags (cover art included); DRM details (license URL, key id) not exposed;
 no ASF writing or tag editing; WMA audio does not decode (OneAudio has no WMA decoder; MP3 in ASF decodes through `.Audio`).
 
-## Windows Shell evidence (Media Foundation packet comparison pending)
+## Windows evidence: Media Foundation and the Shell
 
-One run on Windows 11 Enterprise evaluation (build 26300, `mfplat.dll` 10.0.26100.9278, `mfasfsrcsnk.dll` 10.0.26100.9278, `wmvcore.dll` 12.0.26100.9278) asked the
-Shell's property system and thumbnail provider about 18 ASF/WMV/WMA files (8 written by ffmpeg, 10 published samples) and compared the answers with `onemedia info --json` on the same files. The Media Foundation probe
-crashed in that run because of a COM declaration bug (since fixed, in `tools/mf-check`), so **the Media Foundation stream, sample time and size comparison is pending**; the Shell is a separate black-box oracle (it reads the files through
-Windows' own ASF property handler).
+Two runs on Windows 11 Enterprise evaluation (build 26300; `mfplat.dll` 10.0.26100.9278, `mf.dll` 10.0.26100.8521, `mfreadwrite.dll` 10.0.26100.9278,
+`mfasfsrcsnk.dll` 10.0.26100.9278, `wmvcore.dll` 12.0.26100.9278) put 18 ASF/WMV/WMA files (8 written by ffmpeg, 10 published samples) and 8 MP4-family files (docs/isobmff.md) through Windows' own media stack
+as a black box: the Media Foundation source resolver, presentation and stream descriptors and source reader (`tools/mf-check/MfProbe.cs`), the Shell property system, and the Shell thumbnail provider. Our side is
+`onemedia info --json` and a packet dump of the same files (time converted to 100 ns, rounded to nearest). The first run's probe crashed on a COM declaration bug; the second ran clean (26 files, 1.7 min). Raw output is not committed: it carries the published samples' tags.
 
-| Property | Result on 18 files |
+### Media Foundation: streams, duration, protection (18 files)
+
+- **Streams:** 62 of 67 audio/video streams (all 26 files) agree on kind, codec tag (WAVE format tag or video FourCC), audio rate and channels, video size and frame rate. The five that differ: `fps_sample1.dvr-ms` video (MF names MPEG-2 video, ours has an empty codec name), two
+  frame rates that are the same value to MF's 100 ns frame duration (`nintendothemesacappellax.wmv` 24000/1001, the 3GP 9.53 fps), and two MP4 frame rates that really differ (docs/isobmff.md). 17 of 18 ASF files have the same stream count (`fps_sample1.dvr-ms`: MF 3 streams, audio/other/video; ours 2 data tracks and a video). The three protected files show the same streams as ours. On `asf_file_with_multiple_video_and_audio_streams.asf` MF lists the same 26 streams (23 audio, 3 video) and only the two streams that carry data have samples, as in ours. MF's stream identifier is the ASF stream number, equal to our track id.
+- **Duration** (`MF_PD_DURATION`): 17 of 17 files with a play duration equal ours to the 100 ns tick (`fps_sample1.dvr-ms` is one tick off, 39099999 against 39100000: MF truncates where we round the exact value); the broadcast file with play duration 0 is 0 in MF and unknown in ours.
+- **Protection:** 3 of 3 protected files (`industrial.wmv`, `WMA_protected_napster.wma`, `wma_with_metadata_library_object_tag.wma`) have `MF_SD_PROTECTED` = 1 on every stream, and the 15 others have none, as `IsProtected` says. MF's presentation attributes name the scheme and carry the licence acquisition URL and key id (`DRM` header; not exposed by us, see Gaps). `MFCreateSourceReaderFromMediaSource` fails with `0xC00D3700` on the three, so no sample times exist for them in MF; the protected-content path of Media Foundation is a separate documented mechanism that this probe does not use. That is the expected answer for protected files, not a probe fault: the three files are the only ones where the reader failed, and they are exactly the ones flagged protected.
+
+### Media Foundation: samples (15 readable files)
+
+The probe read every sample to the end of each stream. Over the 26 streams that carry samples (13,655 MF samples, 13,779 ours), **20 streams equal ours in count and byte total**, and on those the first 20 samples equal ours
+in size and SHA-256 (100%), and in time except `multivideo.asf`'s audio (below). The six streams that differ, each explained:
+
+| File / stream | MF vs ours | Explanation |
+|---|---|---|
+| `multivideo.asf` video 2 and 3 (two WMV1 streams) | 317 vs 353 and 1136 vs 1225 samples | MF starts each video stream at its first key frame: dropping our leading non-key packets (36 and 89, 2,782 and 63,356 bytes) leaves exactly MF's counts, byte totals and first times (90.66 s, 59.96 s). Our reader returns every packet |
+| `multivideo.asf` audio | counts and bytes equal; first 4 of 20 times differ | Our times are the object time less the preroll, and the first four packets come out negative (-15.57, -11.17, -7.89, -3.81 s); MF reports 0 for them (it clamps negative presentation times) and the rest are equal |
+| `asf_file_with_multiple_video_and_audio_streams.asf` video | 521 vs 522 | MF omits the last object (184 bytes at 10,396.44 s; ffprobe 7.0.2 delivers it too). The file is a broadcast capture with play duration 0 and no end marker; MF seems to hold back the final object of an open-ended stream. Not settled |
+| `fps_sample1.dvr-ms` (3 streams) | 53/54 audio, 119/118 data, 1540/1538 video samples | DVR-MS stores its streams as chunks that MF reassembles into frames; we list the chunks as data tracks (see Gaps). MF types them: audio `0x50` (MPEG-1 layer II) 48 kHz 2-channel, MPEG-2 video 720x480, and a third stream of a non-audio, non-video type. Byte totals are within 4,040 (audio) and 4 (video) |
+
+The Shell and MF agree on the codec tags for every file; `System.Video.FourCC` and `System.Audio.Format` (previous run) are the same values as MF's subtypes.
+
+### Multi-bitrate: `multivideo.asf` mutual exclusion
+
+The file holds one audio stream and two WMV1 video streams of 4 kbit/s (stream 2) and 88 kbit/s (stream 3), 240x180. MF's stream descriptors select streams 1 and 3 by default and leave stream 2 deselected, i.e. it treats the video
+streams as alternatives (the file's mutual-exclusion data), and offers stream 2 only when asked. We list all three as tracks with no relation between the two videos, so a remux that copies all tracks would write both. MF's own profile
+reading (`MFCreateASFContentInfo`, `IMFASFProfile::GetMutualExclusion`) was not in the second run (the function is exported from `mf.dll`, not `mfplat.dll`; the probe is fixed) and a re-run of `-Only multivideo` would list the exclusion records. Parsing the exclusion
+object is a follow-up (needs its layout from a non-Microsoft description or from a file; none is in Sources yet).
+
+### Shell properties and thumbnails (run 1)
+
+| Property | Result |
 |---|---|
-| Duration (`System.Media.Duration`, 100 ns) vs ours (play duration less preroll) | 17 equal to the millisecond; `asf_file_with_multiple_video_and_audio_streams.asf` (broadcast, play duration 0) is 0 in the Shell and unknown in ours. Matches MediaInfo and ffprobe (see above), not ExifTool |
-| Protected (`System.DRM.IsProtected`) vs `IsProtected` | 18/18: `industrial.wmv`, `WMA_protected_napster.wma` and `wma_with_metadata_library_object_tag.wma` are protected in both; the other 15 are not |
-| Title / Author | 8 of 9 tagged files equal (`wmav2-tagged`, `wmav2-cover`, `wmv2-wmav2-tagged`, `multivideo`, `industrial`, `WMA_protected_napster`, `wma_with_WmPicture`, `streaming_CBR-7K`: Title, and Author as `System.Author`, which the Shell repeats in `System.Music.Artist`); the 9 untagged files show nothing in both; the ninth tagged file is `wma_with_metadata_library_object_tag.wma` (below) |
-| Audio format tag, sample rate, channels | agree on every file the Shell reports (WMA v1/v2/Pro/Voice `0x160/0x161/0x162/0x0A`, MP3 `0x55`, PCM `0x01`) |
-| Video FourCC, frame size | agree (`WMV1/2/3`, `MP43`, `MJPG`, `DVR `; 41 of 41 audio/video size and rate checks over all 26 files incl. MP4) |
-| Album, genre, track number, composer, album artist, comment | the Shell's Album, Genre, track number, composer and album artist equal ours on the files compared by eye (for example `wmav2-tagged.wma`: Tone / Sine / Tones / Sound / 2 / C / Various) |
-| `System.Media.DateEncoded` | equals the `WM/EncodingTime` attribute (`wma_with_WmPicture.wma`: 2005-02-01 11:04:50, ExifTool `EncodingTime` 127517294900000000), not File Properties' creation date; we use the creation date for capture time (a candidate, with `WM/EncodingTime` kept as a native tag). `wma_with_metadata_library_object_tag.wma` carries both within a second of each other, and the Shell value equals our capture time there |
-| Thumbnail | produced for every file with a video stream except the DVR-MS file (64x64 to 512x288) and for the `WM/Picture` file (256x256); none for audio-only files without a picture, for `fps_sample1.dvr-ms` and for the three protected files |
+| Duration (`System.Media.Duration`) | 25 of 26 files equal to the millisecond (ASF 17 of 17, MP4 8 of 8); the broadcast file is 0 in the Shell and unknown in ours. Matches MediaInfo and ffprobe, not ExifTool (preroll) |
+| Protected (`System.DRM.IsProtected`) | 18 of 18 ASF files agree |
+| Title / Author | 8 of 9 tagged ASF files equal; the 9 untagged show nothing in both |
+| Audio format tag, rate, channels; video FourCC, size | 41 of 41 checks agree (all 26 files) |
+| Album, genre, track, composer, album artist, comment | equal on the files compared by eye (`wmav2-tagged.wma`: Tone / Sine / Tones / Sound / 2 / C / Various) |
+| `System.Media.DateEncoded` | equals `WM/EncodingTime`, not File Properties' creation date, which we use for capture time (`WM/EncodingTime` stays a native tag). On `wma_with_metadata_library_object_tag.wma` the two are within a second and the Shell value equals ours |
+| Thumbnail | for every file with a video stream except the DVR-MS file (64x64 to 512x288) and for the `WM/Picture` file (256x256); none for audio-only files without a picture, `fps_sample1.dvr-ms` and the protected files |
 
-Explained differences:
+**The open Title on `wma_with_metadata_library_object_tag.wma`, explained.** Its Content Description object is empty (34 bytes: five zero lengths); `Title` (offset 6256) and `Author` (6450) are attributes of the
+Metadata Library object. The Shell takes `System.Title` and `System.Author` from the Content Description only, so it shows nothing; we and ExifTool read the library attributes. The other two protected files carry their titles in the Content
+Description and the Shell shows them. Our reading is the superset; no change.
 
-- **Streams the Shell does not list.** It reports the first audio and first video stream only (`multivideo.asf`: 3 tracks ours, 1 audio + 1 video in the Shell; the 26-stream file: first audio and first video). Track lists are the Media Foundation probe's job.
-- **`wma_with_metadata_library_object_tag.wma`: Title and Author.** The Shell shows no Title, Author or Artist for this protected file, although the Content Description holds `Wheels` / `Cake` (ExifTool agrees with us). The two other protected files show their titles, so protection alone does not explain it. Open: the Media Foundation probe's presentation attributes should show whether Windows reads the Content Description at all.
-- **`wmav2-cover.wma`** was written by ffmpeg with the picture as an MJPEG video stream; Windows treats it as a video stream (frame size 64x64, FourCC `MJPG`), as we do.
-- **`fps_sample1.dvr-ms`:** the Shell reports a `DVR ` video stream at 720x480 and no audio; ours lists the video with an empty codec name and two data tracks (see Gaps).
+Other explained differences: the Shell lists the first audio and first video stream only; `wmav2-cover.wma` is an MJPEG video stream (`MJPG`, 64x64) in MF, the Shell and ours.
 
-The first run's raw output is not committed (it carries the published samples' tags).
+### Explorer and Photos
 
-Pending (Media Foundation, rerun): stream count and types per file, subtype GUIDs, presentation duration, `MF_SD_PROTECTED` per stream (the protected files' `0xC00D36E6` answers in the first run were `MF_E_ATTRIBUTENOTFOUND`
-from the probe's broken declaration, not a protected-content answer), ASF profile mutual exclusions for `multivideo.asf`, and sample times and sizes against our packets.
+The five screenshot files were opened (run 2, `-Screenshots`). Evidence is thin: the host console window stayed in front, hiding the Photos content area, and Explorer was captured in its list view, so tags and
+dates are not visible. What the captures show: Explorer lists all 18 files with the right type names (`WMA File`, `WMV File`, `ASF File`, `Microsoft Recorded TV` for the DVR-MS file); Photos opened `wmv2-wmav2-tagged.wmv`,
+`h264-aac.mp4`, `industrial.wmv` and `multivideo.asf` (window title = file name; for the protected file the edit button is greyed out); the launcher refused `wmav2-cover.wma` (audio, not a Photos type). Title and
+artist display is covered by the Shell properties above, not by the screenshots. A re-capture with Explorer's Details pane open and the console minimised would be needed for date and title display evidence; not planned.
