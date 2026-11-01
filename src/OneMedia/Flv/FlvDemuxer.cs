@@ -201,7 +201,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
     // FLV spec 10.1, "The FLV header": "FLV", version, type flags (bit 2 audio, bit 0 video), DataOffset (32 bits), then PreviousTagSize0.
     private void ReadHeader(CancellationToken ct)
     {
-        Span<byte> h = stackalloc byte[9];
+        Span<byte> h = stackalloc byte[9]; // fixed-size FLV header buffer, at most 11 bytes
         if (_input.Read(h, ct) < 9 || h[0] != 'F' || h[1] != 'L' || h[2] != 'V')
         {
             throw new MediaFormatException("The data does not start with an FLV header.") { Kind = DefectKind.MissingRequired, Offset = 0 };
@@ -229,7 +229,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
 
         DataOffset = dataOffset;
         _input.Skip(dataOffset - 9, ct);
-        Span<byte> prev = stackalloc byte[4];
+        Span<byte> prev = stackalloc byte[4]; // fixed-size FLV header buffer, at most 11 bytes
         if (_input.Read(prev, ct) < 4)
         {
             Defects.Add(DefectKind.Truncated, DefectSeverity.Warning, dataOffset, "The file ends right after the header.", "flv.truncated");
@@ -256,7 +256,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
     private bool ReadTagHeader(out TagHeader t, CancellationToken ct)
     {
         t = default;
-        Span<byte> h = stackalloc byte[TagHeaderSize];
+        Span<byte> h = stackalloc byte[TagHeaderSize]; // fixed-size FLV header buffer, at most 11 bytes
         long at = _input.Position;
         int got = _input.Read(h, ct);
         if (got < TagHeaderSize)
@@ -304,7 +304,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
 
     private bool ReadPreviousTagSize(in TagHeader t, CancellationToken ct)
     {
-        Span<byte> p = stackalloc byte[4];
+        Span<byte> p = stackalloc byte[4]; // fixed-size FLV header buffer, at most 11 bytes
         int got = _input.Read(p, ct);
         _currentTagEnd = _input.Position;
         if (got == 4 && BinaryPrimitives.ReadUInt32BigEndian(p) != (uint)(TagHeaderSize + t.Size) && !_prevSizeReported)
@@ -950,7 +950,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
 
         // The last four bytes of a complete file are the size of the last tag (spec "PreviousTagSize"), which locates its header.
         long length = _random.Length;
-        Span<byte> tail = stackalloc byte[4];
+        Span<byte> tail = stackalloc byte[4]; // fixed-size FLV header buffer, at most 11 bytes
         if (length < _firstTag + TagHeaderSize + 4 || _random.Read(length - 4, tail, ct) < 4)
         {
             return;
@@ -963,7 +963,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
             return;
         }
 
-        Span<byte> h = stackalloc byte[TagHeaderSize];
+        Span<byte> h = stackalloc byte[TagHeaderSize]; // fixed-size FLV header buffer, at most 11 bytes
         if (_random.Read(at, h, ct) < TagHeaderSize)
         {
             return;
@@ -1043,7 +1043,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
         long saved = _input.Position;
         _input.Seek(_firstTag);
         bool videoOnly = _video.Track >= 0;
-        Span<byte> first = stackalloc byte[1];
+        Span<byte> first = stackalloc byte[1]; // fixed-size FLV header buffer, at most 11 bytes
         long lastAudioKey = -1;
         while (ReadTagHeader(out TagHeader t, CancellationToken.None))
         {

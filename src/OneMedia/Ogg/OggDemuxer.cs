@@ -580,7 +580,7 @@ internal sealed class OggEngine : ISequentialEngine
             Configuration = new CodecConfiguration(s.Headers[0], "OpusHead"),
             Timescale = 48000,
             Audio = new AudioTrackInfo(48000, head.ChannelCount),
-            Edit = new TrackEditInfo(Priming: new MediaTime(head.PreSkip, 48000)),
+            Edit = new TrackEditInfo(Priming: new MediaTime(head.PreSkip, 48000)) { PacketTimesIncludePriming = true }, // pts = granule - pre-skip (RFC 7845 §4.4)
             Name = SkeletonName(s.SerialNumber),
             Language = SkeletonLanguage(s.SerialNumber),
         };

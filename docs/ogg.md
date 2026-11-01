@@ -27,7 +27,7 @@ Times come from granule positions (RFC 3533 §6, RFC 7845 §4, Vorbis I §A.2, T
 | Stream | Time base | Rule |
 |---|---|---|
 | Vorbis | sample rate | The end of the packet that finishes a page is the page's granule. Earlier packets are counted back by their durations (a quarter of the previous plus a quarter of the own block size; the block size comes from the mode in the setup header). The first packet counts as half its block, so a stream starts before 0 (pts −128 for a 256-sample short block), as ffprobe shows. |
-| Opus | 48 kHz | `pts = granule − pre-skip` (RFC 7845 §4.4). Packet duration from the TOC byte (`OpusToc.TryGetSamples`). The pre-skip is also on the track as the priming time. |
+| Opus | 48 kHz | `pts = granule − pre-skip` (RFC 7845 §4.4). Packet duration from the TOC byte (`OpusToc.TryGetSamples`). The pre-skip is also on the track as the priming time, flagged `PacketTimesIncludePriming` because the packet times already have it taken off: `MediaTrack.PresentationTime` does not subtract it again. |
 | FLAC | sample rate | Granule counts samples; the duration of a packet is the block size of its frame header. |
 | Theora | frame rate numerator (a tick is one frame period) | The granule is `(keyframe number << shift) + frames since the keyframe`. From version 3.2.1 the numbers count from 1, so their sum is the number of frames up to and including the packet; earlier versions add one. The first frame is pts 0. Keyframe = bit 6 of the first byte clear. |
 | Speex | sample rate | Frames per packet × frame size from the header. |

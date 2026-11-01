@@ -333,6 +333,7 @@ public sealed class CafDemuxer : AudioFileDemuxer
 
             List<CafChunk> chunks = [];
             CafChunk? desc = null, data = null, pakt = null, kuki = null;
+            byte[]? tableBytes = null; // forward-only sources: the whole packet table, read before the audio goes by
             long pos = CafReader.FileHeaderSize;
             long length = media.Length;
             while (CafReader.TryReadNext(media, ref pos, length, defects, out CafChunk? c) && c is not null)
@@ -369,8 +370,14 @@ public sealed class CafDemuxer : AudioFileDemuxer
                     }
                     else if (c.Type == "pakt")
                     {
-                        // The stream cannot come back for the table, so it is read in place by the plan as the packets go; only its header is kept.
-                        media.Read(c.Offset + 12, new byte[Math.Min(24, c.PayloadSize)], ct);
+                        // The table comes before the audio, and the stream cannot come back for it, so it is kept whole (bounded by the tag limit).
+                        if (c.PayloadSize > limits.MaxTagBytes)
+                        {
+                            throw new UnsupportedMediaException($"The packet table of {c.PayloadSize} bytes is too large to hold for a forward-only source.");
+                        }
+
+                        tableBytes = new byte[c.PayloadSize];
+                        media.Read(c.Offset + 12, tableBytes, ct);
                     }
                 }
             }
@@ -399,7 +406,7 @@ public sealed class CafDemuxer : AudioFileDemuxer
             if (pakt is not null && pakt.PayloadSize >= 24)
             {
                 Span<byte> t = stackalloc byte[24]; // the fixed fields of the packet table
-                if (media.Read(pakt.Offset + 12, t, ct) == 24)
+                if (tableBytes is not null ? tableBytes.AsSpan(0, 24).TryCopyTo(t) : media.Read(pakt.Offset + 12, t, ct) == 24)
                 {
                     table = new CafPacketTableHeader(BinaryPrimitives.ReadInt64BigEndian(t), BinaryPrimitives.ReadInt64BigEndian(t[8..]), BinaryPrimitives.ReadInt32BigEndian(t[16..]), BinaryPrimitives.ReadInt32BigEndian(t[20..]));
                 }
@@ -432,11 +439,19 @@ public sealed class CafDemuxer : AudioFileDemuxer
             else if (table is not null && pakt is not null)
             {
                 limits.CheckSampleTable(table.PacketCount, pakt.Offset);
-                plan = new CafPacketPlan(media, pakt.Offset + 12 + 24, pakt.Offset + 12 + pakt.PayloadSize, table.PacketCount, d.BytesPerPacket, d.FramesPerPacket, defects);
+                plan = tableBytes is not null
+                    ? new CafPacketPlan(new MemoryMediaSource(tableBytes), 24, tableBytes.Length, table.PacketCount, d.BytesPerPacket, d.FramesPerPacket, defects)
+                    : new CafPacketPlan(media, pakt.Offset + 12 + 24, pakt.Offset + 12 + pakt.PayloadSize, table.PacketCount, d.BytesPerPacket, d.FramesPerPacket, defects);
                 frames = table.ValidFrames + table.PrimingFrames + table.RemainderFrames;
             }
             else
             {
+                if (forward is not null && data is not null)
+                {
+                    // A packet table behind the audio cannot be used by a source that cannot come back for it.
+                    throw new UnsupportedMediaException("The format has variable packets and no packet table before the audio; a forward-only source cannot read it.");
+                }
+
                 defects.Add(DefectKind.MissingRequired, DefectSeverity.Error, 0, "The format has variable packets but the file has no packet table; no packets are delivered.", "caf.no-pakt");
                 plan = new FixedPlan(1, 1, 1);
                 dataEnd = dataStart;
