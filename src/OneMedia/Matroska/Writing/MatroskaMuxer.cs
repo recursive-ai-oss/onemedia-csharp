@@ -57,6 +57,7 @@ public sealed class MatroskaMuxer : IMuxer
     private long[] _packets = [];
     private long[] _payloadBytes = [];
     private long[] _durationUnits = [];
+    private int[] _lastPending = [];
     private bool _rounded;
 
     // Cluster being built.
@@ -205,9 +206,11 @@ public sealed class MatroskaMuxer : IMuxer
         Array.Resize(ref _packets, n);
         Array.Resize(ref _payloadBytes, n);
         Array.Resize(ref _durationUnits, n);
+        Array.Resize(ref _lastPending, n);
         _plans[i] = plan;
         _lastDts[i] = MediaTime.Unknown;
         _lastTs[i] = long.MinValue;
+        _lastPending[i] = -1;
         _defaultNs[i] = plan.HintDefaultDurationNs;
         // The reader hands out Matroska times with CodecDelay already taken off (RFC 9559 §11.2); a track whose packet times already
         // exclude the priming gets it put back, so the Block timestamp is what the source file stored.
@@ -376,6 +379,34 @@ public sealed class MatroskaMuxer : IMuxer
             _durationUnits[ti] += durUnits;
         }
 
+        // Contract: a duration that is unknown is the distance to the next packet's decode time. The previous packet of this track is
+        // still held when it is in the open Cluster (a Cluster is only closed below, after this), so it can be completed; the last packet
+        // of a track, and every packet in live mode (already written), keep an unknown duration. A packet that shares its time with the one
+        // before it belongs to a lace and is left alone.
+        long dtsUnits = ts;
+        if (info.Dts.IsKnown && info.Dts.TryRescale(_unitsPerSecond, MediaRounding.NearestAwayFromZero, out MediaTime dtsT))
+        {
+            dtsUnits = dtsT.Ticks + (_delayApplies[ti] ? _delayUnits[ti] : 0);
+        }
+
+        int lp = _lastPending[ti];
+        if (!_o.Live && lp >= 0 && lp < _pending.Count)
+        {
+            Pending prev = _pending[lp];
+            long gap = dtsUnits - prev.DtsUnits;
+            if (prev.DurUnits < 0 && !prev.SharesTs && gap > 0 && prev.DiscardPaddingNs == 0)
+            {
+                prev.DurUnits = gap;
+                prev.Dur = new MediaTime(gap, _unitsPerSecond);
+                _pending[lp] = prev;
+                _durationUnits[ti] += gap;
+                if (prev.Ts + gap > _maxEnd)
+                {
+                    _maxEnd = prev.Ts + gap;
+                }
+            }
+        }
+
         bool isKey = (info.Flags & PacketAttributes.Keyframe) != 0;
         bool cueCandidate = ti == _cueTrack && (_plans[ti].IsVideo ? isKey : true);
         if (_clusterOpen && ShouldCut(ts, data.Length, cueCandidate))
@@ -395,6 +426,8 @@ public sealed class MatroskaMuxer : IMuxer
             Disposable = (info.Flags & PacketAttributes.Disposable) != 0,
             RefDelta = _lastTs[ti] == long.MinValue ? 0 : _lastTs[ti] - ts,
             Length = data.Length,
+            DtsUnits = dtsUnits,
+            SharesTs = _lastTs[ti] == ts,
         };
         _lastTs[ti] = ts;
         long end = durUnits >= 0 ? ts + durUnits : ts;
@@ -430,6 +463,7 @@ public sealed class MatroskaMuxer : IMuxer
 
         data.CopyTo(_payload.AsSpan(_payloadLength));
         _payloadLength += data.Length;
+        _lastPending[ti] = _pending.Count;
         _pending.Add(p);
     }
 
@@ -457,6 +491,7 @@ public sealed class MatroskaMuxer : IMuxer
         _clusterHasCue = false;
         _payloadLength = 0;
         _pending.Clear();
+        Array.Fill(_lastPending, -1);
         if (_o.Live)
         {
             EnsureHeader();
@@ -1041,10 +1076,12 @@ public sealed class MatroskaMuxer : IMuxer
     {
         public int Track;
         public long Ts;
+        public long DtsUnits;
         public long DurUnits;
         public MediaTime Dur;
         public long DiscardPaddingNs;
         public long RefDelta;
+        public bool SharesTs;
         public int PayloadOffset;
         public int Length;
         public bool Key;
