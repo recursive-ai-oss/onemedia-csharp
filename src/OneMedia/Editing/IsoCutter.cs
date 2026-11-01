@@ -515,6 +515,9 @@ public static class IsoCutter
 
         public bool ReachedNextKey { get; set; }
 
+        /// <summary>True for timed text and data: their packet times were rebased to the clip start.</summary>
+        public bool Rebased { get; set; }
+
         public int Hidden { get; set; }
     }
 
@@ -723,14 +726,43 @@ public static class IsoCutter
 
             long scale = t.Timescale;
             long pts = Ticks(v.Info.Pts, scale);
-            mux.WritePacket(v.Info with { TrackIndex = st.Output }, v.Data, _ct);
+            PacketInfo info = v.Info with { TrackIndex = st.Output };
+            if (t.Kind is TrackKind.Subtitle or TrackKind.Data)
+            {
+                // Timed text and data carry their own timing: a cue that straddles the start is shortened to begin at the clip's start, one that
+                // straddles the end is cut there, and the times are rebased so the track needs no edit that starts inside a sample (readers that round such
+                // an edit to the sample's start would shift every cue). The payload is not touched.
+                long origin = ToMediaTicks(t, _plan.StartPres, scale, MediaRounding.NearestAwayFromZero);
+                long length = v.Info.Duration.IsKnown ? Ticks(v.Info.Duration, scale) : -1;
+                long begin = pts;
+                if (!_plan.Partition)
+                {
+                    if (begin < origin)
+                    {
+                        length = length < 0 ? length : Math.Max(0, length - (origin - begin));
+                        begin = origin;
+                    }
+
+                    if (_plan.OtherEnd is MediaTime until && length >= 0)
+                    {
+                        length = Math.Max(0, Math.Min(length, ToMediaTicks(t, until, scale, MediaRounding.NearestAwayFromZero) - begin));
+                    }
+                }
+
+                pts = begin - origin;
+                MediaTime at = new(pts, scale);
+                info = info with { Pts = at, Dts = at, Duration = length >= 0 ? new MediaTime(length, scale) : v.Info.Duration };
+                st.Rebased = true;
+            }
+
+            mux.WritePacket(info, v.Data, _ct);
             if (st.Count == 0)
             {
                 st.FirstPts = pts;
             }
 
             st.Count++;
-            long d = v.Info.Duration.IsKnown ? Ticks(v.Info.Duration, scale) : 0;
+            long d = info.Duration.IsKnown ? Ticks(info.Duration, scale) : 0;
             st.MaxEnd = Math.Max(st.MaxEnd, pts + d);
         }
 
@@ -760,7 +792,7 @@ public static class IsoCutter
                 MediaTime end = _plan.OtherEnd ?? MediaTime.Zero;
                 foreach (TrackState? s in states)
                 {
-                    if (s is { Count: > 0 })
+                    if (s is { Count: > 0, Rebased: false })
                     {
                         MediaTime e = s.Source.PresentationTime(new MediaTime(s.MaxEnd, s.Source.Timescale));
                         if (e < end)
@@ -801,7 +833,7 @@ public static class IsoCutter
                     continue;
                 }
 
-                long wanted = ToMediaTicks(t, _plan.StartPres, scale, MediaRounding.NearestAwayFromZero);
+                long wanted = s.Rebased ? 0 : ToMediaTicks(t, _plan.StartPres, scale, MediaRounding.NearestAwayFromZero);
                 if (t.Kind == TrackKind.Audio && _plan.StartPres.Rescale(scale, MediaRounding.Floor) != _plan.StartPres.Rescale(scale, MediaRounding.Ceiling))
                 {
                     _notes.Add($"Track {t.Index}: the audio start is rounded to the nearest sample ({scale} Hz).");
