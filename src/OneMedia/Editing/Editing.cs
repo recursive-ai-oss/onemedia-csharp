@@ -41,6 +41,13 @@ public enum EditRefusalReason
 
     /// <summary>A split point list is not usable (not ascending, not positive).</summary>
     InvalidSplit,
+
+    /// <summary>
+    /// A frame-accurate start in Matroska needs frames with negative timestamps in front of the first shown one (RFC 9559 §11.2), and files with them cannot be
+    /// played by players built on ffmpeg's demuxer when the video is H.264, HEVC, VVC, MPEG-2, MPEG-4 or VC-1 (they report the presentation time as undefined).
+    /// Cut at a keyframe (<see cref="TrimMode.Keyframe"/>) or write MP4, where an edit list hides the frames.
+    /// </summary>
+    ExactStartNotSupported,
 }
 
 /// <summary>An edit operation was refused. Nothing is written for the refused part, and the output stream is left as it was.</summary>

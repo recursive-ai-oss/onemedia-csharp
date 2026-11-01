@@ -64,6 +64,7 @@ def main():
     p.add_argument("--tool", required=True)
     p.add_argument("--work", required=True)
     p.add_argument("--codecs", default="")
+    p.add_argument("--container", default="mp4", choices=["mp4", "mkv", "webm"], help="container of the sources and clips (webm: VP9 and AV1 with Opus only)")
     p.add_argument("--channel", default="", help="use an installed browser (chrome, msedge) instead of the one Playwright installed")
     a = p.parse_args()
     ffmpeg = os.path.join(a.oracles, "ffmpeg")
@@ -73,15 +74,19 @@ def main():
     for name, vargs, f, t, key in CASES:
         if a.codecs and name.split("-")[0] not in a.codecs.split(","):
             continue
-        src = os.path.join(a.work, name + "-src.mp4")
+        if a.container == "webm" and name.split("-")[0] not in ("vp9", "av1"):
+            continue
+        ext = "." + a.container
+        acodec = ["-c:a", "libopus", "-b:a", "48k"] if a.container == "webm" else ["-c:a", "aac", "-b:a", "64k"]
+        src = os.path.join(a.work, name + "-src" + ext)
         if not os.path.exists(src):
             gen = [ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=gray:size=320x180:rate={FPS},geq=lum='if(lt(Y,64),255*mod(floor(N/pow(2,floor(X/32))),2),128)':cb=128:cr=128",
-                   "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "12", "-pix_fmt", "yuv420p", *vargs, "-c:a", "aac", "-b:a", "64k", src]
+                   "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "12", "-pix_fmt", "yuv420p", *vargs, *acodec, src]
             r = run(gen)
             if r.returncode:
                 print(f"SKIP\t{name}\tgenerate failed: {r.stderr.strip()[-120:]}")
                 continue
-        out = os.path.join(a.work, name + ".mp4")
+        out = os.path.join(a.work, name + ext)
         cmd = a.tool.split() + ["trim", src, out, "--from", f"{f / FPS:.7f}", "--to", f"{t / FPS:.7f}"] + (["--keyframe"] if key else [])
         r = run(cmd)
         if r.returncode:

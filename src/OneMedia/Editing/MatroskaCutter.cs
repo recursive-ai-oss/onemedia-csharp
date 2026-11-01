@@ -248,6 +248,12 @@ public static class MatroskaCutter
             throw new EditRefusedException(EditRefusalReason.EmptyRange, "The range holds no video frame.", refIdx, rt.Codec);
         }
 
+        if (mode == TrimMode.FrameAccurate && shown > key && NegativeTimestampsBreakParsers(rt.Codec))
+        {
+            throw new EditRefusedException(EditRefusalReason.ExactStartNotSupported,
+                $"Starting at {from.ToTimeSpan()} needs {rt.Codec.Name} frames with negative timestamps in front of the first shown frame, which ffmpeg-based players cannot play. Trim in keyframe mode or write MP4.", refIdx, rt.Codec);
+        }
+
         MediaTime end = FindVideoEnd(source, refIdx, to, key, shown);
         if (end <= shown)
         {
@@ -444,6 +450,10 @@ public static class MatroskaCutter
 
         return floor;
     }
+
+    // Codecs whose packet times ffmpeg's demuxers recompute from a parser (they have reordered frames): a negative presentation time comes out undefined.
+    private static bool NegativeTimestampsBreakParsers(CodecId codec) =>
+        codec == CodecId.H264 || codec == CodecId.Hevc || codec == CodecId.Vvc || codec == CodecId.Mpeg2Video || codec == CodecId.Mpeg4 || codec == CodecId.Vc1;
 
     private static MediaTime LandOnPacket(MatroskaDemuxer d, MediaTime pres)
     {

@@ -134,6 +134,8 @@ def check_case(a, src, idx, kind, frames, keys, src_pcm, src_packets, from_t, to
     out = os.path.join(a.work, f"{kind}-clip-{idx}" + os.path.splitext(src)[1])
     cmd = a.tool.split() + ["trim", src, out, "--from", f"{float(from_t):.7f}", "--to", f"{float(to_t):.7f}"] + (["--keyframe"] if keyframe else [])
     r = run(cmd)
+    if r.returncode != 0 and out.endswith(".mkv") and "ExactStartNotSupported" in (r.stderr + r.stdout):
+        return "OK", "refused as designed: " + (r.stderr.strip() or r.stdout.strip()).splitlines()[-1][:110]
     if r.returncode != 0:
         return "REFUSED", r.stderr.strip().splitlines()[-1] if r.stderr else r.stdout.strip()
     # Expected video: frames with from <= t < to; keyframe mode starts at the last keyframe at or before from.
@@ -247,6 +249,12 @@ def check_case(a, src, idx, kind, frames, keys, src_pcm, src_packets, from_t, to
     if mkv and ev.stderr.strip() and "Error parsing Opus packet header" in ev.stderr:
         # ffmpeg 8 reports this for the generator's own Opus-in-Matroska files too (their last packet); not caused by the cut.
         ev.stderr = "\n".join(l for l in ev.stderr.splitlines() if "Error parsing Opus packet header" not in l)
+    validator = os.path.join(a.oracles, "mkvalidator")
+    if mkv and os.path.exists(validator):
+        mv = run([validator, out])
+        text = (mv.stdout + mv.stderr)
+        if mv.returncode != 0 or re.search(r"\b(ERR|WRN)\d", text):
+            problems.append("mkvalidator: " + next((l for l in text.splitlines() if re.search(r"ERR|WRN", l)), text.strip().splitlines()[-1] if text.strip() else "failed")[:100])
     if ev.stderr.strip():
         problems.append("ffmpeg: " + ev.stderr.strip().splitlines()[0][:100])
     if not a.keep:

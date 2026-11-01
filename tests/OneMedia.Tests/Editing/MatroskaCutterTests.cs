@@ -14,14 +14,14 @@ public class MatroskaCutterTests
     private static readonly byte[] Asc = [0x11, 0x90];
     private static readonly int[] DecodeOrder = [0, 3, 1, 2, 6, 4, 5, 9, 7, 8];
 
-    private static MediaTrack VideoTrack(byte[]? avcC = null) => new()
+    private static MediaTrack VideoTrack(byte[]? avcC = null, bool vp9 = false) => new()
     {
         Index = 0,
         Id = 1,
         Kind = TrackKind.Video,
-        Codec = CodecId.H264,
-        CodecTag = "avc1",
-        Configuration = new CodecConfiguration(avcC ?? AvcC, "avcC"),
+        Codec = vp9 ? CodecId.Vp9 : CodecId.H264,
+        CodecTag = vp9 ? "vp09" : "avc1",
+        Configuration = vp9 ? default : new CodecConfiguration(avcC ?? AvcC, "avcC"),
         Timescale = 1000,
         Video = new VideoTrackInfo(320, 180, FrameRateNumerator: 25, FrameRateDenominator: 1),
     };
@@ -42,12 +42,13 @@ public class MatroskaCutterTests
 
     private static (int Track, int Index) Identify(ReadOnlySpan<byte> data) => (data[0], data[1] | (data[2] << 8));
 
-    private static byte[] BuildSource(byte[]? avcC = null)
+    // VP9 stands in for a codec whose frames can carry negative timestamps; the packets are reordered like B-frames either way.
+    private static byte[] BuildSource(byte[]? avcC = null, bool vp9 = false)
     {
         using MemoryStream ms = new();
         using (MatroskaMuxer mux = new(ms))
         {
-            int v = mux.AddTrack(VideoTrack(avcC));
+            int v = mux.AddTrack(VideoTrack(avcC, vp9));
             int a = mux.AddTrack(AudioTrack());
             int audioSent = 0;
             for (int g = 0; g < Gops; g++)
@@ -104,7 +105,7 @@ public class MatroskaCutterTests
     [Fact]
     public void FrameAccurateTrimGivesNegativeTimestampsToTheFramesBeforeTheStart()
     {
-        byte[] source = BuildSource();
+        byte[] source = BuildSource(vp9: true);
         // 0.53 s falls between frames 13 (0.52) and 14 (0.56): frame 14 is the first one shown. The keyframe before it is frame 10.
         ClipReport report = TrimFile(source, out byte[] clip, 0.53, 1.65, TrimMode.FrameAccurate);
         List<Read> video = ReadAll(clip).Where(r => r.Track == 0).ToList();
@@ -143,7 +144,7 @@ public class MatroskaCutterTests
     [Fact]
     public void TrimCopiesPayloadBytesUnchanged()
     {
-        byte[] source = BuildSource();
+        byte[] source = BuildSource(vp9: true);
         Dictionary<(int, int), byte[]> original = ReadAll(source).ToDictionary(r => (r.Track, r.Index), r => r.Data);
         TrimFile(source, out byte[] clip, 0.53, 1.65, TrimMode.FrameAccurate);
         foreach (Read r in ReadAll(clip))
@@ -223,5 +224,15 @@ public class MatroskaCutterTests
         EditRefusedException e = Assert.Throws<EditRefusedException>(() => MatroskaJoiner.Concat([d1, d2], output));
         Assert.Equal(EditRefusalReason.NeedsReencode, e.Reason);
         Assert.Equal(0, e.TrackIndex);
+    }
+
+    [Fact]
+    public void FrameAccurateStartInsideAGroupOfPicturesIsRefusedForH264()
+    {
+        byte[] source = BuildSource();
+        EditRefusedException e = Assert.Throws<EditRefusedException>(() => TrimFile(source, out _, 0.53, 1.65, TrimMode.FrameAccurate));
+        Assert.Equal(EditRefusalReason.ExactStartNotSupported, e.Reason);
+        TrimFile(source, out byte[] onKey, 0.4, 1.65, TrimMode.FrameAccurate); // on a keyframe nothing is hidden
+        Assert.NotEmpty(onKey);
     }
 }
