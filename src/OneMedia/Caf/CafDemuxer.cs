@@ -165,6 +165,24 @@ internal sealed class CafPacketPlan(IMediaSource source, long tableStart, long t
             return false;
         }
 
+        // A ranged source can ask for the read to be retried half-way through an entry; start again from the same place.
+        long entryStart = _at;
+        try
+        {
+            return NextEntry(remaining, out bytes, out frames);
+        }
+        catch (NotSupportedException)
+        {
+            _at = entryStart;
+            throw;
+        }
+    }
+
+    private bool NextEntry(long remaining, out int bytes, out long frames)
+    {
+        bytes = 0;
+        frames = 0;
+
         long b = bytesPerPacket;
         long f = framesPerPacket;
         if ((bytesPerPacket == 0 && !TryVarint(out b)) || (framesPerPacket == 0 && !TryVarint(out f)))
@@ -562,4 +580,8 @@ public sealed class CafFileFormat : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => CafDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioFileAsyncDemuxer.OpenAsync(source, options, (media, o) => CafDemuxer.Open(media, o, cancellationToken), cancellationToken).ConfigureAwait(false);
 }

@@ -432,4 +432,8 @@ public sealed class AiffFileFormat : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => AiffDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioFileAsyncDemuxer.OpenAsync(source, options, (media, o) => AiffDemuxer.Open(media, o, cancellationToken), cancellationToken).ConfigureAwait(false);
 }

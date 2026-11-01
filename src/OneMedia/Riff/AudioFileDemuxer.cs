@@ -68,11 +68,19 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
     private readonly bool _endIsGuess;
     private readonly long _timescale;
     private readonly MediaTrack _track;
+    private readonly DefectLog _defects;
     private byte[] _buffer = [];
     private long _offset;
     private long _frame;
     private bool _enabled = true;
     private bool _finished;
+
+    // A packet the plan has cut but whose bytes have not been read yet (the read of a ranged source can ask to be retried).
+    private bool _planned;
+    private int _plannedSize;
+    private long _plannedFrames;
+    private int _plannedSkip;
+    private DefectLog? _scratchDefects;
 
     private protected AudioFileDemuxer(IMediaSource source, IDisposable? owner, MediaTrack track, PacketPlan plan, long dataStart, long dataEnd, bool endIsGuess, DefectLog defects, MediaLimits limits)
     {
@@ -84,7 +92,7 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
         _dataEnd = dataEnd;
         _endIsGuess = endIsGuess;
         _timescale = track.Timescale;
-        Defects = defects;
+        _defects = defects;
         Limits = limits;
     }
 
@@ -98,7 +106,10 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
     public MediaTime Duration => _track.Duration;
 
     /// <inheritdoc />
-    public DefectLog Defects { get; }
+    public DefectLog Defects => _scratchDefects ?? _defects;
+
+    /// <summary>Redirects defects to a throw-away log while a ranged open or metadata read is being repeated; null restores the real log.</summary>
+    internal DefectLog? ScratchDefects { set => _scratchDefects = value; }
 
     /// <summary>The limits the file was opened with.</summary>
     private protected MediaLimits Limits { get; }
@@ -107,7 +118,10 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
     private protected IMediaSource Source => _source;
 
     /// <inheritdoc />
-    public bool CanSeek => _plan.CanSeek && !_endIsGuess;
+    public bool CanSeek => _plan.CanSeek && !_endIsGuess && _source is not ForwardAsRandomSource;
+
+    /// <summary>The bytes of the packet the last successful read returned.</summary>
+    internal ReadOnlySpan<byte> LastPacketBytes(int size) => _buffer.AsSpan(0, size);
 
     /// <summary>Where the sample data starts in the file.</summary>
     public long DataOffset => _dataStart;
@@ -132,29 +146,48 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
         }
 
         long remaining = _dataEnd - _dataStart - _offset;
-        int size = 0;
-        long frames = 0;
-        if (remaining <= 0 || !_plan.Next(remaining, out size, out frames))
+        int size;
+        long frames;
+        int skip;
+        if (_planned)
         {
-            if (remaining > 0 && !_endIsGuess)
+            size = _plannedSize;
+            frames = _plannedFrames;
+            skip = _plannedSkip;
+        }
+        else
+        {
+            size = 0;
+            frames = 0;
+            if (remaining <= 0 || !_plan.Next(remaining, out size, out frames))
             {
-                Defects.Add(DefectKind.UnaccountedBytes, DefectSeverity.Info, _dataStart + _offset, $"{remaining} byte(s) at the end of the sample data do not fill a whole frame or block and are not delivered.", "audio.partial-unit");
+                if (remaining > 0 && !_endIsGuess)
+                {
+                    Defects.Add(DefectKind.UnaccountedBytes, DefectSeverity.Info, _dataStart + _offset, $"{remaining} byte(s) at the end of the sample data do not fill a whole frame or block and are not delivered.", "audio.partial-unit");
+                }
+
+                _finished = true;
+                return false;
             }
 
-            _finished = true;
-            return false;
+            skip = _plan.Skip;
+            // Remembered so that a read which has to be retried (ranged sources) does not cut the packet twice.
+            _planned = true;
+            _plannedSize = size;
+            _plannedFrames = frames;
+            _plannedSkip = skip;
         }
 
-        int skip = _plan.Skip;
-        _offset += skip;
-        Limits.CheckPacket(size, _dataStart + _offset);
+        Limits.CheckPacket(size, _dataStart + _offset + skip);
         if (_buffer.Length < size)
         {
             _buffer = new byte[Math.Max(size, 4096)];
         }
 
-        long at = _dataStart + _offset;
+        long at = _dataStart + _offset + skip;
         int got = _source.Read(at, _buffer.AsSpan(0, size));
+        _planned = false;
+        _offset += skip;
         if (got < size)
         {
             // The file ends inside the data it promised (or a stream without a stated length has ended).
@@ -196,6 +229,7 @@ public abstract class AudioFileDemuxer : IDemuxer, IMetadataProvider
 
         long frame = target.IsKnown ? target.Rescale(_timescale, MediaRounding.Floor).Ticks : 0;
         (long f, long o) = _plan.SeekTo(frame, mode == SeekMode.NextKeyframe);
+        _planned = false;
         _frame = f;
         _offset = Math.Min(o, _dataEnd - _dataStart);
         _finished = _offset >= _dataEnd - _dataStart;

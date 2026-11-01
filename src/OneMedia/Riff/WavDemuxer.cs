@@ -451,4 +451,8 @@ public sealed class WavFileFormat : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => WavDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioFileAsyncDemuxer.OpenAsync(source, options, (media, o) => WavDemuxer.Open(media, o, cancellationToken), cancellationToken).ConfigureAwait(false);
 }
