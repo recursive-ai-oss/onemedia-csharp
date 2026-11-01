@@ -246,6 +246,25 @@ internal abstract class TrackAssembler
         return found;
     }
 
+    /// <summary>
+    /// Gives up the stamps of PES packets that begin inside the buffered unit at or before <paramref name="index"/> (relative to the
+    /// buffered bytes): the picture there is a part of the unit (the second field of a frame), so its stamp names no unit of its own.
+    /// </summary>
+    protected void DiscardStampsInside(int index)
+    {
+        long unitStart = _absTail - (Tail - Head);
+        long abs = unitStart + index;
+        for (int i = 0; i < _marks.Count; i++)
+        {
+            Mark m = _marks[i];
+            if (m.Abs > unitStart && m.Abs <= abs && m.Stamp.HasTime)
+            {
+                m.TimeUsed = true;
+                _marks[i] = m;
+            }
+        }
+    }
+
     /// <summary>Records that transport packets were lost at this point of the stream, so the unit spanning it is flagged corrupt.</summary>
     public void NoteLoss() => _lossAbs = _absTail;
 

@@ -8,7 +8,12 @@ O="${1:-$HOME/onemedia/u13-mpeg/out}"; mkdir -p "$O"
 C="${ONEMEDIA_HOME:-$HOME/onemedia}/corpus"
 G="$C/generated/mpeg"; S="$C/samples"
 bash "$here/run-mpeg-diff.sh" build 2>&1 | tail -3
-TS=$(ls "$G"/ts/*.ts "$G"/m2ts/*.m2ts "$S"/mpeg/*.ts "$S"/avchd/* 2>/dev/null)
+# The pinned ffprobe crashes on the SDT ffmpeg writes (docs/mpeg.md), so the packet differential runs on copies without it.
+mkdir -p "$G/tsx"
+for f in "$G"/ts/*.ts "$G"/m2ts/*.m2ts; do
+  [ -s "$G/tsx/$(basename "$f")" ] || python3 "$here/corpus/ts_tools.py" stripsdt "$f" "$G/tsx/$(basename "$f")"
+done
+TS=$(ls "$G"/tsx/* "$S"/mpeg/*.ts "$S"/avchd/*.[mM][tT][sS] 2>/dev/null)
 PS=$(ls "$G"/ps/* "$S"/mpeg/*.mpg "$S"/mpeg/*.mpeg "$S"/mpeg/*.VOB 2>/dev/null)
 ES=$(ls "$G"/es/* "$S"/mpeg/*.264 "$S"/mpeg/*.h264 "$S"/mpeg/*.m2v 2>/dev/null)
 ALL="$TS $PS $ES"

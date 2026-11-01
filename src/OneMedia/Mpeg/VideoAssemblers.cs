@@ -509,6 +509,9 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
     private bool _seenPicture;
     private bool _key;
     private int _reference = -1;
+    private int _structure; // picture_structure of the access unit's first picture: 1 top field, 2 bottom field, 3 frame, 0 not seen
+    private int _pictures;
+    private int _pendingStart = -1; // a picture that may be the second field of the current unit, from this offset
 
     public Mpeg2VideoAssembler(int index, PacketQueue queue, MediaLimits limits, DefectLog defects)
         : base(index, queue, limits, defects)
@@ -520,6 +523,8 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
         base.Reset();
         _scan = 0;
         _open = _seenPicture = _key = false;
+        _structure = _pictures = 0;
+        _pendingStart = -1;
     }
 
     protected override void Scan(bool final)
@@ -535,7 +540,7 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
             }
 
             int p = _scan + idx;
-            if (span.Length < p + 6 && !final)
+            if (span.Length < p + 8 && !final)
             {
                 _scan = p;
                 break;
@@ -551,16 +556,41 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
                     span = Buffered;
                 }
 
+                if (code is not (Mpeg2StartCode.Picture or Mpeg2StartCode.SequenceHeader or Mpeg2StartCode.GroupOfPictures))
+                {
+                    // Slices, extensions or user data before the first picture belong to a picture whose start was not captured: skip them.
+                    _scan = 3;
+                    continue;
+                }
+
                 _open = true;
             }
-            else if (_seenPicture && (code == Mpeg2StartCode.Picture || code == Mpeg2StartCode.SequenceHeader || code == Mpeg2StartCode.GroupOfPictures))
+            else if (_pendingStart >= 0 && code is Mpeg2StartCode.SequenceHeader or Mpeg2StartCode.GroupOfPictures)
+            {
+                // Two fields of one frame never have a group or sequence header between them: the pending picture began a new unit.
+                CompleteAtPending();
+                continue;
+            }
+            else if (_seenPicture && _pendingStart < 0 && code == Mpeg2StartCode.Picture && _pictures == 1 && _structure is 1 or 2)
+            {
+                // ISO/IEC 13818-2 §6.1.1.1: a frame may be coded as two field pictures. The opposite-parity field that follows belongs to the
+                // same access unit, which is known from its picture_coding_extension; wait for it.
+                _pendingStart = p;
+            }
+            else if (_seenPicture && _pendingStart < 0 && (code == Mpeg2StartCode.Picture || code == Mpeg2StartCode.SequenceHeader || code == Mpeg2StartCode.GroupOfPictures))
             {
                 Complete(p);
                 p = 0;
                 span = Buffered;
             }
+            else if (_seenPicture && _pendingStart >= 0 && code == Mpeg2StartCode.Picture)
+            {
+                // A third picture without an extension in between: the pending one stands alone.
+                CompleteAtPending();
+                continue;
+            }
 
-            if (code == Mpeg2StartCode.Picture)
+            if (code == Mpeg2StartCode.Picture && _pendingStart < 0)
             {
                 if (!_seenPicture && p + 5 < span.Length)
                 {
@@ -568,10 +598,36 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
                 }
 
                 _seenPicture = true;
+                _pictures++;
                 // §6.3.9: temporal_reference(10), picture_coding_type(3): type 1 is an intra picture.
                 if (p + 5 < span.Length && ((span[p + 5] >> 3) & 7) == 1)
                 {
                     _key = true;
+                }
+            }
+            else if (code == Mpeg2StartCode.Extension && _seenPicture && p + 6 < span.Length && (span[p + 4] >> 4) == 8)
+            {
+                // §6.3.10: extension_start_code_identifier 8 is the picture coding extension; picture_structure is the last two bits of its third byte.
+                int structure = span[p + 6] & 3;
+                if (_pendingStart >= 0)
+                {
+                    // §6.3.9: both fields of a frame carry the same temporal_reference; a lone field followed by another frame's field does not pair.
+                    int pendingReference = (span[_pendingStart + 4] << 2) | (span[_pendingStart + 5] >> 6);
+                    if (structure == 3 - _structure && structure is 1 or 2 && pendingReference == _reference)
+                    {
+                        _pictures = 2;
+                        DiscardStampsInside(_pendingStart);
+                        _pendingStart = -1;
+                    }
+                    else
+                    {
+                        CompleteAtPending();
+                        continue;
+                    }
+                }
+                else if (_structure == 0)
+                {
+                    _structure = structure;
                 }
             }
 
@@ -580,9 +636,18 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
 
         if (final && _open && Buffered.Length > 0)
         {
+            _pendingStart = -1;
             Complete(Buffered.Length);
             _open = false;
         }
+    }
+
+    // The picture held back as a possible second field turned out to start its own unit: cut before it and read it again as a first picture.
+    private void CompleteAtPending()
+    {
+        int at = _pendingStart;
+        _pendingStart = -1;
+        Complete(at);
     }
 
     private void Complete(int length)
@@ -598,6 +663,8 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
         _seenPicture = false;
         _reference = -1;
         _key = false;
+        _structure = _pictures = 0;
+        _pendingStart = -1;
         _scan = 0;
     }
 }

@@ -9,6 +9,8 @@ usage: ts_tools.py COMMAND [options] INPUT OUTPUT
   errorflag    set transport_error_indicator on packets of one PID: same options as drop
   truncate     cut the file: --bytes N (negative: remove that many from the end)
   garbage      insert N bytes of 0xA5 between two packets: --at FRACTION --bytes N
+  stripsdt     remove the service description table (PID 17) from a 188- or 192-byte stream, streaming. The pinned ffprobe 7.0.2 static build
+               crashes on the SDT that ffmpeg writes, so the packet differentials run on stripped copies.
 
 Input is a plain 188-byte transport stream. The first video PID is taken from the PMT's stream types.
 """
@@ -52,6 +54,27 @@ def find_video_pid(data):
     raise SystemExit("no video PID found")
 
 
+def stripsdt(src, dst):
+    # Packet size from the sync bytes: 0x47 at 0 means 188, at 4 means 192.
+    with open(src, "rb") as f, open(dst, "wb") as o:
+        head = f.read(256)
+        if head[0] != 0x47:
+            size = 192
+        elif len(head) > 204 and head[204] == 0x47 and head[188] != 0x47:
+            size = 204
+        else:
+            size = 188
+        pre = 4 if size == 192 else 0
+        f.seek(0)
+        while True:
+            chunk = f.read(size * 4096)
+            if not chunk:
+                break
+            for i in range(0, len(chunk) - size + 1, size):
+                if pid_of(chunk[i + pre:i + pre + 4]) != 0x11:
+                    o.write(chunk[i:i + size])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("command")
@@ -63,6 +86,9 @@ def main():
     ap.add_argument("input")
     ap.add_argument("output")
     a = ap.parse_args()
+    if a.command == "stripsdt":
+        stripsdt(a.input, a.output)
+        return
     data = open(a.input, "rb").read()
     out = bytearray()
     cmd = a.command

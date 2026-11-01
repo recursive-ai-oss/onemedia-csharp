@@ -32,7 +32,7 @@ internal readonly record struct TsStreamKind(TrackKind Kind, CodecId Codec, stri
 /// <summary>Maps stream types and descriptors to the neutral track kind and codec (ISO/IEC 13818-1 Table 2-34, ETSI EN 300 468 §6, ATSC A/53 and A/52, registration descriptors as observed in files).</summary>
 internal static class TsStreamTypes
 {
-    public static TsStreamKind Resolve(int streamType, ReadOnlySpan<byte> descriptors)
+    public static TsStreamKind Resolve(int streamType, ReadOnlySpan<byte> descriptors, bool hdmv = false)
     {
         string? registration = null;
         string? language = null;
@@ -119,8 +119,11 @@ internal static class TsStreamTypes
                 return Make(TrackKind.Audio, new CodecId("dts"), "dts-hd-ma");
             case 0x83:
                 return Make(TrackKind.Audio, new CodecId("truehd"), "truehd");
-            case 0x80:
+            case 0x80 when hdmv:
                 return Make(TrackKind.Audio, new CodecId("hdmv-lpcm"), "hdmv-lpcm");
+            case 0x80:
+                // ATSC / DigiCipher II broadcasts use 0x80 for MPEG-2 video; only Blu-ray and AVCHD layouts (M2TS packets, or a program-level 'HDMV' registration) use it for LPCM.
+                return Make(TrackKind.Video, CodecId.Mpeg2Video, "mpeg2video");
             case 0x90:
                 return Make(TrackKind.Subtitle, new CodecId("hdmv-pgs"), "hdmv-pgs");
             case 0x92:

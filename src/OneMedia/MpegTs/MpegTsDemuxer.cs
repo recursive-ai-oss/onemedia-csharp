@@ -21,6 +21,12 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     /// <summary>The most bytes the open reads from the front while looking for the program tables and first frames.</summary>
     public const int ProbeLimitBytes = 5_000_000;
 
+    /// <summary>
+    /// How far the front is searched for the first PAT and PMT when the first <see cref="ProbeLimitBytes"/> hold none (streams captured
+    /// mid-way, or muxed with the tables far apart). When none turns up at all, the streams are guessed from their PES stream ids.
+    /// </summary>
+    public const int ProbeLimitWithoutTablesBytes = 24_000_000;
+
     /// <summary>How much of the end of a seekable source is read to find the duration.</summary>
     public const int TailBytes = 1 << 20;
 
@@ -41,6 +47,8 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     private bool[] _enabled = [];
     private bool _eof;
     private bool _frozen;
+    private bool _guessed;
+    private readonly List<(int Pid, int StreamId)> _candidates = [];
     private string? _path;
     private MediaTime _duration = MediaTime.Unknown;
     private MediaTime _startTime = MediaTime.Unknown;
@@ -330,6 +338,28 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
 
     private void Probe(CancellationToken cancellationToken)
     {
+        ProbeFront(cancellationToken);
+        if (_programs.Count == 0 && _candidates.Count > 0 && _input.CanSeek)
+        {
+            // No PAT in the front: the stream was cut from the middle of a broadcast or is muxed without tables. As players do, take the
+            // PES streams as they come, by their stream id, and read the front again so each stream's first frame describes it.
+            AddGuessedTracks();
+            ResetForSeek(_firstPacket);
+            ProbeFront(cancellationToken);
+        }
+        else if (_input.CanSeek && AnyPmtSeen() && HasStreamsSeenBeforeTheirTable())
+        {
+            // The tables came after the first payloads of streams they describe (a capture that began mid-stream): read the front again,
+            // as other demuxers do after finding the tables, so those first access units are not lost.
+            ResetForSeek(_firstPacket);
+            ProbeFront(cancellationToken);
+        }
+
+        Freeze();
+    }
+
+    private void ProbeFront(CancellationToken cancellationToken)
+    {
         long start = _input.Position;
         while (true)
         {
@@ -342,18 +372,69 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             }
 
             long read = _input.Position - start;
-            if (read >= ProbeLimitBytes || ProbeComplete(read))
+            if (ProbeComplete(read))
+            {
+                break;
+            }
+
+            // The tables get a longer search than the streams do.
+            if (read >= ProbeLimitBytes && (_guessed || AnyPmtSeen() || read >= ProbeLimitWithoutTablesBytes))
             {
                 break;
             }
         }
+    }
 
-        Freeze();
+    private bool HasStreamsSeenBeforeTheirTable()
+    {
+        foreach ((int pid, _) in _candidates)
+        {
+            if (_pids[pid] is { Kind: PidKind.Pes })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AnyPmtSeen()
+    {
+        foreach (ProgramState p in _programs)
+        {
+            if (p.PmtSeen)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void AddGuessedTracks()
+    {
+        _guessed = true;
+        foreach ((int pid, int streamId) in _candidates)
+        {
+            if (_pids[pid] is not null)
+            {
+                continue;
+            }
+
+            _limits.CheckTracks(_trackStates.Count + 1, _firstPacket);
+            int index = _trackStates.Count;
+            // Table 2-22: stream ids C0-DF carry MPEG audio; video and private streams are told apart by their first bytes.
+            bool mpegAudio = streamId is >= 0xC0 and <= 0xDF;
+            TrackAssembler assembler = mpegAudio ? new MpegAudioAssembler(index, _queue, _limits, _defects) : new ProbingAssembler(index, _queue, _limits, _defects);
+            TsStreamKind kind = mpegAudio ? new TsStreamKind(TrackKind.Audio, CodecId.Mp3, "mpegaudio") : new TsStreamKind(TrackKind.Data, CodecId.Unknown, null);
+            _trackStates.Add(new TrackState { Pid = pid, Kind = kind, Assembler = assembler, StreamType = 0, Program = -1 });
+            _pids[pid] = new PidState(pid, PidKind.Pes) { TrackIndex = index };
+        }
     }
 
     private bool ProbeComplete(long read)
     {
-        if (_programs.Count == 0)
+        if (_programs.Count == 0 && !_guessed)
         {
             return false;
         }
@@ -376,7 +457,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         }
 
         // SDT and EIT repeat every second or two; a short extra wait lets the service name arrive.
-        return read > 188 * 400 || _info.HasServiceNames;
+        return _guessed || read > 188 * 400 || _info.HasServiceNames;
     }
 
     private void Freeze()
@@ -598,6 +679,31 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         return true;
     }
 
+    private const int MaxGuessedStreams = 16;
+
+    // §2.4.3.7 and Table 2-22: a payload that starts with 00 00 01 and a video (E0-EF), audio (C0-DF) or private_stream_1 (BD) stream id on a PID no table names.
+    private void NoteCandidate(int pid, ReadOnlySpan<byte> payload)
+    {
+        if (payload[0] != 0 || payload[1] != 0 || payload[2] != 1)
+        {
+            return;
+        }
+
+        int id = payload[3];
+        if (id is (>= 0xE0 and <= 0xEF) or (>= 0xC0 and <= 0xDF) or 0xBD)
+        {
+            foreach ((int p, _) in _candidates)
+            {
+                if (p == pid)
+                {
+                    return;
+                }
+            }
+
+            _candidates.Add((pid, id));
+        }
+    }
+
     private void Resync(long offset)
     {
         // A sync byte that repeats at the packet spacing twice is taken as the new alignment (§2.4.3.2 asks for four in a row for a decoder to lock).
@@ -686,6 +792,11 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
 
         if (st is null)
         {
+            if (start && hasPayload && !_frozen && !_guessed && _candidates.Count < MaxGuessedStreams && !AnyPmtSeen() && pos + 4 <= ts.Length)
+            {
+                NoteCandidate(pid, ts[pos..]);
+            }
+
             return;
         }
 
@@ -982,6 +1093,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         int infoLength = BinaryPrimitives.ReadUInt16BigEndian(s[10..]) & 0x0FFF;
         int p = 12 + infoLength;
         int end = s.Length - 4;
+        bool hdmv = _prefix > 0 || HasRegistration(s[12..Math.Min(p, end)], "HDMV");
         while (p + 5 <= end)
         {
             int streamType = s[p];
@@ -1010,13 +1122,28 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             }
 
             _limits.CheckTracks(_trackStates.Count + 1, offset);
-            TsStreamKind kind = TsStreamTypes.Resolve(streamType, descriptors.Span);
+            TsStreamKind kind = TsStreamTypes.Resolve(streamType, descriptors.Span, hdmv);
             int index = _trackStates.Count;
             TrackAssembler assembler = CreateAssembler(kind, streamType, index);
             _trackStates.Add(new TrackState { Pid = pid, Kind = kind, Assembler = assembler, StreamType = streamType, Program = programIndex });
             _pids[pid] = new PidState(pid, PidKind.Pes) { TrackIndex = index, ProgramIndex = programIndex };
             prog.TrackIndexes.Add(index);
         }
+    }
+
+    // §2.6.8: a registration descriptor (tag 0x05) names the format identifier of the program or stream.
+    private static bool HasRegistration(ReadOnlySpan<byte> descriptors, string identifier)
+    {
+        DescriptorReader reader = new(descriptors);
+        while (reader.TryRead(out int tag, out ReadOnlySpan<byte> body))
+        {
+            if (tag == 0x05 && body.Length >= 4 && System.Text.Encoding.ASCII.GetString(body[..4]) == identifier)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private TrackAssembler CreateAssembler(TsStreamKind kind, int streamType, int index)
