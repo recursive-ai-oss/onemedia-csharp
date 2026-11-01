@@ -147,6 +147,9 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
     /// <summary>The file type box brands, or <c>null</c> when the file has none (older QuickTime movies).</summary>
     public FileTypeBox? FileType => _opened.FileType;
 
+    /// <summary>True when a media data box comes before the movie box, so the sample tables are not available until the whole file has been read (not "fast start"). Progressive playback from a plain download cannot begin until the movie box arrives.</summary>
+    public bool MediaDataPrecedesMovie => _opened.MediaDataPrecededMovie;
+
     /// <summary>The parsed movie box, with sample entries and edit lists as stored.</summary>
     public IsoMovie Movie => _opened.Movie;
 

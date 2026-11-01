@@ -1,0 +1,172 @@
+profile chrome | Chrome | Windows, macOS, Linux | Google Chrome 156.0.8078.74 on macOS arm64, driven by Playwright 1.55.0
+  container mp4 Both
+  container mov Progressive
+  container 3gp Progressive
+  container webm Both
+  container matroska Progressive
+  container ogg Progressive
+  container mp3 Progressive
+  container adts Progressive
+  container flac Progressive
+  container wav Progressive
+  codec h264 in mp4,mov,3gp,matroska Both profiles=66/77/88/100 hardware=110/122/244
+  codec hevc in mp4,mov,matroska Both hardware=1/2
+  codec av1 in mp4,webm,matroska Both
+  codec vp9 in mp4,webm,matroska Both
+  codec vp8 in webm,matroska Both
+  codec aac in mp4,mov,3gp,matroska,adts Both
+  codec mp3 in mp3,mp4 Both
+  codec opus in mp4,webm,ogg,matroska Both
+  codec vorbis in mp4,webm,ogg,matroska Both
+  codec flac in flac,ogg,mp4 Both
+  codec pcm in wav,mov Both
+profile chromium | Chromium (open-source build) | any | Chromium 140.0.7339.16 on Linux x64, driven by Playwright 1.55.0
+  container mp4 Both
+  container webm Both
+  container matroska Progressive
+  container ogg Progressive
+  container mp3 Progressive
+  container flac Progressive
+  container wav Progressive
+  codec av1 in mp4,webm,matroska Both
+  codec vp9 in mp4,webm,matroska Both
+  codec vp8 in webm,matroska Both
+  codec mp3 in mp3,mp4 Both
+  codec opus in mp4,webm,ogg,matroska Both
+  codec vorbis in webm,ogg,matroska Both
+  codec flac in flac,ogg,mp4 Both
+  codec pcm in wav Both
+profile firefox | Firefox | Windows, macOS, Linux (system decoders) | Firefox 141.0 on Linux x64 with system FFmpeg libraries, driven by Playwright 1.55.0
+  container mp4 Both
+  container mov Progressive
+  container webm Both
+  container ogg Progressive
+  container mp3 Progressive
+  container adts Progressive
+  container flac Progressive
+  container wav Progressive
+  codec h264 in mp4,mov Both profiles=66/77/88/100 hardware=110/122/244
+  codec hevc in mp4 Both hardware=1/2
+  codec av1 in mp4,webm Both
+  codec vp9 in mp4,webm Both
+  codec vp8 in webm Both
+  codec aac in mp4,mov,adts Both
+  codec mp3 in mp3,mp4 Both
+  codec opus in mp4,webm,ogg Both
+  codec vorbis in webm,ogg Both
+  codec flac in flac,ogg,mp4 Both
+  codec pcm in wav Both
+profile safari | Safari (macOS) | macOS | WebKit 26.0 (Playwright build) on macOS arm64, driven by Playwright 1.55.0
+  container mp4 Both
+  container mov Progressive
+  container 3gp Progressive
+  container mpegts Progressive
+  container webm Both
+  container ogg Progressive
+  container caf Progressive
+  container aiff Progressive
+  container wav Progressive
+  container mp3 Progressive
+  container adts Progressive
+  container flac Progressive
+  container ac3 Progressive
+  codec h264 in mp4,mov,3gp,mpegts Both
+  codec hevc in mp4,mov Progressive tags=hvc1/dvh1
+  codec hevc in mp4 MediaSource
+  codec mpeg4 in mp4,mov,3gp Both
+  codec vp8 in webm Both
+  codec vp9 in mp4,webm Both
+  codec aac in mp4,mov,3gp,mpegts,adts,caf Both
+  codec mp3 in mp3 Both
+  codec ac3 in mp4,ac3 Both
+  codec eac3 in mp4 Both
+  codec alac in mp4,mov,caf Both
+  codec flac in flac,mp4 Both
+  codec opus in webm,ogg,caf Both
+  codec opus in mp4 Progressive
+  codec vorbis in webm,ogg Both
+  codec pcm in wav,aiff,caf,mov Both
+profile webkit-linux | WebKit (Linux, GStreamer) | Linux (GStreamer with FFmpeg plug-ins) | WebKit 26.0 (Playwright WPE build) on Linux x64, driven by Playwright 1.55.0
+  container mp4 Both
+  container mov Progressive
+  container 3gp Progressive
+  container matroska Progressive
+  container webm Both
+  container ogg Progressive
+  container mp3 Progressive
+  container adts Progressive
+  container flac Progressive
+  container wav Progressive
+  container aiff Progressive
+  container ac3 Progressive
+  container avi Progressive
+  container flv Progressive
+  container mpegts Progressive
+  container asf Progressive
+  codec h264 in * Both
+  codec hevc in * Both
+  codec mpeg4 in * Both
+  codec av1 in * Both
+  codec vp8 in * Both
+  codec vp9 in * Both
+  codec aac in * Both
+  codec mp3 in * Both
+  codec ac3 in * Both
+  codec eac3 in * Both
+  codec alac in * Both
+  codec flac in * Both
+  codec opus in * Both
+  codec vorbis in * Both
+  codec pcm in * Both
+  codec wmv2 in * Both
+  codec wmav2 in * Both
+profile ios-safari | Safari (iOS) | iOS, iPadOS | 
+  container mp4 Both
+  container mov Progressive
+  container 3gp Progressive
+  container mp3 Progressive
+  container adts Progressive
+  container caf Progressive
+  container aiff Progressive
+  container wav Progressive
+  container flac Progressive
+  codec h264 in mp4,mov,3gp Both profiles=66/77/88/100
+  codec hevc in mp4,mov Progressive tags=hvc1/dvh1
+  codec hevc in mp4 MediaSource
+  codec aac in mp4,mov,3gp,adts,caf Both
+  codec mp3 in mp3 Both
+  codec ac3 in mp4 Both
+  codec eac3 in mp4 Both
+  codec alac in mp4,mov,caf Both
+  codec flac in flac,mp4 Both
+  codec opus in mp4,caf Both
+  codec pcm in wav,aiff,caf,mov Both
+profile android-chrome | Chrome (Android) | Android | 
+  container mp4 Both
+  container 3gp Progressive
+  container webm Both
+  container matroska Progressive
+  container ogg Progressive
+  container mp3 Progressive
+  container adts Progressive
+  container flac Progressive
+  container wav Progressive
+  codec h264 in mp4,3gp,matroska Both profiles=66/77/88/100
+  codec hevc in mp4,matroska Both hardware=1/2
+  codec av1 in mp4,webm,matroska Both
+  codec vp9 in mp4,webm,matroska Both
+  codec vp8 in webm,matroska Both
+  codec aac in mp4,3gp,matroska,adts Both
+  codec mp3 in mp3,mp4 Both
+  codec opus in mp4,webm,ogg,matroska Both
+  codec vorbis in mp4,webm,ogg,matroska Both
+  codec flac in flac,ogg,mp4 Both
+  codec amr-nb in 3gp Both
+  codec amr-wb in 3gp Both
+  codec pcm in wav Both
+profile generic-mp4 | Generic MP4 | any | 
+  container mp4 Both
+  container mp3 Progressive
+  codec h264 in mp4 Both profiles=66/77/100 tags=avc1 maxLevel=42 maxBits=8 maxChroma=Yuv420
+  codec aac in mp4 Both profiles=2
+  codec mp3 in mp3,mp4 Both

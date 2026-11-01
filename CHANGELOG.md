@@ -4,6 +4,15 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- Browser playability (`RecursiveAI.OneMedia.Playback`, `docs/playability.md`): `MediaFile.CanPlay(profile)` and `Media.CanPlay(path, profile)` return a verdict per mode (a plain URL, MediaSource) with typed blockers (container, codec, profile, level, bit depth, chroma, `hvc1`/`hev1` form, segmentation, encryption), each marked as fixable by a remux, an audio transcode, or a video blocker; plus warnings for hardware-dependent codecs, a movie box at the end and incomplete codec strings. Built-in profiles as static data: `Chrome`, `Chromium`, `Firefox`, `Safari`, `WebKitLinux`, `IosSafari`, `AndroidChrome`, `GenericMp4`; the first five were checked by playing a 75-file matrix in the real browsers (`tools/playback/`).
+- `IsoBmffDemuxer.MediaDataPrecedesMovie` and `IsoBmffAsyncDemuxer.FileType`/`MediaDataPrecedesMovie`.
+
+### Changed
+
+- `MediaTrack.Rfc6381Codec()` names the sample entry for `hev1` (HEVC) and `avc3` (H.264) tracks, returns `vp9` for a VP9 track whose level is unknown (browsers reject `vp09.PP.00.DD`), and `vp9` for one without a configuration.
+
 ## [0.2.0-preview.1] - 2026-11-01
 
 Every other reader: ASF/WMV/WMA, MPEG-TS/M2TS, PS/VOB, elementary video and audio streams, MP3 with ID3 and APE, Ogg, FLAC, FLV, AVI/OpenDML, DV, WAV/BWF/RF64/W64, AIFF/AIFC and CAF, with their native tags in the common view. The format readers are read-only. Structure writers and the safe writer come as a first preview (below); tag editing, muxing and remux, subtitles, repair and packaging are planned and not in this release. `RecursiveAI.OneMedia.Audio` moves to OneAudio 1.6.1, which decodes HE-AAC at the full output rate.
