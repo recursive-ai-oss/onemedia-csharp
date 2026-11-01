@@ -207,6 +207,7 @@ public sealed class TagWriteTests
         byte[] input = File.ReadAllBytes(WriterTestSupport.Fixture(fixture));
         TagEdits e = new();
         e.Set(CommonField.Album, "An album");
+        e.Set(CommonField.Artist, "A new artist");
         e.Set(CommonField.Rating, "50");
         e.Set(CommonField.TrackNumber, 3);
         e.Set(CommonField.TrackTotal, 9);
@@ -214,6 +215,8 @@ public sealed class TagWriteTests
         using MemoryMediaSource src = new(result);
         using MediaFile m = MediaFile.Open(src);
         Assert.Equal("An album", m.Tags.Album);
+        // The author is stored in the Content Description and sometimes again in the extended one; no stale copy may stay.
+        Assert.All(m.Tags.Values(CommonField.Artist).Where(v => v.Source.System == TagSystems.Asf), v => Assert.Equal("A new artist", v.Text));
         Assert.Equal(3, m.Tags.TrackNumber);
         Assert.Equal(9, m.Tags.TrackTotal);
         // The File Properties object states the file size; it follows the header.

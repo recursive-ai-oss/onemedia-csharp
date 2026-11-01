@@ -100,6 +100,10 @@ internal static class AsfTagWriter
         }
 
         ApplyPictures(edits, attributes, limits, notes);
+        if (attributes.Any(a => a.Name == "ID3"))
+        {
+            notes.Add("asf: the file carries an ID3 tag in its 'ID3' attribute; it is kept as it was, so values it holds still show in the common view");
+        }
 
         byte[]? newCd = content.Any(s => !string.IsNullOrEmpty(s)) ? BuildContent(content) : null;
         byte[]? newEcd = attributes.Count > 0 ? BuildExtended(attributes) : null;
@@ -404,11 +408,9 @@ internal static class AsfTagWriter
             }
 
             content[ci] = string.Join("; ", op.Values);
-            // WM/Author is the same attribute as the Content Description's author; keep a stale copy from contradicting it.
-            if (ci == 1)
-            {
-                attributes.RemoveAll(a => string.Equals(a.Name, "WM/Author", StringComparison.OrdinalIgnoreCase));
-            }
+            // The extended description may repeat a Content Description field under its own name (writers such as ffmpeg do, and WM/Author is the
+            // same attribute as the author); a stale copy would contradict the new text.
+            attributes.RemoveAll(a => string.Equals(a.Name, op.Key, StringComparison.OrdinalIgnoreCase) || (ci == 1 && string.Equals(a.Name, "WM/Author", StringComparison.OrdinalIgnoreCase)));
 
             return;
         }
