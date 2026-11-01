@@ -255,53 +255,48 @@ public class AdapterTests
     }
 
     [Fact]
-    public void ImpliedHeAacDecodesAsTheCoreAndSaysSo()
+    public void ContainerRateHintWithNoSbrInTheStreamDecodesAtTheCoreRateAndTheReportSettlesIt()
     {
         using MediaFile media = Media.Open(HeAacFixture("sbr-implied.m4a"));
         (float[] samples, AudioFormat format) = ReadAll(media.Decode(out AudioDecodeReport report));
-        // Only the container's doubled rate suggests SBR here, which is a hint: the report says "possibly", not "audio is missing".
+        // Nothing is core-only before reading: the container's doubled rate is a hint and OneAudio looks for SBR in the stream itself.
         Assert.False(report.IsCoreOnly);
-        Assert.True(report.IsPossiblyCoreOnly);
-        Assert.True(report.Limitations.HasFlag(AudioSeamLimitations.SbrPossiblyNotApplied));
-        Assert.False(report.Limitations.HasFlag(AudioSeamLimitations.SbrNotApplied));
-        Assert.False(report.Limitations.HasFlag(AudioSeamLimitations.PsNotApplied));
-        Assert.Equal(44100, report.SignalledSampleRate);
-        // The PCM really is at the core rate, and the report says so.
+        Assert.Equal(AudioSeamLimitations.None, report.Limitations);
+        Assert.Equal(SbrSignalling.ContainerRate, report.Signalling);
+        // The fixture's frames hold no SBR data, so the decoder outputs the core rate and the report says so, with the declared rate beside it.
         Assert.Equal(22050, format.SampleRate);
         Assert.Equal(22050, report.DecodedSampleRate);
-        Assert.Equal(format.Channels, report.DecodedChannels);
-        Assert.Equal(0, report.SignalledChannels);
-        // The fixture's frames hold no SBR data, so the stream itself never confirms the guess and the report stays "possibly".
-        IAudioDecoder again = media.Decode();
-        using (again)
-        {
-            Assert.False(again.SbrDataIgnored());
-            AudioDecodeReport settled = report.AfterReading(again);
-            Assert.Equal(report, settled);
-            Assert.False(settled.IsCoreOnly);
-        }
-
-        // About half a second at the core rate; at the signalled rate it would be twice as many frames.
-        Assert.InRange(samples.Length / format.Channels, 10000, 12500);
+        Assert.Equal(44100, report.SignalledSampleRate);
+        Assert.False(report.SbrActive);
+        using IAudioDecoder again = media.Decode();
+        AudioDecodeReport settled = report.AfterReading(again);
+        Assert.Equal(report, settled);
+        // About half a second at the core rate, the same as ffmpeg decodes it to (12288 frames).
+        Assert.Equal(12288, samples.Length / format.Channels);
     }
 
+    // ffmpeg 7.0.2 decodes these to 44.1 kHz and 24576 frames per channel (the fixtures' frames are plain AAC-LC, so there is no real high band).
     [Theory]
-    [InlineData("sbr-compatible.m4a", false)]
-    [InlineData("sbr-explicit.m4a", false)]
-    [InlineData("sbrps-explicit.m4a", true)]
-    public void SignalledHeAacIsRefusedByOneAudioButStillReported(string file, bool ps)
+    [InlineData("sbr-compatible.m4a", 1)]
+    [InlineData("sbr-explicit.m4a", 1)]
+    [InlineData("sbrps-explicit.m4a", 2)]
+    public void SignalledHeAacDecodesAtTheOutputRate(string file, int channels)
     {
         using MediaFile media = Media.Open(HeAacFixture(file));
-        // OneAudio 1.4.0 refuses configurations that signal SBR or PS with a typed exception rather than decoding the core (the explicit
-        // fixtures also end one bit early, as MP4Box wrote them, which its stricter parser reports as an invalid configuration).
-        Assert.ThrowsAny<AudioFormatException>(() => media.Decode(out _));
-        AudioDecodeReport report = media.DescribeDecode();
-        Assert.True(report.IsCoreOnly);
-        Assert.Equal(ps, report.Limitations.HasFlag(AudioSeamLimitations.PsNotApplied));
-        Assert.Equal(44100, report.SignalledSampleRate);
-        Assert.Equal(22050, report.DecodedSampleRate);
-        Assert.Equal(1, report.DecodedChannels);
-        Assert.Equal(ps ? 2 : 0, report.SignalledChannels);
+        (float[] samples, AudioFormat format) = ReadAll(media.Decode(out AudioDecodeReport report));
+        Assert.Equal(44100, format.SampleRate);
+        Assert.Equal(report.DecodedSampleRate, format.SampleRate);
+        Assert.Equal(report.DecodedChannels, format.Channels);
+        Assert.Equal(AudioSeamLimitations.None, report.Limitations);
+        Assert.Equal(0, report.SignalledSampleRate);
+        Assert.Equal(0, report.SignalledChannels);
+        Assert.True(report.SbrActive);
+        // The PS fixture holds a stereo core (plain AAC-LC frames), so the decoder runs SBR without parametric stereo even though the file
+        // signals PS: the report says what ran, not what was signalled.
+        Assert.False(report.PsActive);
+        Assert.Equal(24576, samples.Length / format.Channels);
+        Assert.Equal(channels, format.Channels);
+        Assert.NotEqual(SbrSignalling.None, report.Signalling);
     }
 
     [Fact]
