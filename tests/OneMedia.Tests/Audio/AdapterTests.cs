@@ -239,6 +239,35 @@ public class AdapterTests
         Assert.Equal(22050, p.CoreSampleRate);
     }
 
+    // AAC in MPEG-TS arrives as ADTS frames; the decoder is configured by the AudioSpecificConfig, so the adapter must hand it raw data blocks.
+    [Theory]
+    [InlineData("h264-aac.ts")]
+    [InlineData("h264-aac.m2ts")]
+    public void AacInTransportStreamDecodes(string file)
+    {
+        using MediaFile media = Media.Open(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "mpeg", file));
+        (float[] samples, AudioFormat format) = ReadAll(media.Decode());
+        Assert.True(samples.Length / format.Channels > 1024);
+        Assert.Contains(samples, v => v != 0f);
+    }
+
+    // DescribeDecode asks the decoder, so it can not disagree with Decode: a container's doubled-rate hint with no SBR in the stream decodes at
+    // the core rate (test5.mkv's Commentary track: 22,050 Hz under a declared 44,100 Hz), and the description says so too.
+    [Theory]
+    [InlineData("sbr-implied.m4a")]
+    [InlineData("sbr-compatible.m4a")]
+    [InlineData("sbr-explicit.m4a")]
+    [InlineData("sbrps-explicit.m4a")]
+    public void DescribeDecodeAgreesWithDecode(string file)
+    {
+        using MediaFile media = Media.Open(HeAacFixture(file));
+        AudioDecodeReport described = media.DescribeDecode();
+        using IAudioDecoder d = media.Decode(out AudioDecodeReport decoded);
+        Assert.Equal(decoded, described);
+        Assert.Equal(d.Format.SampleRate, described.DecodedSampleRate);
+        Assert.Equal(d.Format.Channels, described.DecodedChannels);
+    }
+
     [Fact]
     public void PlainAacIsNotSbr()
     {

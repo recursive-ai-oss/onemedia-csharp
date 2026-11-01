@@ -265,6 +265,9 @@ public class XiphFlvTests
         Assert.Equal("h264", v.Codec.Name);
         Assert.False(v.Configuration.Data.IsEmpty);
         Assert.Equal(160, v.Video!.Value.Width);
+        // The VUI timing arrives as 30/2; it is given in lowest terms (ffprobe: 15/1).
+        Assert.Equal(15, v.Video!.Value.FrameRateNumerator);
+        Assert.Equal(1, v.Video!.Value.FrameRateDenominator);
         Assert.Equal("aac", a.Codec.Name);
         Assert.False(a.Configuration.Data.IsEmpty);
         int reordered = 0;

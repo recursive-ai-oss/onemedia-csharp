@@ -44,7 +44,7 @@ public enum AudioSeamLimitations
 
 /// <summary>What a decode of an audio track will and will not do, known before any audio is read.</summary>
 /// <param name="Limitations">What OneAudio could not be told or did not apply. Discard-padding flags are only known after reading, on <see cref="MediaTrackPacketSource.Limitations"/>; late SBR through <see cref="AfterReading"/>.</param>
-/// <param name="DecodedSampleRate">The sampling rate of the PCM the decoder returns, in Hz (0 when the container does not say). From <c>DescribeDecode</c> an HE-AAC track is reported at the rate the file declares; from <c>Decode</c> it is the decoder's own.</param>
+/// <param name="DecodedSampleRate">The sampling rate of the PCM the decoder returns, in Hz (0 when the container does not say). Both <c>DescribeDecode</c> and <c>Decode</c> report the decoder's own rate.</param>
 /// <param name="SignalledSampleRate">The rate the file asks for when it differs from <paramref name="DecodedSampleRate"/>; 0 when the same.</param>
 /// <param name="DecodedChannels">The channel count of the returned PCM (0 when unknown).</param>
 /// <param name="SignalledChannels">The channel count the file asks for when it differs from <paramref name="DecodedChannels"/>; 0 when the same.</param>
@@ -109,6 +109,7 @@ public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations
 public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
 {
     private readonly IDemuxer _demuxer;
+    private readonly bool _adtsFramed;
     private readonly MediaTrack _track;
     private readonly bool _ownsDemuxer;
     private readonly bool _primingInTimestamps;
@@ -128,6 +129,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     private MediaTrackPacketSource(IDemuxer demuxer, MediaTrack track, bool ownsDemuxer, global::OneAudio.CodecId codec, byte[][] headers, ReadOnlyMemory<byte> config, int rate, int channels, int priming, long length)
     {
         _demuxer = demuxer;
+        _adtsFramed = demuxer.Format == MediaFormatId.Adts || demuxer.Format == MediaFormatId.MpegTs || demuxer.Format == MediaFormatId.MpegPs;
         _track = track;
         _ownsDemuxer = ownsDemuxer;
         _primingInTimestamps = demuxer.Format == MediaFormatId.IsoBmff;
@@ -465,11 +467,11 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
             long dur = info.Duration.IsKnown ? info.Duration.Rescale(_timeScale, MediaRounding.NearestAwayFromZero).Ticks : 0;
             long end = EndFrameOf(info, view.Data);
             ReadOnlySpan<byte> payload = view.Data;
-            if (_demuxer.Format == MediaFormatId.Adts && payload.Length > 7)
+            if (_adtsFramed && payload.Length > 7 && AdtsHeader.TryParse(payload, out AdtsHeader adts) && adts.HeaderSize < payload.Length)
             {
-                // The ADTS demuxer delivers frames as stored; the decoder is configured by the AudioSpecificConfig, so it gets the raw data block
-                // (ISO/IEC 13818-7 §6.2: 7-byte header, 9 with the CRC when protection_absent is 0).
-                payload = payload[((payload[1] & 1) == 0 ? 9 : 7)..];
+                // ADTS-framed containers (raw ADTS and AAC in MPEG-TS/PS) deliver frames as stored; the decoder is configured by the
+                // AudioSpecificConfig, so it gets the raw data block (ISO/IEC 13818-7 §6.2: 7-byte header, 9 with the CRC when protection_absent is 0).
+                payload = payload[adts.HeaderSize..];
             }
 
             packet = new global::OneAudio.PacketView(payload, end, false, ts, dur, DiscardEndFramesOf(info));
