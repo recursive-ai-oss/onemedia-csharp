@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Compares the packets ffprobe reads from a remuxed file with the ones it reads from the file it was made from.
+
+usage: reremux-compare.py [-v] <ffprobe> <input> <output>
+  <output>.map   one line per output track: "<output index> <input index> <repackaging>" (written by OneMedia.RemuxCheck)
+  <output>.pkts  one line per packet in output order: "<output index> <dts> <pts> <duration> <size> <key> <disposable> <sha256>" as written to the muxer
+
+This is tools/mux-compare.py with one change: for a track whose payload was re-framed (annexb-to-length-prefixed, adts-to-raw) the size and
+the SHA-256 of ffprobe's output packet are compared with what was written (.pkts) instead of with ffprobe's view of the input, because the
+bytes differ by design. That the NAL units are the same is checked by RemuxCheck itself (the "nals" column). Every other field, and the
+classes of explained differences, are those of mux-compare.py (docs/muxing.md); a remux adds the class
+  untimed-input  the input is a raw elementary stream with no time stamps (ffprobe prints N/A); the output carries the reader's frame numbering
+  edit-time   every pts and dts of a stream moved by one constant (the shift class), or by a constant plus the start offset of an edit list
+"""
+import os
+import subprocess
+import sys
+from collections import defaultdict
+
+FIELDS = "stream_index,pts,dts,duration,size,flags,data_hash"
+NAMES = ["pts", "dts", "duration", "size", "flags", "hash"]
+
+
+def probe(ffprobe, path):
+    out = subprocess.run(
+        [ffprobe, "-v", "error", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=" + FIELDS, "-of", "csv=p=0", path],
+        capture_output=True, text=True, check=False).stdout
+    streams = defaultdict(list)
+    for line in out.splitlines():
+        f = line.strip().split(",")
+        if len(f) < 7:
+            continue
+        try:
+            streams[int(f[0])].append(tuple(f[1:7]))
+        except ValueError:
+            pass
+    return streams
+
+
+def to_int(v):
+    try:
+        return int(v)
+    except ValueError:
+        return None
+
+
+def load_reader(path):
+    tracks = defaultdict(list)
+    if not os.path.exists(path):
+        return tracks
+    with open(path) as fh:
+        for line in fh:
+            f = line.split()
+            tracks[int(f[0])].append(tuple(int(x) for x in f[1:7]) + (f[7] if len(f) > 7 else "",))
+    return tracks
+
+
+def reader_tier(pa, pb, pr):
+    """True when ffprobe's packets of the output equal the container reader's view of the input (see in-reader above)."""
+    if not pr or len(pr) != len(pb):
+        return False
+    fragmented = os.environ.get("FRAGMENTED") == "1"
+    # With a segment index ffprobe moves the presentation times of the first fragment by an amount of its own (the same bytes with the
+    # index box renamed to 'free' read back with one constant shift), so only the decode times must keep one shift.
+    sidx = os.environ.get("SIDX") == "1"
+    dts_shift = pts_shift = None
+    for n, ((rdts, rpts, rdur, rsize, rkey, _disp, rhash), (pts, dts, dur, size, flags, h)) in enumerate(zip(pr, pb)):
+        if to_int(size) != rsize or h != "SHA256:" + rhash:
+            return False
+        # ffprobe marks every audio packet as a key frame whatever the container says; the output may agree with ffprobe's reading of the input.
+        if (flags[:1] == "K") != bool(rkey) and not (n < len(pa) and pa[n][4][:1] == flags[:1]):
+            return False
+        if to_int(pts) is None or to_int(dts) is None:
+            return False
+        a, b = to_int(dts) - rdts, to_int(pts) - rpts
+        if dts_shift is None:
+            dts_shift, pts_shift = a, b
+        elif a != dts_shift or (b != pts_shift and not sidx):
+            return False
+        if not fragmented and rdur >= 0 and dur != "N/A" and to_int(dur) != rdur:
+            # The sample table cannot hold a gap in the timeline, so the muxer writes the distance to the next decode time (dur-gap);
+            # ffprobe derives the last packet's duration from the edit list and stream duration.
+            nxt = pb[n + 1] if n + 1 < len(pb) else None
+            if nxt is not None and to_int(nxt[1]) is not None and to_int(dur) == to_int(nxt[1]) - to_int(dts):
+                continue
+            if nxt is None:
+                continue
+            return False
+    return True
+
+
+def main():
+    verbose = "-v" in sys.argv
+    argv = [a for a in sys.argv[1:] if a != "-v"]
+    ffprobe, src, dst = argv
+    mapping = []
+    modes = {}
+    with open(dst + ".map") as fh:
+        for line in fh:
+            f = line.split()
+            mapping.append((int(f[0]), int(f[1])))
+            modes[int(f[0])] = f[2] if len(f) > 2 else "none"
+    a = probe(ffprobe, src)
+    b = probe(ffprobe, dst)
+    reader = load_reader(dst + ".pkts")
+    classes = defaultdict(int)
+    total = match = diff = 0
+    first = []
+    for o, i in mapping:
+        pa, pb, pr = a.get(i, []), b.get(o, []), reader.get(o, [])
+        if modes.get(o, "none") != "none" and len(pa) == len(pr):
+            # Re-framed track: the expected size and hash are the ones written, not the input's.
+            pa = [(x[0], x[1], x[2], str(r[3]), x[4], "SHA256:" + r[6]) for x, r in zip(pa, pr)]
+        if len(pa) != len(pb):
+            kind = "count(%d->%d:%d!=%d)" % (i, o, len(pa), len(pb))
+            if pr and len(pr) == len(pb):
+                classes["explained:count-reader(%d->%d:%d!=%d)" % (i, o, len(pa), len(pb))] += 1
+            else:
+                classes[kind] += 1
+                diff += abs(len(pa) - len(pb))
+        sc = defaultdict(int)
+        st = sm = sd = 0
+        sf = []
+        pairs = list(zip(pa, pb))
+        shifts = set()
+        for x, y in pairs:
+            if x[0] != y[0] or x[1] != y[1]:
+                dx, dy = to_int(y[0]), to_int(y[1])
+                ox, oy = to_int(x[0]), to_int(x[1])
+                shifts.add(None if None in (dx, dy, ox, oy) else (dx - ox, dy - oy))
+        uniform = len(shifts) == 1 and None not in shifts and next(iter(shifts))[0] == next(iter(shifts))[1]
+        shift = next(iter(shifts))[0] if uniform else 0
+        for n, (x, y) in enumerate(pairs):
+            st += 1
+            bad = []
+            for k in range(6):
+                if x[k] == y[k]:
+                    continue
+                cls = None
+                if k < 2 and x[k] == "N/A" and pr and n < len(pr) and (to_int(y[k]) == pr[n][1 - k] or (k == 0 and pr[n][1] < -(1 << 62) and y[0] == y[1])):
+                    # The input has no time stamps (a raw elementary stream); the reader numbers the frames and the output keeps its numbers.
+                    cls = "untimed-input"
+                elif k < 2 and uniform and to_int(x[k]) is not None and to_int(y[k]) is not None and to_int(y[k]) - to_int(x[k]) == shift:
+                    cls = "shift"
+                elif k == 2:
+                    nxt = pb[n + 1] if n + 1 < len(pb) else None
+                    if x[2] == "N/A":
+                        cls = "dur-na"
+                    elif pr and n < len(pr) and to_int(y[2]) == pr[n][2]:
+                        cls = "dur-reader"
+                    elif nxt and to_int(nxt[1]) is not None and to_int(y[1]) is not None and to_int(y[2]) == to_int(nxt[1]) - to_int(y[1]):
+                        cls = "dur-gap"
+                elif k == 4:
+                    if pr and n < len(pr) and x[4][0] != y[4][0] and (y[4][0] == "K") == bool(pr[n][4]):
+                        cls = "key-reader"
+                    elif x[4][0] == y[4][0] and x[4][1:2] != y[4][1:2] and {x[4][1:2], y[4][1:2]} == {"D", "_"}:
+                        cls = "disc-frag"
+                if cls:
+                    sc["explained:" + cls] += 1
+                else:
+                    bad.append(NAMES[k])
+            if bad:
+                sd += 1
+                for k in bad:
+                    sc[k] += 1
+                if len(sf) < 5:
+                    sf.append("stream %d->%d packet %d: %s vs %s" % (i, o, n, x, y))
+            else:
+                sm += 1
+        if sd and reader_tier(pa, pb, pr):
+            # Every packet still different is ffprobe reading the input differently from the container reader (see in-reader above).
+            sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
+            sc["explained:in-reader"] += sd
+            sm += sd
+            sd = 0
+            sf = []
+        for k, v in sc.items():
+            classes[k] += v
+        total += st
+        match += sm
+        diff += sd
+        first.extend(sf)
+    name = src.rsplit("/", 1)[-1]
+    print("%s\tstreams=%d\tpackets=%d\tmatch=%d\tdiff=%d\t%s" % (name, len(mapping), total, match, diff, dict(classes) if classes else ""))
+    if verbose or diff:
+        for line in first:
+            print("\t" + line)
+    return 1 if diff else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

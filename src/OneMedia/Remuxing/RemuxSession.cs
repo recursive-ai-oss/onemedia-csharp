@@ -528,6 +528,7 @@ public sealed class RemuxSession : IDisposable
             }
         }
 
+        _options.Observer?.Invoke(p, payload);
         _muxer!.WritePacket(p, payload, cancellationToken);
         s.Packets++;
     }

@@ -34,6 +34,11 @@ public enum RemuxFormat
     WebM,
 }
 
+/// <summary>Receives each packet exactly as it is handed to the muxer: output track index, times after any shift, and the payload after repackaging.</summary>
+/// <param name="packet">The packet; <see cref="PacketInfo.TrackIndex"/> is the output index.</param>
+/// <param name="payload">The bytes written. Valid only during the call.</param>
+public delegate void RemuxPacketObserver(in PacketInfo packet, ReadOnlySpan<byte> payload);
+
 /// <summary>Changes to one input track in a remux. A null member leaves the input's value.</summary>
 public sealed record TrackEdit
 {
@@ -86,6 +91,9 @@ public sealed record RemuxOptions
 
     /// <summary>Creation and modification time to write; null writes zero, so the output is a pure function of the input.</summary>
     public DateTimeOffset? CreationTime { get; init; }
+
+    /// <summary>Called for every packet just before it is written; for progress, hashing or checks. Must not retain the payload span. Null for none.</summary>
+    public RemuxPacketObserver? Observer { get; init; }
 
     /// <summary>For the path overloads: replace an existing output file (default false: refuse).</summary>
     public bool Overwrite { get; init; }
