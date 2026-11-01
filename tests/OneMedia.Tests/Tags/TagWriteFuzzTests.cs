@@ -18,6 +18,7 @@ public sealed class TagWriteFuzzTests
     [InlineData("matroska-fuzz-6.bin")]
     [InlineData("mp3-id3-garbage.bin")]
     [InlineData("mp3-fuzz-8.bin")]
+    [InlineData("matroska-fuzz-9.bin")]
     [InlineData("mp3-id3v1-marker-only.bin")]
     public void AFileThatOpenedStillOpensAfterTheTagWrite(string name)
     {
