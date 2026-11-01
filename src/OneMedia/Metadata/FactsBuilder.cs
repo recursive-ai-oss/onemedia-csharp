@@ -106,6 +106,12 @@ internal sealed class FactsBuilder(DefectLog defects)
             case TagSystems.Matroska when t.TrackId == 0 && string.Equals(t.Key, "DATE_RECORDED", StringComparison.OrdinalIgnoreCase):
                 AddTime(45, t, text, source, "Matroska DATE_RECORDED tag (ISO 8601 or a partial date)");
                 break;
+            case TagSystems.Asf when t.TrackId == 0 && t.Key == "WM/MediaOriginalBroadcastDateTime":
+                AddTime(RankVendorCreationTime, t, text, source, "broadcast date-time of the recorded programme, as written by the recorder");
+                break;
+            case TagSystems.Asf when t.TrackId == 0 && t.Key == "WM/ToolName":
+                AddString(Software, 20, t, text, source);
+                break;
             case TagSystems.ITunes when t.Key == "©day":
                 AddTime(RankDayTag, t, text, source, "iTunes date text");
                 break;

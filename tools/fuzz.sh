@@ -48,6 +48,13 @@ seed() {
                { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
              done ;;
+    asf) # The first byte picks the path (bit 0: forward-only; bit 1: seeks; bit 2: the asynchronous reader); the rest is the file.
+         for f in "$here"/testdata/asf/*.asf "$here"/testdata/asf/*.wmv "$here"/testdata/asf/*.wma; do
+           [ -f "$f" ] || continue
+           { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+           { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+           { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
+         done ;;
     tags) # The first byte picks the path (bit 0: Matroska rather than ISO BMFF; bit 1: the asynchronous reader); the rest is the file.
           for f in "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mov "$here"/testdata/metadata/*.m4a "$here"/testdata/metadata/*.3gp "$here"/testdata/isobmff/*.mp4; do
             [ -f "$f" ] || continue

@@ -29,6 +29,7 @@ public static class TagMappingTable
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
+    private const string AsfDoc = "ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
 
@@ -140,6 +141,25 @@ public static class TagMappingTable
         Row(CommonField.DiscNumber, TagSystems.Matroska, MatroskaDoc, "ffmpeg writes DISC, optionally as number/total", "DISC"),
         Row(CommonField.DiscTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of DISC", "DISC"),
         Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of TRACK when TOTAL_PARTS is absent", "TOTAL_PARTS", "TRACK"),
+        Row(CommonField.Title, TagSystems.Asf, AsfDoc, "Content Description title", "Title"),
+        Row(CommonField.Artist, TagSystems.Asf, AsfDoc, "Content Description author; WM/Author is the same attribute in the extended description", "Author", "WM/Author"),
+        Row(CommonField.AlbumArtist, TagSystems.Asf, AsfDoc, "", "WM/AlbumArtist"),
+        Row(CommonField.Album, TagSystems.Asf, AsfDoc, "", "WM/AlbumTitle"),
+        Row(CommonField.Composer, TagSystems.Asf, AsfDoc, "", "WM/Composer"),
+        Row(CommonField.Director, TagSystems.Asf, AsfDoc, "", "WM/Director"),
+        Row(CommonField.Genre, TagSystems.Asf, AsfDoc, "", "WM/Genre"),
+        Row(CommonField.Description, TagSystems.Asf, AsfDoc, "Content Description description; ExifTool and MediaInfo also call it Description", "Description"),
+        Row(CommonField.Date, TagSystems.Asf, AsfDoc, "WM/Year holds a year or a date as the writer typed it", "WM/Year"),
+        Row(CommonField.Copyright, TagSystems.Asf, AsfDoc, "Content Description copyright", "Copyright"),
+        Row(CommonField.Encoder, TagSystems.Asf, AsfDoc, "", "WM/ToolName", "WM/EncodingSettings"),
+        Row(CommonField.EncodedBy, TagSystems.Asf, AsfDoc, "", "WM/EncodedBy"),
+        Row(CommonField.Grouping, TagSystems.Asf, AsfDoc, "", "WM/ContentGroupDescription"),
+        Row(CommonField.Lyrics, TagSystems.Asf, AsfDoc, "", "WM/Lyrics"),
+        Row(CommonField.Rating, TagSystems.Asf, AsfDoc, "WM/SharedUserRating is a number from 0 to 99; Rating is the Content Description text", "WM/SharedUserRating", "Rating"),
+        Row(CommonField.TrackNumber, TagSystems.Asf, AsfDoc, "WM/TrackNumber, optionally written as number/total", "WM/TrackNumber"),
+        Row(CommonField.TrackTotal, TagSystems.Asf, AsfDoc, "the part after the slash of WM/TrackNumber", "WM/TrackNumber"),
+        Row(CommonField.DiscNumber, TagSystems.Asf, AsfDoc, "WM/PartOfSet, optionally written as number/total", "WM/PartOfSet"),
+        Row(CommonField.DiscTotal, TagSystems.Asf, AsfDoc, "the part after the slash of WM/PartOfSet", "WM/PartOfSet"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

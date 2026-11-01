@@ -232,7 +232,7 @@ public sealed class CommonTags
                 foreach (NativeTag tag in _native)
                 {
                     bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
-                    if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
+                    if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text && !(text.Length == 0 && tag.System == TagSystems.Asf))
                     {
                         found.Add(new CommonValue(field, text, tag));
                     }
@@ -340,7 +340,8 @@ public sealed class CommonTags
                 {
                     // MP4 and QuickTime do not name the picture's role; Matroska names cover art by file name (cover.jpg, small_cover.png…).
                     bool cover = tag.System != TagSystems.Matroska || tag.Key.StartsWith("cover", StringComparison.OrdinalIgnoreCase) || tag.Key.StartsWith("small_cover", StringComparison.OrdinalIgnoreCase);
-                    list.Add(new TagPicture(tag, cover ? PictureType.FrontCover : PictureType.Other, tag.MimeType ?? "application/octet-stream"));
+                    PictureType type = tag.PictureTypeNumber is >= 0 and <= (int)PictureType.PublisherLogo ? (PictureType)tag.PictureTypeNumber.Value : cover ? PictureType.FrontCover : PictureType.Other;
+                    list.Add(new TagPicture(tag, type, tag.MimeType ?? "application/octet-stream"));
                 }
             }
 
@@ -439,7 +440,7 @@ public sealed class CommonTags
             return tag.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System == TagSystems.Matroska)
+        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.Asf)
         {
             // Matroska writes the number as text, sometimes as "3/12" (ffmpeg's track tag); the total fields read the number after the slash or the whole text.
             string t = tag.Text ?? "";

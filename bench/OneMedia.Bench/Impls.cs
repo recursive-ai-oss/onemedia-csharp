@@ -55,6 +55,7 @@ internal static class Impls
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Asf.AsfFormat());
         foreach (IMediaFormatSniffer s in registry.Formats)
         {
             if (s is IMediaFormat)
@@ -221,6 +222,45 @@ internal static class Impls
         long tracks = d.Tracks.Count;
         _ = d.Duration;
         return new Work(0, 0, tracks);
+    }
+
+    /// <summary>Opens the file and reads its tags through the common view: title, artist, album, genre, the picture count and every native tag's text.</summary>
+    public static Work OursTags(string path)
+    {
+        using IDemuxer d = OpenOurs(path);
+        RecursiveAI.OneMedia.Metadata.MediaMetadata m = ((RecursiveAI.OneMedia.Metadata.IMetadataProvider)d).ReadMetadata();
+        long n = 0;
+        foreach (RecursiveAI.OneMedia.Tags.NativeTag t in m.NativeTags)
+        {
+            _ = t.Text;
+            n++;
+        }
+
+        _ = m.Tags.Title;
+        _ = m.Tags.Artist;
+        _ = m.Tags.Album;
+        _ = m.Tags.Genre;
+        return new Work(0, 0, n + m.Tags.Pictures.Count);
+    }
+
+    public static Work TagLibTags(string path)
+    {
+        using TagLib.File f = TagLib.File.Create(path);
+        _ = f.Tag.Title;
+        _ = f.Tag.FirstPerformer;
+        _ = f.Tag.Album;
+        _ = f.Tag.FirstGenre;
+        return new Work(0, 0, f.Tag.Pictures.Length);
+    }
+
+    public static Work AtlTags(string path)
+    {
+        Atl.Track t = new(path);
+        _ = t.Title;
+        _ = t.Artist;
+        _ = t.Album;
+        _ = t.Genre;
+        return new Work(0, 0, t.AdditionalFields.Count + t.EmbeddedPictures.Count);
     }
 
     // ---- SharpMP4 ---------------------------------------------------------------------------------------------------------

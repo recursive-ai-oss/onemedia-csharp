@@ -1,3 +1,4 @@
+using RecursiveAI.OneMedia.Asf;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Sniffing;
@@ -26,7 +27,7 @@ public static class MediaFormats
         registry.Add(new MatroskaFormat());
         registry.Add(new WavSniffer());
         registry.Add(new AviSniffer());
-        registry.Add(new AsfSniffer());
+        registry.Add(new AsfFormat());
         registry.Add(new MpegTsSniffer());
         registry.Add(new MpegPsSniffer());
         registry.Add(new FlvSniffer());

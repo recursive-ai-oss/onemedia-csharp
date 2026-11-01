@@ -27,6 +27,9 @@ public static class TagSystems
 
     /// <summary>The XMP packet carried in a <c>uuid</c> or <c>XMP_</c> box.</summary>
     public const string Xmp = "xmp";
+
+    /// <summary>Tags of an ASF file: the content description, extended content description and metadata objects.</summary>
+    public const string Asf = "asf";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>
@@ -116,6 +119,9 @@ public sealed class NativeTag
     /// <summary>For <see cref="TagValueKind.Image"/>, the media type (<c>image/jpeg</c>, <c>image/png</c>, <c>image/bmp</c>, <c>image/gif</c>); else <c>null</c>.</summary>
     public string? MimeType { get; internal set; }
 
+    /// <summary>For a picture, the role the file states for it, as an ID3v2 picture type number (3 is the front cover); null when the system does not state one.</summary>
+    public int? PictureTypeNumber { get; internal set; }
+
     /// <summary>The whole number for <see cref="TagValueKind.Number"/> values, else <c>null</c>.</summary>
     public long? Number { get; internal set; }
 
@@ -204,6 +210,7 @@ internal enum TagTextEncoding
     Utf8,
     Utf16BigEndian,
     Utf16WithByteOrderMark,
+    Utf16LittleEndian,
 }
 
 /// <summary>Where tag values are read from: the source, the limits, and where defects go.</summary>
@@ -250,6 +257,11 @@ internal static class TextDecoder
         if (encoding == TagTextEncoding.Utf16BigEndian)
         {
             return DecodeUtf16Be(bytes, offset, defects);
+        }
+
+        if (encoding == TagTextEncoding.Utf16LittleEndian)
+        {
+            return DecodeUtf16Le(bytes, offset, defects);
         }
 
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)

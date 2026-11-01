@@ -103,3 +103,22 @@ generated from it, and a test fails when they differ.
 | DiscNumber | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | ffmpeg writes DISC, optionally as number/total |
 | DiscTotal | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of DISC |
 | TrackTotal | mkv | `TOTAL_PARTS`, `TRACK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of TRACK when TOTAL_PARTS is absent |
+| Title | asf | `Title` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description title |
+| Artist | asf | `Author`, `WM/Author` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description author; WM/Author is the same attribute in the extended description |
+| AlbumArtist | asf | `WM/AlbumArtist` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Album | asf | `WM/AlbumTitle` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Composer | asf | `WM/Composer` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Director | asf | `WM/Director` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Genre | asf | `WM/Genre` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Description | asf | `Description` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description description; ExifTool and MediaInfo also call it Description |
+| Date | asf | `WM/Year` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/Year holds a year or a date as the writer typed it |
+| Copyright | asf | `Copyright` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description copyright |
+| Encoder | asf | `WM/ToolName`, `WM/EncodingSettings` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| EncodedBy | asf | `WM/EncodedBy` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Grouping | asf | `WM/ContentGroupDescription` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Lyrics | asf | `WM/Lyrics` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Rating | asf | `WM/SharedUserRating`, `Rating` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/SharedUserRating is a number from 0 to 99; Rating is the Content Description text |
+| TrackNumber | asf | `WM/TrackNumber` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/TrackNumber, optionally written as number/total |
+| TrackTotal | asf | `WM/TrackNumber` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | the part after the slash of WM/TrackNumber |
+| DiscNumber | asf | `WM/PartOfSet` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/PartOfSet, optionally written as number/total |
+| DiscTotal | asf | `WM/PartOfSet` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | the part after the slash of WM/PartOfSet |
