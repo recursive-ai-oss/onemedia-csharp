@@ -117,14 +117,9 @@ def main():
             else:
                 classes[kind] += 1
                 diff += abs(len(pa) - len(pb))
-        if reader_tier(pb, pr):
-            n_in = sum(1 for x, y in zip(pa, pb) if x != y) + abs(len(pa) - len(pb))
-            if n_in:
-                classes["explained:in-reader"] += n_in
-                for x, y in zip(pa, pb):
-                    total += 1
-                    match += 1
-                continue
+        sc = defaultdict(int)
+        st = sm = sd = 0
+        sf = []
         pairs = list(zip(pa, pb))
         shifts = set()
         for x, y in pairs:
@@ -135,7 +130,7 @@ def main():
         uniform = len(shifts) == 1 and None not in shifts and next(iter(shifts))[0] == next(iter(shifts))[1]
         shift = next(iter(shifts))[0] if uniform else 0
         for n, (x, y) in enumerate(pairs):
-            total += 1
+            st += 1
             bad = []
             for k in range(6):
                 if x[k] == y[k]:
@@ -157,17 +152,30 @@ def main():
                     elif x[4][0] == y[4][0] and x[4][1:2] != y[4][1:2] and {x[4][1:2], y[4][1:2]} == {"D", "_"}:
                         cls = "disc-frag"
                 if cls:
-                    classes["explained:" + cls] += 1
+                    sc["explained:" + cls] += 1
                 else:
                     bad.append(NAMES[k])
             if bad:
-                diff += 1
+                sd += 1
                 for k in bad:
-                    classes[k] += 1
-                if len(first) < 5:
-                    first.append("stream %d->%d packet %d: %s vs %s" % (i, o, n, x, y))
+                    sc[k] += 1
+                if len(sf) < 5:
+                    sf.append("stream %d->%d packet %d: %s vs %s" % (i, o, n, x, y))
             else:
-                match += 1
+                sm += 1
+        if sd and reader_tier(pb, pr):
+            # Every packet still different is ffprobe reading the input differently from the container reader (see in-reader above).
+            sc = defaultdict(int, {k: v for k, v in sc.items() if k.startswith("explained:")})
+            sc["explained:in-reader"] += sd
+            sm += sd
+            sd = 0
+            sf = []
+        for k, v in sc.items():
+            classes[k] += v
+        total += st
+        match += sm
+        diff += sd
+        first.extend(sf)
     name = src.rsplit("/", 1)[-1]
     print("%s\tstreams=%d\tpackets=%d\tmatch=%d\tdiff=%d\t%s" % (name, len(mapping), total, match, diff, dict(classes) if classes else ""))
     if verbose or diff:

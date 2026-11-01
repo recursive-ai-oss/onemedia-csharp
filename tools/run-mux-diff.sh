@@ -33,13 +33,19 @@ one() {
   copy=$(dotnet "$TOOL" copy "$f" "$o" --layout "$LAYOUT" $OPTS 2>&1 | head -1 | cut -f2- | tr '\t' ' ')
   if [ -f "$o.map" ] && [ -s "$o" ]; then
     cmp=$(FRAGMENTED=$([ "$LAYOUT" = frag ] && echo 1 || echo 0) python3 tools/mux-compare.py "$ORACLES/ffprobe" "$f" "$o" | head -1 | cut -f2-)
+    # What the oracles say about the input is the same for every layout: keep it in $CACHE (optional) and compute it once.
+    ic="${CACHE:-$o}"
+    if [ -n "${CACHE:-}" ]; then mkdir -p "$CACHE"; ic="$CACHE/$base"; fi
+    if [ ! -f "$ic.in.done" ]; then
+      MP4Box -info "$f" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$f||g" | sort -u > "$ic.in.mp4box"
+      ffmpeg -threads 1 -v error -i "$f" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$ic.in.ffmpeg"
+      touch "$ic.in.done"
+    fi
     # Messages MP4Box prints for the output that it does not print for the input (file names removed).
-    MP4Box -info "$f" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$f||g" | sort -u > "$o.in.mp4box"
     MP4Box -info "$o" 2>&1 | grep -iE 'error|warning|invalid|fail' | sed "s|$o||g" | sort -u > "$o.out.mp4box"
-    newbox=$(comm -13 "$o.in.mp4box" "$o.out.mp4box" | wc -l)
-    ffmpeg -threads 1 -v error -i "$f" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$o.in.ffmpeg"
+    newbox=$(comm -13 "$ic.in.mp4box" "$o.out.mp4box" | wc -l)
     ffmpeg -threads 1 -v error -i "$o" -f null - 2>&1 | sed "s/0x[0-9a-f]*/0xADDR/g" | sort -u > "$o.out.ffmpeg"
-    newff=$(comm -13 "$o.in.ffmpeg" "$o.out.ffmpeg" | wc -l)
+    newff=$(comm -13 "$ic.in.ffmpeg" "$o.out.ffmpeg" | wc -l)
     printf '%s\t%s\t%s\tmp4box_new=%s\tffmpeg_new=%s\n' "${f#"$CORPUS"/}" "$copy" "$cmp" "$newbox" "$newff"
   else
     printf '%s\t%s\tNOT-WRITTEN\n' "${f#"$CORPUS"/}" "$copy"
@@ -47,7 +53,7 @@ one() {
   [ "${KEEP:-0}" = 1 ] || rm -f "$o" "$o.map" "$o.pkts"
 }
 export -f one
-export CORPUS OUT LAYOUT OPTS TOOL ORACLES
+export CORPUS OUT LAYOUT OPTS TOOL ORACLES CACHE
 
 if [ $# -gt 0 ]; then LIST=$(printf '%s\n' "$@"); else
   LIST=$(find "$CORPUS" -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.m4a' -o -iname '*.m4v' -o -iname '*.3gp' -o -iname '*.3g2' -o -iname '*.m4s' -o -iname '*.f4v' \) -size -"${MAXKB}"k | sort)
