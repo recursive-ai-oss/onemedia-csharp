@@ -122,6 +122,11 @@ internal static class Program
         {
             "isobmff" => IsoExtensions,
             "matroska" => MatroskaExtensions,
+            "mpa" => [".mp3", ".mp2", ".mpa"],
+            "adts" => [".aac"],
+            "ac3" => [".ac3", ".eac3", ".ec3"],
+            "amr" => [".amr", ".awb"],
+            "audio-es" => [".mp3", ".mp2", ".mpa", ".aac", ".ac3", ".eac3", ".ec3", ".amr", ".awb"],
             _ => [.. IsoExtensions, .. MatroskaExtensions],
         };
         List<string> files = [];

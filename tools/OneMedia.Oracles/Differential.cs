@@ -13,6 +13,11 @@ internal static class Readers
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Id3AudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.MpegAudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AdtsFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Ac3Format());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AmrFormat());
         return registry;
     }
 }

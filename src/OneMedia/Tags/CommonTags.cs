@@ -70,6 +70,18 @@ public enum CommonField
 
     /// <summary>Number of discs.</summary>
     DiscTotal,
+
+    /// <summary>ReplayGain track gain, as written (for example <c>-6.50 dB</c>).</summary>
+    ReplayGainTrackGain,
+
+    /// <summary>ReplayGain track peak, as written (for example <c>0.988525</c>).</summary>
+    ReplayGainTrackPeak,
+
+    /// <summary>ReplayGain album gain, as written.</summary>
+    ReplayGainAlbumGain,
+
+    /// <summary>ReplayGain album peak, as written.</summary>
+    ReplayGainAlbumPeak,
 }
 
 /// <summary>One value of a common field and the native tag it came from.</summary>
@@ -231,7 +243,7 @@ public sealed class CommonTags
                 List<CommonValue> found = [];
                 foreach (NativeTag tag in _native)
                 {
-                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
+                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.Ape or TagSystems.Id3v2 ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
                     if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
                     {
                         found.Add(new CommonValue(field, text, tag));
@@ -340,7 +352,7 @@ public sealed class CommonTags
                 {
                     // MP4 and QuickTime do not name the picture's role; Matroska names cover art by file name (cover.jpg, small_cover.png…).
                     bool cover = tag.System != TagSystems.Matroska || tag.Key.StartsWith("cover", StringComparison.OrdinalIgnoreCase) || tag.Key.StartsWith("small_cover", StringComparison.OrdinalIgnoreCase);
-                    list.Add(new TagPicture(tag, cover ? PictureType.FrontCover : PictureType.Other, tag.MimeType ?? "application/octet-stream"));
+                    list.Add(new TagPicture(tag, tag.PictureRole ?? (cover ? PictureType.FrontCover : PictureType.Other), tag.MimeType ?? "application/octet-stream"));
                 }
             }
 
@@ -395,6 +407,10 @@ public sealed class CommonTags
                 return tag.Kind == TagValueKind.Binary && tag.ValueRange.Length == 2 && tag.Number is null ? GenreFromBinary(tag) : tag.Number is { } n ? Id3Genres.Name((int)n - 1) : null;
             case CommonField.Genre when tag.System == TagSystems.ThreeGpp && tag.Kind == TagValueKind.Text:
                 return tag.Text;
+            case CommonField.Genre when tag.System == TagSystems.Id3v1:
+                return tag.Number is { } g ? Id3Genres.Name((int)g) : null;
+            case CommonField.Genre when tag.System == TagSystems.Id3v2 && tag.Kind == TagValueKind.Text:
+                return Id3.Id3Genre.Resolve(tag.Text);
         }
 
         return tag.Kind switch
@@ -439,7 +455,7 @@ public sealed class CommonTags
             return tag.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System == TagSystems.Matroska)
+        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.Id3v2 or TagSystems.Id3v1 or TagSystems.Ape)
         {
             // Matroska writes the number as text, sometimes as "3/12" (ffmpeg's track tag); the total fields read the number after the slash or the whole text.
             string t = tag.Text ?? "";
