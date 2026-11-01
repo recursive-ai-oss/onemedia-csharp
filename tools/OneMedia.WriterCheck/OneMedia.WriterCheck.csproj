@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Checks the structure writers on real files: untouched round trips, minimal metadata edits, per-track payload hashes, in-place
+       edits within padding, and atomic saves for the kill test. Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.WriterCheck</RootNamespace>
+    <AssemblyName>OneMedia.WriterCheck</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>
