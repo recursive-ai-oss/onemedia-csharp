@@ -152,8 +152,14 @@ public class AudioStreamDemuxTests
     [Fact]
     public void Mp3PullPathAllocatesNothingPerPacket()
     {
-        using MpegAudioDemuxer warm = OpenMp3(Mp3(2000));
-        Drain(warm, out _); // warm-up: the first drain grows buffers and compiles the loop
+        // The zero-allocation guarantee is for optimised builds (unoptimised code boxes and allocates state).
+        Assert.SkipWhen(typeof(MpegAudioDemuxer).Assembly.GetCustomAttributes(typeof(System.Diagnostics.DebuggableAttribute), false).Cast<System.Diagnostics.DebuggableAttribute>().Any(a => a.IsJITOptimizerDisabled), "needs an optimised build");
+        for (int round = 0; round < 3; round++)
+        {
+            using MpegAudioDemuxer warm = OpenMp3(Mp3(2000));
+            Drain(warm, out _); // warm-up: grows buffers and lets the tiered JIT settle
+        }
+
         using MpegAudioDemuxer d = OpenMp3(Mp3(5000));
         Assert.True(d.TryReadPacket(out _));
         long allocated = Drain(d, out long count);
