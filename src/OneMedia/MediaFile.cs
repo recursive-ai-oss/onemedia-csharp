@@ -35,7 +35,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(source);
         try
         {
-            return new MediaFile((registry ?? MediaFormats.Default).Open(source, options, cancellationToken), null);
+            return new MediaFile((registry ?? MediaFormats.Default).Open(source, options, cancellationToken), null) { SourcePath = (source as FileMediaSource)?.Path };
         }
         catch
         {
@@ -120,6 +120,36 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     }
 
     private MediaMetadata? _metadata;
+
+    // The path of the file this was opened from, when it was opened from one; tag writes need it.
+    private string? SourcePath { get; init; }
+
+    /// <summary>
+    /// Writes the tags staged on <see cref="Tags"/> (title, artist, pictures…) by atomic replacement of the file: a temporary file next to it, then a rename. Only metadata
+    /// ranges change; media payload bytes are copied. The open file is stale afterwards: open it again to read the new tags.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels before the rename.</param>
+    /// <returns>What was written to which tag system, what could not be represented, and the byte-level report.</returns>
+    /// <exception cref="InvalidOperationException">The file was not opened from a path.</exception>
+    /// <exception cref="UnsupportedMediaException">The format cannot be written.</exception>
+    public TagWriteReport Save(CancellationToken cancellationToken = default) => TagWriter.Save(WritePath, Tags.Pending, null, cancellationToken);
+
+    /// <summary>Writes the staged tags to a new file and leaves this one untouched.</summary>
+    /// <param name="destination">The new file.</param>
+    /// <param name="overwrite">True to replace an existing destination.</param>
+    /// <param name="cancellationToken">Cancels before the file is complete.</param>
+    /// <returns>The report.</returns>
+    /// <exception cref="InvalidOperationException">The file was not opened from a path.</exception>
+    public TagWriteReport SaveAs(string destination, bool overwrite = false, CancellationToken cancellationToken = default) => TagWriter.SaveAs(WritePath, destination, Tags.Pending, null, overwrite, cancellationToken);
+
+    /// <summary>Writes the staged tags into the file itself, only within the padding it already has (ID3, FLAC, <c>free</c>, <c>Void</c>, <c>JUNK</c>). Not atomic.</summary>
+    /// <param name="cancellationToken">Cancels before the first byte is written.</param>
+    /// <returns>The report.</returns>
+    /// <exception cref="PaddingRequiredException">The edit does not fit; the file is untouched.</exception>
+    /// <exception cref="InvalidOperationException">The file was not opened from a path.</exception>
+    public TagWriteReport SaveInPlace(CancellationToken cancellationToken = default) => TagWriter.SaveInPlace(WritePath, Tags.Pending, null, cancellationToken);
+
+    private string WritePath => SourcePath ?? throw new InvalidOperationException("Tags can be saved only for a file opened from a path.");
 
     /// <summary>
     /// The file's metadata: native tags, the common view and the basic facts. Read on first use from the demuxer's structure (no media data

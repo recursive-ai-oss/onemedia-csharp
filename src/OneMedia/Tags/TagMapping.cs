@@ -201,6 +201,20 @@ public static class TagMappingTable
         Row(CommonField.DiscNumber, TagSystems.VorbisComment, VorbisDoc, "may read number/total", "DISCNUMBER"),
         Row(CommonField.DiscTotal, TagSystems.VorbisComment, VorbisDoc, "DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER", "DISCTOTAL", "TOTALDISCS", "DISCNUMBER"),
 
+        // ReplayGain written by foobar2000, Picard and ffmpeg under these names.
+        Row(CommonField.ReplayGainTrackGain, TagSystems.VorbisComment, VorbisDoc, "", "REPLAYGAIN_TRACK_GAIN"),
+        Row(CommonField.ReplayGainTrackPeak, TagSystems.VorbisComment, VorbisDoc, "", "REPLAYGAIN_TRACK_PEAK"),
+        Row(CommonField.ReplayGainAlbumGain, TagSystems.VorbisComment, VorbisDoc, "", "REPLAYGAIN_ALBUM_GAIN"),
+        Row(CommonField.ReplayGainAlbumPeak, TagSystems.VorbisComment, VorbisDoc, "", "REPLAYGAIN_ALBUM_PEAK"),
+        Row(CommonField.ReplayGainTrackGain, TagSystems.ITunes, Picard, "freeform item of iTunes' own mean", "----:com.apple.iTunes:replaygain_track_gain"),
+        Row(CommonField.ReplayGainTrackPeak, TagSystems.ITunes, Picard, "", "----:com.apple.iTunes:replaygain_track_peak"),
+        Row(CommonField.ReplayGainAlbumGain, TagSystems.ITunes, Picard, "", "----:com.apple.iTunes:replaygain_album_gain"),
+        Row(CommonField.ReplayGainAlbumPeak, TagSystems.ITunes, Picard, "", "----:com.apple.iTunes:replaygain_album_peak"),
+        Row(CommonField.ReplayGainTrackGain, TagSystems.Matroska, MatroskaDoc, "not in the tag list; ffmpeg and others write it", "REPLAYGAIN_TRACK_GAIN"),
+        Row(CommonField.ReplayGainTrackPeak, TagSystems.Matroska, MatroskaDoc, "", "REPLAYGAIN_TRACK_PEAK"),
+        Row(CommonField.ReplayGainAlbumGain, TagSystems.Matroska, MatroskaDoc, "", "REPLAYGAIN_ALBUM_GAIN"),
+        Row(CommonField.ReplayGainAlbumPeak, TagSystems.Matroska, MatroskaDoc, "", "REPLAYGAIN_ALBUM_PEAK"),
+
         // ID3v2. The v2.2 identifier of each frame follows the v2.3/2.4 one; text values of several strings are joined with "; ".
         Row(CommonField.Title, TagSystems.Id3v2, PicardId3, "", "TIT2", "TT2"),
         Row(CommonField.Artist, TagSystems.Id3v2, PicardId3, "", "TPE1", "TP1"),

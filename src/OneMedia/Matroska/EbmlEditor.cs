@@ -81,6 +81,30 @@ public sealed class EbmlEditor
         Add(new Request(RequestKind.Append, parent, newElement, false));
     }
 
+    /// <summary>
+    /// Replaces an element with a run of complete elements, for inserting new elements beside an existing one (the first of the run is
+    /// normally the element itself, copied). Growth is absorbed by a Void element that follows, as for <see cref="Replace"/>.
+    /// </summary>
+    /// <param name="element">The element to replace.</param>
+    /// <param name="elements">One or more complete elements, back to back.</param>
+    /// <exception cref="ArgumentException"><paramref name="elements"/> is not a run of whole elements, or <paramref name="element"/> overlaps another edit.</exception>
+    public void ReplaceWithRun(EbmlElement element, ReadOnlyMemory<byte> elements)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ReadOnlySpan<byte> rest = elements.Span;
+        while (!rest.IsEmpty)
+        {
+            if (!Ebml.TryReadId(rest, out _, out int idLen) || !Ebml.TryReadSize(rest[idLen..], out long size, out int sizeLen) || size < 0 || idLen + sizeLen + size > rest.Length)
+            {
+                throw new ArgumentException("The new content must be whole elements whose size fields match their lengths.", nameof(elements));
+            }
+
+            rest = rest[(idLen + sizeLen + (int)size)..];
+        }
+
+        Add(new Request(RequestKind.Replace, element, elements, false));
+    }
+
     private static void CheckElement(ReadOnlyMemory<byte> element)
     {
         if (!EbmlWriter.IsSingleElement(element.Span, out _))
