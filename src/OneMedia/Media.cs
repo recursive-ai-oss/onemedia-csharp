@@ -44,4 +44,14 @@ public static class Media
     /// <returns>The opened file.</returns>
     public static ValueTask<MediaFile> OpenAsync(long length, Func<long, Memory<byte>, CancellationToken, ValueTask<int>> readRange, CancellationToken cancellationToken = default) =>
         MediaFile.OpenAsync(new RangedMediaSource(length, readRange), cancellationToken: cancellationToken);
+
+    /// <summary>Judges whether a file plays in a browser profile.</summary>
+    /// <param name="path">The file.</param>
+    /// <param name="profile">The browser profile, for example <see cref="Playback.BrowserProfiles.Chrome"/>.</param>
+    /// <returns>The verdict, with reasons.</returns>
+    public static Playback.PlaybackVerdict CanPlay(string path, Playback.BrowserProfile profile)
+    {
+        using MediaFile file = Open(path);
+        return file.CanPlay(profile);
+    }
 }

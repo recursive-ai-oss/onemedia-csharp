@@ -221,6 +221,7 @@ public class ApiPolishTests
 
     [Theory]
     [InlineData("vp8", null, "vp8")]
+    [InlineData("vp9", null, "vp9")]
     [InlineData("tx3g", "tx3g", "tx3g")]
     [InlineData("webvtt", "wvtt", "wvtt")]
     [InlineData("ttml", "stpp", "stpp")]

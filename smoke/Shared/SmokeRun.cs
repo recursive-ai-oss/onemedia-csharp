@@ -127,6 +127,7 @@ internal static class SmokeRun
         await MetadataSmoke.RunAsync(Check);
         await XiphFlvSmoke.RunAsync(Check);
         await AviSmoke.RunAsync(Check);
+        PlaybackSmoke.Run(Check);
         WriterSmoke.Run(Check);
         TagWriteSmoke.Run(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.

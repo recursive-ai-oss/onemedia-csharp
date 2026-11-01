@@ -56,6 +56,7 @@ public sealed class OggLogicalBitstream
     internal long LastGranule = -1;
     internal VorbisIdentificationHeader Vorbis;
     internal VorbisModes? Modes;
+    internal bool ModesTried;
     internal int PrevBlock;
     internal int PreSkip;
     internal int TheoraShift;

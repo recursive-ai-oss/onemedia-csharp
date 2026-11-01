@@ -16,6 +16,7 @@
     <Project Path="tools/OneMedia.IsoBmffDiff/OneMedia.IsoBmffDiff.csproj" />
     <Project Path="tools/OneMedia.MatroskaDiff/OneMedia.MatroskaDiff.csproj" />
     <Project Path="tools/OneMedia.MatroskaOneAudio/OneMedia.MatroskaOneAudio.csproj" />
+    <Project Path="tools/OneMedia.PlaybackCheck/OneMedia.PlaybackCheck.csproj" />
     <Project Path="tools/OneMedia.WriterCheck/OneMedia.WriterCheck.csproj" />
     <Project Path="tools/OneMedia.TagWriteCheck/OneMedia.TagWriteCheck.csproj" />
     <Project Path="tools/OneMedia.TagCrossRead/OneMedia.TagCrossRead.csproj" />
