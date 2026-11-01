@@ -2,7 +2,7 @@
 """Makes a free-format MP3 from a constant-bit-rate one: sets the bit rate index of every frame header to 0 (ISO/IEC 11172-3 §2.4.2.3), so the
 frame length is no longer in the header and a reader must measure it. The frame bytes and lengths are unchanged.
 
-usage: make_freeformat.py IN.mp3 OUT.mp3   (IN has no tags in front)
+usage: make_freeformat.py IN.mp3 OUT.mp3   (a leading ID3v2 tag is copied through)
 """
 import sys
 
@@ -17,6 +17,9 @@ def main():
     data = bytearray(open(sys.argv[1], 'rb').read())
     out = bytearray()
     p = 0
+    if data[:3] == b'ID3':  # some encoders write an (empty) ID3v2 tag first; keep it as it is
+        p = 10 + ((data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9])
+        out += data[:p]
     while p + 4 <= len(data):
         b1, b2 = data[p + 1], data[p + 2]
         if data[p] != 0xFF or (b1 & 0xE0) != 0xE0:

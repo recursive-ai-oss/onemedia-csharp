@@ -32,8 +32,32 @@ public sealed class MpegAudioFormat : IMediaFormat
             return new SniffResult(SniffConfidence.Likely, basic.Detail);
         }
 
+        if (h.BitRate == 0)
+        {
+            // Free format (bit-rate index 0): no length in the header, so a second header with the same stable fields a plausible distance on is the evidence.
+            for (int j = 24; j + 4 <= head.Length; j++)
+            {
+                if (!SameStream(head, j))
+                {
+                    continue;
+                }
+
+                // The frame after that is one frame further on, a byte either way for the padding bit.
+                int second = j * 2;
+                if (second + 5 > head.Length || SameStream(head, second - 1) || SameStream(head, second) || SameStream(head, second + 1))
+                {
+                    return new SniffResult(SniffConfidence.Likely, basic.Detail);
+                }
+            }
+
+            return basic;
+        }
+
         return length > 0 && head.Length >= length + 4 ? SniffResult.None : basic;
     }
+
+    private static bool SameStream(ReadOnlySpan<byte> head, int at) =>
+        at + 4 <= head.Length && head[at] == 0xFF && (head[at + 1] & 0xFE) == (head[1] & 0xFE) && (head[at + 2] & 0xFC) == (head[2] & 0xFC) && (head[at + 3] & 0xC0) == (head[3] & 0xC0);
 
     /// <inheritdoc />
     public IDemuxer Open(IMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => MpegAudioDemuxer.Open(source, options, cancellationToken);

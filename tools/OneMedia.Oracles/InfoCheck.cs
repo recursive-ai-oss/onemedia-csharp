@@ -22,7 +22,7 @@ internal static class InfoCheck
                 using MediaFile media = Media.Open(file);
                 using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
                 // ffprobe lists Matroska attachments (fonts, cover art) as streams; they are not tracks here.
-                List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment")];
+                List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment" && !IsAttachedPicture(e))];
                 if (streams.Count != media.Tracks.Count)
                 {
                     problems.Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}");
@@ -46,6 +46,14 @@ internal static class InfoCheck
                     long micro = media.ExactDuration.Rescale(1_000_000, MediaRounding.NearestAwayFromZero).Ticks;
                     // "Within one tick": one tick of the container's own clock, never finer than ffprobe's microsecond.
                     long tick = Math.Max(1, 1_000_000 / media.ExactDuration.Timescale);
+                    // A stream with no frame count has only an estimate (bytes over the early bit rate) on both sides, and the two estimates weigh the
+                    // tags and the bit rate differently; they must agree within 2%.
+                    bool estimated = media.Native.Reader is RecursiveAI.OneMedia.AudioStreams.AudioStreamDemuxer { IsDurationEstimated: true };
+                    if (estimated)
+                    {
+                        tick = Math.Max(tick, (long)(micro * 0.02));
+                    }
+
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
                     {
                         problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
@@ -68,6 +76,10 @@ internal static class InfoCheck
         Console.WriteLine($"infocheck: {total} files, {bad} with differences");
         return 0;
     }
+
+    // ffprobe lists an ID3v2 or APE picture as a video stream flagged attached_pic; pictures are tags here.
+    private static bool IsAttachedPicture(JsonElement stream) =>
+        stream.TryGetProperty("disposition", out JsonElement d) && d.TryGetProperty("attached_pic", out JsonElement a) && a.GetInt32() == 1;
 
     private static void Compare(MediaTrack t, JsonElement s, List<string> problems)
     {

@@ -14,10 +14,20 @@ internal sealed class PacketConcatenationStream : Stream
     private bool _ended;
 
     private readonly IDisposable? _alsoDispose;
+    private readonly bool _ownsDemuxer;
 
-    public PacketConcatenationStream(IDemuxer demuxer, int trackIndex, IDisposable? alsoDispose)
+    public PacketConcatenationStream(IDemuxer demuxer, int trackIndex, IDisposable? alsoDispose, ReadOnlyMemory<byte> prefix = default, bool ownsDemuxer = true)
     {
+        // The Xing/Info frame of an MP3 file is not a packet but carries the frame count and the encoder's delay and padding, which OneAudio's MP3
+        // reader uses for gapless playback, so it goes first.
+        if (!prefix.IsEmpty)
+        {
+            _buffer = prefix.ToArray();
+            _count = _buffer.Length;
+        }
+
         _alsoDispose = alsoDispose;
+        _ownsDemuxer = ownsDemuxer;
         _demuxer = demuxer;
         _trackIndex = trackIndex;
         for (int i = 0; i < demuxer.Tracks.Count; i++)
@@ -87,7 +97,11 @@ internal sealed class PacketConcatenationStream : Stream
     {
         if (disposing)
         {
-            _demuxer.Dispose();
+            if (_ownsDemuxer)
+            {
+                _demuxer.Dispose();
+            }
+
             _alsoDispose?.Dispose();
         }
 

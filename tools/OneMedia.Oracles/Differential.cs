@@ -279,7 +279,7 @@ internal static class Comparer
     {
         if (theirs.IsKnown != ours.IsKnown || (theirs.IsKnown && theirs != ours))
         {
-            long delta = theirs.IsKnown && ours.IsKnown ? (theirs - ours).Ticks * 1 : 0;
+            long delta = 0;
             // Tolerance rules count ticks of the finer of the two scales; keep the difference in ffprobe's scale.
             if (theirs.IsKnown && ours.IsKnown)
             {

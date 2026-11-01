@@ -30,6 +30,19 @@ public static class MediaAudioExtensions
         IDemuxer demuxer = media.Demuxer ?? throw new InvalidOperationException("Decoding needs a file opened from a seekable source.");
         track ??= media.Audio ?? throw new global::OneAudio.UnsupportedAudioFormatException("The file has no audio track.");
         registry ??= CreateRegistry();
+        if (track.Codec == CodecId.Mp3)
+        {
+            // OneAudio reads MP3 from a byte stream, so the track's frames go over as one, led by the Xing/Info frame that carries the gapless data.
+            global::OneAudio.IContainerFormat mp3 = registry.Detect(OneMediaContainerFormat.Mp3Probe) ?? throw new global::OneAudio.UnsupportedAudioFormatException("MP3 is not registered with the OneAudio registry.");
+            if (demuxer.CanSeek)
+            {
+                demuxer.Seek(MediaTime.Zero);
+            }
+
+            ReadOnlyMemory<byte> infoFrame = track.Configuration.Format == "mpeg-audio-info-frame" ? track.Configuration.Data : default;
+            return mp3.Open(new PacketConcatenationStream(demuxer, track.Index, null, infoFrame, ownsDemuxer: false), registry, limits ?? global::OneAudio.AudioLimits.Default, false, default);
+        }
+
         MediaTrackPacketSource source = MediaTrackPacketSource.Create(demuxer, track);
         return registry.GetCodec(source.Codec).CreateDecoder(source, limits ?? global::OneAudio.AudioLimits.Default);
     }

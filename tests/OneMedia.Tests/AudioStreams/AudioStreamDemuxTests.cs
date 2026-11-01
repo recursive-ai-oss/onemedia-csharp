@@ -206,6 +206,25 @@ public class AudioStreamDemuxTests
     }
 
     [Fact]
+    public void FreeFormatWithPaddingBitsKeepsEachFramesOwnLength()
+    {
+        // As a CBR 44.1 kHz stream laid out: most frames are 417 bytes and a padded one is 418; with bit-rate index 0 only the distances tell.
+        List<byte[]> frames = [];
+        for (int i = 0; i < 60; i++)
+        {
+            bool padded = i % 25 == 3;
+            byte[] f = Mp3Frame(i, padded);
+            f[2] &= 0x0F;
+            frames.Add(f);
+        }
+
+        using MpegAudioDemuxer d = OpenMp3(Concat(frames.ToArray()));
+        Assert.Equal(frames.Select(f => f.Length).ToArray(), Packets(d).Select(p => p.Data.Length).ToArray());
+        Assert.True(MediaFormats.Default.TrySniff(Concat(frames.ToArray()), out FormatMatch m));
+        Assert.Equal(MediaFormatId.MpegAudio, m.Format.Id);
+    }
+
+    [Fact]
     public void AdtsFramesKeepTheirHeaders()
     {
         byte[] file = Concat(AdtsFrame(100), AdtsFrame(120), AdtsFrame(90), AdtsFrame(100));
