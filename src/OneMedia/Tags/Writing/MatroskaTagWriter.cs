@@ -45,6 +45,16 @@ internal static class MatroskaTagWriter
             throw new UnsupportedMediaException("The Segment has damage in front of its first Cluster (bytes no element accounts for, or a damaged SeekHead); repair the file before editing its tags.");
         }
 
+        // The reader's own verdict: a file it reports errors for (other than a cut-off end or a wrong CRC-32) is not edited, because the edit would move things the
+        // reader found by searching or guessing.
+        using (MediaFile probe = MediaFile.Open(src, null, new MediaOpenOptions { Limits = limits }, ct))
+        {
+            if (probe.Defects.Any(d => d.Severity == DefectSeverity.Error && d.Kind is not (DefectKind.ChecksumMismatch or DefectKind.SizeExceedsFile)))
+            {
+                throw new UnsupportedMediaException("The reader reports damage in this file (" + probe.Defects.First(d => d.Severity == DefectSeverity.Error && d.Kind is not (DefectKind.ChecksumMismatch or DefectKind.SizeExceedsFile)).Message + "); repair it before editing its tags.");
+            }
+        }
+
         List<EbmlElement> fileTags = [];
         foreach (EbmlElement tagsEl in children.Where(c => c.Id == Tags))
         {
