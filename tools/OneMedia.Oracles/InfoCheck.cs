@@ -9,17 +9,19 @@ namespace RecursiveAI.OneMedia.Oracles;
 /// </summary>
 internal static class InfoCheck
 {
-    public static int Run(IEnumerable<string> files)
+    public static int Run(IEnumerable<string> files, Exceptions exceptions)
     {
-        int bad = 0, total = 0;
+        int bad = 0, total = 0, excused = 0;
         foreach (string file in files)
         {
             total++;
             List<string> problems = [];
             string name = Path.GetFileName(file);
+            string formatName = "*";
             try
             {
                 using MediaFile media = Media.Open(file);
+                formatName = media.Native.Reader is IDemuxer dm ? dm.Format.Name : "*";
                 using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
                 // ffprobe lists Matroska attachments (fonts, cover art) as streams; they are not tracks here.
                 List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => e.GetProperty("codec_type").GetString() != "attachment")];
@@ -61,11 +63,39 @@ internal static class InfoCheck
                 problems.Add(e.GetType().Name + ": " + e.Message);
             }
 
+            // A scoped rule (fields info-duration, info-streams, info-codec, info-open) excuses a problem of that kind.
+            List<string> excusedHere = [];
+            problems.RemoveAll(p =>
+            {
+                string field = p.StartsWith("duration ffprobe", StringComparison.Ordinal) ? "info-duration" :
+                    p.StartsWith("duration known", StringComparison.Ordinal) ? "info-duration" :
+                    p.StartsWith("stream count", StringComparison.Ordinal) ? "info-streams" :
+                    p.Contains(" codec ", StringComparison.Ordinal) ? "info-codec" : "info-open";
+                long delta = 0;
+                int at = p.IndexOf("ffprobe ", StringComparison.Ordinal);
+                if (field == "info-duration" && p.Contains(" vs ours ", StringComparison.Ordinal) &&
+                    double.TryParse(p[(at + 8)..p.IndexOf(" s vs", StringComparison.Ordinal)], NumberStyles.Float, CultureInfo.InvariantCulture, out double a) &&
+                    double.TryParse(p[(p.IndexOf("ours ", StringComparison.Ordinal) + 5)..p.LastIndexOf(" s", StringComparison.Ordinal)], NumberStyles.Float, CultureInfo.InvariantCulture, out double b))
+                {
+                    delta = (long)Math.Round(Math.Abs(a - b) * 1_000_000);
+                }
+
+                string format = formatName;
+                if (exceptions.Match(format, field, file, null, "", "", "", p.Contains("one side only", StringComparison.Ordinal), false, delta) is { } rule)
+                {
+                    excusedHere.Add($"{field}:{rule.Reason.Split(':')[0]}");
+                    return true;
+                }
+
+                return false;
+            });
+            excused += excusedHere.Count;
             bad += problems.Count > 0 ? 1 : 0;
-            Console.WriteLine(problems.Count == 0 ? $"same\t{name}" : $"DIFF\t{name}\t{string.Join("; ", problems)}");
+            string note = excusedHere.Count > 0 ? $" [excused {string.Join(", ", excusedHere)}]" : "";
+            Console.WriteLine(problems.Count == 0 ? $"same\t{name}{note}" : $"DIFF\t{name}\t{string.Join("; ", problems)}{note}");
         }
 
-        Console.WriteLine($"infocheck: {total} files, {bad} with differences");
+        Console.WriteLine($"infocheck: {total} files, {bad} with unexplained differences, {excused} differences excused by exceptions.tsv");
         return 0;
     }
 

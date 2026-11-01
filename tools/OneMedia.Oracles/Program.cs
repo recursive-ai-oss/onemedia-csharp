@@ -53,7 +53,7 @@ internal static class Program
             case "diff": return Diff(o);
             case "structure": return Structure(o);
             case "io": return Io(o);
-            case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
+            case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), o.Exceptions is null ? Oracles.Exceptions.None : Oracles.Exceptions.Load(o.Exceptions));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
             case "drain": return DrainCheck.Run(o.Files);
             case "packetset": return PacketSets.Run(o.Files);
@@ -173,6 +173,12 @@ internal static class Program
                 if (streams.Count == 0)
                 {
                     report = new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" };
+                    // A scoped "open" rule accepts files the oracle itself cannot open.
+                    if (exceptions.Match("*", "open", file, null, "", "", "", false, false, 0) is not null)
+                    {
+                        report = new FileReport { File = file, Status = "ok" };
+                        report.Excepted["open"] = 1;
+                    }
                 }
                 else
                 {

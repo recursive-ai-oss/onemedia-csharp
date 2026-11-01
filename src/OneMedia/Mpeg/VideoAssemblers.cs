@@ -7,15 +7,21 @@ namespace RecursiveAI.OneMedia.Mpeg;
 internal sealed class PesPassthroughAssembler : TrackAssembler
 {
     private readonly bool _key;
+    private readonly bool _dvdSubpicture;
+    private readonly bool _mpeg4Visual;
     private byte[] _pes = new byte[2048];
     private int _length;
     private bool _open;
     private PesStamp _stamp;
 
-    public PesPassthroughAssembler(int index, PacketQueue queue, MediaLimits limits, DefectLog defects, bool keyframes)
+    // dvdSubpicture joins PES packets until a DVD sub-picture unit holds the size its first two bytes declare;
+    // mpeg4Visual marks packets whose first VOP is an intra picture as key frames.
+    public PesPassthroughAssembler(int index, PacketQueue queue, MediaLimits limits, DefectLog defects, bool keyframes, bool dvdSubpicture = false, bool mpeg4Visual = false)
         : base(index, queue, limits, defects)
     {
         _key = keyframes;
+        _dvdSubpicture = dvdSubpicture;
+        _mpeg4Visual = mpeg4Visual;
     }
 
     /// <summary>These streams are described by their PMT entry, not by their bytes.</summary>
@@ -23,7 +29,9 @@ internal sealed class PesPassthroughAssembler : TrackAssembler
 
     public override void Push(ReadOnlySpan<byte> data, in PesStamp stamp, bool startsPes)
     {
-        if (startsPes)
+        // DVD-Video sub-picture units: the first two bytes give the unit's size, and a unit may span PES packets.
+        bool continuation = startsPes && _dvdSubpicture && _open && _length >= 2 && ((_pes[0] << 8) | _pes[1]) > _length;
+        if (startsPes && !continuation)
         {
             Finish();
             _open = true;
@@ -61,13 +69,22 @@ internal sealed class PesPassthroughAssembler : TrackAssembler
     {
     }
 
+    // ISO/IEC 14496-2 §6.2.5: a VOP starts with 00 00 01 B6 and two bits of vop_coding_type; 0 is an intra picture.
+    private static bool StartsWithIntraVop(ReadOnlySpan<byte> data)
+    {
+        ReadOnlySpan<byte> code = [0, 0, 1, 0xB6];
+        int at = data.IndexOf(code);
+        return at >= 0 && at + 4 < data.Length && (data[at + 4] >> 6) == 0;
+    }
+
     private void Finish()
     {
         if (_open && _length > 0)
         {
             long pts = _stamp.Pts >= 0 ? _stamp.Pts : _stamp.Dts;
             long dts = _stamp.Dts >= 0 ? _stamp.Dts : pts;
-            Emit(_pes.AsSpan(0, _length), _stamp.Pos, _key ? PacketAttributes.Keyframe : PacketAttributes.None, pts, dts, 0);
+            bool key = _key || (_mpeg4Visual && StartsWithIntraVop(_pes.AsSpan(0, _length)));
+            Emit(_pes.AsSpan(0, _length), _stamp.Pos, key ? PacketAttributes.Keyframe : PacketAttributes.None, pts, dts, 0);
         }
 
         _open = false;
@@ -92,6 +109,11 @@ internal abstract class VideoAssembler : TrackAssembler
     private long _rateDenominator;
     private long _count;
     private int _anchorReference;
+    private bool _pendingField;
+    private int _pendingExtra;
+    private int _openParity = -1;   // parity (0 top, 1 bottom) of a first field still waiting for its second field
+    private long _openPts = -1;
+    private long _openDts = -1;
 
     protected VideoAssembler(int index, PacketQueue queue, MediaLimits limits, DefectLog defects)
         : base(index, queue, limits, defects)
@@ -129,8 +151,11 @@ internal abstract class VideoAssembler : TrackAssembler
         }
     }
 
-    /// <summary>Takes the first <paramref name="length"/> buffered bytes as one access unit.</summary>
-    protected void CutUnit(int length, bool key, int temporalReference = -1)
+    /// <summary>
+    /// Takes the first <paramref name="length"/> buffered bytes as one access unit. <paramref name="fieldParity"/> is 0 or 1 when the
+    /// unit is a single field picture (top or bottom), -1 for a frame.
+    /// </summary>
+    protected void CutUnit(int length, bool key, int temporalReference = -1, int fieldParity = -1, int extraHalves = 0)
     {
         TakeStamp(Head, out PesStamp stamp, out long pos);
         long pts, dts;
@@ -148,7 +173,7 @@ internal abstract class VideoAssembler : TrackAssembler
             dts = _count++ * _rateDenominator;
             pts = PtsFollowsDts ? dts : -1;
             PacketAttributes f = (key ? PacketAttributes.Keyframe : PacketAttributes.None) | (CoversLoss(Head, length) ? PacketAttributes.Corrupt : PacketAttributes.None);
-            Queue(Buffered[..length], pos, f, pts, dts);
+            Queue(Buffered[..length], pos, f, pts, dts, false, 0);
             Consume(length);
             return;
         }
@@ -172,6 +197,33 @@ internal abstract class VideoAssembler : TrackAssembler
             }
         }
 
+        bool field = fieldParity >= 0;
+        if (field)
+        {
+            long half = (NominalDuration + 1) / 2;
+            if (_openParity >= 0 && _openParity != fieldParity)
+            {
+                // The second field of a frame: a field without a stamp of its own is half a frame after the first.
+                if (!stamp.HasTime && half > 0 && _openDts >= 0)
+                {
+                    dts = _openDts + half;
+                    pts = _openPts >= 0 ? _openPts + half : -1;
+                }
+
+                _openParity = -1;
+            }
+            else
+            {
+                _openParity = fieldParity;
+                _openPts = pts;
+                _openDts = dts;
+            }
+        }
+        else
+        {
+            _openParity = -1;
+        }
+
         if (stamp.HasTime && temporalReference >= 0)
         {
             _anchorPts = pts;
@@ -179,7 +231,7 @@ internal abstract class VideoAssembler : TrackAssembler
         }
 
         PacketAttributes flags = (key ? PacketAttributes.Keyframe : PacketAttributes.None) | (CoversLoss(Head, length) ? PacketAttributes.Corrupt : PacketAttributes.None);
-        Queue(Buffered[..length], pos, flags, pts, dts);
+        Queue(Buffered[..length], pos, flags, pts, dts, field, extraHalves);
         Consume(length);
     }
 
@@ -198,12 +250,20 @@ internal abstract class VideoAssembler : TrackAssembler
         Release(0);
     }
 
-    private void Queue(ReadOnlySpan<byte> unit, long pos, PacketAttributes flags, long pts, long dts)
+    private void Queue(ReadOnlySpan<byte> unit, long pos, PacketAttributes flags, long pts, long dts, bool field, int extraHalves)
     {
         // The duration of the previous unit is the distance to this one's decode time unless the stream declares a frame rate.
         long nominal = NominalDuration;
         long duration = nominal;
-        if (nominal == 0 && _hasPending && _pendingDts >= 0 && dts >= 0 && dts > _pendingDts)
+        if (_hasPending && _pendingField && nominal > 0)
+        {
+            duration = nominal / 2; // a field lasts half a frame, rounded down
+        }
+        else if (_hasPending && _pendingExtra > 0 && nominal > 0)
+        {
+            duration = nominal * (2 + _pendingExtra) / 2; // repeated fields lengthen the picture (ISO/IEC 13818-2 §6.3.10)
+        }
+        else if (_hasPending && _pendingDts >= 0 && dts >= 0 && dts > _pendingDts && nominal == 0)
         {
             duration = dts - _pendingDts;
         }
@@ -220,6 +280,8 @@ internal abstract class VideoAssembler : TrackAssembler
         _pendingPts = pts;
         _pendingDts = dts;
         _pendingPos = pos;
+        _pendingField = field;
+        _pendingExtra = extraHalves;
         _hasPending = true;
         if (dts >= 0)
         {
@@ -243,7 +305,7 @@ internal abstract class VideoAssembler : TrackAssembler
         _hasPending = false;
         if (duration == 0)
         {
-            duration = NominalDuration > 0 ? NominalDuration : _lastDuration;
+            duration = NominalDuration > 0 ? (_pendingField ? NominalDuration / 2 : NominalDuration * (2 + _pendingExtra) / 2) : _lastDuration;
         }
 
         if (duration > 0)
@@ -260,6 +322,7 @@ internal abstract class VideoAssembler : TrackAssembler
         _hasPending = false;
         _lastDts = -1;
         _anchorPts = -1;
+        _openParity = -1;
         _count = 0;
     }
 }
@@ -277,6 +340,12 @@ internal sealed class NalVideoAssembler : VideoAssembler
     private bool _key;
     private bool _paramSets;
     private int _seiUnits;
+    private bool _unitHasSps;
+    private bool _unitIntra;
+    private int _unitParity = -1;
+    private bool _frameMbsOnly = true;
+    private int _log2FrameNum;
+    private bool _separatePlanes;
 
     /// <summary>Called with the payload of each SEI NAL unit (after its header) until it returns true; AVCHD metadata is found this way.</summary>
     public SeiHandlerDelegate? SeiHandler { get; set; }
@@ -292,6 +361,8 @@ internal sealed class NalVideoAssembler : VideoAssembler
         base.Reset();
         _scan = 0;
         _open = _seenVcl = _key = _paramSets = false;
+        _unitHasSps = _unitIntra = false;
+        _unitParity = -1;
     }
 
     protected override void Scan(bool final)
@@ -339,7 +410,7 @@ internal sealed class NalVideoAssembler : VideoAssembler
                 span = Buffered;
             }
 
-            Track(type, nal, header);
+            Track(type);
             _scan = p + 3;
         }
 
@@ -373,14 +444,19 @@ internal sealed class NalVideoAssembler : VideoAssembler
             }
         }
 
+        Classify(length);
         if (!Describe())
         {
             _paramSets = false;
         }
 
-        CutUnit(length, _key);
+        // A unit that opens with a sequence parameter set and codes an intra picture is where a decoder can start, as encoders
+        // that write no recovery point SEI intend (observed in AVCHD camera streams).
+        CutUnit(length, _key || (_unitHasSps && _unitIntra), -1, _unitParity);
         _seenVcl = false;
         _key = false;
+        _unitHasSps = _unitIntra = false;
+        _unitParity = -1;
         _scan = 0;
     }
 
@@ -429,7 +505,7 @@ internal sealed class NalVideoAssembler : VideoAssembler
         }
     }
 
-    private void Track(int type, ReadOnlySpan<byte> nal, int header)
+    private void Track(int type)
     {
         if (NalUnit.IsParameterSet(_codec, type))
         {
@@ -444,18 +520,83 @@ internal sealed class NalVideoAssembler : VideoAssembler
                 _key = true;
             }
         }
-        else if ((_codec == NalCodec.H264 && type == 6) || (_codec == NalCodec.Hevc && type == 39))
+    }
+
+    /// <summary>
+    /// Reads what only the whole unit can tell (the NAL units may arrive in pieces): a recovery point SEI, the sequence parameter set's
+    /// field coding and frame_num width, and the first slice's type and field parity.
+    /// </summary>
+    private void Classify(int length)
+    {
+        AnnexBReader reader = new(Buffered[..length]);
+        bool firstSlice = true;
+        while (reader.TryRead(out ReadOnlySpan<byte> nal, out _, out _))
         {
-            if (HasRecoveryPoint(nal[Math.Min(header, nal.Length)..]))
+            int type = NalUnit.GetType(_codec, nal);
+            if (_codec == NalCodec.H264 && type == 7 && Codecs.H264.SequenceParameterSet.TryParse(nal, out Codecs.H264.SequenceParameterSet sps))
+            {
+                _unitHasSps = true;
+                _frameMbsOnly = sps.FrameMbsOnly;
+                _log2FrameNum = sps.Log2MaxFrameNum;
+                _separatePlanes = sps.SeparateColourPlane;
+            }
+            else if (((_codec == NalCodec.H264 && type == 6) || (_codec == NalCodec.Hevc && type == 39)) && HasRecoveryPoint(nal[Math.Min(NalUnit.HeaderSize(_codec), nal.Length)..]))
             {
                 _key = true;
+            }
+            else if (_codec == NalCodec.H264 && firstSlice && type is >= 1 and <= 5)
+            {
+                firstSlice = false;
+                ReadSliceHeader(nal[1..]);
             }
         }
     }
 
-    // H.264 Annex D / H.265 Annex D: an SEI message with payloadType 6 is a recovery point, a random access point without an IDR.
-    private static bool HasRecoveryPoint(ReadOnlySpan<byte> rbsp)
+    // H.264 §7.3.3 slice_header: first_mb_in_slice, slice_type, pic_parameter_set_id, [colour_plane_id], frame_num, then
+    // field_pic_flag and bottom_field_flag when the sequence may code fields.
+    private void ReadSliceHeader(ReadOnlySpan<byte> rbsp)
     {
+        BitReader r = new(rbsp[..Math.Min(rbsp.Length, 24)], removeEmulationPrevention: true);
+        r.ReadUe();
+        uint sliceType = r.ReadUe() % 5; // 0 P, 1 B, 2 I, 3 SP, 4 SI
+        _unitIntra = sliceType is 2 or 4;
+        r.ReadUe();
+        if (_separatePlanes)
+        {
+            r.ReadBits(2);
+        }
+
+        if (_log2FrameNum > 0)
+        {
+            r.ReadBits(_log2FrameNum);
+        }
+
+        if (!_frameMbsOnly && !r.Overrun && r.ReadFlag())
+        {
+            _unitParity = r.ReadBit();
+        }
+    }
+
+    // H.264 Annex D / H.265 Annex D: an SEI message with payloadType 6 is a recovery point, a random access point without an IDR.
+    private static bool HasRecoveryPoint(ReadOnlySpan<byte> escaped)
+    {
+        // Payload sizes count bytes after emulation prevention, so unescape first (SEI units are small).
+        Span<byte> clean = stackalloc byte[Math.Min(escaped.Length, 512)]; // bounded: at most 512 bytes of the unit are examined
+        int n = 0;
+        int zeros = 0;
+        for (int i = 0; i < escaped.Length && n < clean.Length; i++)
+        {
+            if (zeros >= 2 && escaped[i] == 3)
+            {
+                zeros = 0;
+                continue;
+            }
+
+            zeros = escaped[i] == 0 ? zeros + 1 : 0;
+            clean[n++] = escaped[i];
+        }
+
+        ReadOnlySpan<byte> rbsp = clean[..n];
         int p = 0;
         while (p < rbsp.Length)
         {
@@ -512,6 +653,8 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
     private int _structure; // picture_structure of the access unit's first picture: 1 top field, 2 bottom field, 3 frame, 0 not seen
     private int _pictures;
     private int _pendingStart = -1; // a picture that may be the second field of the current unit, from this offset
+    private bool _progressiveSequence;
+    private int _extraHalves;       // half-frame periods the first picture adds by repeating fields
 
     public Mpeg2VideoAssembler(int index, PacketQueue queue, MediaLimits limits, DefectLog defects)
         : base(index, queue, limits, defects)
@@ -523,7 +666,7 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
         base.Reset();
         _scan = 0;
         _open = _seenPicture = _key = false;
-        _structure = _pictures = 0;
+        _structure = _pictures = _extraHalves = 0;
         _pendingStart = -1;
     }
 
@@ -605,6 +748,10 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
                     _key = true;
                 }
             }
+            else if (code == Mpeg2StartCode.Extension && !_seenPicture && p + 5 < span.Length && (span[p + 4] >> 4) == 1)
+            {
+                _progressiveSequence = (span[p + 5] & 0x08) != 0; // §6.3.5 sequence_extension: progressive_sequence follows the 4-bit level
+            }
             else if (code == Mpeg2StartCode.Extension && _seenPicture && p + 6 < span.Length && (span[p + 4] >> 4) == 8)
             {
                 // §6.3.10: extension_start_code_identifier 8 is the picture coding extension; picture_structure is the last two bits of its third byte.
@@ -628,6 +775,12 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
                 else if (_structure == 0)
                 {
                     _structure = structure;
+                    // §6.3.10: repeat_first_field and top_field_first are bits 1 and 7 of the fourth byte. In a progressive sequence the frame
+                    // is shown two or three times (three when top_field_first is set), otherwise a frame picture shows its first field again.
+                    if (p + 7 < span.Length && structure == 3 && (span[p + 7] & 0x02) != 0)
+                    {
+                        _extraHalves = _progressiveSequence ? ((span[p + 7] & 0x80) != 0 ? 4 : 2) : 1;
+                    }
                 }
             }
 
@@ -659,11 +812,11 @@ internal sealed class Mpeg2VideoAssembler : VideoAssembler
             DetectedCodec = Mpeg2SequenceHeader.TryFind(Buffered[..length], out Mpeg2SequenceHeader sh) && !sh.HasExtension ? new CodecId("mpeg1video") : CodecId.Mpeg2Video;
         }
 
-        CutUnit(length, _key, _reference);
+        CutUnit(length, _key, _reference, -1, _extraHalves);
         _seenPicture = false;
         _reference = -1;
         _key = false;
-        _structure = _pictures = 0;
+        _structure = _pictures = _extraHalves = 0;
         _pendingStart = -1;
         _scan = 0;
     }

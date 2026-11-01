@@ -224,6 +224,30 @@ internal static class Comparer
             long last = Math.Min(x.Count, y.Count) - 1;
             MediaTrack? t = ours.Tracks.FirstOrDefault(q => q.Index == track);
             string codec = streams.FirstOrDefault(s => s.Index == track)?.CodecName ?? "";
+            // A scoped "leading" rule excuses ffprobe listing the broken start of a stream (the tail of a unit that began before the
+            // file did) as packets of their own. How many to drop is the count that pairs the packets best: the surplus may also be at the end.
+            int surplus = x.Count - y.Count;
+            if (surplus is >= 1 and <= 3 && exceptions.Match(ours.Format, "leading", file, t, codec, "", "", false, false, 0) is not null)
+            {
+                int best = 0, bestScore = Mismatches(x, y);
+                for (int d = 1; d <= surplus; d++)
+                {
+                    int score = Mismatches(x.Skip(d), y);
+                    if (score < bestScore)
+                    {
+                        (best, bestScore) = (d, score);
+                    }
+                }
+
+                if (best > 0)
+                {
+                    x = x.GetRange(best, x.Count - best);
+                    report.Excepted["leading"] = report.Excepted.GetValueOrDefault("leading") + best;
+                    report.PacketCounts[track] = (x.Count + best, y.Count);
+                    last = Math.Min(x.Count, y.Count) - 1;
+                }
+            }
+
             if (x.Count != y.Count)
             {
                 Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, -1, "count", x.Count.ToString(CultureInfo.InvariantCulture), y.Count.ToString(CultureInfo.InvariantCulture), false, false, 0);
@@ -260,6 +284,10 @@ internal static class Comparer
         report.Status = report.Differences.Count == 0 ? "ok" : "diff";
         return report;
     }
+
+    // How many of the first 64 pairs differ in size: picks between a stream that starts with extra packets and one that ends with them.
+    private static int Mismatches(IEnumerable<PacketRecord> x, IReadOnlyList<PacketRecord> y) =>
+        x.Take(64).Zip(y.Take(64), (p, q) => p.Size != q.Size || p.Hash != q.Hash).Count(b => b);
 
     private static Dictionary<int, List<PacketRecord>> Group(IEnumerable<PacketRecord> packets)
     {

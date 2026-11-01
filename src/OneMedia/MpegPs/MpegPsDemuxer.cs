@@ -495,7 +495,8 @@ public sealed class MpegPsDemuxer : IDemuxer, IMetadataProvider
             System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        MediaTime start = MediaTime.Unknown, end = MediaTime.Unknown;
+        // The presentation range is the audio and video range: a subtitle or data stream that starts early does not move it.
+        MediaTime start = MediaTime.Unknown, end = MediaTime.Unknown, anyStart = MediaTime.Unknown, anyEnd = MediaTime.Unknown;
         List<MediaTrack> updated = [];
         for (int i = 0; i < _streams.Count; i++)
         {
@@ -506,14 +507,24 @@ public sealed class MpegPsDemuxer : IDemuxer, IMetadataProvider
                 long last = s.LastPts + s.LastDuration;
                 track = track with { Duration = new MediaTime(last - s.FirstPts, TrackAssembler.Clock) };
                 MediaTime a = new(s.FirstPts, TrackAssembler.Clock), b = new(last, TrackAssembler.Clock);
-                start = start.IsKnown ? MediaTime.Min(start, a) : a;
-                end = end.IsKnown ? MediaTime.Max(end, b) : b;
+                anyStart = anyStart.IsKnown ? MediaTime.Min(anyStart, a) : a;
+                anyEnd = anyEnd.IsKnown ? MediaTime.Max(anyEnd, b) : b;
+                if (track.Kind is TrackKind.Audio or TrackKind.Video)
+                {
+                    start = start.IsKnown ? MediaTime.Min(start, a) : a;
+                    end = end.IsKnown ? MediaTime.Max(end, b) : b;
+                }
             }
 
             updated.Add(track);
         }
 
         _tracks = [.. updated];
+        if (!start.IsKnown)
+        {
+            (start, end) = (anyStart, anyEnd);
+        }
+
         if (start.IsKnown && end.IsKnown)
         {
             _duration = end - start;
@@ -825,7 +836,7 @@ public sealed class MpegPsDemuxer : IDemuxer, IMetadataProvider
             {
                 kind = TrackKind.Subtitle;
                 skip = 1;
-                a = new PesPassthroughAssembler(index, _queue, _limits, _defects, keyframes: true);
+                a = new PesPassthroughAssembler(index, _queue, _limits, _defects, keyframes: true, dvdSubpicture: true);
                 codec = new CodecId("dvd-subpicture");
                 tag = "dvd-subpicture";
             }

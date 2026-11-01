@@ -19,7 +19,7 @@ ES=$(ls "$G"/es/* "$S"/mpeg/*.264 "$S"/mpeg/*.h264 "$S"/mpeg/*.m2v 2>/dev/null)
 ALL="$TS $PS $ES"
 bash "$here/run-mpeg-diff.sh" run diff --jobs 4 --out "$O" --exceptions "$here/OneMedia.Oracles/exceptions.tsv" $ALL > "$O/diff.log" 2>&1
 tail -3 "$O/diff.log"
-bash "$here/run-mpeg-diff.sh" run infocheck $ALL > "$O/infocheck.log" 2>&1
+bash "$here/run-mpeg-diff.sh" run infocheck --exceptions "$here/OneMedia.Oracles/exceptions.tsv" $ALL > "$O/infocheck.log" 2>&1
 tail -3 "$O/infocheck.log"
 bash "$here/run-mpeg-diff.sh" run meta --out "$O" $(ls "$S"/avchd/*.[mM][tT][sS] "$G"/ts/named-service.ts "$G"/ts/h264-aac.ts "$G"/m2ts/h264-aac.m2ts) > "$O/meta.log" 2>&1
 tail -3 "$O/meta.log"

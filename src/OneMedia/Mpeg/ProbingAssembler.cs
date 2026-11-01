@@ -11,12 +11,12 @@ namespace RecursiveAI.OneMedia.Mpeg;
 /// </summary>
 internal sealed class ProbingAssembler : TrackAssembler
 {
-    private const int NeededBytes = 16;
+    // The decision may need to look past the first PES packet: a stream that starts mid-frame shows its first sync word later.
+    private const int ProbeLimit = 8192;
     private readonly PacketQueue _queue;
-    private readonly byte[] _head = new byte[NeededBytes];
+    private readonly byte[] _head = new byte[ProbeLimit];
     private int _headLength;
-    private PesStamp _stamp;
-    private bool _haveStamp;
+    private readonly List<(int Start, int Length, PesStamp Stamp, bool StartsPes)> _chunks = [];
     private TrackAssembler? _inner;
 
     public ProbingAssembler(int index, PacketQueue queue, MediaLimits limits, DefectLog defects)
@@ -45,30 +45,58 @@ internal sealed class ProbingAssembler : TrackAssembler
             return;
         }
 
-        if (startsPes)
-        {
-            _stamp = stamp;
-            _haveStamp = true;
-            _headLength = 0;
-        }
-
-        if (!_haveStamp)
+        if (_chunks.Count == 0 && !startsPes)
         {
             return;
         }
 
-        int take = Math.Min(data.Length, NeededBytes - _headLength);
+        int take = Math.Min(data.Length, ProbeLimit - _headLength);
         data[..take].CopyTo(_head.AsSpan(_headLength));
+        _chunks.Add((_headLength, take, stamp, startsPes));
         _headLength += take;
-        Decide();
-        _inner!.Push(_head.AsSpan(0, _headLength), _stamp, true);
-        if (data.Length > take)
+        if (Decide(final: _headLength >= ProbeLimit))
         {
-            _inner.Push(data[take..], default, false);
+            Replay();
+            if (data.Length > take)
+            {
+                _inner!.Push(data[take..], default, false);
+            }
         }
     }
 
-    private void Decide()
+    public override void Flush()
+    {
+        if (_inner is null && _chunks.Count > 0 && Decide(final: true))
+        {
+            Replay();
+        }
+
+        _inner?.Flush();
+    }
+
+    public override void Reset()
+    {
+        _inner?.Reset();
+        if (_inner is null)
+        {
+            _headLength = 0;
+            _chunks.Clear();
+        }
+    }
+
+    // Hands everything buffered to the framer that was chosen, PES packet by PES packet so each keeps its timestamps.
+    private void Replay()
+    {
+        foreach ((int start, int length, PesStamp stamp, bool starts) in _chunks)
+        {
+            _inner!.Push(_head.AsSpan(start, length), stamp, starts);
+        }
+
+        _chunks.Clear();
+        _headLength = 0;
+    }
+
+    private bool Decide(bool final)
     {
         ReadOnlySpan<byte> h = _head.AsSpan(0, _headLength);
         CodecId codec = CodecId.Unknown;
@@ -92,7 +120,7 @@ internal sealed class ProbingAssembler : TrackAssembler
             codec = hevc ? CodecId.Hevc : CodecId.H264;
             _inner = new NalVideoAssembler(hevc ? NalCodec.Hevc : NalCodec.H264, Index, _queue, Limits, Defects);
         }
-        else if (Ac3SyncFrame.TryParse(h, out Ac3SyncFrame ac3))
+        else if (FindAc3(h, out Ac3SyncFrame ac3))
         {
             codec = ac3.IsEac3 ? CodecId.Eac3 : CodecId.Ac3;
             kind = TrackKind.Audio;
@@ -104,12 +132,39 @@ internal sealed class ProbingAssembler : TrackAssembler
             kind = TrackKind.Audio;
             _inner = new MpegAudioAssembler(Index, _queue, Limits, Defects);
         }
-        else
+        else if (final)
         {
             _inner = new PesPassthroughAssembler(Index, _queue, Limits, Defects, keyframes: true);
         }
+        else
+        {
+            return false; // nothing recognised yet: wait for more of the stream
+        }
 
         Resolved = (kind, codec);
+        return true;
+    }
+
+    // ETSI TS 102 366 §4.3.1: a frame starts with the sync word 0x0B77. A stream that begins mid-frame shows it later, so the first
+    // few thousand bytes are searched; a match counts when the next frame, if buffered, starts with a sync word too.
+    private static bool FindAc3(ReadOnlySpan<byte> h, out Ac3SyncFrame frame)
+    {
+        frame = default;
+        for (int i = 0; i + 1 < h.Length; i++)
+        {
+            if (h[i] != 0x0B || h[i + 1] != 0x77 || !Ac3SyncFrame.TryParse(h[i..], out frame))
+            {
+                continue;
+            }
+
+            int next = i + frame.FrameSize;
+            if (i == 0 || (next + 1 < h.Length && h[next] == 0x0B && h[next + 1] == 0x77))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ISO/IEC 13818-2 §6.2.2: a stream starts at a sequence header (0xB3), group of pictures (0xB8) or picture (0x00) start code.
@@ -143,10 +198,6 @@ internal sealed class ProbingAssembler : TrackAssembler
         int type = first & 0x1F;
         return type is 1 or 5 or 6 or 7 or 8 or 9 || first is 0x40 or 0x42 or 0x44 or 0x46;
     }
-
-    public override void Flush() => _inner?.Flush();
-
-    public override void Reset() => _inner?.Reset();
 
     protected override void Scan(bool final)
     {

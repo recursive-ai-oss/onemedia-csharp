@@ -589,8 +589,21 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
                 unwrap[t.Pid] = u;
             }
 
+            // Garbage between packets shifts the packet grid: on a missing sync byte, search on for a place where four packets line up.
             for (int off = 0; off + _packetSize <= n; off += _packetSize)
             {
+                if (buffer[off + _prefix] != 0x47)
+                {
+                    int next = off + 1;
+                    while (next + (_packetSize * 3) + _prefix < n && !(buffer[next + _prefix] == 0x47 && buffer[next + _packetSize + _prefix] == 0x47 && buffer[next + (2 * _packetSize) + _prefix] == 0x47 && buffer[next + (3 * _packetSize) + _prefix] == 0x47))
+                    {
+                        next++;
+                    }
+
+                    off = next - _packetSize;
+                    continue;
+                }
+
                 ReadOnlySpan<byte> ts = buffer.AsSpan(off + _prefix, 188);
                 if (ts[0] != 0x47 || (ts[1] & 0x40) == 0 || (ts[3] & 0x10) == 0)
                 {
@@ -629,7 +642,8 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         }
 
         // Without a second reading of every frame the last unit's length is its stream's frame duration, when it states one.
-        MediaTime start = MediaTime.Unknown, end = MediaTime.Unknown;
+        // The presentation range is the audio and video range: a subtitle or data stream that starts early does not move it.
+        MediaTime start = MediaTime.Unknown, end = MediaTime.Unknown, anyStart = MediaTime.Unknown, anyEnd = MediaTime.Unknown;
         List<MediaTrack> updated = [];
         foreach (TrackState t in _trackStates)
         {
@@ -639,14 +653,24 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
                 long last = t.LastPts + t.LastDuration;
                 track = track with { Duration = new MediaTime(last - t.FirstPts, TrackAssembler.Clock) };
                 MediaTime s = new(t.FirstPts, TrackAssembler.Clock), e = new(last, TrackAssembler.Clock);
-                start = start.IsKnown ? MediaTime.Min(start, s) : s;
-                end = end.IsKnown ? MediaTime.Max(end, e) : e;
+                anyStart = anyStart.IsKnown ? MediaTime.Min(anyStart, s) : s;
+                anyEnd = anyEnd.IsKnown ? MediaTime.Max(anyEnd, e) : e;
+                if (track.Kind is TrackKind.Audio or TrackKind.Video)
+                {
+                    start = start.IsKnown ? MediaTime.Min(start, s) : s;
+                    end = end.IsKnown ? MediaTime.Max(end, e) : e;
+                }
             }
 
             updated.Add(track);
         }
 
         _tracks = [.. updated];
+        if (!start.IsKnown)
+        {
+            (start, end) = (anyStart, anyEnd);
+        }
+
         if (start.IsKnown && end.IsKnown)
         {
             _duration = end - start;
@@ -1159,7 +1183,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             "ac3" or "eac3" => new Ac3Assembler(index, _queue, _limits, _defects),
             "mp3" => new MpegAudioAssembler(index, _queue, _limits, _defects),
             _ when kind.Kind == TrackKind.Data && kind.Codec.IsUnknown && (streamType == 0x06 || streamType >= 0x80) => new ProbingAssembler(index, _queue, _limits, _defects),
-            _ => new PesPassthroughAssembler(index, _queue, _limits, _defects, kind.Kind != TrackKind.Video),
+            _ => new PesPassthroughAssembler(index, _queue, _limits, _defects, kind.Kind != TrackKind.Video, mpeg4Visual: name == "mpeg4"),
         };
     }
 

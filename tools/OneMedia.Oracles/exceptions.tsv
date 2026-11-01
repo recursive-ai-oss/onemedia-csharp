@@ -61,3 +61,57 @@ hevc	dts	*	ffprobe-na	neither	raw-stream-dts.
 vvc	dts	*	ffprobe-na	neither	raw-stream-dts.
 mpegvideo	dts	*	ffprobe-na	neither	raw-stream-dts.
 mpegvideo	pts	*	ours-na	neither	raw-mpeg2-pts: ffprobe derives presentation times from the picture headers' temporal references; ours leaves them unknown in elementary streams (docs/mpeg.md).
+mpegts	leading	*	ignore	ours	leading-fragment: ffprobe lists the tail of a unit that began before the file did (a partial picture or audio frame at the cut start) as a packet of its own; ours starts at the first unit that begins in the file (docs/mpeg.md).
+mpegps	leading	*	ignore	ours	leading-fragment, as for mpegts.
+mpegts	pts	kind=video	ffprobe-na	ours	unstamped-units: a picture that starts inside a PES packet without a timestamp has no time in ffprobe; ours places it from the temporal reference (MPEG-2) or leaves it unknown (docs/mpeg.md).
+mpegts	dts	kind=video	ffprobe-na	ours	unstamped-units: ours continues decode time from the previous unit (H.222.0 2.4.3.7 gives timestamps only to the first unit of a PES packet).
+mpegps	pts	kind=video	ffprobe-na	ours	unstamped-units, as for mpegts.
+mpegps	dts	kind=video	ffprobe-na	ours	unstamped-units, as for mpegts.
+mpegts	dts	file=Aladin	ignore	neither	pts-only-with-reordering: the PES packets carry a PTS and no DTS although pictures are reordered; H.222.0 2.4.3.7 then makes DTS equal PTS, which is what ours reports; ffprobe derives a monotonic DTS from its reorder-depth estimate.
+mpegts	pts	kind=subtitle	ffprobe-na	ours	pts-from-neighbour: ffprobe gives teletext PES packets without a PTS the time of their surroundings; ours leaves them unknown.
+mpegts	pts	kind=data	ffprobe-na	ours	pts-from-neighbour.
+mpegts	dts	kind=subtitle	ffprobe-na	ours	pts-from-neighbour.
+mpegts	dts	kind=data	ffprobe-na	ours	pts-from-neighbour.
+mpegps	size	codec=pcm_dvd	ignore	neither	dvd-lpcm-header: ffprobe keeps the 3-byte LPCM audio header (emphasis, quantisation, rate, channels) in each packet; ours delivers the samples and states the format in the track.
+mpegps	hash	codec=pcm_dvd	ignore	neither	dvd-lpcm-header.
+mpegps	duration	codec=pcm_dvd	ours-na	neither	dvd-lpcm-duration: ffprobe derives the duration from the LPCM header; ours leaves it unknown.
+mpegps	*	codec=dts	ignore	neither	dts-core-frames: ffprobe splits DTS PES payloads into core frames with a frame parser; ours delivers each PES payload as one packet (no DTS framer in 0.2).
+mpegps	count	file=TITLE01-ANGLE1	ignore	ours	late-stream-and-cut-tail: a sub-picture stream that first appears after the probed prefix is not a track, and ours stops before the incomplete last audio frame of the cut copy.
+mpegps	count	file=dvd.mpeg	ignore	ours	late-stream-and-cut-tail.
+mpegps	count	file=dothack2	ignore	ours	cut-tail: ffprobe lists the incomplete last audio frame of the cut file; ours stops before it and reports Truncated.
+mpegps	count	file=mm-short	ignore	ours	cut-tail.
+mpegts	count	file=h264-aac-truncated	ignore	ours	cut-tail.
+mpegts	count	file=test-ebu	ignore	ours	cut-tail.
+mpegps	pts	file=broken-ntsc	ignore	neither	broken-timestamps: the file's timestamps are irregular by design; the two read different stamps.
+mpegps	dts	file=broken-ntsc	ignore	neither	broken-timestamps.
+mpegps	duration	file=broken-ntsc	ignore	neither	broken-timestamps.
+mpegts	pts	file=wrap-33bit	ignore	ours	timestamp-wrap-base: the stream starts just below 2^33; ffprobe subtracts 2^33 and reports negative times, ours reports the stamps as written and continues upward through the wrap.
+mpegts	dts	file=wrap-33bit	ignore	ours	timestamp-wrap-base.
+mpegts	pos	file=-204	ignore	ours	positions-in-204-byte-packets: ffprobe's position of a PES start is 16 bytes short of the transport packet that carries it (392 for the packet at offset 408); ours is the packet's offset.
+mpegts	size	file=h264-aac-dups	ignore	ours	duplicate-packet-payload: a repeated transport packet (same continuity counter) is dropped by ours as H.222.0 2.4.3.3 allows; ffprobe appends its payload to the frame.
+mpegts	hash	file=h264-aac-dups	ignore	ours	duplicate-packet-payload.
+mpegts	size	file=h264-aac-errorflag	ignore	ours	transport-error-payload: a packet with transport_error_indicator set is dropped by ours (its payload is unreliable) and reported; ffprobe appends it.
+mpegts	hash	file=h264-aac-errorflag	ignore	ours	transport-error-payload.
+mpegts	*	codec=opus	ignore	neither	opus-in-ts-control-headers: ffprobe splits PES payloads into Opus packets by their control headers; ours delivers each PES payload as one packet (not implemented in 0.2).
+mpegts	duration	codec=mpeg4	ours-na	neither	mpeg4-visual-duration: no frame rate is read from MPEG-4 Part 2 headers.
+mpegts	pts	file=foxksaz	ignore	ours	leading-fragment-stamp: the first PES packet starts inside an AC-3 frame; ours gives its PTS to the first frame that starts in it (H.222.0 2.4.3.7), ffprobe gives it to the fragment.
+mpegts	dts	file=foxksaz	ignore	ours	leading-fragment-stamp.
+mpegts	pts	file=libmpeg2bug	ignore	ours	leading-fragment-stamp.
+mpegts	dts	file=libmpeg2bug	ignore	ours	leading-fragment-stamp.
+h264	duration	*	tolerance=1	neither	raw-stream-duration-rounding: ffprobe rounds the frame duration down in its 1/1200000 time base; ours is the exact rational.
+h264	duration	file=nature_704	ignore	ffprobe	ffprobe-duration-glitch: ffprobe prints 1 tick for most packets of this file.
+*	open	file=h264-aac-garbage	ignore	ours	ffprobe-open-fails: the pinned ffprobe reports no streams for a file with garbage between packets; a newer ffprobe (8.0) lists both streams and 288 of 289 packets equal to ours (one video packet is 132 bytes longer in its list, the garbage).
+*	open	file=res_change_ffmpeg_aspect	ignore	ours	ffprobe-open-fails: the pinned ffprobe reports no streams (mp3float header errors); a newer ffprobe lists the streams and equal packets for video, with the first audio frame 66 bytes longer in its list (leading junk).
+mpegts	info-duration	*	tolerance=50000	neither	duration-tail-estimate: ours is the last stamped PES packet's time plus one frame over the last 1 MiB; ffprobe parses the tail's packets and takes the last frame's end. They agree within a frame or two (the largest observed difference is 40 ms, one video frame) (docs/mpeg.md).
+mpegps	info-duration	*	tolerance=50000	neither	duration-tail-estimate.
+mpegvideo	info-duration	*	ignore	neither	duration-from-bitrate: ffprobe estimates the duration of an MPEG-1/2 elementary stream from its bit rate; a stream with no timestamps has no stated duration and ours stays unknown.
+mpegts	info-streams	file=TITLE01-ANGLE1	ignore	ours	late-stream.
+mpegps	info-streams	file=TITLE01-ANGLE1	ignore	ours	late-stream: a sub-picture stream first seen after the probed prefix is not a track.
+mpegps	info-streams	file=dvd.mpeg	ignore	ours	late-stream.
+mpegts	info-codec	file=mpeg1-mp2.ts	ignore	ours	mpeg1-video-detected: the PMT says stream type 0x01 and the sequence header has no extension, so the stream is MPEG-1 video; ffprobe names every MPEG video stream mpeg2video.
+mpegts	info-open	file=res_change_ffmpeg_aspect	ignore	ours	ffprobe-open-fails (see the packet rule).
+mpegts	info-open	file=h264-aac-garbage	ignore	ours	ffprobe-open-fails (see the packet rule).
+mpegts	info-duration	file=block_green	ignore	ours	broken-timestamps: the stream's stamps jump; the pinned ffprobe reports a duration of about six hours for a 13 s clip, ours stays unknown rather than report one.
+mpegts	duration	file=avchd_lite	ignore	ours	declared-rate: the sequence parameter set declares 59.94 frames per second but the camera stamped the frames 3003 ticks apart (the file is a speed-problem report); ours states the declared rate, ffprobe the measured one.
+mpegts	pos	*	ours-na	neither	pos-in-shared-PES: ffprobe gives a later access unit of a PES packet the packet's position; ours gives the position to the first unit only (the source range names the PES start).
+mpegps	pos	*	ours-na	neither	pos-in-shared-PES.
