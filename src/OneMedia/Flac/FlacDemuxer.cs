@@ -112,7 +112,7 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
     private ByteRange _comment = ByteRange.None;
 
     // Frame reading state: _frame[0.._length) holds bytes from file offset _frameOffset.
-    private byte[] _frame = new byte[ReadChunk * 2];
+    private byte[] _frame = []; // allocated by the first read, so that opening for tags costs nothing here
     private int _length;
     private long _frameOffset;
     private bool _eof;
@@ -640,8 +640,9 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
         {
             if (_frame.Length - _length < ReadChunk)
             {
-                _limits.CheckPacket((long)_frame.Length * 2, _frameOffset);
-                Array.Resize(ref _frame, _frame.Length * 2);
+                long grown = Math.Max((long)_frame.Length * 2, ReadChunk * 2);
+                _limits.CheckPacket(grown, _frameOffset);
+                Array.Resize(ref _frame, (int)grown);
             }
 
             int n = _input.Read(_frame.AsSpan(_length, ReadChunk), ct);
