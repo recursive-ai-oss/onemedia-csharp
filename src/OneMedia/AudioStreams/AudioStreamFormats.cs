@@ -40,6 +40,10 @@ public sealed class MpegAudioFormat : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => MpegAudioDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioStreamAsyncDemuxer.OpenAsync(source, options, (s, o, ct) => MpegAudioDemuxer.Open(s, o, ct), cancellationToken).ConfigureAwait(false);
 }
 
 /// <summary>Recognises AAC in ADTS framing and opens it with <see cref="AdtsDemuxer"/>.</summary>
@@ -61,6 +65,10 @@ public sealed class AdtsFormat : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => AdtsDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioStreamAsyncDemuxer.OpenAsync(source, options, (s, o, ct) => AdtsDemuxer.Open(s, o, ct), cancellationToken).ConfigureAwait(false);
 }
 
 /// <summary>Recognises AC-3 and E-AC-3 by the 0x0B77 syncword and a valid syncframe header, and opens them with <see cref="Ac3Demuxer"/>.</summary>
@@ -95,6 +103,10 @@ public sealed class Ac3Format : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => Ac3Demuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioStreamAsyncDemuxer.OpenAsync(source, options, (s, o, ct) => Ac3Demuxer.Open(s, o, ct), cancellationToken).ConfigureAwait(false);
 }
 
 /// <summary>Recognises AMR and AMR-WB storage files, single and multi-channel, and opens them with <see cref="AmrDemuxer"/>.</summary>
@@ -131,6 +143,10 @@ public sealed class AmrFormat : IMediaFormat
 
     /// <inheritdoc />
     public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) => AmrDemuxer.Open(source, options, cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default) =>
+        await AudioStreamAsyncDemuxer.OpenAsync(source, options, (s, o, ct) => AmrDemuxer.Open(s, o, ct), cancellationToken).ConfigureAwait(false);
 }
 
 /// <summary>
@@ -149,7 +165,28 @@ public sealed class Id3AudioFormat : IMediaFormat
     public string DisplayName => "ID3v2-tagged audio";
 
     /// <inheritdoc />
-    public SniffResult Sniff(ReadOnlySpan<byte> head) => s_basic.Sniff(head);
+    public SniffResult Sniff(ReadOnlySpan<byte> head)
+    {
+        SniffResult basic = s_basic.Sniff(head);
+        if (basic.Confidence == SniffConfidence.None)
+        {
+            return basic;
+        }
+
+        // Tags in front of FLAC, WAV or Ogg are those formats' business: when the bytes behind the tags are visible and are not ours, step aside.
+        int at = 0;
+        while (at + Id3Header.HeaderSize <= head.Length && Id3Header.TryParse(head[at..], out Id3Header h) && at + h.TotalLength < int.MaxValue / 2)
+        {
+            at += (int)h.TotalLength;
+        }
+
+        if (at < head.Length && Behind(head[at..]) is "flac" or "wav" or "ogg")
+        {
+            return SniffResult.None;
+        }
+
+        return basic;
+    }
 
     /// <inheritdoc />
     public IDemuxer Open(IMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default)
@@ -171,6 +208,36 @@ public sealed class Id3AudioFormat : IMediaFormat
             "ac3" => Ac3Demuxer.Open(source, options, cancellationToken),
             var other => throw new UnsupportedMediaException($"The audio behind the ID3v2 tag ({other}) is not a format this reader opens."),
         };
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<IAsyncDemuxer> OpenAsync(IAsyncMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        WindowedSource window = new(source);
+        await window.FetchAsync(0, WindowedSource.WindowBytes, cancellationToken).ConfigureAwait(false);
+        long position = 0;
+        while (true)
+        {
+            byte[] header = await AudioStreamAsyncDemuxer.PeekAsync(window, position, Id3Header.HeaderSize, cancellationToken).ConfigureAwait(false);
+            if (header.Length != Id3Header.HeaderSize || !Id3Header.TryParse(header, out Id3Header h))
+            {
+                break;
+            }
+
+            position += h.TotalLength;
+        }
+
+        byte[] after = await AudioStreamAsyncDemuxer.PeekAsync(window, position, 16, cancellationToken).ConfigureAwait(false);
+        int got = after.Length;
+        Func<IMediaSource, MediaOpenOptions, CancellationToken, AudioStreamDemuxer> open = Behind(after.AsSpan(0, got)) switch
+        {
+            "mpeg" => (s, o, ct) => MpegAudioDemuxer.Open(s, o, ct),
+            "adts" => (s, o, ct) => AdtsDemuxer.Open(s, o, ct),
+            "ac3" => (s, o, ct) => Ac3Demuxer.Open(s, o, ct),
+            var other => throw new UnsupportedMediaException($"The audio behind the ID3v2 tag ({other}) is not a format this reader opens."),
+        };
+        return await AudioStreamAsyncDemuxer.OpenAsync(source, options, open, cancellationToken, window).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

@@ -85,8 +85,8 @@ public abstract class AudioStreamDemuxer : IDemuxer, IMetadataProvider
     private readonly StreamBuffer _input;
     private readonly MediaLimits _limits;
     private readonly IMediaSource? _media;
-    private readonly List<long> _checkpointOffsets = [];
-    private readonly List<long> _checkpointSamples = [];
+    private readonly List<long> _checkpointOffsets = new(1024);
+    private readonly List<long> _checkpointSamples = new(1024);
     private readonly List<ByteRange> _headTags = [];
     private readonly List<byte[]> _headTagData = [];
     private readonly List<(string Kind, ByteRange Range)> _tailBlocks = [];

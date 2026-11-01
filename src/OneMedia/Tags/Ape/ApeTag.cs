@@ -210,13 +210,19 @@ public sealed class ApeTag : ITagContainer
             // The key is 2 to 255 printable ASCII characters ended by a zero byte.
             ReadOnlySpan<byte> keyArea = window.Get(p + 8, (int)Math.Min(MaxKeyBytes + 1, length - p - 8));
             int z = keyArea.IndexOf((byte)0);
-            if (z < 2 || !IsPrintable(keyArea[..z]))
+            if (z < 2)
             {
-                defects.Add(DefectKind.InvalidValue, DefectSeverity.Error, start + p + 8, "An APE item key is missing, too short, too long or not printable ASCII; the rest of the tag is not read.", "ape.key");
+                defects.Add(DefectKind.InvalidValue, DefectSeverity.Error, start + p + 8, "An APE item key is missing, shorter than two characters or longer than 255; the rest of the tag is not read.", "ape.key");
                 return;
             }
 
-            string key = Encoding.ASCII.GetString(keyArea[..z]);
+            if (!IsPrintable(keyArea[..z]))
+            {
+                // The item is still framed (the key ends at the zero byte), so it is kept and the key is reported.
+                defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, start + p + 8, "An APE item key has characters outside 0x20-0x7E; the item is kept.", "ape.key-chars");
+            }
+
+            string key = Encoding.Latin1.GetString(keyArea[..z]);
             long valueStart = p + 8 + z + 1;
             if (valueStart + valueLength > length)
             {
@@ -271,7 +277,7 @@ public sealed class ApeTag : ITagContainer
             if (valueLength <= 64 * 1024)
             {
                 ReadOnlySpan<byte> v = window.Get(valueStart, (int)valueLength);
-                string text = Encoding.UTF8.GetString(v).TrimEnd('\0').Replace('\0', ';');
+                string text = Encoding.UTF8.GetString(v).TrimEnd('\0').Replace("\0", "; ", StringComparison.Ordinal);
                 if (!global::System.Text.Unicode.Utf8.IsValid(v))
                 {
                     io.Defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, valueRange.Offset, $"The text of the APE item '{key}' is not valid UTF-8; invalid sequences are replaced.", "ape.utf8");
