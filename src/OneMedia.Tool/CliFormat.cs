@@ -53,7 +53,7 @@ internal static class CliFormat
     }
 
     // Says what a track's AAC configuration implies, in words a reader can act on: which rate the core coder runs at, which the output has,
-    // and that this program only reads the container and never decodes the high band.
+    // and how the file signals it; OneAudio decodes the high band.
     internal static string? HeAac(MediaTrack t)
     {
         if (t.DescribeCodec() is not { } p || !(p.SbrPresent || p.ContainerDeclaresDoubleRate))
@@ -69,6 +69,6 @@ internal static class CliFormat
         }
 
         string how = p.SbrSignalling == RecursiveAI.OneMedia.Codecs.SbrSignalling.Explicit ? "explicit" : "backward-compatible";
-        return $"AAC-LC core {core} Hz; {(p.PsPresent ? "HE-AACv2" : "HE-AAC")} output {output} Hz ({how} signalling, SBR not decoded)";
+        return $"AAC-LC core {core} Hz; {(p.PsPresent ? "HE-AACv2" : "HE-AAC")} output {output} Hz ({how} signalling)";
     }
 }

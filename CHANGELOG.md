@@ -21,6 +21,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - One codec id per codec across WAVE, AVI and ASF: ADPCM (Microsoft, IMA, G.726) now has the same neutral id in every container.
 - AVI: `RecursiveAI.OneMedia.Avi` reads AVI and OpenDML (`AVIX`, super and standard indexes, `idx1`, index-less files by a bounded `movi` scan), DV in AVI (type 1 and type 2) and `LIST INFO`/`IDIT` tags; raw DV (`.dv`) through `RecursiveAI.OneMedia.Dv`; key frames from the index or the picture header; the reader registers with `AddOneMedia()` in the audio adapter. DV audio inside frames is not de-shuffled (no audio track for DV type 1 and raw DV). See `docs/avi.md` and `docs/dv.md`. AVI `LIST INFO` and `IDIT` are read by the same `Tags.Riff` reader as WAVE, and AVI shares the WAVE reader's chunk walker, so AVI defect codes are the shared `riff.*` codes (`riff.size-exceeds-file`, `riff.size-exceeds-parent`, `riff.unbounded-size`, `riff.trailing`).
 
+- Structure writers and the safe writer (`docs/writer.md`): `EditPlan`, `SafeWriter` (`Write`, `SaveAs`, `Save` as temp + fsync + atomic rename, `SaveInPlace` within padding or `PaddingRequiredException`), `WriteReport`, and the editors `BoxEditor` (`BoxBuilder`), `EbmlEditor` (`EbmlWriter`) and `ChunkEditor` (`ChunkBuilder`) for ISO boxes, EBML and RIFF/RF64/Wave64/AIFF. Untouched files come back byte for byte; edits change only the edited ranges and keep media payload as copied ranges. Growing a header area moves later bytes and the editors follow: `stco` → `co64` promotion, `tfhd`/`sidx`/`tfra`, Matroska `SeekHead`/`Cues`/cluster positions and CRC-32, RIFF/RF64 sizes and plain WAVE → RF64 at 4 GiB. An outer RIFF size that overshoots the file is corrected once content moves; appends after a chunk or box with no stated end are refused.
+
 - `MediaTrack.PresentationTime(...)`: a packet's time on the presentation timeline with the edit list, Matroska codec delay and start offset applied, in `MediaTime`.
 - `MediaTrack.Rfc6381Codec()`: the track's RFC 6381 `codecs` string, now also `vp8` and the ISO timed-text codes `tx3g`, `wvtt` and `stpp`; codecs with no registered string return null.
 - `Media.Open(Stream)` accepts a stream that cannot seek (new `MediaFile.Open(IForwardMediaSource)` and `MediaFormatRegistry.Open(IForwardMediaSource)`): formats readable front to back open and read once, a format that needs to seek throws `UnsupportedMediaException`, a second read throws `MediaReadStateException` (`CannotRewind`).
@@ -29,6 +31,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - `onemedia info`: track names (also in `--json`), every fact candidate with its source, reduced frame rates, clearer HE-AAC wording.
 
 ### Fixed
+
+- `SafeWriter.Save` on Windows: the writer's own source handle is closed before the rename, and a target another handle keeps open raises `FileInUseException` with the original untouched instead of an unspecified `UnauthorizedAccessException`.
 
 - Format sniffing: an Annex B head that ended right after a start code made the H.265 check read one byte past the end (found by fuzzing the registry).
 
@@ -42,8 +46,14 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 - `MediaTrack.Rfc6381Codec()` names the sample entry for `hev1` (HEVC) and `avc3` (H.264) tracks, returns `vp9` for a VP9 track whose level is unknown (browsers reject `vp09.PP.00.DD`), and `vp9` for one without a configuration.
 - A track whose only hint of SBR is a container that declares twice the AAC core rate is now reported as "possibly core-only" (`SbrPossiblyNotApplied`, `IsPossiblyCoreOnly`). `AudioDecodeReport.IsCoreOnly` and `SbrNotApplied` are set only on evidence (SBR/PS in the configuration, or SBR data met by the decoder), so a complete AAC-LC track with a wrong container rate no longer reads as missing audio. The decoded rate and priming are unchanged.
+- `RecursiveAI.OneMedia.Audio` uses OneAudio 1.6.1, which decodes HE-AAC v1/v2 (SBR and baseline PS) at the full output rate. `Decode()` on HE-AAC no longer throws for SBR/PS signalling, and `MediaTrackPacketSource.SampleRate`/`Channels`, priming, `DiscardEndFrames`, lengths and seeking are counted at the output rate and channels. `Decode(out AudioDecodeReport)` reports the decoder's own rate and channels, with the file's declaration in `SignalledSampleRate`/`SignalledChannels` when they differ (a container hint of SBR that the stream does not bear out decodes at the core rate). OneAudio still refuses 64-96 kHz with bs_start_freq other than 9, dual-mono SBR, unrestricted PS and multichannel AAC with its typed unsupported error.
+- `AudioSeamLimitations.SbrNotApplied` / `AudioDecodeReport.IsCoreOnly` now mean only SBR that first appears after OneAudio's first 256 access units and was skipped; `AudioDecodeReport.AfterReading` also refreshes rate and channels from the decoder. New `AudioDecodeReport.SbrActive` and `PsActive` report what OneAudio's AAC decoder runs.
+- `onemedia info` no longer says "SBR not decoded" for HE-AAC tracks.
 - `Packets()` and the `.Audio` decode calls on a file opened with `OpenAsync` throw `MediaReadStateException` (`AsynchronousSource`, still an `InvalidOperationException`) instead of a plain `InvalidOperationException`.
-- `Decode()` on an AAC track that signals SBR or PS now passes OneAudio 1.5.1's own `UnsupportedAudioFormatException` through (it also covers the MP4Box form missing its trailing extension flag, and no longer calls a backward-compatible signal "explicit"). `AudioDecodeReport.Signalling` and `CodecParameters.SbrSignalling` still say how the file signals it. `RecursiveAI.OneAudio` is 1.5.1.
+
+### Deprecated
+
+- `AudioSeamLimitations.PsNotApplied`, `AudioSeamLimitations.SbrPossiblyNotApplied` and `AudioDecodeReport.IsPossiblyCoreOnly`: never set or true with OneAudio 1.6.1.
 
 ## [0.1.0-preview.3] - 2026-11-01
 
