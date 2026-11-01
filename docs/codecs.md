@@ -29,6 +29,8 @@ Behaviour of `RecursiveAI.OneMedia.Codecs.*`: header parsing and repackaging onl
 
 `CodecParameterReader` turns a track's configuration (or first sample) into a `CodecParameters` summary with the RFC 6381 string; `CodecConfigMapper` maps Matroska CodecPrivate to the ISO configuration box and back.
 
+`MediaTrack.Rfc6381Codec()` adds the codecs that have a string without a configuration record: VP8 is `vp8`, and the ISO timed-text sample entries are named by their sample entry code as RFC 6381 §3.3 prescribes for the ISO base media file family (`tx3g`, `wvtt`, `stpp`). The TTML profile suffix of `stpp` (`.ttml.im1t`) is not derived, since the sample entry's namespace and schema strings are not read. There is no registered string for QuickTime `text`, the Matroska text codecs (SRT, SSA/ASS, WebVTT, USF) or PGS bitmap subtitles, so the method returns null for them.
+
 ## Choices where the specifications or the oracles settle a detail
 
 - **Annex B start codes.** From length-prefixed samples, H.264 units get a four-byte start code when first in the sample or when they are SPS/PPS, a three-byte one otherwise; H.265 and H.266 units always get four bytes. Parameter sets stored in the sample entry are put before the first random access picture of a sample that carries none. This is the layout the common tools write (observed with ffmpeg's `h264_mp4toannexb`/`hevc_mp4toannexb` on streams with several slices per picture and with access unit delimiters), and it makes the output byte-comparable.

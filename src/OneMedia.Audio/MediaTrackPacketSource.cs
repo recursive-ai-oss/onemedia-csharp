@@ -27,9 +27,8 @@ public enum AudioSeamLimitations
     EndPaddingNotApplied = 1 << 2,
 
     /// <summary>
-    /// The AAC configuration signals spectral band replication (HE-AAC), or only the container declares twice the core rate (a hint, see
-    /// <see cref="MediaTrackPacketSource.SbrSignalling"/>), and OneAudio's AAC decoder does not apply SBR. It decodes the core coder
-    /// only, so the PCM comes out at the core sampling rate (typically half the signalled output rate) and without the high band.
+    /// The AAC configuration signals spectral band replication (HE-AAC) or the decoder met SBR data in the stream, and OneAudio's AAC
+    /// decoder does not apply SBR. It decodes the core coder only, so the PCM comes out at the core sampling rate (typically half the signalled output rate) and without the high band.
     /// <see cref="MediaTrackPacketSource.SampleRate"/> is that core rate; <see cref="MediaTrackPacketSource.SignalledSampleRate"/> is the rate the file asks for.
     /// </summary>
     SbrNotApplied = 1 << 3,
@@ -39,6 +38,13 @@ public enum AudioSeamLimitations
     /// (one) where the file signals two.
     /// </summary>
     PsNotApplied = 1 << 4,
+
+    /// <summary>
+    /// Only the container declares twice the AAC core rate (<see cref="SbrSignalling.ContainerRate"/>), which is a hint and not evidence: the
+    /// configuration signals no SBR, and files exist whose declared rate is simply wrong for a complete AAC-LC stream. The PCM is the core
+    /// coder's, at the core rate; whether a high band exists is unknown until the decoder reads SBR data (<see cref="AudioDecodeReport.AfterReading"/>).
+    /// </summary>
+    SbrPossiblyNotApplied = 1 << 5,
 }
 
 /// <summary>What a decode of an audio track will and will not do, known before any audio is read.</summary>
@@ -52,8 +58,29 @@ public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations
     /// <summary>How the file signals SBR: <see cref="SbrSignalling.Explicit"/> or <see cref="SbrSignalling.BackwardCompatible"/> in the configuration, <see cref="SbrSignalling.ContainerRate"/> when only the container's doubled rate suggests it (a hint, which may be wrong), else <see cref="SbrSignalling.None"/>.</summary>
     public SbrSignalling Signalling { get; init; }
 
-    /// <summary>True when the file signals SBR or PS, or its container declares twice the core rate, and the decoder returns the core coder's audio only.</summary>
+    /// <summary>True when the file's configuration signals SBR or PS (or the stream was seen to carry SBR, see <see cref="AfterReading"/>) and the decoder returns the core coder's audio only: audio is missing.</summary>
     public bool IsCoreOnly => (Limitations & (AudioSeamLimitations.SbrNotApplied | AudioSeamLimitations.PsNotApplied)) != 0;
+
+    /// <summary>True when only the container's declared rate suggests SBR (<see cref="AudioSeamLimitations.SbrPossiblyNotApplied"/>): the audio may be complete AAC-LC, and nothing outside the stream can tell. Not part of <see cref="IsCoreOnly"/>.</summary>
+    public bool IsPossiblyCoreOnly => (Limitations & AudioSeamLimitations.SbrPossiblyNotApplied) != 0;
+
+    /// <summary>
+    /// Settles a "possibly core-only" report after the decoder has read the track: when OneAudio's AAC decoder skipped SBR data, the
+    /// possibility becomes fact (<see cref="AudioSeamLimitations.SbrNotApplied"/>, so <see cref="IsCoreOnly"/>). A decoder that has not reached
+    /// SBR data proves nothing, so the report is returned unchanged until the stream has been read through.
+    /// </summary>
+    /// <param name="decoder">The decoder that produced this report, after reading.</param>
+    /// <returns>The report, upgraded when SBR data was seen.</returns>
+    public AudioDecodeReport AfterReading(global::OneAudio.IAudioDecoder decoder)
+    {
+        ArgumentNullException.ThrowIfNull(decoder);
+        if (!IsPossiblyCoreOnly || !decoder.SbrDataIgnored())
+        {
+            return this;
+        }
+
+        return this with { Limitations = (Limitations & ~AudioSeamLimitations.SbrPossiblyNotApplied) | AudioSeamLimitations.SbrNotApplied };
+    }
 }
 
 /// <summary>
@@ -187,7 +214,11 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 {
                     signalledRate = heaac.SampleRate;
                     signalling = heaac.SbrSignalling;
-                    limitations = AudioSeamLimitations.SbrNotApplied | (heaac.PsPresent ? AudioSeamLimitations.PsNotApplied : 0);
+                    // Only the configuration is evidence. A doubled container rate alone is a hint (some files declare it for plain AAC-LC), so it
+                    // is reported as "possibly" until the decoder meets SBR data.
+                    limitations = heaac.SbrPresent
+                        ? AudioSeamLimitations.SbrNotApplied | (heaac.PsPresent ? AudioSeamLimitations.PsNotApplied : 0)
+                        : AudioSeamLimitations.SbrPossiblyNotApplied;
                     rate = heaac.CoreSampleRate;
                     if (heaac.Channels > 0)
                     {

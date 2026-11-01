@@ -98,7 +98,7 @@ public static class TagMappingTable
         Row(CommonField.Date, TagSystems.QuickTimeUserData, ExifToolUser, "", "©day"),
         Row(CommonField.Date, TagSystems.ThreeGpp, ThreeGppDoc, "recording year", "yrrc"),
 
-        Row(CommonField.Copyright, TagSystems.ITunes, Picard, "", "cprt"),
+        Row(CommonField.Copyright, TagSystems.ITunes, Picard, "©cpy, the QuickTime atom name, is also accepted in ilst", "cprt", "©cpy"),
         Row(CommonField.Copyright, TagSystems.QuickTimeKeys, ExifToolKeys, "", Mdta + "copyright"),
         Row(CommonField.Copyright, TagSystems.QuickTimeUserData, ExifToolUser, "", "©cpy", "cprt"),
         Row(CommonField.Copyright, TagSystems.ThreeGpp, ThreeGppDoc, "", "cprt"),

@@ -270,6 +270,52 @@ public sealed class MediaFormatRegistry
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
+
+    /// <summary>
+    /// Sniffs a source that can only be read once and opens it with the format that matched. The head used for sniffing is replayed to the
+    /// reader, so nothing is lost. Formats whose readers need to seek are refused.
+    /// </summary>
+    /// <param name="source">The source, from its first byte.</param>
+    /// <param name="options">Options; <see cref="MediaOpenOptions.Default"/> if null.</param>
+    /// <param name="cancellationToken">Observed while sniffing and opening.</param>
+    /// <returns>The demuxer; the caller disposes it. Its <c>CanSeek</c> is false.</returns>
+    /// <exception cref="UnsupportedMediaException">No registered format recognises the data, the match has no reader, or its reader needs a seekable source (the message names the format).</exception>
+    /// <exception cref="MediaFormatException">The data is not valid for the format it was recognised as.</exception>
+    public IDemuxer Open(IForwardMediaSource source, MediaOpenOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        byte[] buffer = new byte[SniffBytes];
+        int n = 0;
+        while (n < SniffBytes)
+        {
+            int r = source.Read(buffer.AsSpan(n), cancellationToken);
+            if (r == 0)
+            {
+                break;
+            }
+
+            n += r;
+        }
+
+        if (!TrySniff(buffer.AsSpan(0, n), out FormatMatch match))
+        {
+            throw new UnsupportedMediaException("The data is not in any registered format.");
+        }
+
+        if (match.Format is not IMediaFormat format)
+        {
+            throw new UnsupportedMediaException($"{match.Format.DisplayName} is recognised but this program has no reader for it.");
+        }
+
+        try
+        {
+            return format.Open(new ReplayForwardSource(buffer.AsMemory(0, n), source), options ?? MediaOpenOptions.Default, cancellationToken);
+        }
+        catch (NotSupportedException ex)
+        {
+            throw new UnsupportedMediaException($"{format.DisplayName} cannot be read from a stream that cannot seek; open it from a file, a seekable stream or memory.", ex);
+        }
+    }
 }
 
 /// <summary>A format whose reader can start from the first bytes of the file, which the registry has already read to recognise it.</summary>

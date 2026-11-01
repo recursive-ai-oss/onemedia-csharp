@@ -18,13 +18,23 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - One codec id per codec across WAVE, AVI and ASF: ADPCM (Microsoft, IMA, G.726) now has the same neutral id in every container.
 - AVI: `RecursiveAI.OneMedia.Avi` reads AVI and OpenDML (`AVIX`, super and standard indexes, `idx1`, index-less files by a bounded `movi` scan), DV in AVI (type 1 and type 2) and `LIST INFO`/`IDIT` tags; raw DV (`.dv`) through `RecursiveAI.OneMedia.Dv`; key frames from the index or the picture header; the reader registers with `AddOneMedia()` in the audio adapter. DV audio inside frames is not de-shuffled (no audio track for DV type 1 and raw DV). See `docs/avi.md` and `docs/dv.md`. AVI `LIST INFO` and `IDIT` are read by the same `Tags.Riff` reader as WAVE, and AVI shares the WAVE reader's chunk walker, so AVI defect codes are the shared `riff.*` codes (`riff.size-exceeds-file`, `riff.size-exceeds-parent`, `riff.unbounded-size`, `riff.trailing`).
 
+- `MediaTrack.PresentationTime(...)`: a packet's time on the presentation timeline with the edit list, Matroska codec delay and start offset applied, in `MediaTime`.
+- `MediaTrack.Rfc6381Codec()`: the track's RFC 6381 `codecs` string, now also `vp8` and the ISO timed-text codes `tx3g`, `wvtt` and `stpp`; codecs with no registered string return null.
+- `Media.Open(Stream)` accepts a stream that cannot seek (new `MediaFile.Open(IForwardMediaSource)` and `MediaFormatRegistry.Open(IForwardMediaSource)`): formats readable front to back open and read once, a format that needs to seek throws `UnsupportedMediaException`, a second read throws `MediaReadStateException` (`CannotRewind`).
+- `MediaReadStateReason.AsynchronousSource`; `AudioSeamLimitations.SbrPossiblyNotApplied`, `AudioDecodeReport.IsPossiblyCoreOnly` and `AudioDecodeReport.AfterReading(decoder)`.
+- iTunes `©cpy` atoms in `ilst` feed `CommonTags.Copyright` (after `cprt`); `docs/tag-mapping.md` regenerated.
+- `onemedia info`: track names (also in `--json`), every fact candidate with its source, reduced frame rates, clearer HE-AAC wording.
+
 ### Fixed
 
+- `onemedia info` printed Matroska frame rates unreduced (`200000000/8333333 fps`); they are now reduced or snapped to the nearest broadcast rate.
 - Raw AV1 streams: an OBU whose size field was close to `int.MaxValue` overflowed the end-of-OBU test and threw `ArgumentOutOfRangeException`; it is now a malformed unit.
 - Format sniffing: the Annex B video sniffer read past the end of a head that ended right after a start code.
 
 ### Changed
 
+- A track whose only hint of SBR is a container that declares twice the AAC core rate is now reported as "possibly core-only" (`SbrPossiblyNotApplied`, `IsPossiblyCoreOnly`). `AudioDecodeReport.IsCoreOnly` and `SbrNotApplied` are set only on evidence (SBR/PS in the configuration, or SBR data met by the decoder), so a complete AAC-LC track with a wrong container rate no longer reads as missing audio. The decoded rate and priming are unchanged.
+- `Packets()` and the `.Audio` decode calls on a file opened with `OpenAsync` throw `MediaReadStateException` (`AsynchronousSource`, still an `InvalidOperationException`) instead of a plain `InvalidOperationException`.
 - `Decode()` on an AAC track that signals SBR or PS now passes OneAudio 1.5.1's own `UnsupportedAudioFormatException` through (it also covers the MP4Box form missing its trailing extension flag, and no longer calls a backward-compatible signal "explicit"). `AudioDecodeReport.Signalling` and `CodecParameters.SbrSignalling` still say how the file signals it. `RecursiveAI.OneAudio` is 1.5.1.
 
 ## [0.1.0-preview.3] - 2026-11-01

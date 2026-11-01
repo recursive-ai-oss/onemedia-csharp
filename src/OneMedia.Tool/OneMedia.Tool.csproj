@@ -14,6 +14,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="$(PackagePrefix)OneMedia.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../OneMedia.Audio/OneMedia.Audio.csproj" />
   </ItemGroup>

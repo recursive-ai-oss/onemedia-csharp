@@ -13,11 +13,18 @@ public static class Media
     /// <exception cref="MediaFormatException">The data is not valid for its format.</exception>
     public static MediaFile Open(string path) => MediaFile.Open(FileMediaSource.Open(path));
 
-    /// <summary>Opens media from a seekable stream.</summary>
-    /// <param name="stream">A readable, seekable stream positioned at the start of the media. It is closed with the file unless <paramref name="leaveOpen"/> is true.</param>
+    /// <summary>Opens media from a stream, seekable or not.</summary>
+    /// <remarks>
+    /// A seekable stream behaves like a file. A stream that cannot seek is read front to back and only once: formats that can be read that way
+    /// open (Matroska/WebM, MP4 laid out for it, ASF, elementary streams), formats that need to seek throw <see cref="UnsupportedMediaException"/>,
+    /// and reading a second time throws <see cref="MediaReadStateException"/> with <see cref="MediaReadStateReason.CannotRewind"/>.
+    /// </remarks>
+    /// <param name="stream">A readable stream positioned at the start of the media. It is closed with the file unless <paramref name="leaveOpen"/> is true.</param>
     /// <param name="leaveOpen">Keep the stream open when the file is disposed.</param>
     /// <returns>The opened file.</returns>
-    public static MediaFile Open(Stream stream, bool leaveOpen = false) => MediaFile.Open(new StreamMediaSource(stream, leaveOpen));
+    /// <exception cref="UnsupportedMediaException">The format is not recognised, or needs a seekable stream.</exception>
+    public static MediaFile Open(Stream stream, bool leaveOpen = false) =>
+        stream is { CanSeek: false } ? MediaFile.Open(new StreamForwardSource(stream, leaveOpen)) : MediaFile.Open(new StreamMediaSource(stream, leaveOpen));
 
     /// <summary>Opens media held in memory.</summary>
     /// <param name="data">The whole file.</param>

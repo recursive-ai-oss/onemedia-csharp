@@ -56,7 +56,7 @@ generated from it, and a test fails when they differ.
 | Date | mdta | `com.apple.quicktime.year` | ExifTool QuickTime Keys tags |  |
 | Date | udta | `©day` | ExifTool QuickTime UserData tags |  |
 | Date | 3gpp | `yrrc` | 3GPP TS 26.244 §8 | recording year |
-| Copyright | ilst | `cprt` | Picard tag map, iTunes MP4 |  |
+| Copyright | ilst | `cprt`, `©cpy` | Picard tag map, iTunes MP4 | ©cpy, the QuickTime atom name, is also accepted in ilst |
 | Copyright | mdta | `com.apple.quicktime.copyright` | ExifTool QuickTime Keys tags |  |
 | Copyright | udta | `©cpy`, `cprt` | ExifTool QuickTime UserData tags |  |
 | Copyright | 3gpp | `cprt` | 3GPP TS 26.244 §8 |  |

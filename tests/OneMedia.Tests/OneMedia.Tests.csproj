@@ -64,6 +64,7 @@
     <None Include="../../testdata/heaac/*.m4a" Link="testdata/heaac/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Tool/OneMedia.Tool.csproj" />
   </ItemGroup>
 
 </Project>
