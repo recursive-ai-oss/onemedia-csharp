@@ -21,15 +21,16 @@ public static class MediaAudioExtensions
     /// returning wrong or no audio. Disposing the decoder does not close the file.
     /// </summary>
     /// <remarks>
-    /// HE-AAC (SBR, and parametric stereo where present) decodes as the core coder only, at the core sampling rate and without the high band;
-    /// this overload says nothing about it. Use the overload with an <see cref="AudioDecodeReport"/> to find out.
+    /// HE-AAC (SBR, and parametric stereo where present) decodes at the full output rate; <c>decoder.Format</c> is the truth for rate and
+    /// channels. OneAudio still refuses a few configurations (64-96 kHz with bs_start_freq other than 9, dual-mono SBR, unrestricted PS,
+    /// multichannel AAC) with its typed unsupported error. Use the overload with an <see cref="AudioDecodeReport"/> for the signalling.
     /// </remarks>
     /// <param name="media">The file, opened from a seekable source.</param>
     /// <param name="track">The audio track; <see cref="MediaFile.Audio"/> when null.</param>
     /// <param name="registry">Codecs to use; <see cref="CreateRegistry"/> when null.</param>
     /// <param name="limits">Limits for untrusted input; <see cref="global::OneAudio.AudioLimits.Default"/> when null.</param>
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
-    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (OneAudio has no SBR or PS decoder and refuses the track; its message says how the file signals it).</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration is one OneAudio still refuses (64-96 kHz HE-AAC with bs_start_freq other than 9, dual-mono SBR, unrestricted PS, multichannel AAC); its message says why.</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
     /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
@@ -48,8 +49,8 @@ public static class MediaAudioExtensions
     }
 
     /// <summary>
-    /// True when a decoder returned by <c>Decode</c> has skipped spectral-band-replication data: the stream carries SBR (HE-AAC signalled only
-    /// inside the stream) and the PCM is the core coder's audio at the core rate. Unlike <see cref="AudioDecodeReport"/> this cannot be known
+    /// True when a decoder returned by <c>Decode</c> has skipped spectral-band-replication data: SBR first appeared after the decoder's first 256
+    /// access units, so it was opened as plain AAC-LC, and the PCM is the core coder's audio at the core rate. Unlike <see cref="AudioDecodeReport"/> this cannot be known
     /// before the data is reached, so ask again after reading; a false answer before the end of the stream proves nothing.
     /// </summary>
     /// <param name="decoder">A decoder from <c>Decode</c>.</param>
@@ -61,8 +62,8 @@ public static class MediaAudioExtensions
     }
 
     /// <summary>
-    /// Says what decoding an audio track will not do, without decoding. For HE-AAC this works even when OneAudio refuses to build a decoder
-    /// for the track (explicit or backward-compatible SBR/PS signalling), so the reason can be shown.
+    /// Says what decoding an audio track will not do, without decoding, and how the file signals SBR. The decoded rate and channels are those
+    /// the file declares (the HE-AAC output); <see cref="AudioDecodeReport.AfterReading"/> settles them from the decoder.
     /// </summary>
     /// <param name="media">The file, opened from a seekable source.</param>
     /// <param name="track">The audio track; <see cref="MediaFile.Audio"/> when null.</param>
@@ -82,9 +83,10 @@ public static class MediaAudioExtensions
     /// Decodes an audio track like <see cref="Decode(MediaFile, MediaTrack?, global::OneAudio.AudioCodecRegistry?, global::OneAudio.AudioLimits?)"/> and says what the decode will not do.
     /// </summary>
     /// <remarks>
-    /// HE-AAC (SBR, and parametric stereo where present) is returned as the core coder's audio only: OneAudio has no SBR or PS decoder, so a
-    /// 44.1 kHz HE-AAC track comes out as 22.05 kHz PCM without the high band. Check <see cref="AudioDecodeReport.IsCoreOnly"/> (SBR/PS signalled by the file or implied by its declared rate), <see cref="SbrDataIgnored"/> (SBR data met in the stream, known only after reading), and read the
-    /// true PCM rate from the decoder or <see cref="AudioDecodeReport.DecodedSampleRate"/>, not from <see cref="AudioTrackInfo.SampleRate"/>.
+    /// HE-AAC (SBR, and parametric stereo where present) is decoded at the full output rate. The report's rate and channels are the decoder's own
+    /// (a container hint of SBR that the stream does not bear out decodes at the core rate, and the file's declared rate is in
+    /// <see cref="AudioDecodeReport.SignalledSampleRate"/>). Call <see cref="AudioDecodeReport.AfterReading"/> after reading to learn about SBR that
+    /// first appeared late in the stream (<see cref="AudioDecodeReport.IsCoreOnly"/>).
     /// </remarks>
     /// <param name="media">The file, opened from a seekable source.</param>
     /// <param name="report">What the decode will not do.</param>
@@ -92,7 +94,7 @@ public static class MediaAudioExtensions
     /// <param name="registry">Codecs to use; <see cref="CreateRegistry"/> when null.</param>
     /// <param name="limits">Limits for untrusted input; <see cref="global::OneAudio.AudioLimits.Default"/> when null.</param>
     /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
-    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration signals SBR or PS (OneAudio has no SBR or PS decoder and refuses the track; its message says how the file signals it).</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">There is no audio track, its codec is not registered or cannot be presented, or its AAC configuration is one OneAudio still refuses (64-96 kHz HE-AAC with bs_start_freq other than 9, dual-mono SBR, unrestricted PS, multichannel AAC); its message says why.</exception>
     /// <exception cref="MediaReadStateException">The file was read before and its source cannot seek, so the decode cannot start from the beginning (<see cref="MediaReadStateReason.CannotRewind"/>). Once the decoder exists, reading it after a later read of the file fails with <see cref="MediaReadStateReason.Superseded"/>.</exception>
     /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source (<see cref="MediaReadStateReason.AsynchronousSource"/>).</exception>
     public static global::OneAudio.IAudioDecoder Decode(this MediaFile media, out AudioDecodeReport report, MediaTrack? track = null, global::OneAudio.AudioCodecRegistry? registry = null, global::OneAudio.AudioLimits? limits = null)
@@ -109,8 +111,10 @@ public static class MediaAudioExtensions
         }
 
         MediaTrackPacketSource source = BeginSource(media, demuxer, track);
-        report = ReportOf(source);
-        return CreateDecoder(source, registry, limits);
+        global::OneAudio.IAudioDecoder decoder = CreateDecoder(source, registry, limits);
+        // OneAudio has looked at the stream by now, so rate and channels are the decoder's own, not the file's declaration.
+        report = ReportOf(source).AfterReading(decoder);
+        return decoder;
     }
 
     // OneAudio reads MP3 from a byte stream, so the track's frames go over as one, led by the Xing/Info frame that carries the gapless data.

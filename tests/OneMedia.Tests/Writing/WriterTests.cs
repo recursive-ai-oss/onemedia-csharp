@@ -221,6 +221,44 @@ public class IsoWriterTests
             Directory.Delete(dir, true);
         }
     }
+    [Fact]
+    public void SaveWhileAReaderHoldsTheSamePathEitherReplacesOrRefusesCleanly()
+    {
+        byte[] file = File.ReadAllBytes(WriterTestSupport.Fixture("isobmff", "faststart.mp4"));
+        string dir = Path.Combine(Path.GetTempPath(), $"writer-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "a.mp4");
+        File.WriteAllBytes(path, file);
+        try
+        {
+            using MediaFile open = MediaFile.Open(FileMediaSource.Open(path));
+            EditPlan plan;
+            using (FileMediaSource fs = FileMediaSource.Open(path))
+            {
+                BoxTree tree = new(fs);
+                BoxEditor e = new(tree, fs);
+                e.AppendChild(tree.Find(BoxTypes.Moov), WriterTestSupport.IlstUdta("T"));
+                plan = e.Build();
+            }
+
+            try
+            {
+                SafeWriter.Save(plan, path);
+                Assert.Equal(plan.Length, new FileInfo(path).Length);
+            }
+            catch (FileInUseException) when (OperatingSystem.IsWindows())
+            {
+                // Windows may keep the original while another handle is open; it must then be complete and unchanged.
+                Assert.Equal(file, File.ReadAllBytes(path));
+            }
+
+            Assert.Equal(["a.mp4"], Directory.GetFiles(dir).Select(Path.GetFileName).ToArray());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
 
 public class MatroskaWriterTests

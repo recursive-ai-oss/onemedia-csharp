@@ -272,7 +272,7 @@ public class ApiPolishTests
     public void HeAacLineNamesTheCoreAndOutputRates()
     {
         using MediaFile media = Media.Open(Data("heaac", "sbr-compatible.m4a"));
-        Assert.Equal("AAC-LC core 22,050 Hz; HE-AAC output 44,100 Hz (backward-compatible signalling, SBR not decoded)", CliFormat.HeAac(media.Audio!));
+        Assert.Equal("AAC-LC core 22,050 Hz; HE-AAC output 44,100 Hz (backward-compatible signalling)", CliFormat.HeAac(media.Audio!));
         using MediaFile implied = Media.Open(Data("heaac", "sbr-implied.m4a"));
         string hint = CliFormat.HeAac(implied.Audio!)!;
         Assert.Contains("twice the AAC core rate of 22,050 Hz", hint);
