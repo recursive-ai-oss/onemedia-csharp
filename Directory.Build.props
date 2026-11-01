@@ -56,7 +56,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EnablePackageValidation>true</EnablePackageValidation>
     <!-- Compare the public API with the last published version; intended breaks go in CompatibilitySuppressions.xml. -->
-    <PackageValidationBaselineVersion>0.2.0-preview.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>0.2.0-preview.2</PackageValidationBaselineVersion>
   </PropertyGroup>
 
 </Project>
