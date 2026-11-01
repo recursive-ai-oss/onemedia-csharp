@@ -261,18 +261,31 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     /// <summary>The earliest presentation or decode time of any stream, as read from the front of the file, or unknown.</summary>
     public MediaTime StartTime => _startTime;
 
-    /// <summary>The average multiplex bit rate in bits per second from the first and last program clock references, or 0 when it cannot be told.</summary>
+    /// <summary>
+    /// The average multiplex bit rate in bits per second, or 0 when it cannot be told. Once the program clock references seen so far span
+    /// most of the stream (every packet has been read) it is the bytes between the first and last reference over their clock difference;
+    /// before that, the front of the file would give a figure for its first moments only, so it is the stream length over the duration read
+    /// from the tail, which needs no more reading.
+    /// </summary>
     public long BitRate
     {
         get
         {
-            if (_firstPcr < 0 || _lastPcr <= _firstPcr || _lastPcrPos <= _firstPcrPos)
+            long length = _input.Length;
+            bool pcr = _firstPcr >= 0 && _lastPcr > _firstPcr && _lastPcrPos > _firstPcrPos;
+            // Nine tenths of the stream between the first and last reference: the span is the whole stream, ends aside.
+            if (pcr && (length <= 0 || (_lastPcrPos - _firstPcrPos) * 10 >= length * 9))
             {
-                return 0;
+                // PCR counts a 27 MHz clock (§2.4.2.2).
+                return (long)((System.Numerics.BigInteger)(_lastPcrPos - _firstPcrPos) * 8 * 27_000_000 / (_lastPcr - _firstPcr));
             }
 
-            // PCR counts a 27 MHz clock (§2.4.2.2).
-            return (long)((System.Numerics.BigInteger)(_lastPcrPos - _firstPcrPos) * 8 * 27_000_000 / (_lastPcr - _firstPcr));
+            if (length > 0 && _duration.IsKnown && _duration.Ticks > 0)
+            {
+                return (long)((System.Numerics.BigInteger)length * 8 * _duration.Timescale / _duration.Ticks);
+            }
+
+            return 0;
         }
     }
 
@@ -544,6 +557,8 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             Codec = codec,
             CodecTag = t.Kind.Tag,
             Configuration = a.Configuration.IsEmpty ? default : new CodecConfiguration(a.Configuration, "AudioSpecificConfig"),
+            // A transport stream has no avcC/hvcC/vvcC: the parameter sets in the first access unit stand in for it (RFC 6381 string, profile, level).
+            StreamParameters = a.Configuration.IsEmpty && trackKind == TrackKind.Video && codec.Name is "h264" or "hevc" or "vvc" ? p : null,
             Timescale = TrackAssembler.Clock,
             Duration = duration,
             Edit = new TrackEditInfo(StartTime: t.FirstPts >= 0 ? new MediaTime(t.FirstPts, TrackAssembler.Clock) : default),
@@ -1088,7 +1103,21 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             }
 
             _limits.CheckTracks(_programs.Count + 1, offset);
-            _programs.Add(new ProgramState { Number = number, PmtPid = pid });
+            ProgramState added = new() { Number = number, PmtPid = pid };
+            // ETSI EN 300 468 §5.1.4 puts no order on the tables: ffmpeg writes the SDT ahead of the PAT, so a service already described
+            // by the SDT is named as soon as its program is known.
+            // A plain loop: a lambda here would allocate its closure on every PAT repeat, which the pull path must not.
+            foreach (TsServiceInfo.Service named in _info.Services)
+            {
+                if (named.Id == number)
+                {
+                    added.ServiceName = named.Name;
+                    added.ServiceProvider = named.Provider;
+                    break;
+                }
+            }
+
+            _programs.Add(added);
             _pids[pid] ??= new PidState(pid, PidKind.Pmt) { Sections = new SectionAssembler(), ProgramIndex = _programs.Count - 1 };
         }
     }

@@ -13,6 +13,17 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 - `MediaTrack.Rfc6381Codec()` names the sample entry for `hev1` (HEVC) and `avc3` (H.264) tracks, returns `vp9` for a VP9 track whose level is unknown (browsers reject `vp09.PP.00.DD`), and `vp9` for one without a configuration.
 
+### Fixed
+
+- `Decode()` of AAC in MPEG-TS and program streams no longer throws "An AAC access unit has fewer channels than the stream configuration": the adapter handed OneAudio the ADTS frames as stored, header included, where the decoder takes raw data blocks (as it already did for raw ADTS files).
+- MPEG-TS service names and providers (`TransportStreamProgram.ServiceName`/`ServiceProvider`, `mpegts:service_name`/`service_provider`) appear for streams whose SDT comes before the PAT, as ffmpeg writes them: a service the SDT described earlier is named when its program is found.
+- `MediaFile.DescribeDecode()` returns the same report as `Decode(out report)` (it asks the decoder), so an HE-AAC hint such as the doubled container rate of `test5.mkv`'s commentary track reads 22,050 Hz in both. `docs/audio-adapter.md` and the XML docs no longer list unrestricted parametric stereo as refused: OneAudio decodes it in the baseline profile.
+- `MpegTsDemuxer.BitRate` right after open is the stream length over the duration read from the tail instead of the rate of the first few packets (72,192 where ffprobe says 738,167); it becomes the program clock figure once the whole stream has been read, and is 0 when neither is known.
+- H.264 and HEVC in MPEG-TS and AVI get an RFC 6381 codec string (`MediaTrack.Rfc6381Codec()`) from the SPS in the stream, as the same video in MP4 or FLV does; the new `MediaTrack.StreamParameters` holds what the reader found. AVI reads at most 128 KiB of each of the first few video chunks to find it.
+- FLV frame rates are given in lowest terms (15/1, not 30/2).
+- An MP3's `TXXX:description` frame is the common view's Description (`docs/tag-mapping.md` regenerated).
+- `docs/tags.md` lists the capture-time ranks of every format that yields candidates; `docs/pcm-files.md` and a test source no longer contain NUL bytes.
+
 ## [0.2.0-preview.1] - 2026-11-01
 
 Every other reader: ASF/WMV/WMA, MPEG-TS/M2TS, PS/VOB, elementary video and audio streams, MP3 with ID3 and APE, Ogg, FLAC, FLV, AVI/OpenDML, DV, WAV/BWF/RF64/W64, AIFF/AIFC and CAF, with their native tags in the common view. The format readers are read-only. Structure writers and the safe writer come as a first preview (below); tag editing, muxing and remux, subtitles, repair and packaging are planned and not in this release. `RecursiveAI.OneMedia.Audio` moves to OneAudio 1.6.1, which decodes HE-AAC at the full output rate.

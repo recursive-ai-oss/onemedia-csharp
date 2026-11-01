@@ -28,6 +28,15 @@ public class FixtureTests
         Assert.Empty(media.Defects);
     }
 
+    // AVI has no avcC; the string comes from the SPS in the first key frame, and equals what the same stream gives once remuxed to MP4
+    // (ffmpeg 8.0.1: profile Constrained Baseline, level 3.0).
+    [Fact]
+    public void H264InAviGetsItsRfc6381StringFromTheStream()
+    {
+        using MediaFile media = Media.Open(Fixture("h264.avi"));
+        Assert.Equal("avc1.42C01E", media.Video!.Rfc6381Codec());
+    }
+
     [Fact]
     public void InfoTagsAndDateAreRead()
     {
