@@ -36,6 +36,9 @@
     <EmbeddedResource Include="../../testdata/audio/vorbis.ogg" LogicalName="vorbis.ogg" />
     <EmbeddedResource Include="../../testdata/xiph-flv/tags.flac" LogicalName="tags.flac" />
     <EmbeddedResource Include="../../testdata/xiph-flv/tiny.flv" LogicalName="tiny.flv" />
+    <EmbeddedResource Include="../../testdata/avi/mjpeg-pcm.avi" LogicalName="mjpeg-pcm.avi" />
+    <EmbeddedResource Include="../../testdata/avi/one-frame-pal-type1.avi" LogicalName="one-frame-pal-type1.avi" />
+    <EmbeddedResource Include="../../testdata/avi/one-frame-pal.dv" LogicalName="one-frame-pal.dv" />
   </ItemGroup>
 
 </Project>

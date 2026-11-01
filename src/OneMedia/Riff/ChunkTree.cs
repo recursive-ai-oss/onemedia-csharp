@@ -109,6 +109,48 @@ public sealed class ChunkNode : IStructureNode
         return ((ulong)(byte)id[0] << 24) | ((ulong)(byte)id[1] << 16) | ((ulong)(byte)id[2] << 8) | (byte)id[3];
     }
 
+    /// <summary>Returns the first chunk directly inside this container with the given id (and form type, when given), or <c>null</c>.</summary>
+    /// <param name="id">The four-character id.</param>
+    /// <param name="formType">For containers, the required form or list type.</param>
+    /// <returns>The chunk, or <c>null</c>.</returns>
+    public ChunkNode? Find(string id, string? formType = null)
+    {
+        foreach (ChunkNode c in Chunks)
+        {
+            if (c.Id == id && (formType is null || c.FormType == formType))
+            {
+                return c;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Reads the chunk's payload, up to <paramref name="max"/> bytes.</summary>
+    /// <param name="max">Largest number of bytes to return.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The data; shorter than the payload when the source ends first (a <see cref="DefectKind.Truncated"/> defect is recorded) or <paramref name="max"/> applies.</returns>
+    /// <exception cref="MediaLimitExceededException">The size exceeds the allocation limit.</exception>
+    public byte[] ReadData(int max, CancellationToken cancellationToken = default)
+    {
+        long n = Math.Min(Math.Max(PayloadSize, 0), max);
+        if (n <= 0)
+        {
+            return [];
+        }
+
+        _context.Limits.CheckAllocation(n, Offset);
+        byte[] data = new byte[n];
+        int got = _context.Source.Read(Offset + HeaderSize, data, cancellationToken);
+        if (got < n)
+        {
+            _context.Defects.Add(DefectKind.Truncated, DefectSeverity.Warning, Offset + HeaderSize + got, $"The data of the '{Id}' chunk ends early.", "riff.truncated-data");
+            Array.Resize(ref data, got);
+        }
+
+        return data;
+    }
+
     private List<ChunkNode> ParseChildren()
     {
         List<ChunkNode> list = [];

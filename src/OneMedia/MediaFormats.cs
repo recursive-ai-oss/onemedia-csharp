@@ -1,4 +1,6 @@
 using RecursiveAI.OneMedia.Asf;
+using RecursiveAI.OneMedia.Avi;
+using RecursiveAI.OneMedia.Dv;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Sniffing;
@@ -26,7 +28,7 @@ public static class MediaFormats
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());
         registry.Add(new RecursiveAI.OneMedia.Riff.WavFileFormat());
-        registry.Add(new AviSniffer());
+        registry.Add(new AviFormat());
         registry.Add(new AsfFormat());
         registry.Add(new RecursiveAI.OneMedia.MpegTs.MpegTsFormat());
         registry.Add(new RecursiveAI.OneMedia.MpegPs.MpegPsFormat());
@@ -46,6 +48,7 @@ public static class MediaFormats
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.MpegVideo));
         registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind.Av1Obu));
         registry.Add(new AudioStreams.Ac3Format());
+        registry.Add(new DvFormat());
         return registry;
     }
 }

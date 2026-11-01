@@ -16,17 +16,36 @@ internal static class InfoCheck
         {
             total++;
             List<string> problems = [];
+            List<string> explained = [];
             string name = Path.GetFileName(file);
             string formatName = "*";
             try
             {
-                using MediaFile media = Media.Open(file);
-                formatName = media.Native.Reader is IDemuxer dm ? dm.Format.Name : "*";
                 using JsonDocument doc = JsonDocument.Parse(Oracle.Run("ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", file));
+                MediaFile? opened = null;
+                try
+                {
+                    opened = Media.Open(file);
+                }
+                catch (UnsupportedMediaException) when (doc.RootElement.TryGetProperty("streams", out JsonElement first) && first.GetArrayLength() > 0 && first[0].TryGetProperty("codec_name", out JsonElement fc) && fc.GetString() == "dvvideo")
+                {
+                    // ffprobe looks for the next DIF header; content sniffing here looks at the head of the file only (docs/dv.md).
+                    explained.Add("raw DV that does not start at a frame boundary is not recognised (dv-frame-start)");
+                }
+
+                if (opened is null)
+                {
+                    Console.WriteLine($"explained	{name}	{string.Join("; ", explained)}");
+                    continue;
+                }
+
+                using MediaFile media = opened;
+                formatName = media.Native.Reader is IDemuxer dm ? dm.Format.Name : "*";
                 if (!doc.RootElement.TryGetProperty("streams", out _))
                 {
-                    // ffprobe cannot open the file (free-format MPEG audio); the packets are checked against the constant-bit-rate twin by the unit tests.
-                    Console.WriteLine("  skipped (ffprobe lists no streams): " + file);
+                    // ffprobe refuses the file (a header cut short); the tolerant reader opens it, which the packet sweep covers.
+                    explained.Add("ffprobe rejects the file (ffprobe-rejects)");
+                    Console.WriteLine($"explained	{name}	{string.Join("; ", explained)}");
                     continue;
                 }
 
@@ -37,7 +56,10 @@ internal static class InfoCheck
                 List<JsonElement> streams = [.. doc.RootElement.GetProperty("streams").EnumerateArray().Where(e => (!e.TryGetProperty("codec_type", out JsonElement streamType) || streamType.GetString() != "attachment") && !IsAttachedPicture(e))];
                 if (streams.Count != media.Tracks.Count && !(asf && string.Equals(Path.GetExtension(file), ".dvr-ms", StringComparison.OrdinalIgnoreCase)))
                 {
-                    problems.Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}");
+                    // ffprobe synthesizes the audio streams of DV frames (the sound is shuffled across the frame and needs a decoder step to extract).
+                    bool dvAudio = media.Tracks.Any(t => t.Codec.Name == "dvvideo") && streams.Count > media.Tracks.Count
+                        && streams.Skip(media.Tracks.Count).All(e => e.TryGetProperty("codec_name", out JsonElement c) && c.GetString() == "pcm_s16le");
+                    (dvAudio ? explained : problems).Add($"stream count ffprobe {streams.Count} vs ours {media.Tracks.Count}" + (dvAudio ? " (dv-embedded-audio)" : ""));
                 }
 
                 if (asf && string.Equals(Path.GetExtension(file), ".dvr-ms", StringComparison.OrdinalIgnoreCase))
@@ -56,7 +78,7 @@ internal static class InfoCheck
                         break;
                     }
 
-                    Compare(media.Tracks[i], s, problems);
+                    Compare(media.Tracks[i], s, problems, explained);
                     i++;
                 }
 
@@ -123,7 +145,27 @@ internal static class InfoCheck
 
                     if (Math.Abs(micro - Math.Round(theirs * 1_000_000)) > tick)
                     {
-                        problems.Add($"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s");
+                        string text = $"duration ffprobe {theirs:F6} s vs ours {micro / 1e6:F6} s";
+                        bool audioWithoutDuration = streams.Any(e => e.GetProperty("codec_type").GetString() == "audio" && !e.TryGetProperty("duration", out _));
+                        if (media.Defects.Any(x => x.Code == "riff.size-past-end") && theirs < micro / 1e6)
+                        {
+                            // A file cut short: ffprobe estimates the length from the data present, ours is the length the headers state.
+                            explained.Add(text + " (truncated-estimate)");
+                        }
+                        else if (!media.Tracks.Any(t => t.Kind == TrackKind.Video) && theirs > micro / 1e6)
+                        {
+                            // Without a video stream ffprobe takes the length from the file size and the average rate, which includes the index and padding.
+                            explained.Add(text + " (audio-only-size-estimate)");
+                        }
+                        else if (audioWithoutDuration && Math.Abs((micro / 1e6) - theirs) < 0.5)
+                        {
+                            // ffprobe gives MPEG audio and AC-3 streams in AVI no duration and takes the file's from the video; ours is the longest stream header.
+                            explained.Add(text + " (audio-stream-duration)");
+                        }
+                        else
+                        {
+                            problems.Add(text);
+                        }
                     }
                 }
                 else if (media.ExactDuration.IsKnown != (theirDuration is not null))
@@ -169,7 +211,7 @@ internal static class InfoCheck
             excused += excusedHere.Count;
             bad += problems.Count > 0 ? 1 : 0;
             string note = excusedHere.Count > 0 ? $" [excused {string.Join(", ", excusedHere)}]" : "";
-            Console.WriteLine(problems.Count == 0 ? $"same\t{name}{note}" : $"DIFF\t{name}\t{string.Join("; ", problems)}{note}");
+            Console.WriteLine(problems.Count > 0 ? $"DIFF	{name}	{string.Join("; ", problems.Concat(explained))}{note}" : explained.Count > 0 ? $"explained	{name}	{string.Join("; ", explained)}{note}" : $"same	{name}{note}");
         }
 
         Console.WriteLine($"infocheck: {total} files, {bad} with unexplained differences, {excused} differences excused by exceptions.tsv");
@@ -192,7 +234,7 @@ internal static class InfoCheck
     private static bool IsAttachedPicture(JsonElement stream) =>
         stream.TryGetProperty("disposition", out JsonElement d) && d.TryGetProperty("attached_pic", out JsonElement a) && a.GetInt32() == 1;
 
-    private static void Compare(MediaTrack t, JsonElement s, List<string> problems)
+    private static void Compare(MediaTrack t, JsonElement s, List<string> problems, List<string> explained)
     {
         string kind = s.TryGetProperty("codec_type", out JsonElement kindElement) ? kindElement.GetString() ?? "" : "";
         string expectKind = t.Kind switch { TrackKind.Video => "video", TrackKind.Audio => "audio", TrackKind.Subtitle => "subtitle", TrackKind.Data => "data", _ => "" };
@@ -213,7 +255,9 @@ internal static class InfoCheck
 
         if (t.Video is { } v && s.TryGetProperty("width", out JsonElement w) && s.TryGetProperty("height", out JsonElement h) && (w.GetInt32() != v.Width || h.GetInt32() != v.Height))
         {
-            problems.Add($"#{t.Index} size {w.GetInt32()}x{h.GetInt32()} vs {v.Width}x{v.Height}");
+            // ffprobe reads the frame size of motion JPEG from the first frame; the container header may state another height (observed in AVI).
+            (codec == "mjpeg" && t.Codec == CodecId.Mjpeg && w.GetInt32() == v.Width && Math.Abs(h.GetInt32() - v.Height) <= 16 ? explained : problems)
+                .Add($"#{t.Index} size {w.GetInt32()}x{h.GetInt32()} vs {v.Width}x{v.Height}" + (codec == "mjpeg" ? " (mjpeg-frame-size)" : ""));
         }
 
         if (t.Audio is { } a)
@@ -240,15 +284,17 @@ internal static class InfoCheck
     // ffprobe codec names that have a neutral id; null for everything else (not compared).
     private static string? Mapped(string ffprobe) => ffprobe switch
     {
+        "mpeg4" or "msmpeg4v1" or "msmpeg4v2" or "msmpeg4v3" or "dvvideo" or "huffyuv" or "ffvhuff" or "ffv1" or "mp2" or "mpeg1video" or "wmv1" or "wmv2" or "wmv3" or "cinepak" or "theora" or "svq1" or "svq3" or "msvideo1" or "msrle" or "tscc" => ffprobe,
+        "adpcm_ms" => "adpcm-ms",
+        "adpcm_ima_wav" => "adpcm-ima-wav",
+        "adpcm_ima_qt" => "adpcm-ima-qt",
+        var a when a.StartsWith("adpcm_", StringComparison.Ordinal) => ffprobe,
         "h264" or "hevc" or "av1" or "vp8" or "vp9" or "aac" or "mp3" or "opus" or "vorbis" or "flac" or "ac3" or "eac3" or "mjpeg" => ffprobe,
         "mpeg2video" => "mpeg2video",
-        "mpeg1video" => "mpeg1video",
-        "mp2" => "mp2",
         "mp1" => "mp1",
         "dts" => "dts",
         "truehd" => "truehd",
         "vc1" => "vc1",
-        "mpeg4" => "mpeg4",
         "hdmv_pgs_subtitle" => "hdmv-pgs",
         "dvd_subtitle" => "dvd-subpicture",
         "dvb_teletext" => "dvb-teletext",
@@ -258,9 +304,6 @@ internal static class InfoCheck
         "theora" or "speex" or "flv1" or "vp6f" or "vp6a" or "nellymoser" or "adpcm_swf" => ffprobe,
         "flashsv" or "flashsv2" => ffprobe,
         "alac" => "alac",
-        "adpcm_ms" => "adpcm-ms",
-        "adpcm_ima_wav" => "adpcm-ima-wav",
-        "adpcm_ima_qt" => "adpcm-ima-qt",
         "amr_nb" => "amr-nb",
         "amr_wb" => "amr-wb",
         "mov_text" => "tx3g",

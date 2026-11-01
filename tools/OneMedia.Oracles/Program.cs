@@ -43,6 +43,8 @@ internal static class Program
     private static readonly string[] PcmExtensions = [".wav", ".wave", ".w64", ".rf64", ".bwf", ".aif", ".aiff", ".aifc", ".caf"];
 
     private static readonly string[] AsfExtensions = [".asf", ".wma", ".wmv", ".wm", ".dvr-ms"];
+    private static readonly string[] AviExtensions = [".avi"];
+    private static readonly string[] DvExtensions = [".dv", ".dif"];
 
     public static int Main(string[] args)
     {
@@ -145,6 +147,8 @@ internal static class Program
             "xiph" => [".ogg", ".oga", ".ogv", ".opus", ".spx", ".flac"],
             "flv" => [".flv"],
             "pcm" => PcmExtensions,
+            "avi" => AviExtensions,
+            "dv" => DvExtensions,
             _ => [.. IsoExtensions, .. MatroskaExtensions, .. AsfExtensions],
         };
         List<string> files = [];
@@ -193,11 +197,14 @@ internal static class Program
                 List<ProbeStream> streams = FfprobeReader.ReadStreams(file);
                 if (streams.Count == 0)
                 {
-                    // A file ffprobe finds no streams in is agreed on when we reject it too (typed, without an exception).
+                    // A file ffprobe finds no streams in is expected to be refused by us too (a typed error, never a crash), unless a scoped
+                    // "streams" rule accepts that we read it.
                     OurResult rejected = OurReader.Read(registry, file);
-                    report = rejected.Status == "ok"
-                        ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" }
-                        : new FileReport { File = file, Status = "ok", Message = $"neither reads the file: ffprobe finds no streams, ours: {rejected.Message}" };
+                    bool weRead = rejected.Status == "ok" && rejected.Tracks.Count > 0;
+                    bool excused = weRead && exceptions.Match(rejected.Format, "streams", file, null, "", "", "", false, false, 0) is not null;
+                    report = weRead && !excused
+                        ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams, we do" }
+                        : new FileReport { File = file, Status = "ok", Message = weRead ? "only we read streams (excepted)" : $"neither reads the file: ffprobe finds no streams, ours: {rejected.Message}" };
                     // A scoped "open" rule accepts files the oracle itself cannot open.
                     if (report.Status != "ok" && exceptions.Match("*", "open", file, null, "", "", "", false, false, 0) is not null)
                     {

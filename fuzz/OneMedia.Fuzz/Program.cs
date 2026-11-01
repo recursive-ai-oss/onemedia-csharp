@@ -17,6 +17,8 @@ Dictionary<string, FuzzTarget> targets = new(StringComparer.OrdinalIgnoreCase)
     ["tags"] = TagsTarget.Run,
     ["asf"] = AsfTarget.Run,
     ["registry"] = RegistryTarget.Run,
+    ["riff-avi"] = RiffAviTarget.Run,
+    ["dv"] = DvTarget.Run,
 };
 CodecFuzz.Register(targets);
 MpegTarget.Register(targets);

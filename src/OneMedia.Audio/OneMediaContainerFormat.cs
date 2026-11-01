@@ -1,4 +1,5 @@
 using RecursiveAI.OneMedia.Flac;
+using RecursiveAI.OneMedia.Avi;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Ogg;
@@ -205,11 +206,23 @@ public sealed class FlacAudioFormat : OneMediaContainerFormat
     }
 }
 
+/// <summary>AVI (including OpenDML) read by OneMedia's AVI reader; the audio streams of DV type 2 and ordinary AVI files.</summary>
+public sealed class AviAudioFormat : OneMediaContainerFormat
+{
+    /// <summary>The shared instance.</summary>
+    public static AviAudioFormat Instance { get; } = new();
+
+    private AviAudioFormat()
+        : base(new AviFormat(), "AVI (OneMedia)", [".avi"])
+    {
+    }
+}
+
 /// <summary>Registers OneMedia's containers with a OneAudio registry.</summary>
 public static class OneMediaRegistryExtensions
 {
     /// <summary>
-    /// Registers the MP4/MOV/3GP, Matroska/WebM, ASF, Ogg and native FLAC readers of OneMedia. Codecs (AAC, Opus, Vorbis, FLAC, AMR) are registered separately
+    /// Registers the MP4/MOV/3GP, Matroska/WebM, ASF, Ogg, native FLAC and AVI readers of OneMedia. Codecs (AAC, Opus, Vorbis, FLAC, AMR) are registered separately
     /// as usual. Register these before OneAudio's own MP4 reader if OneMedia's should open MP4 files.
     /// </summary>
     /// <param name="registry">The registry to add to.</param>
@@ -217,6 +230,6 @@ public static class OneMediaRegistryExtensions
     public static global::OneAudio.AudioCodecRegistry AddOneMedia(this global::OneAudio.AudioCodecRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        return registry.Add(IsoBmffAudioFormat.Instance).Add(MatroskaAudioFormat.Instance).Add(AsfAudioFormat.Instance).Add(OggAudioFormat.Instance).Add(FlacAudioFormat.Instance);
+        return registry.Add(IsoBmffAudioFormat.Instance).Add(MatroskaAudioFormat.Instance).Add(AsfAudioFormat.Instance).Add(OggAudioFormat.Instance).Add(FlacAudioFormat.Instance).Add(AviAudioFormat.Instance);
     }
 }

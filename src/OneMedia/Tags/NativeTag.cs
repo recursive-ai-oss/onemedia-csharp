@@ -49,7 +49,7 @@ public static class TagSystems
 
     /// <summary>The properties of an FLV <c>onMetaData</c> script data tag.</summary>
     public const string Flv = "flv";
-    /// <summary>RIFF <c>LIST INFO</c> text chunks (<c>INAM</c>, <c>IART</c>…) in WAVE and similar files.</summary>
+    /// <summary>RIFF <c>LIST INFO</c> text chunks (<c>INAM</c>, <c>IART</c>…) of WAVE and AVI files, and the AVI <c>IDIT</c> date chunk.</summary>
     public const string RiffInfo = "riff-info";
 
     /// <summary>The Broadcast Wave <c>bext</c> chunk, EBU Tech 3285: one tag per field.</summary>
@@ -72,6 +72,8 @@ public static class TagSystems
 
     /// <summary>An ID3v2 tag stored in a chunk (<c>id3 </c>, <c>ID3 </c>) of a WAVE or AIFF file, kept as one raw binary tag.</summary>
     public const string Id3Chunk = "id3-chunk";
+    /// <summary>DV packs (IEC 61834 / SMPTE 314M) of the first frame.</summary>
+    public const string Dv = "dv";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>

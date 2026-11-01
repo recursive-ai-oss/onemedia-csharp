@@ -85,6 +85,35 @@ public static class RiffTagReader
         return new ChunkTagSet(TagSystems.RiffInfo, "LIST", list.Range, tags);
     }
 
+    /// <summary>Reads one loose text chunk that carries an INFO-style string, such as the AVI <c>IDIT</c> date, as a single <see cref="TagSystems.RiffInfo"/> tag keyed by the chunk id.</summary>
+    /// <param name="source">The source.</param>
+    /// <param name="chunk">The chunk.</param>
+    /// <param name="limits">Resource limits.</param>
+    /// <param name="defects">Receives defects.</param>
+    /// <returns>The tags (none when the text is empty).</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static ChunkTagSet ReadInfoEntry(IMediaSource source, ChunkNode chunk, MediaLimits limits, DefectLog defects)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(chunk);
+        TagIo io = new(source, limits, defects);
+        List<NativeTag> tags = [];
+        ByteRange value = chunk.Payload;
+        if (value.Length > 0)
+        {
+            limits.CheckTag(value.Length, value.Offset);
+            NativeTag t = new(io, TagSystems.RiffInfo, chunk.Id, 0, TagValueKind.Text, 1, 0, null, chunk.Range, value);
+            string text = Decode(io.Read(value), value.Offset, defects, nulTerminated: true);
+            if (text.Length > 0)
+            {
+                t.SetText(text);
+                tags.Add(t);
+            }
+        }
+
+        return new ChunkTagSet(TagSystems.RiffInfo, chunk.Id, chunk.Range, tags);
+    }
+
     /// <summary>Reads a Broadcast Wave <c>bext</c> chunk: its fixed fields (empty text fields and unset loudness values are left out) and the coding history.</summary>
     /// <param name="source">The source.</param>
     /// <param name="chunk">The <c>bext</c> chunk.</param>
