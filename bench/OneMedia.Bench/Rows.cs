@@ -134,6 +134,9 @@ internal static class Rows
                 new("SharpMP4", Role.Gate, Impls.SharpMp4MuxAac),
             ],
             []),
+        new("mp4-remux", "0.3", "MP4: read the first AAC track from a file and write it as an MP4 in memory", Mp4AudioFiles,
+            [new("OneMedia", Role.Ours, Impls.OursRemuxAac), new("SharpMP4", Role.Gate, Impls.SharpMp4RemuxAac)],
+            [new("ffmpeg -c copy -map 0:a:0 -f mp4", "ffmpeg", f => ["-v", "error", "-nostdin", "-i", f, "-map", "0:a:0", "-c", "copy", "-f", "mp4", "-movflags", "empty_moov", "-y", "/dev/null"])]),
         new("mp4-probe", "0.1", "MP4/MOV: open, track list, duration, tags", Mp4Files,
             [
                 new("OneMedia", Role.Ours, Impls.OursProbe),

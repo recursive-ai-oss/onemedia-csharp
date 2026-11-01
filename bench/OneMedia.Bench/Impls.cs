@@ -364,6 +364,53 @@ internal static class Impls
         return new Work(input.Frames.Length, output.Length);
     }
 
+    // ---- MP4 remux of the first AAC track: read the file and write it again --------------------------------------------------
+
+    public static Work OursRemuxAac(string path)
+    {
+        using MediaFile file = Media.Open(path);
+        int audio = file.Audio!.Index;
+        using MemoryStream output = new(1 << 20);
+        RecursiveAI.OneMedia.Remuxing.RemuxReport report = RecursiveAI.OneMedia.Remuxing.Remuxer.Remux(file, output, RecursiveAI.OneMedia.Remuxing.RemuxFormat.Mp4,
+            new RecursiveAI.OneMedia.Remuxing.RemuxOptions { Select = t => t.Index == audio });
+        return new Work(report.Tracks.Sum(t => t.Packets), output.Length);
+    }
+
+    public static Work SharpMp4RemuxAac(string path)
+    {
+        // The stream parameters come from the same description for both rows; the samples are read by SharpMP4's own reader.
+        AacInput info = LoadAac(path);
+        using FileStream fs = OpenStream(path);
+        SharpISOBMFF.Container mp4 = new();
+        mp4.Read(new SharpISOBMFF.IsoStream(fs));
+        SharpMP4.Readers.VideoReader reader = new();
+        reader.Parse(mp4);
+        using MemoryStream output = new(1 << 20);
+        SharpMP4.Builders.Mp4Builder builder = new(new SharpMP4.Builders.SingleStreamOutput(output));
+        SharpMP4.Tracks.AACTrack track = new((byte)info.Track.Audio!.Value.Channels, (uint)info.Track.Audio!.Value.SampleRate, 16);
+        builder.AddTrack(track);
+        long packets = 0;
+        foreach (SharpMP4.Tracks.ITrack source in reader.GetTracks().ToList())
+        {
+            if (source is not SharpMP4.Tracks.AACTrack)
+            {
+                continue;
+            }
+
+            SharpMP4.Readers.MediaSample? s;
+            while ((s = reader.ReadSample(source.TrackID)) is not null)
+            {
+                builder.ProcessTrackSample(track.TrackID, s.Data, 1024);
+                packets++;
+            }
+
+            break;
+        }
+
+        builder.FinalizeMedia();
+        return new Work(packets, output.Length);
+    }
+
     // ---- SharpMP4 ---------------------------------------------------------------------------------------------------------
 
     public static Work SharpMp4Demux(string path)
