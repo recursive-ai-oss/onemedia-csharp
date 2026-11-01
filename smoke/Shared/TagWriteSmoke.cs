@@ -22,9 +22,10 @@ internal static class TagWriteSmoke
             SafeWriter.Write(plan.Plan, src, output);
             using MemoryMediaSource back = new(output.ToArray());
             using MediaFile m = MediaFile.Open(back);
-            check("tag write " + name, m.Tags.Title == "Smoke title" && m.Tags.Artist == "Smoke artist" && HasPicture(m) && plan.Report.Systems.Count > 0);
+            check("tag write " + name, m.Tags.Title == "Smoke title" && m.Tags.Artist == "Smoke artist" && (HasPicture(m) || name.EndsWith(".webm", StringComparison.Ordinal)) && plan.Report.Systems.Count > 0);
         }
 
+        // (WebM has no place for a cover, so the picture is not expected there.)
         // An XMP packet is built and parsed with System.Xml.Linq, which the trimmer and the AOT compiler must keep working.
         TagEdits xmp = new();
         xmp.Set(CommonField.Title, "Smoke <xmp>");
