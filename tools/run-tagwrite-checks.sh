@@ -61,6 +61,23 @@ inplace)
   while read -r f; do nice $TOOL inplace "$f" "$WORK/inplace" >> "$OUT/$fam.inplace.tsv" 2>&1; done < "$OUT/$fam.list"
   echo "$fam in-place:"; cut -f3,4 "$OUT/$fam.inplace.tsv" | sed 's/(need [0-9]*, have [0-9]*)//;s/([0-9]*B)//' | sort | uniq -c | sort -rn | head
   ;;
+cross)
+  # Edits each file of a family, then reads the result with ATL.NET and TagLib# (comparators only).
+  fam=${2:?family}
+  list_files "$fam" > "$OUT/$fam.list"
+  CROSS="dotnet $HOME/onemedia/u30-tagwrite/bin-cross/OneMedia.TagCrossRead.dll"
+  (cd "$HERE" && dotnet build tools/OneMedia.TagCrossRead -c Release -v quiet -clp:NoSummary -m:4 -o "$HOME/onemedia/u30-tagwrite/bin-cross" 2>&1 | grep -E 'error|warning' | head -3)
+  mkdir -p "$WORK/cross"; : > "$OUT/$fam.cross.tsv"
+  while read -r f; do
+    o="$WORK/cross/$(basename "$f")"
+    if $TOOL edit "$f" "$o" > /dev/null 2>&1; then nice $CROSS "$o" >> "$OUT/$fam.cross.tsv" 2>&1; fi
+    rm -f "$o"
+  done < "$OUT/$fam.list"
+  echo "$fam cross-read, files: $(wc -l < "$OUT/$fam.cross.tsv")"
+  for lib in atl taglib; do
+    echo "$lib:"; cut -f3,4 "$OUT/$fam.cross.tsv" | tr '\t' '\n' | grep "^$lib:" | sed "s/^$lib://;s/pictures=[0-9]*/pictures/" | sort | uniq -c | sort -rn | head -8
+  done
+  ;;
 large)
   shift
   for f in "$@"; do

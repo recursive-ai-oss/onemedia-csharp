@@ -18,6 +18,7 @@
     <Project Path="tools/OneMedia.MatroskaOneAudio/OneMedia.MatroskaOneAudio.csproj" />
     <Project Path="tools/OneMedia.WriterCheck/OneMedia.WriterCheck.csproj" />
     <Project Path="tools/OneMedia.TagWriteCheck/OneMedia.TagWriteCheck.csproj" />
+    <Project Path="tools/OneMedia.TagCrossRead/OneMedia.TagCrossRead.csproj" />
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench/OneMedia.Bench/OneMedia.Bench.csproj" />
