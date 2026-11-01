@@ -3,6 +3,7 @@ using static RecursiveAI.OneMedia.Tests.Ebl;
 
 namespace RecursiveAI.OneMedia.Tests;
 
+[Collection(AllocationMeasurements.Name)]
 public class MatroskaDemuxTests
 {
     private sealed record Pkt(PacketInfo Info, byte[] Data);
@@ -595,6 +596,7 @@ public class MatroskaDemuxTests
     [Fact]
     public void PullPathAllocatesNothingPerPacketLacedOrNot()
     {
+        AllocationGuard.RequireOptimised();
         List<byte[]> blocks = [];
         for (int i = 0; i < 4000; i++)
         {

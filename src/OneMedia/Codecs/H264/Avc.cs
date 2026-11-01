@@ -356,6 +356,8 @@ public sealed class AvcDecoderConfigurationRecord
             return false;
         }
 
+        // The VUI counts half-frame ticks, so 30/2 is 15/1: the rate is given in lowest terms.
+        (int rateN, int rateD) = Mpeg.FrameRates.Reduce((int)Math.Min(sps.FrameRateNumerator, int.MaxValue), (int)Math.Min(sps.FrameRateDenominator, int.MaxValue));
         parameters = new CodecParameters
         {
             Codec = CodecId.H264,
@@ -371,8 +373,8 @@ public sealed class AvcDecoderConfigurationRecord
             IsInterlaced = !sps.FrameMbsOnly,
             SarWidth = sps.SarWidth,
             SarHeight = sps.SarHeight,
-            FrameRateNumerator = (int)Math.Min(sps.FrameRateNumerator, int.MaxValue),
-            FrameRateDenominator = (int)Math.Min(sps.FrameRateDenominator, int.MaxValue),
+            FrameRateNumerator = rateN,
+            FrameRateDenominator = rateD,
             ReorderFrames = sps.MaxNumReorderFrames,
             NalLengthSize = LengthSize,
         };

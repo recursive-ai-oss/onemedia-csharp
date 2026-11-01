@@ -237,6 +237,7 @@ public static class TagMappingTable
         Row(CommonField.ReplayGainTrackPeak, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_TRACK_PEAK", "TXX:REPLAYGAIN_TRACK_PEAK"),
         Row(CommonField.ReplayGainAlbumGain, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_ALBUM_GAIN", "TXX:REPLAYGAIN_ALBUM_GAIN"),
         Row(CommonField.ReplayGainAlbumPeak, TagSystems.Id3v2, PicardId3, "", "TXXX:REPLAYGAIN_ALBUM_PEAK", "TXX:REPLAYGAIN_ALBUM_PEAK"),
+        Row(CommonField.Description, TagSystems.Id3v2, PicardId3, "user text frame; ID3v2 has no description frame, and ffmpeg and other writers use TXXX with this description", "TXXX:description", "TXX:description"),
 
         // APEv2. Keys are compared without regard to case, as the specification recommends for readers.
         Row(CommonField.Title, TagSystems.Ape, PicardApe, "", "Title"),

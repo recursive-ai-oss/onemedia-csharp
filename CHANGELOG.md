@@ -7,13 +7,38 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ### Added
 
 - Tag writing (`TagEdits`, `TagWriter`, `TagWriteReport`, `docs/tag-writing.md`): common-view and native edits for MP4/MOV/3GP, Matroska/WebM, MP3 (ID3v2/ID3v1/APEv2), FLAC, Ogg Vorbis/Opus/FLAC, WAV/RF64 and AIFF, ASF/WMA/WMV (Content Description, Extended Content Description), XMP packets in `uuid` boxes and iXML elements by path, with a write-back report; setters on `CommonTags`, `MediaFile.Save/SaveAs/SaveInPlace`, `onemedia tags`; `EbmlEditor.ReplaceWithRun`; `Id3Genres.Number`; ReplayGain mapping rows for Vorbis, iTunes and Matroska.
+- Trim, split and concat of MP4/MOV/3GP and Matroska/WebM without re-encoding (`RecursiveAI.OneMedia.Editing`, `docs/trim.md`): `Media.Trim` is frame-accurate by default (decoding starts at the keyframe before the start and an edit list hides the frames before it; audio is cut to the sample with pre-roll) or keyframe-only (`TrimMode.Keyframe`); `Media.Split`/`SplitBySize` cut on keyframes into parts that hold every packet once; `Media.Concat` joins files whose tracks match and refuses the rest with `EditRefusalReason.NeedsReencode` naming the track. Streams in constant memory. CLI: `onemedia trim`, `split`, `concat`. In Matroska the lead-in frames get negative timestamps (RFC 9559 §11.2); Chrome and Chromium honour that, WebKit and Firefox show the lead-in, and a frame-accurate start between keyframes is refused for H.264, HEVC and other parser-timed video (`EditRefusalReason.ExactStartNotSupported`) because ffmpeg-based players cannot play it.
+- Preview: Matroska and WebM writing (`MatroskaMuxer`, `MatroskaMuxOptions`, `docs/muxing-matroska.md`): `IMuxer` over seekable output (SeekHead, Info with Duration, Tracks, a Void reserve for tags, Clusters cut on key frames, Cues, optional CRC-32) and a live mode for forward-only output (unknown-size Segment and Clusters). Codec setup bytes are repackaged from ISO sample entries (`avcC`/`hvcC` as stored, ASC from `esds`, `OpusHead` from `dOps`, FLAC and VP9 records), a track read from Matroska keeps its CodecID and CodecPrivate, WebM refuses codecs it does not allow. `TrackEditInfo.PacketTimesIncludePriming` is now also set for Matroska tracks with a `CodecDelay`, whose packet times already have it taken off.
 
-- Browser playability (`RecursiveAI.OneMedia.Playback`, `docs/playability.md`): `MediaFile.CanPlay(profile)` and `Media.CanPlay(path, profile)` return a verdict per mode (a plain URL, MediaSource) with typed blockers (container, codec, profile, level, bit depth, chroma, `hvc1`/`hev1` form, segmentation, encryption), each marked as fixable by a remux, an audio transcode, or a video blocker; plus warnings for hardware-dependent codecs, a movie box at the end and incomplete codec strings. Built-in profiles as static data: `Chrome`, `Chromium`, `Firefox`, `Safari`, `WebKitLinux`, `IosSafari`, `AndroidChrome`, `GenericMp4`; the first five were checked by playing a 75-file matrix in the real browsers (`tools/playback/`).
+### Fixed
+
+- H.264, HEVC and VVC in AVI written from an MP4 by stream copy (`avc1`, `avcC` after the bitmap header) get their codec description and RFC 6381 string (`Rfc6381Codec()`, `DescribeCodec()`) from that record, the same string as the source MP4 gives; the in-stream parameter sets are read only when there is no record.
+- Frame rates taken from H.264, HEVC and AV1 parameter sets (`CodecParameters.FrameRateNumerator`/`FrameRateDenominator`, so MP4 `avcC` tracks and AVI/TS fallbacks too) are in lowest terms: 10/1, not 20/2.
+
+## [0.2.0-preview.2] - 2026-11-01
+
+Fixes for AAC decoding from MPEG-TS/PS, MPEG-TS service names and several smaller reading issues. Two new layers ship as **previews**, not yet covered by the project's writer and playback gates or advertised: the ISO base media muxer and browser playability (`CanPlay`). Their APIs may change before 0.3.
+
+### Added
+
+- Preview: the neutral mux contract (`IMuxer`, `MuxReport`, `MuxRefusedException` with `MuxRefusalReason`) and the ISO base media muxer `IsoMuxer` (`RecursiveAI.OneMedia.IsoBmff`): MP4, M4A/M4V, MOV, 3GP/3G2 and fragmented MP4/CMAF; moov-first (default), moov-last and fragmented layouts with optional `sidx` and `mfra`; `co64` past 4 GiB with constant memory (a 4.38 GB file in 64 MB); edit lists for priming, padding and start offsets; sample entries from `CodecConfiguration`; typed refusals; zero allocations per packet in steady state. See `docs/muxing.md`.
+- Preview: browser playability (`RecursiveAI.OneMedia.Playback`, `docs/playability.md`): `MediaFile.CanPlay(profile)` and `Media.CanPlay(path, profile)` return a verdict per mode (a plain URL, MediaSource) with typed blockers (container, codec, profile, level, bit depth, chroma, `hvc1`/`hev1` form, segmentation, encryption), each marked as fixable by a remux, an audio transcode, or a video blocker; plus warnings for hardware-dependent codecs, a movie box at the end and incomplete codec strings. Built-in profiles as static data: `Chrome`, `Chromium`, `Firefox`, `Safari`, `WebKitLinux`, `IosSafari`, `AndroidChrome`, `GenericMp4`; the first five were checked by playing a 75-file matrix in the real browsers (`tools/playback/`).
 - `IsoBmffDemuxer.MediaDataPrecedesMovie` and `IsoBmffAsyncDemuxer.FileType`/`MediaDataPrecedesMovie`.
 
 ### Changed
 
 - `MediaTrack.Rfc6381Codec()` names the sample entry for `hev1` (HEVC) and `avc3` (H.264) tracks, returns `vp9` for a VP9 track whose level is unknown (browsers reject `vp09.PP.00.DD`), and `vp9` for one without a configuration.
+
+### Fixed
+
+- `Decode()` of AAC in MPEG-TS and program streams no longer throws "An AAC access unit has fewer channels than the stream configuration": the adapter handed OneAudio the ADTS frames as stored, header included, where the decoder takes raw data blocks (as it already did for raw ADTS files).
+- MPEG-TS service names and providers (`TransportStreamProgram.ServiceName`/`ServiceProvider`, `mpegts:service_name`/`service_provider`) appear for streams whose SDT comes before the PAT, as ffmpeg writes them: a service the SDT described earlier is named when its program is found.
+- `MediaFile.DescribeDecode()` returns the same report as `Decode(out report)` (it asks the decoder), so an HE-AAC hint such as the doubled container rate of `test5.mkv`'s commentary track reads 22,050 Hz in both. `docs/audio-adapter.md` and the XML docs no longer list unrestricted parametric stereo as refused: OneAudio decodes it in the baseline profile.
+- `MpegTsDemuxer.BitRate` right after open is the stream length over the duration read from the tail instead of the rate of the first few packets (72,192 where ffprobe says 738,167); it becomes the program clock figure once the whole stream has been read, and is 0 when neither is known.
+- H.264 and HEVC in MPEG-TS and AVI get an RFC 6381 codec string (`MediaTrack.Rfc6381Codec()`) from the SPS in the stream, as the same video in MP4 or FLV does; the new `MediaTrack.StreamParameters` holds what the reader found. AVI reads at most 128 KiB of each of the first few video chunks to find it.
+- FLV frame rates are given in lowest terms (15/1, not 30/2).
+- An MP3's `TXXX:description` frame is the common view's Description (`docs/tag-mapping.md` regenerated).
+- `docs/tags.md` lists the capture-time ranks of every format that yields candidates; `docs/pcm-files.md` and a test source no longer contain NUL bytes.
 
 ## [0.2.0-preview.1] - 2026-11-01
 

@@ -5,6 +5,7 @@ using RecursiveAI.OneMedia.Riff;
 
 namespace RecursiveAI.OneMedia.Tests.Avi;
 
+[Collection(AllocationMeasurements.Name)]
 public class AviDemuxTests
 {
     private static byte[] Payload(int length, int seed)
@@ -215,7 +216,7 @@ public class AviDemuxTests
     {
         AviBuilder b = new();
         b.Streams.Add(new AviBuilder.StreamSpec("vids", "MJPG", 1, 10, 0, AviBuilder.Bitmap(8, 8, "MJPG")));
-        b.Streams.Add(new AviBuilder.StreamSpec("auds", "    ", 1152, 44100, 0, AviBuilder.Wave(0x55, 2, 44100, 1, 0)));
+        b.Streams.Add(new AviBuilder.StreamSpec("auds", "\0\0\0\0", 1152, 44100, 0, AviBuilder.Wave(0x55, 2, 44100, 1, 0)));
         b.Chunks.Add(new AviBuilder.ChunkSpec(0, Payload(10, 1)));
         b.Chunks.Add(new AviBuilder.ChunkSpec(0, [], false));
         b.Chunks.Add(new AviBuilder.ChunkSpec(0, Payload(10, 2)));
@@ -381,6 +382,7 @@ public class AviDemuxTests
     [Fact]
     public void PullPathAllocatesNothingPerPacket()
     {
+        AllocationGuard.RequireOptimised();
         AviBuilder b = new();
         b.Streams.Add(new AviBuilder.StreamSpec("vids", "MJPG", 1, 25, 0, AviBuilder.Bitmap(8, 8, "MJPG")));
         b.Streams.Add(new AviBuilder.StreamSpec("auds", "\0\0\0\0", 1, 48000, 2, AviBuilder.Wave(1, 1, 48000, 2, 16)));

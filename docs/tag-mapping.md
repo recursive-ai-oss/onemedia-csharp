@@ -181,6 +181,7 @@ generated from it, and a test fails when they differ.
 | ReplayGainTrackPeak | id3v2 | `TXXX:REPLAYGAIN_TRACK_PEAK`, `TXX:REPLAYGAIN_TRACK_PEAK` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | ReplayGainAlbumGain | id3v2 | `TXXX:REPLAYGAIN_ALBUM_GAIN`, `TXX:REPLAYGAIN_ALBUM_GAIN` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
 | ReplayGainAlbumPeak | id3v2 | `TXXX:REPLAYGAIN_ALBUM_PEAK`, `TXX:REPLAYGAIN_ALBUM_PEAK` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Description | id3v2 | `TXXX:description`, `TXX:description` | Picard tag map, ID3v2.3/2.4 column (CC0) | user text frame; ID3v2 has no description frame, and ffmpeg and other writers use TXXX with this description |
 | Title | ape | `Title` | Picard tag map, APEv2 column (CC0) |  |
 | Artist | ape | `Artist` | Picard tag map, APEv2 column (CC0) |  |
 | AlbumArtist | ape | `Album Artist`, `AlbumArtist` | Picard tag map, APEv2 column (CC0) |  |

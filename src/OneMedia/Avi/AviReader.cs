@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
+using RecursiveAI.OneMedia.Codecs;
 using RecursiveAI.OneMedia.Riff;
 
 namespace RecursiveAI.OneMedia.Avi;
@@ -197,6 +198,66 @@ internal sealed class AviReader : IDisposable
         }
 
         OpenIndexes(source, idx1, movi);
+        DescribeVideoFromStream(source, _pos, _sectionEnd);
+    }
+
+    // AVI keeps no avcC: the SPS and PPS ride in the first key frame's chunk (Annex B). Reading the first few video chunks at the front of
+    // movi, at most 128 KiB of each, gives the track its profile and level for RFC 6381 strings. The cost is a handful of small reads
+    // next to the header list; nothing is scanned.
+    private void DescribeVideoFromStream(IMediaSource source, long pos, long end)
+    {
+        const int MaxChunks = 64;
+        const int MaxRead = 128 * 1024;
+        List<MediaTrack>? updated = null;
+        Span<byte> h = stackalloc byte[8]; // chunk header, fixed
+        int examined = 0;
+        for (int i = 0; i < MaxChunks && pos + 8 <= end; i++)
+        {
+            _cancellation.ThrowIfCancellationRequested();
+            if (source.Read(pos, h) < 8)
+            {
+                break;
+            }
+
+            uint size = BinaryPrimitives.ReadUInt32LittleEndian(h[4..]);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(h) == RiffChunk.Ids.List)
+            {
+                pos += 12; // a 'rec ' list: its chunks follow the list type
+                continue;
+            }
+
+            int stream = (h[0] >= '0' && h[0] <= '9' && h[1] >= '0' && h[1] <= '9') ? ((h[0] - '0') * 10) + (h[1] - '0') : -1;
+            if (stream >= 0 && stream < Tracks.Count && size > 0 && h[2] == 'd' && Tracks[stream].Kind == TrackKind.Video
+                && (updated is null ? Tracks[stream] : updated[stream]).StreamParameters is null
+                && (updated is null ? Tracks[stream] : updated[stream]).Codec.Name is "h264" or "hevc" && examined < 8)
+            {
+                examined++;
+                MediaTrack t = updated is null ? Tracks[stream] : updated[stream];
+                int n = (int)Math.Min(size, MaxRead);
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(n);
+                try
+                {
+                    int got = source.Read(pos + 8, buffer.AsSpan(0, n));
+                    NalCodec nal = t.Codec.Name == "hevc" ? NalCodec.Hevc : NalCodec.H264;
+                    if (got > 0 && CodecParameterReader.TryDescribeAnnexB(nal, buffer.AsMemory(0, got), out CodecParameters? p) && p is not null)
+                    {
+                        updated ??= [.. Tracks];
+                        updated[stream] = t with { StreamParameters = p };
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+
+            pos += 8 + size + (size & 1);
+        }
+
+        if (updated is not null)
+        {
+            Tracks = updated;
+        }
     }
 
     // Looks for the first place where two stream chunks follow each other: a header "NNxx" of a described stream with a known type whose

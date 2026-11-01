@@ -124,7 +124,7 @@ the `id3 ` chunk of AIFF/WAVE was kept as raw bytes when this comparison was mad
 
 `digit0v0.aiff` is a known gap, not an exception: a resynchronising chunk search for AIFF (scanning for `SSND` after a chunk whose size runs past its parent) would fix it, and is left as a follow-up.
 
-**ATL.NET** (final build): 119 of 120 field comparisons agree or are explained as above. The `tagged-aiff.aiff` Title difference is ATL's: the file's `NAME` chunk is 10 bytes, `Tone test` plus a NUL pad inside the size, and ATL keeps the NUL (`Tone test `) where we, ExifTool and MediaInfo end the string at the NUL.
+**ATL.NET** (final build): 119 of 120 field comparisons agree or are explained as above. The `tagged-aiff.aiff` Title difference is ATL's: the file's `NAME` chunk is 10 bytes, `Tone test` plus a NUL pad inside the size, and ATL keeps the NUL (`Tone test\0`) where we, ExifTool and MediaInfo end the string at the NUL.
 
 ## Header comparison (`infocheck`) against ffprobe 7.0.2
 

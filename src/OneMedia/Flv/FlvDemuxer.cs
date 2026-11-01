@@ -631,7 +631,9 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
         CodecConfiguration cfg = config is null ? default : new CodecConfiguration(config, format);
         if (config is not null && CodecParameterReader.TryDescribe(codec, cfg, out CodecParameters? p) && p is not null && p.Width > 0)
         {
-            video = new VideoTrackInfo(p.Width, p.Height, 0, p.SarWidth > 0 ? p.SarWidth : 1, p.SarHeight > 0 ? p.SarHeight : 1, p.FrameRateNumerator, p.FrameRateDenominator);
+            // The VUI states time_scale / (2 * num_units_in_tick) frames a second, so 25 fps arrives as 50/2: lowest terms, as the other containers give it.
+            (int rateN, int rateD) = Mpeg.FrameRates.Reduce(p.FrameRateNumerator, p.FrameRateDenominator);
+            video = new VideoTrackInfo(p.Width, p.Height, 0, p.SarWidth > 0 ? p.SarWidth : 1, p.SarHeight > 0 ? p.SarHeight : 1, rateN, rateD);
         }
         else if (config is null)
         {

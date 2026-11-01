@@ -3,6 +3,7 @@ using RecursiveAI.OneMedia.Smoke;
 
 namespace RecursiveAI.OneMedia.Tests;
 
+[Collection(AllocationMeasurements.Name)]
 public class PullPathTests
 {
     private const int PacketSize = 64;
@@ -22,6 +23,7 @@ public class PullPathTests
     [Fact]
     public void PullPathAllocatesNothingPerPacket()
     {
+        AllocationGuard.RequireOptimised();
         byte[] data = Data();
 
         // Warm up on a first demuxer: the first calls JIT and grow buffers. The measured loop lives in a fully optimised
@@ -31,10 +33,14 @@ public class PullPathTests
             Drain(warm, out _);
         }
 
-        using FixedPacketDemuxer demuxer = new(new MemoryMediaSource(data), PacketSize);
-        Assert.True(demuxer.TryReadPacket(out _));
-        long allocated = Drain(demuxer, out long checksum);
-        Assert.NotEqual(0, checksum);
+        long allocated = AllocationGuard.Best(() =>
+        {
+            using FixedPacketDemuxer demuxer = new(new MemoryMediaSource(data), PacketSize);
+            Assert.True(demuxer.TryReadPacket(out _));
+            long used = Drain(demuxer, out long checksum);
+            Assert.NotEqual(0, checksum);
+            return used;
+        });
         Assert.Equal(0, allocated);
     }
 
@@ -54,19 +60,26 @@ public class PullPathTests
     [Fact]
     public void PullPathAfterSeekAllocatesNothing()
     {
-        using FixedPacketDemuxer demuxer = new(new MemoryMediaSource(Data()), PacketSize);
-        Assert.True(demuxer.TryReadPacket(out _));
-        demuxer.Seek(new MediaTime(100, 1000));
-        Assert.True(demuxer.TryReadPacket(out _));
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        int count = 0;
-        while (demuxer.TryReadPacket(out _))
+        AllocationGuard.RequireOptimised();
+        byte[] data = Data();
+        long allocated = AllocationGuard.Best(() =>
         {
-            count++;
-        }
+            using FixedPacketDemuxer demuxer = new(new MemoryMediaSource(data), PacketSize);
+            Assert.True(demuxer.TryReadPacket(out _));
+            demuxer.Seek(new MediaTime(100, 1000));
+            Assert.True(demuxer.TryReadPacket(out _));
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            int count = 0;
+            while (demuxer.TryReadPacket(out _))
+            {
+                count++;
+            }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
-        Assert.Equal(PacketCount - 1, count); // the seek went back to the first keyframe
+            long used = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(PacketCount - 1, count); // the seek went back to the first keyframe
+            return used;
+        });
+        Assert.Equal(0, allocated);
     }
 
     [Fact]

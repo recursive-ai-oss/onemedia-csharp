@@ -51,7 +51,9 @@ internal static class AudioDecodeCheck
         AudioCodecRegistry registry = Environment.GetEnvironmentVariable("ONEMEDIA_NATIVE") == "1"
             ? new AudioCodecRegistry().AddMp4().AddAac().AddAmrNb().AddAmrWb()
             : MediaAudioExtensions.CreateRegistry();
-        using IAudioDecoder d = AudioDecoder.OpenFile(file, registry);
+        // Transport streams are not an OneAudio container format; they decode through the file API.
+        string ext = Path.GetExtension(file).ToLowerInvariant();
+        using IAudioDecoder d = ext is ".ts" or ".m2ts" or ".mts" or ".aac" or ".mp3" or ".amr" or ".awb" ? Media.Open(file).Decode(registry: registry) : AudioDecoder.OpenFile(file, registry);
         float[] buf = new float[ChunkFrames * Math.Max(1, d.Format.Channels)];
         using FileStream o = File.Create(output);
         int got;
@@ -102,7 +104,7 @@ internal static class AudioDecodeCheck
         try
         {
             // Elementary streams go through the OneMedia reader and its decode path (the Xing frame leads MP3; ADTS headers are stripped).
-            a = ext is ".aac" or ".amr" or ".awb" or ".mp3" ? Media.Open(file).Decode(registry: ours) : AudioDecoder.OpenFile(file, ours);
+            a = ext is ".aac" or ".amr" or ".awb" or ".mp3" or ".ts" or ".m2ts" or ".mts" ? Media.Open(file).Decode(registry: ours) : AudioDecoder.OpenFile(file, ours);
         }
         catch (UnsupportedAudioFormatException e)
         {

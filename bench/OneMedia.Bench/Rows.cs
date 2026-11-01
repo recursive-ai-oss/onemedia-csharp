@@ -24,6 +24,14 @@ internal static class Rows
         "generated/large/over4gb-moov-at-end.mp4",
     ];
 
+    // MP4 files with an AAC track whose frames the mux row copies (the over-4 GiB file is a demux and probe workload only).
+    private static readonly string[] Mp4AudioFiles =
+    [
+        "generated/mp4/h264-aac.mp4",
+        "samples/MPEG-4/video.mp4",
+        "generated/bench/frag-bbb-1080p.mp4",
+    ];
+
     // The largest Blender Matroska file in the corpus is 1.2 GB; the over-4 GiB file is generated.
     private static readonly string[] MkvFiles =
     [
@@ -119,6 +127,13 @@ internal static class Rows
         new("mp4-audio", "0.1", "MP4/MOV: read the audio track's packets", Mp4Files,
             [new("OneMedia", Role.Ours, Impls.OursAudio), new("OneMedia, length asked of the file each time", Role.Previous, Impls.OursAudioPerCallLength), new("OneAudio Mp4PacketSource", Role.Gate, Impls.OneAudioMp4)],
             []),
+        new("mp4-mux", "0.3", "MP4: write the first AAC track's frames from memory to an MP4 in memory", Mp4AudioFiles,
+            [
+                new("OneMedia", Role.Ours, Impls.OursMuxAac),
+                new("OneMedia, movie box last", Role.Previous, Impls.OursMuxAacMoovLast),
+                new("SharpMP4", Role.Gate, Impls.SharpMp4MuxAac),
+            ],
+            []),
         new("mp4-probe", "0.1", "MP4/MOV: open, track list, duration, tags", Mp4Files,
             [
                 new("OneMedia", Role.Ours, Impls.OursProbe),
@@ -137,6 +152,9 @@ internal static class Rows
         new("mkv-demux", "0.1", "Matroska/WebM: read every packet", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursDemux), new("OneMedia, length asked of the file each time", Role.Previous, Impls.OursDemuxPerCallLength), new("StefH Matroska", Role.Gate, Impls.StefHMatroskaDemux)],
             [FfmpegCopy, new("mkvextract tracks (first track)", "mkvextract", f => [f, "tracks", "0:/dev/null"])]),
+        new("mkv-mux", "0.3", "Matroska/WebM: read every packet and write it to a new Matroska file (no managed Matroska writer to compare with)", MkvFiles[..5],
+            [new("OneMedia", Role.Ours, Impls.OursMuxMatroska)],
+            [new("ffmpeg -c copy -f matroska", "ffmpeg", f => ["-v", "error", "-nostdin", "-i", f, "-map", "0", "-c", "copy", "-f", f.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ? "webm" : "matroska", "-y", "/dev/null"]), new("mkvmerge", "mkvmerge", f => ["-q", "-o", "/dev/null", f])]),
         new("xiph-tags", "0.2", "FLAC/Ogg: open, tags, duration", XiphTagFiles,
             [new("OneMedia", Role.Ours, Impls.OursTags), new("TagLib#", Role.Gate, Impls.TagLibProbe), new("ATL.NET", Role.Gate, Impls.AtlProbe)],
             [Ffprobe, MediaInfo, ExifTool]),
