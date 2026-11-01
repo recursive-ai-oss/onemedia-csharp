@@ -91,8 +91,7 @@ lowercase non-standard attributes (`title`, `author`, `date`) beside the standar
 `exceptions.tsv` scopes each class: `pos` (payload start vs packet start), `duration` (ffprobe derives packet durations from the bit rate;
 the file states none), `pts` for WMV3 and MPEG-4 (ffprobe prints no PTS), `sample_g726` (damaged tail), `asf2divX_fault` (ffprobe stops at
 the first damaged packet; we skip it and report defects), `new_fileformat` (declared packet size 1250, packets 2048 apart; ffprobe
-resynchronises on packet headers, we do not), `fps_sample1` (DVR-MS elementary stream chunks), `wma_with_ID3_APIC` (cover art inside an ID3
-attribute). ffprobe's duration heuristics (estimate from size and bit rate, nothing for files shorter than the header states) are reported
+resynchronises on packet headers, we do not), `fps_sample1` (DVR-MS elementary stream chunks). ffprobe's duration heuristics (estimate from size and bit rate, nothing for files shorter than the header states) are reported
 as notes by `infocheck`, not differences.
 
 ## Tag agreement (55 files, ExifTool 13.60, MediaInfo 26.10, ATL.NET 7.19)
@@ -121,5 +120,5 @@ ffprobe 5.1 MB, MediaInfo 3.2 MB and ExifTool 41 KB / 8 reads on that file. Prob
 ## Gaps
 
 DVR-MS binary streams are listed as Binary tracks (no stream typing); no resync of mis-sized packets; the Index Object is not parsed
-(Simple Index only); ID3 attribute handed out as binary until the ID3 layer reads it; DRM details (license URL, key id) not exposed;
+(Simple Index only); an `ID3` attribute stays a binary tag and its ID3v2 frames are also read as `id3v2` native tags (cover art included); DRM details (license URL, key id) not exposed;
 no ASF writing or tag editing; WMA audio does not decode (OneAudio has no WMA decoder; MP3 in ASF decodes through `.Audio`).

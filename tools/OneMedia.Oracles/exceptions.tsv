@@ -57,7 +57,6 @@ asf	pts	codec=mpeg4	ffprobe-na	neither	reorder-capable-video, as for wmv3 (MPEG-
 asf	dts	file=sample_g726	ignore	neither	damaged-tail: the last 10 video objects of this file have inconsistent fragment positions (ffprobe logs 'packet fragment position invalid'); ffprobe and we keep different parts of them (docs/asf.md).
 asf	count	file=asf2divX_fault	ignore	ours	damaged-data-stops-ffprobe: packet 8 of this deliberately damaged file has invalid length fields; ffprobe stops after 7 packets, we report asf.packet-* defects, skip the damaged packets and keep reading (docs/asf.md).
 asf	count	file=new_fileformat	ignore	neither	declared-packet-size-wrong: File Properties states 1250-byte packets but the data packets after the second sit 2048 bytes apart; ffprobe resynchronises on packet headers, we follow the declared size and report asf.packet-* defects (docs/asf.md).
-asf	picture	file=wma_with_ID3_APIC	ignore	ours	picture-in-id3-attribute: the cover art sits in an ID3v2 tag stored in the 'ID3' attribute; we hand out that attribute as a binary native tag until the ID3 layer reads it (docs/asf.md).
 asf	count	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks: DVR-MS stores raw MPEG elementary stream chunks and a time-code extension in the replicated data; ffprobe re-frames the chunks with its stream parsers and reads the extension (docs/asf.md).
 asf	pts	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
 asf	dts	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
