@@ -57,11 +57,13 @@ internal sealed class TsSeeker(MpegTsDemuxer demuxer)
         demuxer.WatchTrack = -1;
         long from = lo;
         long keyPos = -1, keyPts = -1;
+        long firstKeyPos = -1, firstKeyPts = -1;
         while (true)
         {
             demuxer.ResetForSeek(from);
             keyPos = -1;
             keyPts = -1;
+            firstKeyPos = -1;
             bool done = false;
             while (!done && demuxer.TryReadPacket(out PacketView p))
             {
@@ -78,6 +80,12 @@ internal sealed class TsSeeker(MpegTsDemuxer demuxer)
 
                 if (p.Info.IsKeyframe && p.Info.SourceRange.Offset >= 0)
                 {
+                    if (firstKeyPos < 0)
+                    {
+                        firstKeyPos = p.Info.SourceRange.Offset;
+                        firstKeyPts = pts;
+                    }
+
                     if (mode == SeekMode.PreviousKeyframe)
                     {
                         if (pts <= t)
@@ -101,6 +109,13 @@ internal sealed class TsSeeker(MpegTsDemuxer demuxer)
                 {
                     done = true; // far enough past the target; the last keyframe seen stands
                 }
+            }
+
+            if (keyPos < 0 && from <= first && firstKeyPos >= 0)
+            {
+                // The target lies before the first keyframe: times are the stream's own (not rebased), so land on the first one.
+                keyPos = firstKeyPos;
+                keyPts = firstKeyPts;
             }
 
             if (keyPos >= 0 || from <= first)

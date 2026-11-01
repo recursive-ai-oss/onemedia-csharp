@@ -911,10 +911,10 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             case 0x02:
                 OnPmt(section, offset);
                 break;
-            case 0x42:
+            case 0x42 when !_frozen: // service information is read from the front only; repeats later would only allocate
                 _info.OnSdt(section, _programs);
                 break;
-            case 0x4E:
+            case 0x4E when !_frozen:
                 _info.OnEit(section);
                 break;
         }
@@ -1056,10 +1056,6 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     internal int WatchTrack { get; set; } = -1;
 
     internal long WatchedPts { get; set; } = -1;
-
-    internal static void AddAvchd(List<Tags.ITagContainer> containers, Metadata.FactsBuilder facts, Tags.TagIo io, DefectLog defects, CancellationToken cancellationToken)
-    {
-    }
 
     internal ByteInput Input => _input;
 

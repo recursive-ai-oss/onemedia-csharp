@@ -10,6 +10,9 @@ public static class MpegTsTagSystems
 {
     /// <summary>DVB service information: the service name and provider (SDT) and the present event (EIT).</summary>
     public const string ServiceInformation = "mpegts";
+
+    /// <summary>AVCHD camera data (MDPM) carried in the H.264 SEI: recording time, camera maker and the entries not decoded.</summary>
+    public const string CameraData = "mdpm";
 }
 
 /// <summary>A flat list of tags read from one table, with the transport packet that began it as its range.</summary>
@@ -212,8 +215,48 @@ internal static class TsMetadata
             }
         }
 
-        MpegTsDemuxer.AddAvchd(containers, facts, io, defects, cancellationToken);
+        AddMdpm(info.Mdpm, containers, facts, io);
         return new MediaMetadata(containers, [], facts.Build(), defects);
+    }
+
+    // MDPM entries are named after ExifTool's published H264 tag list; entries without a decoded meaning are kept as raw hexadecimal.
+    private static void AddMdpm(Avchd.MdpmBlock? block, List<ITagContainer> containers, FactsBuilder facts, TagIo io)
+    {
+        if (block is null)
+        {
+            return;
+        }
+
+        List<NativeTag> tags = [];
+        DateTime? when = block.RecordingTime;
+        string? make = block.Make;
+        if (when is { } w)
+        {
+            string text = w.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+            AddTo(tags, io, MpegTsTagSystems.CameraData, "DateTimeOriginal", text);
+            facts.CaptureTime.Add(35, new FactCandidate<MediaDateTime>(new MediaDateTime(w, null, TimeZoneCertainty.Unknown), "mdpm:DateTimeOriginal", text,
+                "camera clock from MDPM entries 0x18 and 0x19; the zone flag byte is not decoded, so the zone is unknown"));
+        }
+
+        if (make is not null)
+        {
+            AddTo(tags, io, MpegTsTagSystems.CameraData, "Make", make);
+            facts.Make.Add(0, new FactCandidate<string>(make, "mdpm:Make", make, "maker code of MDPM entry 0xE0"));
+        }
+
+        foreach (Avchd.MdpmEntry e in block.Entries)
+        {
+            AddTo(tags, io, MpegTsTagSystems.CameraData, "raw_" + e.Tag.ToString("X2", CultureInfo.InvariantCulture), e.Data.ToString("X8", CultureInfo.InvariantCulture));
+        }
+
+        containers.Add(new TsTagContainer(MpegTsTagSystems.CameraData, 0, ByteRange.None, tags));
+    }
+
+    private static void AddTo(List<NativeTag> tags, TagIo io, string system, string key, string text)
+    {
+        NativeTag t = new(io, system, key, 0, TagValueKind.Text, 0, 0, null, ByteRange.None, ByteRange.None);
+        t.SetText(text);
+        tags.Add(t);
     }
 
     private static void Add(List<NativeTag> tags, TagIo io, string key, string text, long trackId)

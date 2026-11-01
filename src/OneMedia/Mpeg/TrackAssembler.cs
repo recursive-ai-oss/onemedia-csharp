@@ -12,7 +12,7 @@ internal readonly record struct PesStamp(long Pts, long Dts, long Pos, bool Rand
 /// </summary>
 internal sealed class PacketQueue(MediaLimits limits)
 {
-    private readonly List<(PacketInfo Info, int Offset)> _entries = [];
+    private readonly List<(PacketInfo Info, int Offset)> _entries = new(32);
     private byte[] _arena = new byte[64 * 1024];
     private int _used;
     private int _head;

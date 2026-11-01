@@ -17,6 +17,7 @@ Dictionary<string, FuzzTarget> targets = new(StringComparer.OrdinalIgnoreCase)
     ["tags"] = TagsTarget.Run,
 };
 CodecFuzz.Register(targets);
+MpegTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;
