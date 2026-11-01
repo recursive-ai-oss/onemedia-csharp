@@ -15,7 +15,18 @@ internal static class AsfSeekCheck
         foreach (string file in files)
         {
             using FileMediaSource source = FileMediaSource.Open(file);
-            using IDemuxer d = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
+            IDemuxer? opened;
+            try
+            {
+                opened = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
+            }
+            catch (MediaException)
+            {
+                Console.WriteLine($"skip\t{Path.GetFileName(file)}\trejected");
+                continue;
+            }
+
+            using IDemuxer d = opened;
             if (!d.CanSeek || d.Tracks.Count == 0)
             {
                 Console.WriteLine($"skip\t{Path.GetFileName(file)}\tcannot seek");

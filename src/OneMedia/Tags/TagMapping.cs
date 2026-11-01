@@ -148,7 +148,7 @@ public static class TagMappingTable
         Row(CommonField.Composer, TagSystems.Asf, AsfDoc, "", "WM/Composer"),
         Row(CommonField.Director, TagSystems.Asf, AsfDoc, "", "WM/Director"),
         Row(CommonField.Genre, TagSystems.Asf, AsfDoc, "", "WM/Genre"),
-        Row(CommonField.Comment, TagSystems.Asf, AsfDoc, "Content Description description", "Description"),
+        Row(CommonField.Description, TagSystems.Asf, AsfDoc, "Content Description description; ExifTool and MediaInfo also call it Description", "Description"),
         Row(CommonField.Date, TagSystems.Asf, AsfDoc, "WM/Year holds a year or a date as the writer typed it", "WM/Year"),
         Row(CommonField.Copyright, TagSystems.Asf, AsfDoc, "Content Description copyright", "Copyright"),
         Row(CommonField.Encoder, TagSystems.Asf, AsfDoc, "", "WM/ToolName", "WM/EncodingSettings"),

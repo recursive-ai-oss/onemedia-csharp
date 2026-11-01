@@ -128,7 +128,7 @@ public class AsfTests
         Assert.Equal("Singer", t.Artist);
         Assert.Equal("Album", t.Album);
         Assert.Equal("Rock", t.Genre);
-        Assert.Equal("a comment", t.Comment);
+        Assert.Equal("a comment", t.Description);
         Assert.Equal("(c) me", t.Copyright);
         Assert.Equal("Composer", t.Composer);
         Assert.Equal("1999", t.Date);

@@ -316,6 +316,18 @@ if [ "${LARGE:-1}" = 1 ]; then
     ff "large/over4gb-moov-at-end.mp4" -f concat -safe 0 -i "$G/_src/large-list.txt" -c:v copy -c:a aac -b:a 96k -f mp4
     ff "large/over4gb.mkv" -f concat -safe 0 -i "$G/_src/large-list.txt" -c copy -f matroska
   fi
+  # ASF: a short wmv2 + wmav2 clip at 40 Mbit/s, repeated by stream copy past 2 GiB.
+  ABASE="$G/_src/large-base.asf"
+  if [ ! -s "$ABASE" ] && echo large | grep -qE "$FILTER|large"; then
+    "$FF" "${FFG[@]}" -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=10,noise=alls=60:allf=t" \
+      -f lavfi -i "anoisesrc=seed=3:amplitude=0.5:sample_rate=48000:duration=10" -t 10 \
+      -c:v wmv2 -b:v 40M -maxrate 40M -bufsize 40M -g 30 -c:a wmav2 -b:a 128k -f asf "$ABASE" 2>"$G/.last.log" || echo "FAILED large asf base" >&2
+  fi
+  if [ -s "$ABASE" ]; then
+    sz=$(stat -c %s "$ABASE"); n=$(( 2300000000 / sz + 1 ))
+    : > "$G/_src/large-asf-list.txt"; for _ in $(seq "$n"); do echo "file '$ABASE'" >> "$G/_src/large-asf-list.txt"; done
+    ff "large/over2gb.wmv" -f concat -safe 0 -i "$G/_src/large-asf-list.txt" -c copy -f asf
+  fi
 fi
 
 echo "generated $ok, kept $skipped, failed $failed (manifest: $MAN)"

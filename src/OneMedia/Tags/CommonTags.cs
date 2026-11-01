@@ -232,7 +232,7 @@ public sealed class CommonTags
                 foreach (NativeTag tag in _native)
                 {
                     bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
-                    if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
+                    if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text && !(text.Length == 0 && tag.System == TagSystems.Asf))
                     {
                         found.Add(new CommonValue(field, text, tag));
                     }
