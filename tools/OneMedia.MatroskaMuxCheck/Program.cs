@@ -287,7 +287,11 @@ for (int t = 0; t < keptTracks.Length; t++)
         if (w.Duration.IsKnown)
         {
             long dur = w.Duration.Rescale(outScale[t], MediaRounding.NearestAwayFromZero).Ticks;
-            if (h.Duration != dur)
+            if (h.Duration != dur && dur == 0 && h.Duration > 0 && keptTracks[t].Kind is TrackKind.Video or TrackKind.Audio)
+            {
+                Add(explained, "zero-duration-treated-as-unknown");
+            }
+            else if (h.Duration != dur)
             {
                 if (sameAsInput.Contains((t, k, "duration"))) { Add(explained, "duration-as-ffprobe-gives-for-the-input"); }
                 else if (Math.Abs(h.Duration - dur) <= 1) { Add(explained, "duration-truncated-from-default-duration-by-ffprobe"); }

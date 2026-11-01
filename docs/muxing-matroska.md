@@ -84,6 +84,7 @@ Rotation (`ProjectionPoseRoll`), interlacing and field order, stereo mode, conte
 | `ffprobe-gives-the-default-duration-for-a-shorter-last-block` | The last packet is shorter than the others (an edit-list trim) | We write its `BlockDuration` (checked with mkvinfo); ffprobe 7.0.2 reports `DefaultDuration` |
 | `key-as-ffprobe-gives-for-the-input` | ffprobe marks a key frame the container does not | ffmpeg's MPEG-4 part 2 parser marks I-VOPs itself, for the input as well |
 | `ffprobe-reframes-the-input-the-same-way` | ffprobe lists other packet counts than the container has | A QuickTime MP3 track stored one byte per sample is re-framed by ffmpeg's parser for the input too; we copy the samples as stored |
+| `zero-duration-treated-as-unknown` | The source states a zero duration on audio or video (a fragment without sample durations) and ffprobe shows one for the output | The muxer treats it as unknown and derives it from the next decode time |
 | `duration-from-default-duration` | ffprobe shows a duration for the output where the input stated none | We state a `DefaultDuration` the input lacked (learned or from the codec) |
 | `ffprobe-splits-blocks(-of-the-input-too)` | ffprobe lists more packets than blocks | RealAudio de-interleaving, identical for the input |
 | invisible flag | ffprobe shows no `D` for a block's invisible flag | Checked with our reader instead: the flag survives |
