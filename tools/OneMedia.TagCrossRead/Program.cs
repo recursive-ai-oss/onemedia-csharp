@@ -16,7 +16,7 @@ internal static class CrossRead
         return 0;
     }
 
-    private static string Flag(string? got, string want) => got == want ? "ok" : got is null or "" ? "none" : "DIFF";
+    private static string Flag(string? got, string want) => got == want ? "ok" : got is null or "" ? "none" : "DIFF[" + got.Replace(" ", "_") + "]";
 
     private static string Atl(string path)
     {

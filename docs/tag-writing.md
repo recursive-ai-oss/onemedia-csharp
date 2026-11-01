@@ -93,6 +93,17 @@ A chunk of odd length at the end of a RIFF/IFF file may lack its pad byte. The f
 after that start on even offsets already (found by the check on `wav-alaw.wav` and `Fnonull.aif`, where each added chunk used to add its own pad byte and shifted the next one). The box,
 EBML and chunk editors refuse (`ArgumentException`) an addition inside an element that another edit replaces or removes, instead of losing it.
 
+## Choices worth knowing
+
+- **AIFF text chunks are UTF-8.** `NAME`, `AUTH`, `(c) ` and `ANNO` are written as UTF-8 and read back as UTF-8 by OneMedia; the AIFF specification leaves the encoding open, and a reader that
+  assumes Latin-1 (ATL.NET does) shows non-ASCII text differently. ASCII text is the same in both.
+- **WebM gets no cover art.** The WebM profile has no Attachments element, so a picture edit on a `webm` file is reported as not written.
+- **Padding that hides something is not reused.** A `Void`/`free`/`JUNK` element whose stated size was cut to fit the file (damaged), or that a Matroska SeekHead entry points into, is not
+  taken as padding: a reader may reach an element inside it.
+- **Matroska Tags after the Clusters.** When a file has file-level Tags after the Clusters and no SeekHead entry for them, the edit goes into those Tags (the bytes are right: `mkvextract`
+  shows the new values) but the reader, which does not scan for them, does not see them. Files written with an index of `Tags` are unaffected.
+- **ASF `ID3` attribute.** The embedded ID3 tag in an ASF attribute is kept as it is and noted in the report; removing a field that the ID3 tag also holds does not remove it there.
+
 ## Not done
 
 Speex/Theora comments, ID3 tag-wide unsynchronisation, ID3v2 at the end of a file, QuickTime `mdta` key creation when the file has no `keys` box, picture dimensions in FLAC PICTURE blocks
