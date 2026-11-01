@@ -119,6 +119,8 @@ internal sealed class MuxTrack : IDisposable
 
     public long ReplacedDurations { get; set; }
 
+    public long ZeroDurations { get; set; }
+
     public long IgnoredDiscards { get; set; }
 
     // Chunks.
@@ -149,6 +151,11 @@ internal sealed class MuxTrack : IDisposable
     {
         DurationSum += delta;
         LastDelta = delta;
+        if (delta == 0)
+        {
+            ZeroDurations++;
+        }
+
         if (RunCount > 0 && delta == RunDelta)
         {
             RunCount++;

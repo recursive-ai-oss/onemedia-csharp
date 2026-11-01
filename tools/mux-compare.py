@@ -18,7 +18,7 @@ Per stream the packets of both files are compared in order on pts, dts, duration
              files differ whenever one is fragmented and the other not
   in-reader  the packets of the stream differ from ffprobe's reading of the *input*, but ffprobe's reading of the output equals the container
              reader's own view of the input: same count, sizes, SHA-256, key flags, and decode and presentation times moved by constants
-             (durations too unless the output is fragmented, where ffprobe derives them differently; set FRAGMENTED=1). The muxer then
+             (durations too, except gaps in the timeline and the last packet, unless the output is fragmented, where ffprobe derives them differently; set FRAGMENTED=1). The muxer then
              wrote what the reader delivered, and the difference is between ffprobe and the reader on the input (docs/isobmff.md).
 Everything else is counted as a difference. Exit status 1 when any difference remains.
 """
@@ -71,7 +71,7 @@ def reader_tier(pb, pr):
         return False
     fragmented = os.environ.get("FRAGMENTED") == "1"
     dts_shift = pts_shift = None
-    for (rdts, rpts, rdur, rsize, rkey, _disp, rhash), (pts, dts, dur, size, flags, h) in zip(pr, pb):
+    for n, ((rdts, rpts, rdur, rsize, rkey, _disp, rhash), (pts, dts, dur, size, flags, h)) in enumerate(zip(pr, pb)):
         if to_int(size) != rsize or h != "SHA256:" + rhash or (flags[:1] == "K") != bool(rkey):
             return False
         if to_int(pts) is None or to_int(dts) is None:
@@ -82,6 +82,13 @@ def reader_tier(pb, pr):
         elif (a, b) != (dts_shift, pts_shift):
             return False
         if not fragmented and rdur >= 0 and dur != "N/A" and to_int(dur) != rdur:
+            # The sample table cannot hold a gap in the timeline, so the muxer writes the distance to the next decode time (dur-gap);
+            # ffprobe derives the last packet's duration from the edit list and stream duration.
+            nxt = pb[n + 1] if n + 1 < len(pb) else None
+            if nxt is not None and to_int(nxt[1]) is not None and to_int(dur) == to_int(nxt[1]) - to_int(dts):
+                continue
+            if nxt is None:
+                continue
             return False
     return True
 

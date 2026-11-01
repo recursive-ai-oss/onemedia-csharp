@@ -437,6 +437,11 @@ public sealed partial class IsoMuxer : IMuxer
                 _notes.Add($"Track {t.Declared.Index}: {t.ReplacedDurations} declared durations were replaced by the gap to the next decode time.");
             }
 
+            if (t.ZeroDurations > 0)
+            {
+                _notes.Add($"Track {t.Declared.Index}: {t.ZeroDurations} samples share their decode time with the next one; the sample table then holds zero durations, which some readers refuse.");
+            }
+
             if (t.IgnoredDiscards > 0 && t.Declared.Edit.Edits is null && t.Declared.Edit.Priming.IsZero)
             {
                 _notes.Add($"Track {t.Declared.Index}: {t.IgnoredDiscards} packets carry the discard flag, which ISO files store only through the edit list.");
