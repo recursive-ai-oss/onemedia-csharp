@@ -25,6 +25,7 @@ internal static class Program
               Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
           packetset FILES...                   Compare which stored samples (file position and size) ffprobe and we list, ignoring time.
           audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
+          drain FILES...                       Read every packet twice; print packets, bytes, bytes allocated by the second pass and peak memory.
           meta [--family F] [--out DIR] [FILES...]
               Compare our tags and basic facts with ExifTool and MediaInfo field by field; writes metadata-compare.tsv.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
@@ -57,6 +58,7 @@ internal static class Program
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
             case "packetset": return PacketSets.Run(o.Files);
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
+            case "drain": return Drain(o.Files);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
             case "mapping-doc": return MetadataCompare.WriteMappingDoc(o.Out);
@@ -143,6 +145,34 @@ internal static class Program
 
         files.Sort(StringComparer.Ordinal);
         return files;
+    }
+
+    private static int Drain(List<string> files)
+    {
+        MediaFormatRegistry registry = Readers.Create();
+        foreach (string file in files)
+        {
+            long packets = 0, bytes = 0, allocated = 0;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                using IDemuxer d = registry.Open(FileMediaSource.Open(file));
+                packets = 0;
+                bytes = 0;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                while (d.TryReadPacket(out PacketView p))
+                {
+                    packets++;
+                    bytes += p.Data.Length;
+                }
+
+                allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            }
+
+            using System.Diagnostics.Process me = System.Diagnostics.Process.GetCurrentProcess();
+            Console.WriteLine($"{Path.GetFileName(file)}: size={new FileInfo(file).Length} packets={packets} payloadBytes={bytes} allocatedSecondPass={allocated} (per packet {(double)allocated / Math.Max(1, packets):F3}) peakWorkingSetMB={me.PeakWorkingSet64 >> 20}");
+        }
+
+        return 0;
     }
 
     private static int Diff(Options o)
