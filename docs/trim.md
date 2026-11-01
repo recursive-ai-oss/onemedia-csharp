@@ -1,0 +1,110 @@
+# Trimming, splitting and joining
+
+`Media.Trim`, `Media.Split`, `Media.SplitBySize` and `Media.Concat` (and `onemedia trim|split|concat`) cut and join ISO base media files (MP4, MOV, 3GP, M4A, fragmented MP4 as input) and Matroska/WebM files without decoding or re-encoding; the output has the container of the input. The layer underneath is `RecursiveAI.OneMedia.Editing`: `IsoCutter` and `IsoJoiner` over `IsoBmffDemuxer` and `IsoMuxer`, `MatroskaCutter` and `MatroskaJoiner` over `MatroskaDemuxer` and `MatroskaMuxer`. Packet payloads are copied unchanged. Matroska differs in how a frame-accurate start is written and in what it can express; see the last section.
+
+## Trim
+
+`Trim(source, output, from, to, mode)`: the range is on the source's presentation timeline (its edit list applied, so a file whose first frame shows at 0 is cut in the times a player shows). `to` is exclusive.
+
+### Frame-accurate (default)
+
+1. The first shown frame is the first video frame whose presentation time is at or after `from`. When `from` falls between two frames the next frame starts the clip and the report says by how much it is late.
+2. Decoding starts at the last keyframe whose presentation time is not after that frame. The packets from that keyframe to the first shown frame are written and hidden by the video track's edit list (ISO/IEC 14496-12 §8.6.6: one segment, `media_time` = the first shown frame's media time, `segment_duration` = the clip length). `ClipReport.HiddenVideoPackets` counts them.
+3. The last shown frame is the last frame whose presentation time is before `to`. Frames coded after it that are shown later (B-frames of the next group) are not written; frames shown later but coded before a kept frame are kept (they may be references) and hidden by the edit list's duration.
+4. The clip length is the end of the last shown frame minus the start of the first, in video timescale ticks (exact). The movie timescale is the video track's.
+5. Audio and other tracks follow the video: the clip starts at the first shown frame's time.
+   - Audio edit lists start at the exact sample (`media_time` in audio ticks; rounded to the nearest sample when the video time is not a whole number of samples, and the report says so). Packets before the start are kept as pre-roll for codecs that need it (AAC and Vorbis and AC-3: one packet; MP3: two; Opus: 80 ms, RFC 7845 §4.2; PCM and lossless: none) and hidden by the edit list.
+   - The edit list's duration is the clip length. Audio packets that start up to one video frame past the end are written (the end of the last frame is only known once seen) and hidden.
+   - A track that starts after the clip does gets a leading empty edit, so it stays in step.
+   - Timed text and data tracks (`tx3g`, `mett`, …) carry their own timing: a cue that straddles the start is shortened to begin at the clip's start, one that straddles the end is cut there, and times are rebased by the clip start. No edit list begins inside a sample: readers that round such an edit to the sample's start shift every cue (observed with ffmpeg).
+6. A second video track is dropped (a note says so): a cut follows the first video track.
+
+### Keyframe mode
+
+`TrimMode.Keyframe` starts at the keyframe at or before `from`; nothing is hidden (`HiddenVideoPackets` is 0) and the report's `SourceStart` is that keyframe's time. Audio is aligned to it the same way as above, so audio and video stay in step. The end is the same as in frame-accurate mode.
+
+### Audio-only media
+
+No video frame decides the start. Frame-accurate trims start at exactly `from` (to the sample); keyframe mode starts at the packet that holds `from`. The clip length is `to - from`, shortened to the media when it ends sooner.
+
+### What players do
+
+The exact cut is stated by the edit list. A player that follows edit lists shows the clip from the requested frame; one that does not shows the hidden lead-in frames first (at most one group of pictures) and, for audio, the pre-roll and the packet's tail. Players check (`tools/trim/playback-trim.py`, a clip cut from frame 53 to frame 143 of a 25 fps source, frame numbers burned into the picture):
+
+| Player | Start | End | Length |
+|---|---|---|---|
+| Chrome 149 (system build, Linux) | requested frame at time 0 | requested last frame | exact (3.600 s); H.264, VP9, AV1 |
+| Chromium 140 (Playwright build) | same for VP9 and AV1; H.264 and HEVC are not in this build | same | exact |
+| WebKit 26 (Playwright, Linux) | requested frame at time 0 | requested last frame | exact (3.600 s) |
+| Firefox 141 (Playwright, Linux) | ignores the edit list's start: shows the keyframe the clip decodes from (frame 48 for a cut from 53) | shows the reference frame kept after the last one (143 for 142) | the whole written run (3.84 s for 3.60 s) |
+
+So Chrome and WebKit honour the start and the duration of the edit list; Firefox plays what is written. A clip that must look right in Firefox should be cut in keyframe mode (the start is then a keyframe; the extra tail frame stays).
+
+ffmpeg-based tools honour the start of the audio edit to the sample but decode the last audio packet whole: the decoded audio is up to one codec frame longer than the clip (1,024 samples for AAC, 960 for Opus). The edit list's duration is exact.
+
+### Refusals
+
+`EditRefusedException` with an `EditRefusalReason`: `EmptyRange` (end not after start, start past the last frame, no frame in range), `NoKeyframe`, `ComplexEditList` (a track whose edit list has several media segments or a gap after media; join first, cut second is not possible: such a file is usually the output of `Concat`), `UnsupportedSource` (neither an ISO nor a Matroska file, not seekable, no track the muxer can carry; a video track the muxer refuses is `UnsupportedSource` with the muxer's reason). `ExactStartNotSupported` (Matroska only, above). A cut that would need a re-encode does not arise in ISO files: any start is expressible with an edit list.
+
+### Limits
+
+- Open GOPs: the keyframe flag is the container's (`stss`). A frame shown before the keyframe it follows in decode order (a leading picture) cannot be decoded from it; the cut never starts at one, because the first shown frame is chosen at or after the keyframe's own time.
+- The start is found by reading the video track from the keyframe before `from` to the first shown frame (one group of pictures at most) and the clip by one pass from there; no other part of the file is read. The output is progressive, movie box first. Memory does not depend on the file size (the output's sample tables and a spool for the media data, as in `docs/muxing.md`).
+
+## Split
+
+`Split(source, openPart, times)` cuts at the keyframes at or before each time; `SplitBySize(source, openPart, maxPartBytes)` cuts at the first keyframe after the part reached the byte budget (a first pass over the file measures it).
+
+Parts partition the packets: every video packet is in exactly one part (decode order between two keyframes), and an audio or data packet is in the part where it starts. Nothing is duplicated, so `Concat` of the parts returns the source's packets (size, flags, payload and times; `tools/trim/packet-compare.py`). Parts have no pre-roll: a decoder starts each part with a cold codec state, which can colour the first audio frame. Each part's video starts at its keyframe with nothing hidden. A part's audio starts at its first packet that starts at or after the keyframe's time, up to one packet late; a leading empty edit keeps it in step, so a few milliseconds of audio at each cut are not played (the last packet of the previous part is cut by its edit list at the same time).
+
+## Concat
+
+`Concat(sources, output)` joins files end to end. The first file decides the tracks carried and the brand. Tracks are matched by index and must agree in codec and sample entry tag, timescale, configuration bytes (parameter sets, setup bytes), audio format and frame size/rotation/aspect. Packets are copied; their times are shifted so each input follows the one before on the track's media timeline; each input's edit list segments are kept, shifted, in the output's. Neighbouring segments that continue each other in media time (also across a gap that exactly equals the media skipped) are merged, so joining the parts of a split gives back the original's edit list, and ffmpeg (which repeats samples at boundaries between segments of a list) lists the same packets as for the original.
+
+A difference the output cannot carry is refused: `EditRefusedException` with `EditRefusalReason.NeedsReencode`, `TrackIndex` naming the track and the message saying what differs. Carrying differing configurations needs a second sample description on one track (`stsd` with two entries and `stsc` indexes), which the ISO muxer does not write today.
+
+Tracks whose inputs have no edit lists at all produce none; when any input has one, the others get a full-length segment, so presentation times stay as each file had them. Unrelated clips whose audio and video are not equally long accumulate the difference per join, as the sources' own edit lists say.
+
+## Verification
+
+`tools/trim/trim-matrix.py` (run by `tools/trim/run-trim-matrix.sh`): generates H.264, HEVC, AV1 and VP9 sources with AAC or Opus at 23.976, 25, 29.97 and 60 fps with three GOP shapes (closed GOPs of 12, 48 and 120 frames; B-frames 0, 2 and 3 where the encoder has them), cuts random ranges (on a frame, between frames, keyframe mode) and compares, through ffmpeg: the MD5 of every decoded frame, the first frame's time (0), the frame spacing, the length of the decoded audio and its alignment against the source's PCM at the expected sample. `tools/trim/packet-compare.py` compares the packets of two files through ffprobe (size, key flag, payload SHA-256, times up to one offset). `tools/trim/run-trim-large.sh` measures peak memory on a 4.5 GB file.
+
+Results at the time of writing (ffmpeg 7.0.2, ffprobe 7.0.2, MP4Box 26.07, mkvalidator 0.6.0; AV1 decoded with libaom, because 7.0.2's default AV1 decoder, libdav1d, does not honour the discard flag of an edit list's hidden frames):
+
+- ISO: 288 trims (H.264, HEVC, VP9, AV1 × AAC, Opus × 4 frame rates × 3 GOP shapes × 3 cuts) all equal: frame MD5s, first frame at 0, spacing, audio alignment at the sample, audio length within one codec frame, packets a contiguous run of the source's. 15 more on moov-last, fragmented and MOV layouts.
+- Matroska (`VARIANTS=mkv`): the same 288 cut specifications give 172 trims whose decoded frames equal the requested range (after the lead-in the decoder emits in front; at most a reorder depth of frames short at the end), 116 H.264 and HEVC frame-accurate cuts refused as designed, and mkvalidator clean on every output.
+- Split, then `Concat`, against the source (`tools/trim/run-split-concat.sh`, EXT=mp4 and EXT=mkv): 8 sources each, packets equal (size, key flag, payload hash, times up to one offset) in both, MP4Box `-info` (ISO) and mkvalidator (Matroska) report nothing, ffmpeg's null muxer reports nothing; mismatched configurations are refused.
+- Memory (`tools/trim/run-trim-large.sh`, a 5.06 GB file of 312 s of incompressible 720p video made by looping a generated clip): ISO trim of the middle 50.6 MB peak resident, of 90% of the file (4.58 GB written) 56.0 MB, split by 1 GiB 53.8 MB; Matroska 78.5 MB, 81.1 MB and 132.2 MB (the Matroska muxer holds a Cluster of up to 4 MiB, and the split run reads and writes concurrently); a join of 13 clips into the 5 GB file 64.7 MB.
+- Smoke: the NativeAOT and browser-WebAssembly smoke apps run an ISO and a Matroska trim, split and join (129 checks ok each, no trim or AOT warnings).
+
+## Matroska and WebM
+
+`Media.Trim`, `Split`, `SplitBySize` and `Concat` take Matroska and WebM files too and write Matroska or WebM (a WebM source gives WebM). The content of the file is detected, not the extension. Splitting and joining work as for ISO files (cuts at video keyframes, packets partitioned, each part's timeline starting at zero; joining places each input after the end of the previous one's video). The differences come from the container.
+
+### Frame-accurate start
+
+Matroska has no edit list. RFC 9559 §11.2 gives the one mechanism: Block timestamps are signed offsets from the Cluster timestamp, and a frame whose timestamp is negative "MUST be decoded by the decoder but not played". A frame-accurate trim therefore writes the packets from the keyframe before `from`, shifts all times so the first wanted frame is at zero, and leaves the frames before it at negative timestamps (the Cluster timestamp is 0 and the blocks carry negative offsets; with 1 ms units a lead-in of up to 32 s fits). Audio is written the same way: packets that end before the start (plus the codec's pre-roll: one packet, two for MP3, 80 ms for Opus) are dropped, and the packet or two that straddle the start keep their negative start time. So the audio begins up to one codec frame (plus the pre-roll) before the first shown frame, in step with the video, and a player that follows the RFC does not play it; `ClipReport.HiddenVideoPackets` counts the video frames in front.
+
+What players do with such a file (`tools/trim/playback-trim.py --container webm|mkv`, a clip cut from frame 53 to frame 143 of a 25 fps source, frame numbers burned into the picture):
+
+| Player | Start | End |
+|---|---|---|
+| Chrome 156 (system build) and Chromium 140 (Playwright), VP9 and AV1, WebM and MKV | requested frame (53) | requested last frame (142) |
+| WebKit 26 (Playwright, Linux), WebM and MKV | shows the lead-in: starts at the keyframe (48) | last frame (142) |
+| Firefox 141 (Playwright, Linux), WebM | shows the lead-in: starts at the keyframe (48) | last frame (142) |
+| Firefox 141, MKV | does not play Matroska (media error 4) | |
+| ffmpeg (CLI decode and `ffprobe -show_frames`) | outputs the negative-time frames in front, in decode order; the frames after them are exactly the requested ones | |
+
+So the shown range is exact where the player follows §11.2, and a player that ignores it shows at most one group of pictures of lead-in. A clip that must look right everywhere is cut in keyframe mode. For H.264, HEVC, VVC, MPEG-2, MPEG-4 and VC-1 video a frame-accurate start between keyframes is **refused** (`EditRefusalReason.ExactStartNotSupported`): the demuxers of ffmpeg-based players (Chrome among them) recompute the times of these codecs from a parser and report a negative presentation time as undefined (`FFmpegDemuxer: PTS is not defined`, media error 4), so the written file would not play there. Cut those in keyframe mode, or write MP4, where an edit list hides the frames. VP8, VP9 and AV1 have no such parser and play. A cut that falls on a keyframe has nothing to hide and works for every codec.
+
+### End of a clip
+
+Matroska cannot hide the last frames either. The clip ends at the first frame, in decode order, that is shown at or after `to`; frames that show earlier but are coded after it refer to it and go with it. With B-frames the clip can therefore end up to the reorder depth (one to three frames) before `to`; `ClipReport.Notes` says by how many milliseconds. Without B-frames the end is exact. Audio ends with the last packet that starts before the end of the video, so it can run up to one packet past it.
+
+### Concat
+
+Tracks are matched by index and must agree in codec, codec private data, audio format and frame size/aspect/rotation; a difference is refused as `NeedsReencode` naming the track (Matroska keeps one CodecPrivate per track). Each input's times are shifted to follow the end of the previous input's video.
+
+### Other
+
+Subtitle tracks are rebased and clamped as in ISO files. Cues, SeekHead and Duration come from the Matroska muxer (`docs/muxing-matroska.md`); tags, chapters and attachments of the source are not copied.

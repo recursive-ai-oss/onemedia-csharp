@@ -32,8 +32,14 @@ static int Run(string[] args)
         }
     }
 
+    if (RecursiveAI.OneMedia.Tool.EditCommands.Handles(args))
+    {
+        return RecursiveAI.OneMedia.Tool.EditCommands.Run(args);
+    }
+
     Console.Error.WriteLine("usage: onemedia --version");
     Console.Error.WriteLine("       onemedia info <file> [--json]   format, duration, tracks and defects of a media file");
+    Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     return 2;
 }
 
