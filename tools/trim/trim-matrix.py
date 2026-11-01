@@ -13,6 +13,7 @@ Prints one TSV line per case and a summary; exit status 1 when a case fails.
 """
 import argparse
 import itertools
+import json
 import os
 import random
 import re
@@ -97,11 +98,20 @@ def pcm(ff, path):
     return np.frombuffer(r.stdout, dtype="<f4")
 
 
+def packet_keys(fp, path):
+    """{stream index: [(size, key flag, SHA-256 of the payload)]} in decode order, from ffprobe."""
+    r = run([fp, "-v", "error", "-show_packets", "-show_data_hash", "SHA256", "-show_entries", "packet=stream_index,size,flags,data_hash", "-of", "json", path])
+    out = {}
+    for p in json.loads(r.stdout)["packets"]:
+        out.setdefault(p["stream_index"], []).append((int(p["size"]), "K" in p["flags"], p["data_hash"]))
+    return out
+
+
 def floor_100ns(x: Fraction) -> Fraction:
     return Fraction(int(x * 10_000_000), 10_000_000) if x >= 0 else Fraction(0)
 
 
-def check_case(a, src, idx, kind, frames, keys, src_pcm, from_t, to_t, keyframe):
+def check_case(a, src, idx, kind, frames, keys, src_pcm, src_packets, from_t, to_t, keyframe):
     out = os.path.join(a.work, f"clip-{idx}.mp4")
     cmd = a.tool.split() + ["trim", src, out, "--from", f"{float(from_t):.7f}", "--to", f"{float(to_t):.7f}"] + (["--keyframe"] if keyframe else [])
     r = run(cmd)
@@ -157,6 +167,13 @@ def check_case(a, src, idx, kind, frames, keys, src_pcm, from_t, to_t, keyframe)
             problems.append(f"audio offset {best} samples")
     else:
         problems.append("no frames expected")
+    # Packets: each stream of the clip is a contiguous run of the source's packets, bytes and key flags unchanged.
+    pk_src, pk_out = src_packets, packet_keys(a.ffprobe, out)
+    for idx, lb in pk_out.items():
+        la = pk_src.get(idx, [])
+        first = next((i for i, p in enumerate(la) if p == lb[0]), None)
+        if first is None or la[first:first + len(lb)] != lb:
+            problems.append(f"stream {idx}: packets are not a run of the source's")
     ev = run([a.ffmpeg, "-v", "error", "-i", out, "-f", "null", "-"])
     if ev.stderr.strip():
         problems.append("ffmpeg: " + ev.stderr.strip().splitlines()[0][:100])
@@ -200,6 +217,7 @@ def main():
         frames = framemd5(a.ffmpeg, src)
         keys = keyframe_times(a.ffprobe, src)
         src_pcm = pcm(a.ffmpeg, src)
+        src_packets = packet_keys(a.ffprobe, src)
         for c in range(a.per_file):
             n += 1
             fa = rng.randrange(1, len(frames) - 40)
@@ -210,7 +228,7 @@ def main():
                 from_t = from_t - (frames[fa][0] - frames[fa - 1][0]) * Fraction(2, 5)
             from_t, to_t = floor_100ns(from_t), floor_100ns(to_t)
             keyframe = c == 2 and a.per_file > 2 and rng.random() < 0.5
-            status, detail = check_case(a, src, n, name, frames, keys, src_pcm, from_t, to_t, keyframe)
+            status, detail = check_case(a, src, n, name, frames, keys, src_pcm, src_packets, from_t, to_t, keyframe)
             total += 1
             ok += status == "OK"
             print(f"{status}\t{name}\t{'key' if keyframe else 'acc'}\t{float(from_t):.4f}\t{float(to_t):.4f}\t{detail}", flush=True)

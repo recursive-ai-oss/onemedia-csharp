@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Compares the packets of two files through ffprobe: per stream, the sequence of (size, key flag, SHA-256 of the payload) must be equal.
 
-  packet-compare.py FFPROBE A.mp4 B.mp4 [--range-b FIRST COUNT] [--times]
+  packet-compare.py FFPROBE A.mp4 B.mp4 [--subrange] [--times]
 
 With --times the presentation times must also be equal after removing one constant offset per stream (a clip's edit list moves its start).
---skip-a-head N / --skip-a-tail N drop that many packets from the video stream of A (for comparing a keyframe-mode clip with the same range of its source).
+With --subrange, B must be a contiguous run of A's packets per stream (a clip against the range of its source): the run is located by the payload hash of B's first packet.
 Prints one line per stream and exits 1 on any difference.
 """
 import json
@@ -37,11 +37,19 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     ffprobe, a_path, b_path = args[:3]
     times = "--times" in sys.argv
+    subrange = "--subrange" in sys.argv
     sa, pa = packets(ffprobe, a_path)
     sb, pb = packets(ffprobe, b_path)
     bad = False
     for idx, st in sa.items():
         la, lb = pa.get(idx, []), pb.get(idx, [])
+        if subrange and lb:
+            first = next((i for i, p in enumerate(la) if key(p) == key(lb[0])), None)
+            if first is None:
+                print(f"stream {idx} {st['codec_type']}: first packet of B not found in A DIFFERENT")
+                bad = True
+                continue
+            la = la[first:first + len(lb)]
         same = [key(p) for p in la] == [key(p) for p in lb]
         note = ""
         if same and times and la:
