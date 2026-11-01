@@ -604,12 +604,11 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
             return;
         }
 
-        byte[] config = _payload.AsSpan(header, t.Size - header).ToArray();
         if (_video.Ready && _video.ConfigSeen)
         {
             // A repeated or changed sequence header in the middle of the stream: a new configuration starts here.
             MediaTrack old = _tracks[_video.Track];
-            if (!old.Configuration.Data.Span.SequenceEqual(config))
+            if (!old.Configuration.Data.Span.SequenceEqual(_payload.AsSpan(header, t.Size - header)))
             {
                 Defects.Add(DefectKind.Inconsistent, DefectSeverity.Info, t.Offset, "The video sequence header changes; the track keeps its first configuration.", "flv.config-change");
             }
@@ -617,7 +616,7 @@ public sealed class FlvDemuxer : IDemuxer, IMetadataProvider
             return;
         }
 
-        BuildVideoTrack(t, codec, tag, fourcc, codecId, header, config);
+        BuildVideoTrack(t, codec, tag, fourcc, codecId, header, _payload.AsSpan(header, t.Size - header).ToArray());
     }
 
     private void BuildVideoTrack(in TagHeader t, CodecId codec, string? tag, uint fourcc, int codecId, int header, byte[]? config)

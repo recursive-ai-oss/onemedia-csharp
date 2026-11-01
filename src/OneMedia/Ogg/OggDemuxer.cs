@@ -1013,6 +1013,7 @@ internal sealed class OggEngine : ISequentialEngine
             s.Running = -1;
             s.PrevBlock = 0;
             s.Seen = false;
+            s.Ended = false;
         }
 
         if (reference is null || target <= MediaTime.Zero)
