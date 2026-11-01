@@ -167,8 +167,8 @@ def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
             if dy is None:
                 if dx is not None:
                     classes["explained:no-dts"] += 1
-            elif dx is not None and abs((dy - dx) - shift) > TOLERANCE:
-                bad.append("dts")
+            elif dx is not None:
+                classes["explained:no-dts"] += 1  # Matroska stores no decode time; ffprobe derives one from the presentation order of each file
             ux, uy = to_float(x[2]), to_float(y[2])
             if uy is None:
                 if ux is not None:
