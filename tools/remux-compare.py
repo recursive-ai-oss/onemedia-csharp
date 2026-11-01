@@ -89,6 +89,107 @@ def reader_tier(pa, pb, pr):
     return True
 
 
+TIME_FIELDS = "stream_index,pts_time,dts_time,duration_time,size,flags,data_hash"
+TOLERANCE = 0.0011  # Matroska stores times in milliseconds (the default timestamp scale); both sides round to the nearest
+
+
+def probe_time(ffprobe, path):
+    out = subprocess.run(
+        [ffprobe, "-v", "error", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=" + TIME_FIELDS, "-of", "csv=p=0", path],
+        capture_output=True, text=True, check=False).stdout
+    streams = defaultdict(list)
+    for line in out.splitlines():
+        f = line.strip().split(",")
+        if len(f) < 7:
+            continue
+        try:
+            streams[int(f[0])].append(tuple(f[1:7]))
+        except ValueError:
+            pass
+    return streams
+
+
+def to_float(v):
+    try:
+        return float(v)
+    except ValueError:
+        return None
+
+
+def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
+    """Matroska output: ffprobe prints times in seconds, so the comparison is in seconds with the one-millisecond rounding of the container.
+
+    Classes: last-trim (the input stops inside its last packet, the output states the whole frame), shift (every pts moved by one constant, within the tolerance), no-dts (Matroska stores no decode time, ffprobe prints N/A),
+    ms-rounding (a duration within the tolerance), dur-na (ffprobe prints N/A for the output's duration: no BlockDuration and no default).
+    """
+    a, b = probe_time(ffprobe, src), probe_time(ffprobe, dst)
+    classes = defaultdict(int)
+    total = match = diff = 0
+    first = []
+    for o, i in mapping:
+        pa, pb, pr = a.get(i, []), b.get(o, []), reader.get(o, [])
+        if modes.get(o, "none") != "none" and len(pa) == len(pr):
+            pa = [(x[0], x[1], x[2], str(r[3]), x[4], "SHA256:" + r[6]) for x, r in zip(pa, pr)]
+        if len(pa) != len(pb):
+            classes["count(%d->%d:%d!=%d)" % (i, o, len(pa), len(pb))] += 1
+            diff += abs(len(pa) - len(pb))
+        deltas = [to_float(y[0]) - to_float(x[0]) for x, y in zip(pa, pb) if to_float(x[0]) is not None and to_float(y[0]) is not None]
+        shift = sorted(deltas)[len(deltas) // 2] if deltas else 0.0
+        for n, (x, y) in enumerate(zip(pa, pb)):
+            total += 1
+            bad = []
+            px, py = to_float(x[0]), to_float(y[0])
+            if px is None and py is None:
+                pass
+            elif px is None and pr and n < len(pr):
+                pass  # untimed input: the reader numbered the frames
+            elif px is None or py is None or abs((py - px) - shift) > TOLERANCE:
+                bad.append("pts")
+            elif abs(shift) > TOLERANCE:
+                classes["explained:shift"] += 1
+            dx, dy = to_float(x[1]), to_float(y[1])
+            if dy is None:
+                if dx is not None:
+                    classes["explained:no-dts"] += 1
+            elif dx is not None and abs((dy - dx) - shift) > TOLERANCE:
+                bad.append("dts")
+            ux, uy = to_float(x[2]), to_float(y[2])
+            if uy is None:
+                if ux is not None:
+                    classes["explained:dur-na"] += 1
+            elif ux is None or abs(ux - uy) > TOLERANCE:
+                nxt = pb[n + 1] if n + 1 < len(pb) else None
+                nxt_pts = to_float(nxt[0]) if nxt else None
+                if n == len(pb) - 1 and ux is not None and ux < uy:
+                    classes["explained:last-trim"] += 1  # the input ends the stream inside the last packet (an Ogg end granule); the output states the full frame
+                elif (pr and n < len(pr) and ux is not None and abs(ux - uy) < 0.01) or (nxt_pts is not None and py is not None and abs(uy - (nxt_pts - py)) <= TOLERANCE):
+                    classes["explained:dur-gap"] += 1
+                elif ux is None:
+                    classes["explained:dur-na"] += 1
+                else:
+                    bad.append("duration")
+            if x[3] != y[3]:
+                bad.append("size")
+            if x[5] != y[5]:
+                bad.append("hash")
+            if x[4][:1] != y[4][:1] and not (x[4][:1] == "K" and "audio" in ""):
+                # ffprobe marks every audio packet as a key frame whatever the container says; Matroska output may say otherwise for a non-key audio packet.
+                bad.append("flags")
+            if bad:
+                diff += 1
+                for k in bad:
+                    classes[k] += 1
+                if len(first) < 5:
+                    first.append("stream %d->%d packet %d: %s vs %s" % (i, o, n, x, y))
+            else:
+                match += 1
+    name = src.rsplit("/", 1)[-1]
+    print("%s\tstreams=%d\tpackets=%d\tmatch=%d\tdiff=%d\t%s" % (name, len(mapping), total, match, diff, dict(classes) if classes else ""))
+    for line in first:
+        print("\t" + line)
+    return 1 if diff else 0
+
+
 def main():
     verbose = "-v" in sys.argv
     argv = [a for a in sys.argv[1:] if a != "-v"]
@@ -100,9 +201,11 @@ def main():
             f = line.split()
             mapping.append((int(f[0]), int(f[1])))
             modes[int(f[0])] = f[2] if len(f) > 2 else "none"
+    reader = load_reader(dst + ".pkts")
+    if dst.lower().endswith((".mkv", ".webm", ".mka")):
+        return compare_time_based(ffprobe, src, dst, mapping, modes, reader)
     a = probe(ffprobe, src)
     b = probe(ffprobe, dst)
-    reader = load_reader(dst + ".pkts")
     classes = defaultdict(int)
     total = match = diff = 0
     first = []
