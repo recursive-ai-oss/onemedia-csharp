@@ -3,7 +3,7 @@
 #   tools/run-mpeg-checks.sh [WORKDIR]
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PATH=~/dotnet10:$PATH DOTNET_ROOT=~/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1
+export PATH=~/dotnet10:~/tools/node/bin:$PATH DOTNET_ROOT=~/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1
 W="${1:-$HOME/onemedia/u13-mpeg}"
 export ONEMEDIA_SCRATCH="$W" TMPDIR="$W/tmp"; mkdir -p "$TMPDIR"
 cd "$here"
