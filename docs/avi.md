@@ -113,7 +113,8 @@ reads 64 KiB (the first frames' header blocks) in 3 requests.
 ## Deviations from ffprobe 7.0.2
 
 `tools/OneMedia.Oracles/exceptions.tsv` scopes each of these; every other packet field (size, payload hash, pts, dts, duration, key flag,
-position) and every track field agrees on the corpus (counts in the stage report and [io-results.txt](io-results.txt)).
+position) and every track field agrees on the corpus: 70 files (published samples plus files written by ffmpeg from generated input, including
+OpenDML files of 1.29 GB and 4.65 GB), 164,648 ffprobe packets, no unexplained difference.
 
 | Class | ffprobe | OneMedia | Why |
 |---|---|---|---|
