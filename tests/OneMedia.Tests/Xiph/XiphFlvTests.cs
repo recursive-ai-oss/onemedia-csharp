@@ -367,4 +367,7 @@ public class XiphFlvFuzzRegressionTests
 
     [Fact]
     public void FlacFrameBufferNeverReadsAtANegativeOffset() => Run("flac-offset-overflow.bin", (s, o) => FlacDemuxer.Open(s, o));
+
+    [Fact]
+    public void OggSecondFuzzFinding() => Run("ogg-second.bin", (s, o) => OggDemuxer.Open(s, o));
 }

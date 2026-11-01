@@ -777,7 +777,7 @@ internal sealed class OggEngine : ISequentialEngine
             MediaTime pageEnd = new((s.Running - s.PtsOrigin) * s.UnitTicks, s.Timescale);
             if (s.LinkBase.IsKnown)
             {
-                pageEnd += s.LinkBase;
+                pageEnd += s.LinkBase.Rescale(s.Timescale, MediaRounding.NearestAwayFromZero); // the earlier link may count in another timescale
             }
 
             if (pageEnd > _linkEnd || !_linkEnd.IsKnown)
@@ -823,7 +823,7 @@ internal sealed class OggEngine : ISequentialEngine
                 pts = new MediaTime((pos - s.PtsOrigin) * s.UnitTicks, s.Timescale);
                 if (s.LinkBase.IsKnown)
                 {
-                    pts += s.LinkBase;
+                    pts += s.LinkBase.Rescale(s.Timescale, MediaRounding.NearestAwayFromZero);
                 }
 
                 dur = new MediaTime(duration * s.UnitTicks, s.Timescale);
