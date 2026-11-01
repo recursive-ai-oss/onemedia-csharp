@@ -71,6 +71,9 @@ public sealed class ChunkNode : IStructureNode
     /// <inheritdoc />
     public bool IsSizeInferred { get; }
 
+    /// <summary>True when the chunk states a size that runs past the end of its parent or the file (it is then cut short), as opposed to an unbounded size meaning "to the end".</summary>
+    public bool StatedEndPastFile { get; internal init; }
+
     /// <summary>Offset of the next sibling: the end of the payload plus its padding.</summary>
     public long NextOffset { get; }
 
@@ -351,7 +354,7 @@ internal static class ChunkWalker
             }
         }
 
-        node = new ChunkNode(c, key, guid, start, header, payload, inferred, next, container, formType, depth);
+        node = new ChunkNode(c, key, guid, start, header, payload, inferred, next, container, formType, depth) { StatedEndPastFile = inferred && !unbounded };
         pos = next;
         if (c.Layout == ChunkLayout.Rf64 && key == ChunkNode.Key("ds64"))
         {
