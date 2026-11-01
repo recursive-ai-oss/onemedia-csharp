@@ -31,7 +31,14 @@ No video frame decides the start. Frame-accurate trims start at exactly `from` (
 
 The exact cut is stated by the edit list. A player that follows edit lists shows the clip from the requested frame; one that does not shows the hidden lead-in frames first (at most one group of pictures) and, for audio, the pre-roll and the packet's tail. Players check (`tools/trim/playback-trim.py`, a clip cut from frame 53 to frame 143 of a 25 fps source, frame numbers burned into the picture):
 
-PLAYER_TABLE
+| Player | Start | End | Length |
+|---|---|---|---|
+| Chrome 149 (system build, Linux) | requested frame at time 0 | requested last frame | exact (3.600 s); H.264, VP9, AV1 |
+| Chromium 140 (Playwright build) | same for VP9 and AV1; H.264 and HEVC are not in this build | same | exact |
+| WebKit 26 (Playwright, Linux) | requested frame at time 0 | requested last frame | exact (3.600 s) |
+| Firefox 141 (Playwright, Linux) | ignores the edit list's start: shows the keyframe the clip decodes from (frame 48 for a cut from 53) | shows the reference frame kept after the last one (143 for 142) | the whole written run (3.84 s for 3.60 s) |
+
+So Chrome and WebKit honour the start and the duration of the edit list; Firefox plays what is written. A clip that must look right in Firefox should be cut in keyframe mode (the start is then a keyframe; the extra tail frame stays).
 
 ffmpeg-based tools honour the start of the audio edit to the sample but decode the last audio packet whole: the decoded audio is up to one codec frame longer than the clip (1,024 samples for AAC, 960 for Opus). The edit list's duration is exact.
 
