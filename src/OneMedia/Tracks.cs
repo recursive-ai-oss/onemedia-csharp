@@ -254,8 +254,9 @@ public sealed record MediaTrack
 
     /// <summary>
     /// Describes the track's codec from its configuration (see <see cref="CodecParameterReader.TryDescribe(CodecId, CodecConfiguration, out CodecParameters?)"/>)
-    /// and, for AAC, adds what only the container's declared rate can show: when the configuration is plain AAC-LC and the container declares
-    /// twice its rate, <see cref="CodecParameters.SbrImplied"/> is set and <see cref="CodecParameters.SampleRate"/> is the declared rate.
+    /// and, for AAC, adds what only the container's declared rate can show: when the configuration shows no SBR and the container declares
+    /// twice its rate, <see cref="CodecParameters.ContainerDeclaresDoubleRate"/> is set and <see cref="CodecParameters.SampleRate"/> is the declared
+    /// rate. That is a hint only: the container may declare a rate the stream does not use.
     /// </summary>
     /// <returns>The description, or null when the codec has no configuration form here or the bytes do not parse. Never throws.</returns>
     public CodecParameters? DescribeCodec()
@@ -267,7 +268,7 @@ public sealed record MediaTrack
 
         if (Codec == CodecId.Aac && !p.SbrPresent && p.CoreSampleRate > 0 && Audio is { } a && a.SampleRate == 2 * p.CoreSampleRate)
         {
-            return p with { SbrImplied = true, SampleRate = a.SampleRate };
+            return p with { ContainerDeclaresDoubleRate = true, SbrSignalling = SbrSignalling.ContainerRate, SampleRate = a.SampleRate };
         }
 
         return p;
