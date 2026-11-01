@@ -108,6 +108,17 @@ public readonly record struct CodecId(string Name)
     /// <summary>Uncompressed PCM; the sample layout is in the track's audio info and configuration.</summary>
     public static CodecId Pcm => new("pcm");
 
+    /// <summary>Apple Lossless (ALAC).</summary>
+    public static CodecId Alac => new("alac");
+    /// <summary>MPEG audio Layer II.</summary>
+    public static CodecId Mp2 => new("mp2");
+    /// <summary>Microsoft ADPCM.</summary>
+    public static CodecId AdpcmMs => new("adpcm-ms");
+    /// <summary>IMA ADPCM as stored in WAVE (format tag 0x0011).</summary>
+    public static CodecId AdpcmImaWav => new("adpcm-ima-wav");
+    /// <summary>IMA ADPCM as stored in QuickTime, AIFF-C and CAF (<c>ima4</c>).</summary>
+    public static CodecId AdpcmImaQt => new("adpcm-ima-qt");
+
     /// <summary>3GPP timed text (tx3g).</summary>
     public static CodecId TimedText => new("tx3g");
     /// <summary>WebVTT.</summary>

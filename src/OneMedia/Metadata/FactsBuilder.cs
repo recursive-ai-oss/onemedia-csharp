@@ -13,6 +13,7 @@ internal sealed class FactsBuilder(DefectLog defects)
     public const int RankAppleCreationDate = 10;
     public const int RankXmpWithZone = 20;
     public const int RankVendorCreationTime = 25;
+    public const int RankBwfOrigination = 35;
     public const int RankDayTag = 30;
     public const int RankXmpWithoutZone = 40;
     public const int RankDateUtc = 50;
@@ -109,6 +110,34 @@ internal sealed class FactsBuilder(DefectLog defects)
             case TagSystems.ITunes when t.Key == "©day":
                 AddTime(RankDayTag, t, text, source, "iTunes date text");
                 break;
+            case TagSystems.RiffInfo when t.Key == "ICRD":
+                AddTime(RankDayTag, t, text, source, "RIFF INFO creation date");
+                break;
+            case TagSystems.RiffInfo when t.Key == "ISFT":
+                AddString(Software, 30, t, text, source);
+                break;
+            case TagSystems.CafInfo when t.Key == "recorded date":
+                AddTime(RankDayTag, t, text, source, "CAF recorded date text");
+                break;
+            case TagSystems.CafInfo when t.Key == "encoding application":
+                AddString(Software, 30, t, text, source);
+                break;
+        }
+    }
+
+    /// <summary>EBU Tech 3285 §2: OriginationDate (yyyy-mm-dd) and OriginationTime (hh:mm:ss) are the local time the audio was created; the zone is not stated.</summary>
+    public void AddBextOrigination(NativeTag date, NativeTag? time)
+    {
+        string d = date.Text ?? string.Empty;
+        string tm = time?.Text ?? string.Empty;
+        if (Tags.Riff.RiffTagReader.TryParseOrigination(d, tm, out DateTime value))
+        {
+            CaptureTime.Add(RankBwfOrigination, new FactCandidate<MediaDateTime>(new MediaDateTime(value, null, TimeZoneCertainty.Unknown), "bext:OriginationDate", (d + " " + tm).Trim(),
+                tm.Length == 0 ? "BWF origination date without a time; midnight assumed" : "BWF origination date and time, local time of the originator", TimeZoneCertainty.Unknown, date.ValueRange));
+        }
+        else if (d.Length > 0)
+        {
+            defects.Add(DefectKind.InvalidValue, DefectSeverity.Info, date.ValueRange.Offset, $"The bext OriginationDate '{Shorten(d)}' is not a yyyy-mm-dd date.", "tags.bext-date");
         }
     }
 

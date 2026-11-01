@@ -439,7 +439,7 @@ public sealed class CommonTags
             return tag.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System == TagSystems.Matroska)
+        if (tag.Kind is TagValueKind.Text or TagValueKind.Number && tag.System is TagSystems.Matroska or TagSystems.RiffInfo or TagSystems.CafInfo)
         {
             // Matroska writes the number as text, sometimes as "3/12" (ffmpeg's track tag); the total fields read the number after the slash or the whole text.
             string t = tag.Text ?? "";

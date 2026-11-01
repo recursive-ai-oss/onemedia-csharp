@@ -55,6 +55,9 @@ internal static class Impls
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Riff.WavFileFormat());
+        registry.Add(new RecursiveAI.OneMedia.Aiff.AiffFileFormat());
+        registry.Add(new RecursiveAI.OneMedia.Caf.CafFileFormat());
         foreach (IMediaFormatSniffer s in registry.Formats)
         {
             if (s is IMediaFormat)

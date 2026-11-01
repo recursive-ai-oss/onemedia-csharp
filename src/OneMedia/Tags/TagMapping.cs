@@ -31,6 +31,10 @@ public static class TagMappingTable
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
     private const string Mdta = "com.apple.quicktime.";
+    private const string ExifToolRiff = "ExifTool RIFF Info tags";
+    private const string ExifToolAiff = "ExifTool AIFF tags";
+    private const string Ebu3285 = "EBU Tech 3285 (BWF) §2";
+    private const string CafSpec = "Apple Core Audio Format Specification, Information chunk";
 
     private static TagMappingRow Row(CommonField f, string system, string document, string note, params string[] keys) => new(f, system, keys, document, note);
 
@@ -140,6 +144,39 @@ public static class TagMappingTable
         Row(CommonField.DiscNumber, TagSystems.Matroska, MatroskaDoc, "ffmpeg writes DISC, optionally as number/total", "DISC"),
         Row(CommonField.DiscTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of DISC", "DISC"),
         Row(CommonField.TrackTotal, TagSystems.Matroska, MatroskaDoc, "the part after the slash of TRACK when TOTAL_PARTS is absent", "TOTAL_PARTS", "TRACK"),
+        Row(CommonField.Title, TagSystems.RiffInfo, ExifToolRiff, "", "INAM"),
+        Row(CommonField.Artist, TagSystems.RiffInfo, ExifToolRiff, "", "IART"),
+        Row(CommonField.Album, TagSystems.RiffInfo, ExifToolRiff, "IPRD is the product, which music files use for the album", "IPRD"),
+        Row(CommonField.Composer, TagSystems.RiffInfo, ExifToolRiff, "IMUS is Music By", "IMUS"),
+        Row(CommonField.Author, TagSystems.RiffInfo, ExifToolRiff, "IWRI is Written By", "IWRI"),
+        Row(CommonField.Genre, TagSystems.RiffInfo, ExifToolRiff, "", "IGNR", "GENR"),
+        Row(CommonField.Comment, TagSystems.RiffInfo, ExifToolRiff, "", "ICMT", "CMNT", "COMM"),
+        Row(CommonField.Description, TagSystems.RiffInfo, ExifToolRiff, "ISBJ is the subject", "ISBJ"),
+        Row(CommonField.Description, TagSystems.Bext, Ebu3285, "the free description of the recording", "Description"),
+        Row(CommonField.Date, TagSystems.RiffInfo, ExifToolRiff, "as written, usually a year or an ISO 8601 date", "ICRD"),
+        Row(CommonField.Date, TagSystems.Bext, Ebu3285, "the origination date; the time of day is the OriginationTime tag", "OriginationDate"),
+        Row(CommonField.Copyright, TagSystems.RiffInfo, ExifToolRiff, "", "ICOP"),
+        Row(CommonField.Encoder, TagSystems.RiffInfo, ExifToolRiff, "the software that wrote the file", "ISFT"),
+        Row(CommonField.EncodedBy, TagSystems.RiffInfo, ExifToolRiff, "ITCH is the technician", "ITCH", "IENC", "CODE"),
+        Row(CommonField.Keywords, TagSystems.RiffInfo, ExifToolRiff, "", "IKEY"),
+        Row(CommonField.TrackNumber, TagSystems.RiffInfo, ExifToolRiff, "ITRK, optionally as number/total", "ITRK", "IPRT"),
+        Row(CommonField.TrackTotal, TagSystems.RiffInfo, ExifToolRiff, "the part after the slash of ITRK", "ITRK"),
+        Row(CommonField.Title, TagSystems.Aiff, ExifToolAiff, "", "NAME"),
+        Row(CommonField.Artist, TagSystems.Aiff, ExifToolAiff, "AUTH names the author; players show it as the artist", "AUTH"),
+        Row(CommonField.Author, TagSystems.Aiff, ExifToolAiff, "", "AUTH"),
+        Row(CommonField.Copyright, TagSystems.Aiff, ExifToolAiff, "", "(c) "),
+        Row(CommonField.Comment, TagSystems.Aiff, ExifToolAiff, "ANNO, then the text of the first COMT comment", "ANNO", "COMT"),
+        Row(CommonField.Title, TagSystems.CafInfo, CafSpec, "", "title"),
+        Row(CommonField.Artist, TagSystems.CafInfo, CafSpec, "", "artist"),
+        Row(CommonField.Album, TagSystems.CafInfo, CafSpec, "", "album"),
+        Row(CommonField.Composer, TagSystems.CafInfo, CafSpec, "", "composer"),
+        Row(CommonField.Genre, TagSystems.CafInfo, CafSpec, "", "genre"),
+        Row(CommonField.Comment, TagSystems.CafInfo, CafSpec, "", "comments"),
+        Row(CommonField.Date, TagSystems.CafInfo, CafSpec, "the recording date, else the year", "recorded date", "year"),
+        Row(CommonField.Copyright, TagSystems.CafInfo, CafSpec, "", "copyright"),
+        Row(CommonField.Encoder, TagSystems.CafInfo, CafSpec, "", "encoding application"),
+        Row(CommonField.TrackNumber, TagSystems.CafInfo, CafSpec, "the track number, optionally as number/total", "track number"),
+        Row(CommonField.TrackTotal, TagSystems.CafInfo, CafSpec, "the part after the slash of the track number", "track number"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>
