@@ -27,6 +27,7 @@ public sealed partial class IsoMuxer
     private long _fragmentArea;
     private long _fragmentsBase;
     private bool _spoolFragments;
+    private int _fragmentsCut;
 
     private void EnsureFragmentsStarted()
     {
@@ -282,7 +283,7 @@ public sealed partial class IsoMuxer
         for (int i = 0; i < _tracks.Count; i++)
         {
             MuxTrack t = _tracks[i];
-            if (t.FragmentCount > 0 && (t.Fragment[0].Flags & 0x00010000) == 0)
+            if (_options.WriteRandomAccess && t.FragmentCount > 0 && (t.Fragment[0].Flags & 0x00010000) == 0)
             {
                 _randomAccess[i].Add(new RandomAccessEntry(t.Fragment[0].Dts + t.Fragment[0].CompositionOffset, moofOffset, TrafNumber(i)));
             }
@@ -306,8 +307,13 @@ public sealed partial class IsoMuxer
 
         if (fragmentEarliest != long.MaxValue)
         {
-            _earliestPresentation = Math.Min(_earliestPresentation, _references.Count == 0 ? fragmentEarliest : long.MaxValue);
-            _references.Add(new SegmentReference((uint)(moofSize + 8 + payload), (uint)Math.Min(referenceDuration, uint.MaxValue), referenceStartsWithKey));
+            _earliestPresentation = Math.Min(_earliestPresentation, _fragmentsCut == 0 ? fragmentEarliest : long.MaxValue);
+            _fragmentsCut++;
+            // Per-fragment state is kept only for the indexes that need it, so a plain fragmented file holds none.
+            if (_spoolFragments)
+            {
+                _references.Add(new SegmentReference((uint)(moofSize + 8 + payload), (uint)Math.Min(referenceDuration, uint.MaxValue), referenceStartsWithKey));
+            }
         }
 
         _fragmentBytes = 0;

@@ -501,14 +501,21 @@ public class IsoMuxerTests
         using IsoMuxer mux = new(Stream.Null, new IsoMuxOptions { Layout = layout, SpoolMemoryBudget = 1L << 30, FragmentDuration = new MediaTime(1, 1) });
         mux.AddTrack(Video());
         mux.AddTrack(Audio());
+        long before = 0;
         PacketInfo video = new(0, default, default, new MediaTime(512, 12800), PacketAttributes.Keyframe, ByteRange.None, payload.Length);
         PacketInfo audio = new(1, default, default, new MediaTime(1024, 44100), PacketAttributes.Keyframe, ByteRange.None, payload.Length);
-        // The first packets of each track allocate (first-packet capture, buffers); measure after them.
+        // The first packets of each track allocate (first-packet capture, buffers), and so does the first fragment (its box buffer
+        // grows to the fragment's size once); measure after a few seconds of media.
         mux.WritePacket(video with { Pts = new MediaTime(0, 12800), Dts = new MediaTime(0, 12800) }, payload);
         mux.WritePacket(audio with { Pts = new MediaTime(0, 44100), Dts = new MediaTime(0, 44100) }, payload);
-        long before = GC.GetAllocatedBytesForCurrentThread();
+        const int warm = 200;
         for (int i = 1; i < count; i++)
         {
+            if (i == warm)
+            {
+                before = GC.GetAllocatedBytesForCurrentThread();
+            }
+
             MediaTime vt = new(i * 512L, 12800);
             mux.WritePacket(video with { Pts = vt, Dts = vt, Flags = i % 25 == 0 ? PacketAttributes.Keyframe : PacketAttributes.None }, payload);
             MediaTime at = new(i * 1024L, 44100);
