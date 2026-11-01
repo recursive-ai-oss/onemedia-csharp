@@ -28,6 +28,7 @@ public static class TagMappingTable
     private const string ExifToolUser = "ExifTool QuickTime UserData tags";
     private const string ThreeGppDoc = "3GPP TS 26.244 §8";
     private const string MatroskaDoc = "Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8";
+    private const string FlvDoc = "ExifTool FLV tag documentation (Flash group: onMetaData properties) as a table of names; Adobe Flash Video File Format Specification 10.1, Annex E";
     private const string VorbisDoc = "Vorbis comment field names (Xiph, Ogg Vorbis I §5.2.2); Picard tag map, Vorbis comments";
     private const string XmpDoc = "XMP specification part 1 and 2 (Dublin Core and XMP basic properties)";
     private const string Dc = "http://purl.org/dc/elements/1.1/";
@@ -163,6 +164,16 @@ public static class TagMappingTable
         Row(CommonField.TrackTotal, TagSystems.VorbisComment, VorbisDoc, "TRACKTOTAL, TOTALTRACKS, or the part after the slash of TRACKNUMBER", "TRACKTOTAL", "TOTALTRACKS", "TRACKNUMBER"),
         Row(CommonField.DiscNumber, TagSystems.VorbisComment, VorbisDoc, "may read number/total", "DISCNUMBER"),
         Row(CommonField.DiscTotal, TagSystems.VorbisComment, VorbisDoc, "DISCTOTAL, TOTALDISCS, or the part after the slash of DISCNUMBER", "DISCTOTAL", "TOTALDISCS", "DISCNUMBER"),
+        Row(CommonField.Title, TagSystems.Flv, FlvDoc, "", "title"),
+        Row(CommonField.Artist, TagSystems.Flv, FlvDoc, "", "artist"),
+        Row(CommonField.Author, TagSystems.Flv, FlvDoc, "", "author"),
+        Row(CommonField.Album, TagSystems.Flv, FlvDoc, "", "album"),
+        Row(CommonField.Genre, TagSystems.Flv, FlvDoc, "", "genre"),
+        Row(CommonField.Comment, TagSystems.Flv, FlvDoc, "", "comment"),
+        Row(CommonField.Description, TagSystems.Flv, FlvDoc, "", "description"),
+        Row(CommonField.Copyright, TagSystems.Flv, FlvDoc, "", "copyright"),
+        Row(CommonField.Date, TagSystems.Flv, FlvDoc, "as written by the muxer", "creationdate", "date"),
+        Row(CommonField.Encoder, TagSystems.Flv, FlvDoc, "the muxer's name and version", "encoder", "metadatacreator"),
     ];
 
     /// <summary>Renders the table as the Markdown published in the documentation.</summary>

@@ -166,6 +166,27 @@ ffo flv/av1-enhanced.flv "${VID[@]}" -c:v libaom-av1 -cpu-used 8 -crf 40 -b:v 0 
 ffo flv/vp9-enhanced.flv "${VID[@]}" -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 300k -g 30 -threads 1 -pix_fmt yuv420p -strict -2
 ffo flv/tags.flv "${VID[@]}" "${SINE44[@]}" "${V_H264[@]}" "${A_AAC[@]}" "${TAGS[@]}"
 
+# --- tag variants: different key sets and value shapes, for the tag comparison against ExifTool and MediaInfo ---------------------
+LONGTEXT=$(printf 'long text %.0s' $(seq 1 300))
+tagvar() {  # tagvar NAME-SUFFIX METADATA-ARGS...: one file per container with the same tags
+  local n=$1; shift
+  ffo "tagvar/vorbis-$n.ogg" "${SINE44[@]}" "${A_VORBIS[@]}" "$@"
+  ffo "tagvar/opus-$n.opus" "${SINE[@]}" "${A_OPUS[@]}" "$@"
+  ffo "tagvar/flac-$n.flac" "${SINE44[@]}" "${A_FLAC[@]}" "$@"
+}
+tagvar unicode -metadata title="Ünïcödé 日本語 title" -metadata artist="Björk" -metadata album="Ålbum ☃"
+tagvar dates -metadata title="Dates" -metadata date="2019-07-04T10:11:12Z" -metadata creation_time="2019-07-04T10:11:12Z"
+tagvar year -metadata title="Year only" -metadata date=2019
+tagvar rich -metadata title="Rich" -metadata ALBUMARTIST="Album Artist" -metadata composer="A Composer" -metadata performer="A Performer" -metadata copyright="(c) 2020 Someone" \
+  -metadata ISRC=USRC17607839 -metadata LYRICS="line one" -metadata DESCRIPTION="A description" -metadata organization="A Label" -metadata discnumber=2 -metadata tracknumber=7 \
+  -metadata REPLAYGAIN_ALBUM_GAIN="-3.10 dB" -metadata REPLAYGAIN_ALBUM_PEAK=0.9
+tagvar long -metadata title="Long" -metadata comment="$LONGTEXT"
+tagvar lowercase -metadata title=lower -metadata artist=lower -metadata Album=Mixed -metadata GENRE=Upper
+ffo tagvar/flac-cover-tags.flac "${SINE44[@]}" -i "$G/_src/cover.jpg" -map 0:a -map 1:v -c:a flac -c:v copy -disposition:v attached_pic -metadata title="With cover" -metadata artist="Cover Artist"
+ffo tagvar/flv-unicode.flv "${VID[@]}" "${SINE44[@]}" "${V_H264[@]}" "${A_AAC[@]}" -metadata title="Ünïcödé FLV" -metadata artist="Björk" -metadata comment="c"
+ffo tagvar/flv-basic.flv "${VID[@]}" "${SINE44[@]}" "${V_H264[@]}" "${A_AAC[@]}" -metadata title="FLV title" -metadata author="FLV author" -metadata copyright="FLV (c)" -metadata description="FLV desc" -metadata genre=Gen -metadata album=Alb
+
+
 if [ "${LARGE:-0}" = 1 ]; then
   # About 2.2 GB of incompressible FLAC audio: noise in a 24-bit stereo stream.
   ffo large/noise-2gb.flac -f lavfi -i "anoisesrc=seed=3:amplitude=0.5:sample_rate=96000:duration=2700" -ac 2 -c:a flac -sample_fmt s32 -bits_per_raw_sample 24

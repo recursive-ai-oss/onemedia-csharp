@@ -35,6 +35,29 @@ internal static class Rows
         "generated/large/over4gb.mkv",
     ];
 
+    private static readonly string[] XiphTagFiles =
+    [
+        "generated/xiph-flv/flac/tags.flac",
+        "generated/xiph-flv/flac/cover.flac",
+        "generated/xiph-flv/tagvar/flac-rich.flac",
+        "generated/xiph-flv/ogg/vorbis-tags.ogg",
+        "generated/xiph-flv/tagvar/vorbis-rich.ogg",
+        "generated/xiph-flv/ogg/opus-tags.opus",
+        "generated/xiph-flv/tagvar/opus-unicode.opus",
+        "blender/big_buck_bunny_480p_stereo.ogg",
+    ];
+
+    private static readonly string[] XiphDemuxFiles =
+    [
+        "generated/xiph-flv/flac/bs4096.flac",
+        "generated/xiph-flv/ogg/opus-stereo-64k.opus",
+        "generated/xiph-flv/ogg/vorbis-stereo-q5.ogg",
+        "generated/xiph-flv/ogg/theora-vorbis.ogv",
+        "generated/xiph-flv/flv/h264-aac.flv",
+        "generated/xiph-flv/flv/mp3-44k.flv",
+        "blender/big_buck_bunny_480p_stereo.ogg",
+    ];
+
     private static NativeTool FfmpegCopy { get; } = new("ffmpeg -c copy -f null", "ffmpeg", f => ["-v", "error", "-nostdin", "-i", f, "-map", "0", "-c", "copy", "-f", "null", "-"]);
 
     private static NativeTool Ffprobe { get; } = new("ffprobe -show_format -show_streams", "ffprobe", f => ["-v", "error", "-show_format", "-show_streams", "-of", "json", f]);
@@ -62,6 +85,12 @@ internal static class Rows
         new("mkv-demux", "0.1", "Matroska/WebM: read every packet", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursDemux), new("OneMedia, length asked of the file each time", Role.Previous, Impls.OursDemuxPerCallLength), new("StefH Matroska", Role.Gate, Impls.StefHMatroskaDemux)],
             [FfmpegCopy, new("mkvextract tracks (first track)", "mkvextract", f => [f, "tracks", "0:/dev/null"])]),
+        new("xiph-tags", "0.2", "FLAC/Ogg: open, tags, duration", XiphTagFiles,
+            [new("OneMedia", Role.Ours, Impls.OursTags), new("TagLib#", Role.Gate, Impls.TagLibProbe), new("ATL.NET", Role.Gate, Impls.AtlProbe)],
+            [Ffprobe, MediaInfo, ExifTool]),
+        new("xiph-demux", "0.2", "Ogg/FLAC/FLV: read every packet", XiphDemuxFiles,
+            [new("OneMedia", Role.Ours, Impls.OursDemux)],
+            [FfmpegCopy]),
         new("mkv-probe", "0.1", "Matroska/WebM: open, track list, duration", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursProbe), new("NEbml element reader", Role.Gate, Impls.NEbmlProbe)],
             [Ffprobe, MediaInfo, ExifTool, new("mkvmerge -J", "mkvmerge", f => ["-J", f]), new("mkvinfo", "mkvinfo", f => [f])]),

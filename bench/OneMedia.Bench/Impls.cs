@@ -55,6 +55,9 @@ internal static class Impls
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
+        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
         foreach (IMediaFormatSniffer s in registry.Formats)
         {
             if (s is IMediaFormat)
@@ -221,6 +224,18 @@ internal static class Impls
         long tracks = d.Tracks.Count;
         _ = d.Duration;
         return new Work(0, 0, tracks);
+    }
+
+    /// <summary>Open, read the tags and the common view's title, artist and album; the count is the native tags.</summary>
+    public static Work OursTags(string path)
+    {
+        using IDemuxer d = OpenOurs(path);
+        RecursiveAI.OneMedia.Metadata.MediaMetadata m = ((RecursiveAI.OneMedia.Metadata.IMetadataProvider)d).ReadMetadata();
+        _ = m.Tags.Title;
+        _ = m.Tags.Artist;
+        _ = m.Tags.Album;
+        _ = d.Duration;
+        return new Work(0, 0, m.NativeTags.Count);
     }
 
     // ---- SharpMP4 ---------------------------------------------------------------------------------------------------------

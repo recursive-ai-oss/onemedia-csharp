@@ -231,7 +231,7 @@ public sealed class CommonTags
                 List<CommonValue> found = [];
                 foreach (NativeTag tag in _native)
                 {
-                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.VorbisComment ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
+                    bool keyMatches = row.System is TagSystems.Matroska or TagSystems.MatroskaInfo or TagSystems.VorbisComment or TagSystems.Flv ? string.Equals(tag.Key, key, StringComparison.OrdinalIgnoreCase) : tag.Key == key;
                     if (IsFileLevel(tag, field) && tag.System == row.System && keyMatches && ValueOf(field, tag) is { } text)
                     {
                         found.Add(new CommonValue(field, text, tag));

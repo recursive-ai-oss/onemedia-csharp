@@ -177,6 +177,10 @@ internal static partial class MetadataCompare
                 TagSystems.QuickTimeUserData or TagSystems.ThreeGpp => ["UserData"],
                 TagSystems.Xmp => ["XMP-x", "XMP-xmp", "XMP-dc", "XMP-exif", "XMP-tiff", "XMP-photoshop"],
                 TagSystems.MatroskaInfo => ["Info", "Matroska"],
+                TagSystems.VorbisComment => ["Vorbis", "Opus", "Ogg", "FLAC"],
+                TagSystems.Flac => ["FLAC"],
+                TagSystems.Flv => ["Flash", "FLV"],
+                RawId3Prefix.SystemName => ["ID3"],
                 _ => t.TrackId > 0 ? ["Track"] : ["Matroska"],
             };
             List<string> etVals = [.. et.Where(kv => groups.Any(g => kv.Key.StartsWith(g, StringComparison.Ordinal))).SelectMany(kv => kv.Value)];
