@@ -70,7 +70,7 @@ public static class RiffTagReader
             NativeTag t = new(io, TagSystems.RiffInfo, c.Id, 0, TagValueKind.Text, 1, 0, null, c.Range, value);
             if (value.Length <= EagerValueBytes)
             {
-                string text = Decode(io.Read(value), value.Offset, defects, nulTerminated: false);
+                string text = Decode(io.Read(value), value.Offset, defects, nulTerminated: true); // INFO strings are ZSTR: the text ends at the first NUL
                 if (text.Length == 0)
                 {
                     continue;

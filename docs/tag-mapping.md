@@ -130,7 +130,7 @@ generated from it, and a test fails when they differ.
 | Album | caf-info | `album` | Apple Core Audio Format Specification, Information chunk |  |
 | Composer | caf-info | `composer` | Apple Core Audio Format Specification, Information chunk |  |
 | Genre | caf-info | `genre` | Apple Core Audio Format Specification, Information chunk |  |
-| Comment | caf-info | `comments` | Apple Core Audio Format Specification, Information chunk |  |
+| Comment | caf-info | `comments`, `comment` | Apple Core Audio Format Specification, Information chunk |  |
 | Date | caf-info | `recorded date`, `year` | Apple Core Audio Format Specification, Information chunk | the recording date, else the year |
 | Copyright | caf-info | `copyright` | Apple Core Audio Format Specification, Information chunk |  |
 | Encoder | caf-info | `encoding application` | Apple Core Audio Format Specification, Information chunk |  |

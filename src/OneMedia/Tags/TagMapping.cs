@@ -171,7 +171,7 @@ public static class TagMappingTable
         Row(CommonField.Album, TagSystems.CafInfo, CafSpec, "", "album"),
         Row(CommonField.Composer, TagSystems.CafInfo, CafSpec, "", "composer"),
         Row(CommonField.Genre, TagSystems.CafInfo, CafSpec, "", "genre"),
-        Row(CommonField.Comment, TagSystems.CafInfo, CafSpec, "", "comments"),
+        Row(CommonField.Comment, TagSystems.CafInfo, CafSpec, "", "comments", "comment"),
         Row(CommonField.Date, TagSystems.CafInfo, CafSpec, "the recording date, else the year", "recorded date", "year"),
         Row(CommonField.Copyright, TagSystems.CafInfo, CafSpec, "", "copyright"),
         Row(CommonField.Encoder, TagSystems.CafInfo, CafSpec, "", "encoding application"),

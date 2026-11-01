@@ -307,7 +307,15 @@ public sealed class WavDemuxer : AudioFileDemuxer
                 Span<byte> b = stackalloc byte[4]; // the 32-bit sample count of the fact chunk
                 if (media.Read(c.Payload.Offset, b) == 4)
                 {
-                    frames = BinaryPrimitives.ReadUInt32LittleEndian(b);
+                    long stated = BinaryPrimitives.ReadUInt32LittleEndian(b);
+                    if (frames <= 0 || stated <= frames * 2)
+                    {
+                        frames = stated;
+                    }
+                    else
+                    {
+                        defects.Add(DefectKind.Inconsistent, DefectSeverity.Info, c.Offset, $"The 'fact' chunk states {stated} frames but the data holds about {frames}; the count from the data is used.", "wav.fact-count");
+                    }
                 }
 
                 break;
