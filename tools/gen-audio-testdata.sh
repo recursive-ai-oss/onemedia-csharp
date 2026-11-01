@@ -21,5 +21,11 @@ $FF $Q -i opus.mka -c copy opus.ogg
 $FF $Q -i vorbis.mka -c copy vorbis.ogg
 $FF $Q -i flac.mka -c copy flac.flac
 $FF $Q -i aac.mka -c copy aac-twin.m4a
+# DiscardPadding on blocks in the middle of a track, which ffmpeg does not write itself (nanoseconds; 62500 ns is one frame at 16 kHz,
+# 20833.3 ns one at 48 kHz). The last block's value is kept or set so the end is trimmed too.
+PY=${PYTHON:-python3}
+$PY "$HERE/matroska-discard-padding.py" opus.mka opus-midpad.mka 5=10000000 12=5000000 -1=13500000
+$PY "$HERE/matroska-discard-padding.py" vorbis.mka vorbis-midpad.mka 3=1000000 7=2500000 -1=3125000
+$PY "$HERE/matroska-discard-padding.py" aac.mka aac-midpad.mka 3=4000000 -1=1000000
 { "$FF" -version | head -1; } > VERSIONS.txt
 ls -l
