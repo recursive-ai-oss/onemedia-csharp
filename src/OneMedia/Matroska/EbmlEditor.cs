@@ -420,6 +420,12 @@ public sealed class EbmlEditor
                         byte[] rebuilt = EbmlPositions.Rebuild(original, mapRel, ref changed);
                         if (changed)
                         {
+                            // Re-encoding positions inside entries whose sizes were cut back would scramble them.
+                            if (HasInferredSize(child))
+                            {
+                                throw new UnsupportedMediaException("The SeekHead is damaged (an entry's size runs past its parent), so its positions cannot be moved safely.");
+                            }
+
                             patches.Add(new Patch(child, rebuilt.Length, () => Data(rebuilt)));
                         }
 
@@ -461,6 +467,8 @@ public sealed class EbmlEditor
 
         return patches;
     }
+
+    private static bool HasInferredSize(EbmlElement e) => e.IsSizeInferred || e.ChildElements.Any(HasInferredSize);
 
     private static PieceList Data(byte[] bytes)
     {
@@ -596,20 +604,51 @@ public sealed class EbmlEditor
 
         protected override void EmitHeader(EbmlElement node, long areaLength, PieceList into)
         {
-            if (node.IsSizeInferred || (areaLength == node.PayloadSize && !_regenerate))
+            int idLen = EbmlWriter.IdLength(node.Id);
+            int oldWidth = node.HeaderSize - idLen;
+            if (node.IsSizeInferred)
             {
-                // An unknown (or cut-back) size stays as it is; an unchanged size needs no new header.
+                // An unknown size stays unknown. A size cut back to fit the file (a truncated file) is kept as stated plus the growth, so the
+                // stated end still lies past the edited content and nothing falls outside the element.
+                if (areaLength != node.PayloadSize && StatedSize(node, idLen, oldWidth) is long stated && stated + (areaLength - node.PayloadSize) >= areaLength)
+                {
+                    long grown = stated + (areaLength - node.PayloadSize);
+                    int w = oldWidth is >= 1 and <= 8 && grown < (1L << (7 * oldWidth)) - 1 ? oldWidth : EbmlWriter.SizeLength(grown);
+                    byte[] h = new byte[idLen + w];
+                    EbmlWriter.WriteId(h, node.Id);
+                    EbmlWriter.WriteSize(h.AsSpan(idLen), grown, w);
+                    into.AddData(h);
+                    return;
+                }
+
                 into.AddCopy(node.Offset, node.HeaderSize);
                 return;
             }
 
-            int idLen = EbmlWriter.IdLength(node.Id);
-            int oldWidth = node.HeaderSize - idLen;
+            if (areaLength == node.PayloadSize && !_regenerate)
+            {
+                // An unchanged size needs no new header.
+                into.AddCopy(node.Offset, node.HeaderSize);
+                return;
+            }
+
             int width = oldWidth is >= 1 and <= 8 && areaLength < (1L << (7 * oldWidth)) - 1 ? oldWidth : EbmlWriter.SizeLength(areaLength);
             byte[] head = new byte[idLen + width];
             EbmlWriter.WriteId(head, node.Id);
             EbmlWriter.WriteSize(head.AsSpan(idLen), areaLength, width);
             into.AddData(head);
+        }
+
+        // The size the file states for an element whose size was cut back; null when the field is the unknown-size marker or unreadable.
+        private long? StatedSize(EbmlElement node, int idLen, int sizeWidth)
+        {
+            Span<byte> field = stackalloc byte[Ebml.MaxSizeLength]; // a size field is at most 8 bytes
+            if (sizeWidth is < 1 or > Ebml.MaxSizeLength || Source.Read(node.Offset + idLen, field[..sizeWidth]) != sizeWidth || !Ebml.TryReadSize(field[..sizeWidth], out long size, out _) || size < 0)
+            {
+                return null;
+            }
+
+            return size;
         }
 
         protected override bool TryGetLeading(EbmlElement node, out long leadingEnd)
