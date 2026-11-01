@@ -102,6 +102,9 @@ internal static class AsfGuids
     public static readonly Guid Data = new("75B22636-668E-11CF-A6D9-00AA0062CE6C");
     public static readonly Guid FileProperties = new("8CABDCA1-A947-11CF-8EE4-00C00C205365");
     public static readonly Guid StreamProperties = new("B7DC0791-A9B7-11CF-8EE6-00C00C205365");
+
+    /// <summary>The error-correction type of audio streams whose objects are scrambled across several virtual packets ("audio spread"); observed in a file that ffprobe de-scrambles.</summary>
+    public static readonly Guid AudioSpread = new("BFC3CD50-618F-11CF-8BB2-00AA00B4E220");
     public static readonly Guid HeaderExtension = new("5FBF03B5-A92E-11CF-8EE3-00C00C205365");
     public static readonly Guid CodecList = new("86D15240-311D-11D0-A3A4-00A0C90348F6");
     public static readonly Guid ContentDescription = new("75B22633-668E-11CF-A6D9-00AA0062CE6C");
@@ -262,7 +265,7 @@ public sealed record AsfFileProperties(Guid FileId, long FileSize, long Creation
 /// <summary>A stream: its Stream Properties object, joined with the Extended Stream Properties object that has the same stream number, if any.</summary>
 public sealed class AsfStreamEntry
 {
-    internal AsfStreamEntry(int streamNumber, Guid streamType, Guid errorCorrectionType, long timeOffset100ns, bool encrypted, byte[] typeSpecificData, int errorCorrectionDataLength, ByteRange range)
+    internal AsfStreamEntry(int streamNumber, Guid streamType, Guid errorCorrectionType, long timeOffset100ns, bool encrypted, byte[] typeSpecificData, int errorCorrectionDataLength, byte[] errorCorrectionData, ByteRange range)
     {
         StreamNumber = streamNumber;
         StreamType = streamType;
@@ -272,7 +275,19 @@ public sealed class AsfStreamEntry
         IsEncrypted = encrypted;
         TypeSpecificData = typeSpecificData;
         ErrorCorrectionDataLength = errorCorrectionDataLength;
+        ErrorCorrectionData = errorCorrectionData;
         Range = range;
+        // Audio spread data, as observed: span (1 byte), virtual packet length (2), virtual chunk length (2), silence data length (2), silence data.
+        if (errorCorrectionType == AsfGuids.AudioSpread && errorCorrectionData.Length >= 7)
+        {
+            int span = errorCorrectionData[0];
+            int packet = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(errorCorrectionData.AsSpan(1));
+            int chunk = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(errorCorrectionData.AsSpan(3));
+            if (span > 1 && packet > 0 && chunk > 0 && packet % chunk == 0)
+            {
+                Spread = new AsfAudioSpread(span, packet, chunk);
+            }
+        }
     }
 
     /// <summary>The stream number, 1 to 127, that data packet payloads carry.</summary>
@@ -298,6 +313,12 @@ public sealed class AsfStreamEntry
 
     /// <summary>The length of the error-correction data that follows the type-specific data (the audio spread parameters).</summary>
     public int ErrorCorrectionDataLength { get; }
+
+    /// <summary>The error-correction data itself.</summary>
+    internal byte[] ErrorCorrectionData { get; }
+
+    /// <summary>The audio spread parameters when the stream is scrambled (span above 1 and a chunk size that divides the packet size); otherwise null.</summary>
+    public AsfAudioSpread? Spread { get; }
 
     /// <summary>Where the Stream Properties object sits in the file.</summary>
     public ByteRange Range { get; }
@@ -325,6 +346,19 @@ public sealed class AsfStreamEntry
 
     /// <summary>The average bit rate from Stream Bitrate Properties, or 0.</summary>
     public uint AverageBitrate { get; internal set; }
+}
+
+/// <summary>
+/// How an audio stream's objects are scrambled: an object holds <see cref="Span"/> virtual packets of <see cref="PacketLength"/> bytes, each cut into chunks of
+/// <see cref="ChunkLength"/> bytes. The chunks are stored packet by packet and played column by column.
+/// </summary>
+/// <param name="Span">The number of virtual packets an object spreads over.</param>
+/// <param name="PacketLength">The virtual packet length in bytes.</param>
+/// <param name="ChunkLength">The virtual chunk length in bytes.</param>
+public sealed record AsfAudioSpread(int Span, int PacketLength, int ChunkLength)
+{
+    /// <summary>The size of a scrambled object: span times packet length.</summary>
+    public int ObjectLength => Span * PacketLength;
 }
 
 /// <summary>An entry of the Codec List object.</summary>

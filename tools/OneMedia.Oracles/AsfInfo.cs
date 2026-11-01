@@ -30,9 +30,20 @@ internal static class AsfInfo
                 }
 
                 long[] counts = new long[d.Tracks.Count];
+                Queue<string> lastFew = new();
                 while (d.TryReadPacket(out PacketView v))
                 {
                     counts[v.Info.TrackIndex]++;
+                    lastFew.Enqueue($"track {v.Info.TrackIndex} pts {v.Info.Pts} size {v.Data.Length} attrs {v.Info.Flags}");
+                    if (lastFew.Count > 4)
+                    {
+                        lastFew.Dequeue();
+                    }
+                }
+
+                foreach (string line in lastFew)
+                {
+                    Console.WriteLine("  last: " + line);
                 }
 
                 Console.WriteLine("  packets per track: " + string.Join(", ", counts));

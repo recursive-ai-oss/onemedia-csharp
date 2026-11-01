@@ -178,7 +178,11 @@ internal static class Program
                 List<ProbeStream> streams = FfprobeReader.ReadStreams(file);
                 if (streams.Count == 0)
                 {
-                    report = new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" };
+                    // A file ffprobe finds no streams in is agreed on when we reject it too (typed, without an exception).
+                    OurResult rejected = OurReader.Read(registry, file);
+                    report = rejected.Status == "ok"
+                        ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" }
+                        : new FileReport { File = file, Status = "ok", Message = $"neither reads the file: ffprobe finds no streams, ours: {rejected.Message}" };
                 }
                 else
                 {

@@ -15,6 +15,7 @@ internal struct AsfPayload
     public int DataLength;
     public bool Compressed;
     public int TimeDelta;        // compressed payloads: milliseconds between the sub-payloads
+    public bool Cut;             // the data ended inside this payload (a file cut short)
 }
 
 /// <summary>Reads the layout of one data packet: its header fields, then each payload's header. Pure functions over the packet bytes.</summary>
@@ -60,17 +61,13 @@ internal static class AsfPacketParser
         pos += 6; // send time (4 bytes) and duration (2 bytes) of the packet; the payloads carry the presentation times
         int total = packetLengthType != 0 && stated > 0 ? (int)Math.Min(stated, int.MaxValue) : fixedSize;
         packetLength = total; // as stated, so that a caller can tell a short read from a short packet
-        if (total > p.Length)
-        {
-            total = p.Length;
-        }
-
         if (padding > total - pos)
         {
             return "padding";
         }
 
-        int end = total - (int)padding;
+        // The padding sits at the end of the packet, so in a packet cut short by the end of the file it is not there to be taken off.
+        int end = Math.Min(total - (int)padding, p.Length);
         int count = 1;
         int payloadLengthType = 0;
         if (multiple)

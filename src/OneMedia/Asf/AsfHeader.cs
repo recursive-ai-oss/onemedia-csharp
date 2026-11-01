@@ -179,19 +179,8 @@ internal static class AsfHeaderParser
                 }
             }
 
-            // Ascending stream number: streams described only in Extended Stream Properties join the others in a stable order.
-            for (int i = 1; i < Streams.Count; i++)
-            {
-                AsfStreamEntry moving = Streams[i];
-                int j = i - 1;
-                for (; j >= 0 && Streams[j].StreamNumber > moving.StreamNumber; j--)
-                {
-                    Streams[j + 1] = Streams[j];
-                }
-
-                Streams[j + 1] = moving;
-            }
-
+            // Streams stay in the file order of their Stream Properties objects, those embedded in Extended Stream Properties included: observed to be
+            // the order ffprobe numbers them in, which is not stream-number order in a file that defines most streams inside the Header Extension.
             h.Streams = Streams;
             h.Codecs = Codecs;
             h.Languages = Languages;
@@ -383,7 +372,7 @@ internal static class AsfHeaderParser
 
         s.Limits.CheckTracks(s.Streams.Count + 1, position);
         s.Streams.Add(new AsfStreamEntry(number, new Guid(b.AsSpan(0, 16)), new Guid(b.AsSpan(16, 16)), (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(32)), long.MaxValue),
-            encrypted, b.AsSpan(54, (int)typeLength).ToArray(), (int)correctionLength, new ByteRange(position, size)));
+            encrypted, b.AsSpan(54, (int)typeLength).ToArray(), (int)correctionLength, b.AsSpan(54 + (int)typeLength, (int)correctionLength).ToArray(), new ByteRange(position, size)));
     }
 
     private static async ValueTask ReadCodecListAsync(ParseState s, long position, long bodyStart, long bodyLength)

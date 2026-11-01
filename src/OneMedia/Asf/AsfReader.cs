@@ -14,6 +14,7 @@ internal sealed class AsfReader
     private readonly DefectLog _defects;
     private readonly int[] _trackOfStream = new int[128];
     private readonly bool[] _reportedStream = new bool[128];
+    private AsfAudioSpread?[] _spread = [];
     private readonly List<AsfPayload> _payloads = [];
     private readonly Queue<Entry> _queue = new();
     private readonly Stack<byte[]> _pool = new();
@@ -81,6 +82,15 @@ internal sealed class AsfReader
 
         Tracks = tracks;
         _streams = new StreamState[tracks.Count];
+        _spread = new AsfAudioSpread?[tracks.Count];
+        foreach (AsfStreamEntry e in _header.Streams)
+        {
+            if (e.StreamNumber is >= 1 and <= 127 && _trackOfStream[e.StreamNumber] >= 0 && _spread[_trackOfStream[e.StreamNumber]] is null)
+            {
+                _spread[_trackOfStream[e.StreamNumber]] = e.Spread;
+            }
+        }
+
         _enabled = new bool[tracks.Count];
         Array.Fill(_enabled, true);
         if (IsProtected)
@@ -118,7 +128,8 @@ internal sealed class AsfReader
         }
 
         long length = _input.Length;
-        long statedEnd = _header.DataObjectSize >= 50 ? _header.DataObjectOffset + _header.DataObjectSize : long.MaxValue;
+        // A Data Object that states just its own header (50 bytes) is a placeholder, as in files captured while broadcast: the packets run to the end of the file.
+        long statedEnd = _header.DataObjectSize > 50 ? _header.DataObjectOffset + _header.DataObjectSize : long.MaxValue;
         _dataEnd = length >= 0 ? Math.Min(statedEnd, length) : statedEnd;
         CanSeek = _input.CanSeek && min == max && !IsProtected;
     }
@@ -146,6 +157,11 @@ internal sealed class AsfReader
         {
             if (!await ReadDataPacketAsync(ct).ConfigureAwait(false))
             {
+                if (FlushPartialObjects())
+                {
+                    continue;
+                }
+
                 return false;
             }
         }
@@ -174,9 +190,35 @@ internal sealed class AsfReader
         MediaTime pts = e.TimeMs >= 0 ? new MediaTime(e.TimeMs - _preroll, 1000) : MediaTime.Unknown;
         // The stream byte's key flag is set for video key frames only; every audio frame stands alone, as in the other containers' audio tracks.
         bool key = e.Key || Tracks[e.Track].Kind == TrackKind.Audio;
-        CurrentInfo = new PacketInfo(e.Track, pts, pts, MediaTime.Unknown, key ? PacketAttributes.Keyframe : PacketAttributes.None,
+        CurrentInfo = new PacketInfo(e.Track, pts, pts, MediaTime.Unknown, (key ? PacketAttributes.Keyframe : PacketAttributes.None) | (e.Corrupt ? PacketAttributes.Corrupt : PacketAttributes.None),
             e.SourceOffset >= 0 ? new ByteRange(e.SourceOffset, e.Length) : ByteRange.None, e.Length);
         return true;
+    }
+
+    // When the file ends inside a payload, the part of the object that arrived is delivered, flagged corrupt: observed in ffprobe's output for files
+    // cut at round sizes. Only the object whose payload the cut went through is delivered; other objects still waiting for their next fragment are not.
+    private bool FlushPartialObjects()
+    {
+        bool any = false;
+        for (int track = 0; track < _streams.Length; track++)
+        {
+            ref StreamState st = ref _streams[track];
+            if (!st.Active)
+            {
+                continue;
+            }
+
+            st.Active = false;
+            if (st.Have > 0 && st.Buffer is not null && st.Cut)
+            {
+                _defects.Add(DefectKind.Truncated, DefectSeverity.Warning, _nextOffset, $"The data ends inside media object {st.ObjectNumber} of stream {Tracks[track].Id}; the {st.Have} of {st.Size} bytes that arrived are delivered.", "asf.truncated-object");
+                _queue.Enqueue(new Entry(track, st.TimeMs, st.Key, 0, st.Have, st.Buffer, -1, true));
+                st.Buffer = null;
+                any = true;
+            }
+        }
+
+        return any;
     }
 
     // Entries that point into the packet buffer stay valid because the next packet is not read until the queue is empty.
@@ -237,6 +279,14 @@ internal sealed class AsfReader
             if (problem is not null)
             {
                 _defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, offset, $"Data packet {_packetNumber} is damaged ({problem}); the payloads before the damage are kept.", "asf.packet-" + problem);
+            }
+
+            if (got < length && _payloads.Count > 0 && _payloads[^1].DataStart + _payloads[^1].DataLength >= got)
+            {
+                // The file ends inside the last payload (or right at its end, in a packet that should go on).
+                AsfPayload last = _payloads[^1];
+                last.Cut = true;
+                _payloads[^1] = last;
             }
 
             _nextOffset = offset + length;
@@ -320,7 +370,16 @@ internal sealed class AsfReader
             st.Active = false;
             if (p.DataLength > 0)
             {
-                _queue.Enqueue(new Entry(track, p.TimeMs, p.Key, p.DataStart, p.DataLength, null, packetOffset + p.DataStart));
+                if (_spread[track] is { } spread && p.DataLength == spread.ObjectLength)
+                {
+                    byte[] plain = Rent(p.DataLength);
+                    Unscramble(spread, _packetBuffer.AsSpan(p.DataStart, p.DataLength), plain);
+                    _queue.Enqueue(new Entry(track, p.TimeMs, p.Key, 0, p.DataLength, plain, -1));
+                }
+                else
+                {
+                    _queue.Enqueue(new Entry(track, p.TimeMs, p.Key, p.DataStart, p.DataLength, null, packetOffset + p.DataStart));
+                }
             }
 
             return;
@@ -357,11 +416,36 @@ internal sealed class AsfReader
 
         Buffer.BlockCopy(_packetBuffer, p.DataStart, st.Buffer!, st.Have, p.DataLength);
         st.Have += p.DataLength;
+        st.Cut = p.Cut;
         if (st.Have == st.Size)
         {
             st.Active = false;
-            _queue.Enqueue(new Entry(track, st.TimeMs, st.Key, 0, st.Size, st.Buffer, -1));
+            byte[] done = st.Buffer!;
+            if (_spread[track] is { } spread && st.Size == spread.ObjectLength)
+            {
+                byte[] plain = Rent(st.Size);
+                Unscramble(spread, done.AsSpan(0, st.Size), plain);
+                Recycle(done);
+                done = plain;
+            }
+
+            _queue.Enqueue(new Entry(track, st.TimeMs, st.Key, 0, st.Size, done, -1));
             st.Buffer = null;
+        }
+    }
+
+    // Audio spread: the object's chunks are stored one virtual packet after the other (row by row) and played column by column. Observed in a file
+    // whose objects ffprobe returns de-scrambled: 20 packets of 256 bytes in chunks of 128 come out as chunks 0, 2, 4 ... 38, 1, 3 ... 39.
+    private static void Unscramble(AsfAudioSpread spread, ReadOnlySpan<byte> stored, byte[] played)
+    {
+        int perPacket = spread.PacketLength / spread.ChunkLength;
+        int chunk = spread.ChunkLength;
+        for (int row = 0; row < spread.Span; row++)
+        {
+            for (int column = 0; column < perPacket; column++)
+            {
+                stored.Slice((row * perPacket + column) * chunk, chunk).CopyTo(played.AsSpan((column * spread.Span + row) * chunk, chunk));
+            }
         }
     }
 
@@ -386,7 +470,7 @@ internal sealed class AsfReader
         }
     }
 
-    private readonly record struct Entry(int Track, long TimeMs, bool Key, int Start, int Length, byte[]? Owned, long SourceOffset);
+    private readonly record struct Entry(int Track, long TimeMs, bool Key, int Start, int Length, byte[]? Owned, long SourceOffset, bool Corrupt = false);
 
     private struct StreamState
     {
@@ -396,6 +480,7 @@ internal sealed class AsfReader
         public int Have;
         public long TimeMs;
         public bool Key;
+        public bool Cut;
         public byte[]? Buffer;
     }
 
@@ -566,7 +651,7 @@ internal sealed class AsfReader
     private async ValueTask<SimpleIndex?> ReadIndexAsync(CancellationToken ct)
     {
         long length = _input.Length;
-        long at = _header.DataObjectSize >= 50 ? _header.DataObjectOffset + _header.DataObjectSize : _header.DataStart + (_packetLimit == long.MaxValue ? 0 : _packetLimit * _fixedSize);
+        long at = _header.DataObjectSize > 50 ? _header.DataObjectOffset + _header.DataObjectSize : _header.DataStart + (_packetLimit == long.MaxValue ? 0 : _packetLimit * _fixedSize);
         byte[] head = new byte[24];
         for (int guard = 0; guard < 16 && at >= 0 && at + 24 <= length; guard++)
         {

@@ -27,6 +27,12 @@ internal sealed class OurResult
     public List<MediaTrack> Tracks { get; init; } = [];
     public List<PacketRecord> Packets { get; init; } = [];
 
+    /// <summary>SHA-256 of each picture in the file's tags (ASF only), to compare with the attached pictures ffprobe lists as streams.</summary>
+    public List<string> PictureHashes { get; init; } = [];
+
+    /// <summary>True when the demuxer reports the content as protected and so delivers no packets.</summary>
+    public bool IsProtected { get; init; }
+
     /// <summary>Per track, the shift applied to our times to place them where ffprobe puts them (ISO edit lists); empty when none was applied.</summary>
     public MediaTime[] Shifts { get; init; } = [];
 }
@@ -41,7 +47,7 @@ internal static class OurReader
             using FileMediaSource source = FileMediaSource.Open(path);
             using IDemuxer demuxer = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
             MediaTime[] shift = demuxer.Format == MediaFormatId.IsoBmff ? [.. demuxer.Tracks.Select(EditShift)] : [];
-            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift };
+            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift, IsProtected = demuxer.IsProtected };
             Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
             while (demuxer.TryReadPacket(out PacketView view))
             {
@@ -54,6 +60,15 @@ internal static class OurReader
                 }
 
                 result.Packets.Add(new PacketRecord(i.TrackIndex, i.Pts, i.Dts, i.Duration, view.Data.Length, i.SourceRange.IsNone ? -1 : i.SourceRange.Offset, i.IsKeyframe, Convert.ToHexStringLower(digest)));
+            }
+
+            if (demuxer is RecursiveAI.OneMedia.Metadata.IMetadataProvider provider && demuxer.Format == MediaFormatId.Asf)
+            {
+                // ffprobe turns WM/Picture attributes into attached-picture streams; we hand them out as tags.
+                foreach (RecursiveAI.OneMedia.Tags.TagPicture picture in provider.ReadMetadata().Tags.Pictures)
+                {
+                    result.PictureHashes.Add(Convert.ToHexStringLower(SHA256.HashData(picture.ReadData())));
+                }
             }
 
             return result;
@@ -209,6 +224,41 @@ internal static class Comparer
         }
 
         report.OurPackets = ours.Packets.Count;
+        if (ours.Format == "asf" && streams.Any(q => q.AttachedPicture))
+        {
+            // Attached pictures are tags for us: take them out of ffprobe's streams (renumbering the rest) and compare the picture bytes instead.
+            List<string> pictureHashes = [.. ours.PictureHashes];
+            Dictionary<int, int> renumber = [];
+            foreach (ProbeStream q in streams.Where(q => !q.AttachedPicture))
+            {
+                renumber[q.Index] = renumber.Count;
+            }
+
+            List<PacketRecord> kept = [];
+            foreach (PacketRecord pr in theirs)
+            {
+                if (renumber.TryGetValue(pr.Track, out int mapped))
+                {
+                    kept.Add(pr with { Track = mapped });
+                }
+                else if (!pictureHashes.Remove(pr.Hash))
+                {
+                    Note(report, new Dictionary<(int, string), int>(), exceptions, ours.Format, file, null, "", -1, pr.Track, -1, "picture", pr.Hash, "none", false, true, 0);
+                }
+            }
+
+            theirs = kept;
+            streams = [.. streams.Where(q => !q.AttachedPicture).Select(q => q with { Index = renumber[q.Index] })];
+        }
+
+        if (ours.IsProtected && ours.Packets.Count == 0)
+        {
+            // Protected content is reported with its tracks and tags and no packets, by design; ffprobe lists the encrypted packets.
+            report.Status = "protected";
+            report.Message = $"protected: {ours.Tracks.Count} tracks, ffprobe lists {streams.Count} streams and {theirs.Count} packets";
+            return report;
+        }
+
         Dictionary<int, List<PacketRecord>> a = Group(theirs), b = Group(ours.Packets);
         Dictionary<(int, string), int> shown = [];
         foreach (int track in a.Keys.Union(b.Keys).Order())

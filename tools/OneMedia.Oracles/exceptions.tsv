@@ -52,3 +52,19 @@ matroska	*	file=RA_missing_timestamps	ignore	ffprobe	realaudio-deinterleave: ffp
 matroska	pts	codec=rv40	ignore	neither	realvideo-timestamps: ffprobe derives RealVideo frame times from the stream (azumi.mkv has blocks at 80 and 81 ms where it reports 40 and 80); ours is the block time (docs/matroska-differential.md).
 asf	pos	*	ignore	neither	ffprobe reports the start of the data packet the payload sits in; we report the start of the payload bytes, and none for an object reassembled from several payloads (docs/asf.md).
 asf	duration	*	ours-na	neither	duration-from-codec: ffprobe derives an audio or video packet duration from the bit rate or frame rate; the file states none per packet (docs/asf.md).
+asf	pts	codec=wmv3	ffprobe-na	neither	reorder-capable-video: ffprobe prints no PTS for video whose decoder may reorder frames (WMV3 here); the payload's presentation time is the one value the file states and we report it as both PTS and DTS (docs/asf.md).
+asf	pts	codec=mpeg4	ffprobe-na	neither	reorder-capable-video, as for wmv3 (MPEG-4 part 2 in ASF).
+asf	dts	file=sample_g726	ignore	neither	damaged-tail: the last 10 video objects of this file have inconsistent fragment positions (ffprobe logs 'packet fragment position invalid'); ffprobe and we keep different parts of them (docs/asf.md).
+asf	count	file=asf2divX_fault	ignore	ours	damaged-data-stops-ffprobe: packet 8 of this deliberately damaged file has invalid length fields; ffprobe stops after 7 packets, we report asf.packet-* defects, skip the damaged packets and keep reading (docs/asf.md).
+asf	count	file=new_fileformat	ignore	neither	declared-packet-size-wrong: File Properties states 1250-byte packets but the data packets after the second sit 2048 bytes apart; ffprobe resynchronises on packet headers, we follow the declared size and report asf.packet-* defects (docs/asf.md).
+asf	picture	file=wma_with_ID3_APIC	ignore	ours	picture-in-id3-attribute: the cover art sits in an ID3v2 tag stored in the 'ID3' attribute; we hand out that attribute as a binary native tag until the ID3 layer reads it (docs/asf.md).
+asf	count	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks: DVR-MS stores raw MPEG elementary stream chunks and a time-code extension in the replicated data; ffprobe re-frames the chunks with its stream parsers and reads the extension (docs/asf.md).
+asf	pts	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
+asf	dts	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
+asf	size	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
+asf	hash	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
+asf	key	file=fps_sample1	ignore	neither	dvr-ms-elementary-stream-chunks.
+asf	pts	file=new_fileformat	ignore	neither	declared-packet-size-wrong.
+asf	dts	file=new_fileformat	ignore	neither	declared-packet-size-wrong.
+asf	size	file=new_fileformat	ignore	neither	declared-packet-size-wrong.
+asf	hash	file=new_fileformat	ignore	neither	declared-packet-size-wrong.
