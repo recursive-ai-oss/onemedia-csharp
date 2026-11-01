@@ -147,3 +147,10 @@ Page cache does not affect these counts. Timing is not measured here.
 request or read-call counts per file. Our own reader's columns join it as the readers land (`io` already measures them
 through the same sources). ffprobe and MediaInfo were run with the pinned builds listed in the installers.
 ExifTool timed out (five minutes) on one Matroska audio file with nested tags and is marked `n/a`.
+
+## ASF
+
+`diff --family asf` and `tools/corpus/sweep.sh asf` cover `.asf .wma .wmv .wm .dvr-ms` files (published samples plus ffmpeg-written ones from
+`generate.sh`). `tools/run-asf-checks.sh` adds `infocheck` (tracks, codecs, sizes, durations against ffprobe), `asfseek` (keyframe seeks against a full
+read), `meta` (tags and facts against ExifTool and MediaInfo) and `atlcompare` (common tags against ATL.NET). Protected files report status `protected` with
+no packets. The deviations are in `docs/asf.md`.

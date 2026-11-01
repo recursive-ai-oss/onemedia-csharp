@@ -119,6 +119,7 @@ internal static class SmokeRun
         Check("defect log", log2.Count == 1 && log2.HasErrors && log2[0].Offset == 7);
 
         await MatroskaSmoke.RunAsync(Check);
+        await AsfSmoke.RunAsync(Check);
         SmokeAudio.Run(Check);
         await MetadataSmoke.RunAsync(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.
