@@ -30,6 +30,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Fixed
 
+- `SafeWriter.Save` on Windows: the writer's own source handle is closed before the rename, and a target another handle keeps open raises `FileInUseException` with the original untouched instead of an unspecified `UnauthorizedAccessException`.
+
 - Format sniffing: an Annex B head that ended right after a start code made the H.265 check read one byte past the end (found by fuzzing the registry).
 
 - CAF with variable-size packets opened from a stream that cannot seek delivered no packets, because the packet table had gone by before the audio; the table is kept, and a file whose table is not before the audio is refused with `UnsupportedMediaException`.
@@ -40,9 +42,14 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Changed
 
-- A track whose only hint of SBR is a container that declares twice the AAC core rate is now reported as "possibly core-only" (`SbrPossiblyNotApplied`, `IsPossiblyCoreOnly`). `AudioDecodeReport.IsCoreOnly` and `SbrNotApplied` are set only on evidence (SBR/PS in the configuration, or SBR data met by the decoder), so a complete AAC-LC track with a wrong container rate no longer reads as missing audio. The decoded rate and priming are unchanged.
+- `RecursiveAI.OneMedia.Audio` uses OneAudio 1.6.1, which decodes HE-AAC v1/v2 (SBR and baseline PS) at the full output rate. `Decode()` on HE-AAC no longer throws for SBR/PS signalling, and `MediaTrackPacketSource.SampleRate`/`Channels`, priming, `DiscardEndFrames`, lengths and seeking are counted at the output rate and channels. `Decode(out AudioDecodeReport)` reports the decoder's own rate and channels, with the file's declaration in `SignalledSampleRate`/`SignalledChannels` when they differ (a container hint of SBR that the stream does not bear out decodes at the core rate). OneAudio still refuses 64-96 kHz with bs_start_freq other than 9, dual-mono SBR, unrestricted PS and multichannel AAC with its typed unsupported error.
+- `AudioSeamLimitations.SbrNotApplied` / `AudioDecodeReport.IsCoreOnly` now mean only SBR that first appears after OneAudio's first 256 access units and was skipped; `AudioDecodeReport.AfterReading` also refreshes rate and channels from the decoder. New `AudioDecodeReport.SbrActive` and `PsActive` report what OneAudio's AAC decoder runs.
+- `onemedia info` no longer says "SBR not decoded" for HE-AAC tracks.
 - `Packets()` and the `.Audio` decode calls on a file opened with `OpenAsync` throw `MediaReadStateException` (`AsynchronousSource`, still an `InvalidOperationException`) instead of a plain `InvalidOperationException`.
-- `Decode()` on an AAC track that signals SBR or PS now passes OneAudio 1.5.1's own `UnsupportedAudioFormatException` through (it also covers the MP4Box form missing its trailing extension flag, and no longer calls a backward-compatible signal "explicit"). `AudioDecodeReport.Signalling` and `CodecParameters.SbrSignalling` still say how the file signals it. `RecursiveAI.OneAudio` is 1.5.1.
+
+### Deprecated
+
+- `AudioSeamLimitations.PsNotApplied`, `AudioSeamLimitations.SbrPossiblyNotApplied` and `AudioDecodeReport.IsPossiblyCoreOnly`: never set or true with OneAudio 1.6.1.
 
 ## [0.1.0-preview.3] - 2026-11-01
 

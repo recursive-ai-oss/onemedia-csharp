@@ -74,6 +74,7 @@ public static class SafeWriter
     /// <param name="cancellationToken">Cancels the write; the temporary file is deleted and the original stays.</param>
     /// <returns>The report, with <see cref="WriteReport.Mode"/> <see cref="WriteMode.Save"/>.</returns>
     /// <exception cref="IOException">The file changed since planning, or the disk failed.</exception>
+    /// <exception cref="FileInUseException">On Windows, another open handle (such as a <see cref="MediaFile"/> on the same path) prevents the replacement; the original is untouched. Dispose the reader and save again, or use <see cref="SaveAs"/>.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
     public static WriteReport Save(EditPlan plan, string path, CancellationToken cancellationToken = default)
     {
@@ -134,12 +135,13 @@ public static class SafeWriter
         bool done = false;
         try
         {
-            using FileMediaSource source = FileMediaSource.Open(sourcePath);
-            CheckSource(plan, source);
             long copied;
             long written;
-            using (FileStream output = new(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, FileBuffer))
+            // The source handle is closed before the rename: Windows cannot replace a file while any handle to it is open, our own included.
+            using (FileMediaSource source = FileMediaSource.Open(sourcePath))
             {
+                CheckSource(plan, source);
+                using FileStream output = new(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, FileBuffer);
                 (copied, written) = PieceWriter.Write(plan.Pieces, source, output, cancellationToken);
                 output.Flush(true);
             }
@@ -151,7 +153,17 @@ public static class SafeWriter
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temp, target, overwrite: true);
+            try
+            {
+                File.Move(temp, target, overwrite: true);
+            }
+            catch (Exception e) when (OperatingSystem.IsWindows() && e is UnauthorizedAccessException or IOException && File.Exists(target))
+            {
+                // Windows refuses to replace a file another handle (for example a MediaFile opened on the same path) still holds.
+                // Nothing has changed: the original is complete and the temporary file is removed below.
+                throw new FileInUseException(target, e);
+            }
+
             done = true;
             return new WriteReport(mode, plan, copied, written);
         }
@@ -182,4 +194,23 @@ public static class SafeWriter
             throw new IOException($"The source is {source.Length} bytes but the plan was made for {plan.SourceLength}; the file changed after it was read.");
         }
     }
+}
+
+/// <summary>
+/// The target of a replacing save is held open by another handle and the operating system (Windows) does not allow it to be replaced.
+/// The original file is complete and unchanged, and no temporary file is left behind.
+/// </summary>
+public sealed class FileInUseException : IOException
+{
+    /// <summary>Creates the exception.</summary>
+    /// <param name="path">The file that could not be replaced.</param>
+    /// <param name="inner">The operating system's error.</param>
+    public FileInUseException(string path, Exception inner)
+        : base($"'{path}' is open elsewhere and cannot be replaced; close it and save again, or save to a new file.", inner)
+    {
+        Path = path;
+    }
+
+    /// <summary>The file that could not be replaced.</summary>
+    public string Path { get; }
 }
