@@ -253,6 +253,15 @@ def main():
                     shifts.add((dx - ox, dy - oy))  # untimed packets (N/A) are judged below, against the reader's numbering plus this shift
         uniform = len(shifts) == 1 and next(iter(shifts))[0] == next(iter(shifts))[1]
         shift = next(iter(shifts))[0] if uniform else 0
+        # Matroska stores no decode times: the remux derives them from the order of the presentation times (docs/remux.md), and ffprobe
+        # derives its own for the input, so the two differ by convention. What must hold is that the output keeps what was written: one constant
+        # between the decode times ffprobe reads from the output and the ones written (.pkts), and the same for the presentation times.
+        mkv_in = src.lower().endswith((".mkv", ".webm", ".mka"))
+        derived = False
+        if mkv_in and pr and len(pr) == len(pb):
+            dd = {to_int(y[1]) - r[0] for y, r in zip(pb, pr) if to_int(y[1]) is not None}
+            pp = {to_int(y[0]) - r[1] for y, r in zip(pb, pr) if to_int(y[0]) is not None}
+            derived = len(dd) == 1 and len(pp) == 1
         for n, (x, y) in enumerate(pairs):
             st += 1
             bad = []
@@ -265,6 +274,8 @@ def main():
                     cls = "untimed-input"
                 elif k < 2 and uniform and to_int(x[k]) is not None and to_int(y[k]) is not None and to_int(y[k]) - to_int(x[k]) == shift:
                     cls = "shift"
+                elif derived and k in (1, 2):
+                    cls = "derived-dts"
                 elif k == 2:
                     nxt = pb[n + 1] if n + 1 < len(pb) else None
                     if x[2] == "N/A":
