@@ -351,7 +351,8 @@ public sealed class MatroskaMuxer : IMuxer
                 throw new MuxRefusedException(MuxRefusalReason.LimitExceeded, $"Track {ti}: the packet duration does not fit the file's timestamp scale.", ti, _plans[ti].Track.Codec);
             }
 
-            durUnits = Math.Max(d.Ticks, 0);
+            // A zero duration on audio or video states nothing (a fragment without sample durations gives it); treat it as unknown.
+            durUnits = d.Ticks > 0 || _plans[ti].Track.Kind is not (TrackKind.Video or TrackKind.Audio) ? Math.Max(d.Ticks, 0) : -1;
         }
 
         long padNs = 0;
@@ -419,7 +420,7 @@ public sealed class MatroskaMuxer : IMuxer
             Track = ti,
             Ts = ts,
             DurUnits = durUnits,
-            Dur = info.Duration,
+            Dur = durUnits < 0 ? MediaTime.Unknown : info.Duration,
             DiscardPaddingNs = padNs,
             Key = isKey,
             Invisible = (info.Flags & PacketAttributes.Discard) != 0,

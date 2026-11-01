@@ -218,6 +218,28 @@ public class MatroskaMuxerTests
     }
 
     [Fact]
+    public void AnUnknownDurationIsTheDistanceToTheNextDecodeTimeOfTheTrack()
+    {
+        using MemoryStream ms = new();
+        MatroskaMuxer mux = new(ms, [Vp8()], Fixed());
+        long[] times = [0, 40, 80, 130, 170, 210];
+        for (int i = 0; i < times.Length; i++)
+        {
+            byte[] data = Payload(20, i);
+            mux.WritePacket(Packet(0, times[i], -1, i == 0, data.Length), data);
+        }
+
+        mux.Finish();
+        List<Got> got = ReadBack(ms.ToArray(), out MatroskaDemuxer d);
+        using (d)
+        {
+            Assert.Equal(40, got[0].Info.Duration.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks);
+            Assert.Equal(50, got[2].Info.Duration.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks);
+            Assert.Equal(40, got[3].Info.Duration.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks);
+        }
+    }
+
+    [Fact]
     public void DiscardPaddingIsWrittenInNanoseconds()
     {
         using MemoryStream ms = new();

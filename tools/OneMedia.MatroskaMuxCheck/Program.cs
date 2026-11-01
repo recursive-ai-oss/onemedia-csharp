@@ -262,7 +262,9 @@ for (int t = 0; t < keptTracks.Length; t++)
     if (want.Count != have.Count)
     {
         // ffprobe splits some packed audio (RealAudio) into more packets than the file has blocks; then it does the same on the input.
+        inputProbe ??= dropped.Count == 0 && beforeCounts is null ? Probe(ffprobe, input, keptTracks.Length) : null;
         if (beforeCounts is not null && beforeCounts[t] == have.Count) { Add(explained, "ffprobe-splits-blocks-of-the-input-too"); }
+        else if (inputProbe is not null && inputProbe[t].Count == have.Count) { Add(explained, "ffprobe-reframes-the-input-the-same-way"); }
         else { Add(diffs, $"count track {t}: input {want.Count}, ffprobe {have.Count}"); }
         continue;
     }

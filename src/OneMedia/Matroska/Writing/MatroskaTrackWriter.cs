@@ -171,7 +171,15 @@ internal static class MatroskaTrackWriter
 
                 if (Is(c, "esds"))
                 {
-                    return Convert(t.Codec, data, name, index);
+                    // An mp4a sample entry can hold other audio (QCELP, EVRC, MPEG-1 audio…) whose decoder config is no AudioSpecificConfig;
+                    // ISO/IEC 14496-3 §1.5.1 leaves these object types reserved, and no AAC decoder takes them.
+                    byte[] asc = Convert(t.Codec, data, name, index);
+                    if (AudioSpecificConfig.TryParse(asc, out AudioSpecificConfig parsed) && parsed.AudioObjectType is 0 or 10 or 11 or 15 or 16 or 18)
+                    {
+                        throw new MuxRefusedException(MuxRefusalReason.InvalidConfiguration, $"{name}: the decoder configuration names the reserved audio object type {parsed.AudioObjectType}, so this is not AAC.", index, t.Codec);
+                    }
+
+                    return asc;
                 }
 
                 return IsAny(c, "asc", "AudioSpecificConfig") && AudioSpecificConfig.TryParse(data.Span, out _) ? data.ToArray() : throw Missing("the AAC setup bytes are not an AudioSpecificConfig.");
