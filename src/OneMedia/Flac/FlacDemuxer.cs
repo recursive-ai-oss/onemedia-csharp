@@ -4,6 +4,7 @@ using RecursiveAI.OneMedia.Codecs.Flac;
 using RecursiveAI.OneMedia.Input;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Tags.Id3;
 using RecursiveAI.OneMedia.Tags.VorbisComment;
 
 namespace RecursiveAI.OneMedia.Flac;
@@ -495,6 +496,10 @@ public sealed class FlacDemuxer : IDemuxer, IMetadataProvider
         if (!_id3Bytes.IsEmpty)
         {
             _containers.Add(RawId3Prefix.Make(_id3Bytes, _limits, Defects));
+            if (EmbeddedId3.FromMemory(_id3Bytes, 0, _limits, Defects) is { } id3)
+            {
+                _containers.Add(id3);
+            }
         }
 
         if (comment is not null)

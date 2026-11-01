@@ -7,6 +7,7 @@ using RecursiveAI.OneMedia.Codecs.Vorbis;
 using RecursiveAI.OneMedia.Input;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Tags.Id3;
 using RecursiveAI.OneMedia.Tags.VorbisComment;
 
 namespace RecursiveAI.OneMedia.Ogg;
@@ -1192,6 +1193,10 @@ internal sealed class OggEngine : ISequentialEngine
         if (!_id3Bytes.IsEmpty)
         {
             containers.Add(RawId3Prefix.Make(_id3Bytes, _limits, defects));
+            if (EmbeddedId3.FromMemory(_id3Bytes, 0, _limits, defects) is { } id3)
+            {
+                containers.Add(id3);
+            }
         }
 
         foreach (OggLogicalBitstream s in _streams)

@@ -175,8 +175,8 @@ public sealed class AmrFormat : IMediaFormat
 
 /// <summary>
 /// Opens a file that starts with an ID3v2 tag. The tag can be longer than the bytes a sniffer sees, so this format looks behind the tag itself
-/// and hands the file to the reader for what it finds there: MPEG audio, ADTS or AC-3. Other audio behind a tag (FLAC, for instance) belongs
-/// to that format's own reader and is reported as unsupported here.
+/// and hands the file to the reader for what it finds there: MPEG audio, ADTS, AC-3, and, on a seekable source, FLAC or Ogg when the tag was too long
+/// for their own sniffers to see past. Other audio behind a tag is reported as unsupported here.
 /// </summary>
 public sealed class Id3AudioFormat : IMediaFormat
 {
@@ -230,6 +230,9 @@ public sealed class Id3AudioFormat : IMediaFormat
             "mpeg" => MpegAudioDemuxer.Open(source, options, cancellationToken),
             "adts" => AdtsDemuxer.Open(source, options, cancellationToken),
             "ac3" => Ac3Demuxer.Open(source, options, cancellationToken),
+            // A tag longer than the sniffed head hides these from their own sniffers, so the file arrives here; their readers skip the tag themselves.
+            "flac" => Flac.FlacDemuxer.Open(source, options, cancellationToken),
+            "ogg" => Ogg.OggDemuxer.Open(source, options, cancellationToken),
             var other => throw new UnsupportedMediaException($"The audio behind the ID3v2 tag ({other}) is not a format this reader opens."),
         };
     }

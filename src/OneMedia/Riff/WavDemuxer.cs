@@ -4,6 +4,7 @@ using RecursiveAI.OneMedia.Codecs.Pcm;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Sniffing;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Tags.Id3;
 using RecursiveAI.OneMedia.Tags.Riff;
 
 namespace RecursiveAI.OneMedia.Riff;
@@ -428,6 +429,11 @@ public sealed class WavDemuxer : AudioFileDemuxer
                         break;
                     case "id3 " or "ID3 ":
                         containers.Add(RiffTagReader.ReadId3Chunk(Source, c, Limits, Defects));
+                        // The raw chunk stays as it is; its frames are read too, so the common view sees the tags.
+                        if (EmbeddedId3.FromRange(Source, c.Payload, Limits, Defects) is { } id3)
+                        {
+                            containers.Add(id3);
+                        }
                         break;
                 }
             }
