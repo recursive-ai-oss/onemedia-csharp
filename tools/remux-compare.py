@@ -191,15 +191,19 @@ def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
                     classes["explained:dur-gap"] += 1
                 elif ux is None:
                     classes["explained:dur-na"] += 1
+                elif n == len(pb) - 1:
+                    classes["explained:last-dur"] += 1  # the last sample's duration is the distance to the end of the track; ffprobe derives its own
                 else:
                     bad.append("duration")
             if x[3] != y[3]:
                 bad.append("size")
             if x[5] != y[5]:
                 bad.append("hash")
-            if x[4][:1] != y[4][:1] and not (x[4][:1] == "K" and "audio" in ""):
-                # ffprobe marks every audio packet as a key frame whatever the container says; Matroska output may say otherwise for a non-key audio packet.
-                bad.append("flags")
+            if x[4][:1] != y[4][:1]:
+                if pr and n < len(pr) and (y[4][:1] == "K") == bool(pr[n][4]):
+                    classes["explained:key-reader"] += 1  # the output keeps the key flag the container reader gave; ffprobe reads the input's differently
+                else:
+                    bad.append("flags")
             if bad:
                 diff += 1
                 for k in bad:
