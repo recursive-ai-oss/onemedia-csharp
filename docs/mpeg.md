@@ -69,6 +69,17 @@ Sniffers for the raw video kinds answer `Likely`, not `Certain`: an Annex B stre
 ExifTool 13.60 prints `DateTimeOriginal 2012:01:26 09:18:35+00:00` for the published sample (`00007.mts`, entries 0x18 = `00 20 12 01`, 0x19 = `26 09 18 35`); the first byte of 0x18 is `00`.
 One sample cannot settle what the flag byte means, so the offset ExifTool prints is not reproduced and the zone is `Unknown`.
 
+### Agreement with ExifTool 13.60 and MediaInfo 26.10
+
+`OneMedia.Oracles meta` over the three AVCHD/TS samples and the generated transport streams (`out6/metadata-compare.tsv`, 28 rows): 9 match both tools, 10 match MediaInfo where ExifTool prints nothing, 8 differ, 1 is missing on our side.
+Every row that is not a match:
+
+- `Duration` (5 files): ours equals ffprobe's container duration (`4.021`, `14.016`, `12.064`); ExifTool prints the span from the first to the last stamp (`3.920`, `13.983`, `12.093`) and MediaInfo its own estimate (`4.118`, `4.024`, `4.028`, `13.987`, `12.116`). Each tool has its own end rule; none is wrong, they name different things.
+- `mdpm:raw_18`, `raw_19`, `raw_E0` (`dean00007.mts`): entries we keep verbatim and neither tool prints (ExifTool decodes `0x18`/`0x19` into `DateTimeOriginal`, which matches ours at `2012-01-26 09:18:35`; `0xE0` is an unnamed entry).
+- `Encoder` (`dean00007.mts`): MediaInfo prints `Panasonic` there (the MDPM make); ours is the `Make` fact, which ExifTool agrees with.
+- `mpegts:program_number`, `mpegts:transport_stream_id`: ExifTool prints neither; MediaInfo agrees with ours.
+- Capture time: ExifTool prints `+00:00` after the camera's clock time; the recording zone is not decoded here (`Unknown`), so ours has no offset. The wall-clock time is equal.
+
 ## Program streams
 
 Pack headers (MPEG-2 with the system clock reference extension and program mux rate; MPEG-1), system header, program stream map (stream types for codec ids), PES with PTS/DTS.
