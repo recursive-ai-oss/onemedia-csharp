@@ -29,6 +29,9 @@ internal static class Checker
                 case "mapping":
                     Console.Write(TagMappingTable.RenderMarkdown());
                     return 0;
+                case "writemap":
+                    Console.Write(WriteMap());
+                    return 0;
                 case "hash":
                     Console.WriteLine(Hash(args[1]));
                     return 0;
@@ -42,6 +45,34 @@ internal static class Checker
             return 1;
         }
     }
+
+    // The key each system writes for each common field, from the same table the writers use.
+    private static string WriteMap()
+    {
+        string[] systems = [TagSystems.ITunes, TagSystems.QuickTimeKeys, TagSystems.QuickTimeUserData, TagSystems.Matroska, TagSystems.Id3v2, TagSystems.Ape, TagSystems.VorbisComment, TagSystems.RiffInfo, TagSystems.Aiff];
+        StringBuilder sb = new();
+        sb.Append("| Field | ").Append(string.Join(" | ", systems)).Append(" |\n|---|").Append(string.Concat(systems.Select(_ => "---|"))).Append('\n');
+        foreach (CommonField f in Enum.GetValues<CommonField>())
+        {
+            sb.Append("| ").Append(f);
+            foreach (string sys in systems)
+            {
+                string? key = sys == TagSystems.QuickTimeUserData ? UserDataAtom(f) : TagMappingTable.Rows.FirstOrDefault(r => r.Field == f && r.System == sys)?.Keys[0];
+                sb.Append(" | ").Append(key is null ? "—" : "`" + key + "`");
+            }
+
+            sb.Append(" |\n");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string? UserDataAtom(CommonField f) => f switch
+    {
+        CommonField.Title => "©nam", CommonField.Artist => "©ART", CommonField.Album => "©alb", CommonField.Composer => "©wrt", CommonField.Genre => "©gen",
+        CommonField.Comment => "©cmt", CommonField.Date => "©day", CommonField.Copyright => "©cpy", CommonField.Encoder => "©too", CommonField.EncodedBy => "©enc",
+        CommonField.Description => "©inf", CommonField.Director => "©dir", CommonField.Author => "©aut", CommonField.Keywords => "©key", _ => null,
+    };
 
     private static CommonField? RemovableField(string path)
     {
