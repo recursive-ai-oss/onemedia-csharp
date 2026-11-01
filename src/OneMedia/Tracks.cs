@@ -285,6 +285,86 @@ public sealed record MediaTrack
         return p;
     }
 
+    /// <summary>
+    /// The track's <c>codecs</c> parameter in the form of RFC 6381, as used in MIME types, HLS and DASH manifests and <c>MediaSource.isTypeSupported</c>:
+    /// <see cref="CodecParameters.Rfc6381"/> when the configuration yields one, else a fixed string for codecs that have one without a configuration.
+    /// </summary>
+    /// <remarks>
+    /// Without a configuration: VP8 is <c>vp8</c> (a VP8 track has no configuration record to build the <c>vp08.PP.LL.DD</c> form from), and the
+    /// ISO timed-text sample entries are named by their sample entry code, as RFC 6381 §3.3 says for the ISO base media file format family:
+    /// <c>tx3g</c> (3GPP timed text), <c>wvtt</c> (WebVTT) and <c>stpp</c> (XML subtitles; the TTML profile suffix such as <c>.ttml.im1t</c> is not derived, because
+    /// this library does not read the sample entry's namespace and schema strings). QuickTime <c>text</c>, Matroska text codecs (SRT, SSA/ASS, WebVTT,
+    /// USF) and bitmap subtitles (PGS) have no registered string, so the result is null for them; none is invented.
+    /// </remarks>
+    /// <returns>The string, or null when the codec has none or the configuration does not parse. Never throws.</returns>
+    public string? Rfc6381Codec()
+    {
+        if (DescribeCodec()?.Rfc6381 is { } described)
+        {
+            return described;
+        }
+
+        if (Codec == CodecId.Vp8)
+        {
+            return "vp8";
+        }
+
+        return (Codec.Name, CodecTag) switch
+        {
+            ("tx3g", "tx3g") => "tx3g",
+            ("webvtt", "wvtt") => "wvtt",
+            ("ttml", "stpp") => "stpp",
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Where a packet's first sample sits on the presentation timeline once the track's edit information is applied:
+    /// <c>Pts - Edit.Priming + Edit.StartTime</c>, in the packet time's own timescale.
+    /// </summary>
+    /// <remarks>
+    /// <para><see cref="TrackEditInfo.Priming"/> is subtracted for every container: an ISO edit list's first <c>media_time</c> (ISO/IEC 14496-12
+    /// §8.6.6), a Matroska <c>CodecDelay</c> (RFC 9559, "subtracted from each block timestamp"), an Opus pre-skip, an MP3 encoder delay. So the first
+    /// audio packet of an AAC track with 2112 samples of delay lands at minus 2112 samples: the decoder drops that much output, and the first
+    /// audible sample is at zero.</para>
+    /// <para><see cref="TrackEditInfo.StartTime"/> is added only when the track has an edit list (<see cref="TrackEditInfo.Edits"/> is not null),
+    /// where it is the length of the leading empty edits that delay the track. Transport and program streams also fill <c>StartTime</c>, with the
+    /// track's first time stamp, but their packet times already carry it, so nothing is added for them.</para>
+    /// <para>Only the first non-empty edit is applied; later segments of a multi-segment edit list (cuts, repeats) are not mapped. Read
+    /// <see cref="TrackEditInfo.Edits"/> for those. The result is not clamped: a packet that precedes the first presented sample has a
+    /// negative time, and carries <see cref="PacketAttributes.Discard"/> when it ends before it.</para>
+    /// </remarks>
+    /// <param name="pts">A packet's <see cref="PacketInfo.Pts"/> (or any media time of this track).</param>
+    /// <param name="rounding">How to round when the priming or start time is not a whole number of <paramref name="pts"/>'s ticks. Default: nearest, ties away from zero.</param>
+    /// <returns>The presentation time, or <see cref="MediaTime.Unknown"/> when <paramref name="pts"/> is unknown.</returns>
+    /// <exception cref="OverflowException">The result does not fit in 64 bits.</exception>
+    public MediaTime PresentationTime(MediaTime pts, MediaRounding rounding = MediaRounding.NearestAwayFromZero)
+    {
+        if (!pts.IsKnown)
+        {
+            return MediaTime.Unknown;
+        }
+
+        MediaTime t = pts;
+        if (Edit.Priming.IsKnown && !Edit.Priming.IsZero)
+        {
+            t = t.Subtract(Edit.Priming, rounding);
+        }
+
+        if (Edit.Edits is not null && Edit.StartTime.IsKnown && !Edit.StartTime.IsZero)
+        {
+            t = t.Add(Edit.StartTime, rounding);
+        }
+
+        return t;
+    }
+
+    /// <summary>A packet's presentation time on the track's timeline; see <see cref="PresentationTime(MediaTime, MediaRounding)"/>.</summary>
+    /// <param name="packet">The packet, from this track.</param>
+    /// <param name="rounding">How to round an inexact result.</param>
+    /// <returns>The time of the packet's <see cref="PacketInfo.Pts"/> after priming and start placement.</returns>
+    public MediaTime PresentationTime(in PacketInfo packet, MediaRounding rounding = MediaRounding.NearestAwayFromZero) => PresentationTime(packet.Pts, rounding);
+
     /// <summary>Number of packets (samples, frames) when the container's index says, else -1.</summary>
     public long PacketCount { get; init; } = -1;
 

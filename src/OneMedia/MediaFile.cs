@@ -48,6 +48,40 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Opens a source that can only be read once, front to back (a pipe, a socket, a non-seekable stream), with the registered formats that
+    /// can be read that way: Matroska/WebM, MP4 whose layout allows it (fragmented, or <c>moov</c> before <c>mdat</c>), ASF and the
+    /// elementary-stream formats. The file owns the source and disposes it, also when opening fails.
+    /// </summary>
+    /// <remarks>
+    /// Such a file can be read once. A second <see cref="Packets"/> pass, or reading another track after the first, raises
+    /// <see cref="MediaReadStateException"/> with <see cref="MediaReadStateReason.CannotRewind"/>; open the data again to read it twice.
+    /// </remarks>
+    /// <param name="source">The source, from its first byte.</param>
+    /// <param name="registry">The formats to try; <see cref="MediaFormats.Default"/> when null.</param>
+    /// <param name="options">Limits and defect log; <see cref="MediaOpenOptions.LeaveOpen"/> is honoured.</param>
+    /// <param name="cancellationToken">Observed while the headers are read.</param>
+    /// <returns>The opened file; the caller disposes it.</returns>
+    /// <exception cref="UnsupportedMediaException">The data is not recognised, or its format needs a seekable source.</exception>
+    /// <exception cref="MediaFormatException">The data is not valid for its format.</exception>
+    public static MediaFile Open(IForwardMediaSource source, MediaFormatRegistry? registry = null, MediaOpenOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        try
+        {
+            return new MediaFile((registry ?? MediaFormats.Default).Open(source, options, cancellationToken), null);
+        }
+        catch
+        {
+            if (options?.LeaveOpen != true)
+            {
+                source.Dispose();
+            }
+
+            throw;
+        }
+    }
+
     /// <summary>Opens an asynchronous (ranged or remote) source with the registered formats.</summary>
     /// <param name="source">The source, from offset 0.</param>
     /// <param name="registry">The formats to try; <see cref="MediaFormats.Default"/> when null.</param>
@@ -317,12 +351,11 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// </remarks>
     /// <param name="track">The track.</param>
     /// <returns>The packets in storage order.</returns>
-    /// <exception cref="InvalidOperationException">The file was opened from an asynchronous source; use <see cref="PacketsAsync"/>.</exception>
-    /// <exception cref="MediaReadStateException">When enumeration starts: the file was read before and its source cannot seek (<see cref="MediaReadStateReason.CannotRewind"/>); or while enumerating: another read of the file began (<see cref="MediaReadStateReason.Superseded"/>).</exception>
+    /// <exception cref="MediaReadStateException">When enumeration starts: the file was opened from an asynchronous source, so use <see cref="PacketsAsync"/> (<see cref="MediaReadStateReason.AsynchronousSource"/>); the file was read before and its source cannot seek (<see cref="MediaReadStateReason.CannotRewind"/>); or while enumerating: another read of the file began (<see cref="MediaReadStateReason.Superseded"/>).</exception>
     public IEnumerable<OwnedPacket> Packets(MediaTrack track)
     {
         ArgumentNullException.ThrowIfNull(track);
-        IDemuxer demuxer = _sync ?? throw new InvalidOperationException("This file was opened from an asynchronous source; use PacketsAsync.");
+        IDemuxer demuxer = _sync ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "This file was opened from an asynchronous source; use PacketsAsync.");
         foreach (MediaTrack t in demuxer.Tracks)
         {
             demuxer.SetTrackEnabled(t.Index, t.Index == track.Index);
