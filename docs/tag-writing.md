@@ -71,10 +71,32 @@ Generated from the mapping table (`tag-mapping.md`): the first key of the field'
 - **WAV/RF64.** `LIST INFO` (rebuilt from the existing sub-chunks), `bext` fields (Description, OriginationDate and native `Originator`, `OriginatorReference`, `OriginationTime`, same size so in place),
   `id3 ` chunk. **AIFF.** `NAME`, `AUTH`, `(c) `, `ANNO`, `ID3 ` chunk. Pictures create an ID3 chunk. AVI and Wave64 are not edit targets.
 
+- **ASF/WMA/WMV.** The Content Description (title, author, copyright, description, rating) and the Extended Content Description (`WM/*` attributes; unicode text, `WM/SharedUserRating` as a
+  DWORD, `WM/Picture` for pictures) are rebuilt; every other attribute is carried as its bytes. All other header objects are copied; only the Header Object's size and child count, the File
+  Properties' file size (when it equalled the old size) and the Header Extension's size change. Data packets and index objects refer to packets, not to file offsets, so nothing after the header
+  needs fixing. A Padding object in the Header Extension absorbs growth and shrinkage, which makes the edit in-place capable; without one, growth adds a padding object of `PaddingBytes`.
+  A picture over 65,535 bytes is not written (the Extended Content Description's value size) and a note says so; attributes in Metadata and Metadata Library objects (per-stream attributes,
+  large pictures) are read but not edited. A text over 65,535 bytes, or a file with content encryption objects, is refused with `UnsupportedMediaException`. The layouts are those of `asf.md`
+  (observed files and ExifTool's tag documentation); the format's own specification is not used. ASF has no comment field: `Comment` is not representable, `Description` is.
+- **XMP.** A packet in a `uuid` box (BE7ACFCB-97A9-42E8-9C71-999491E3AFAC, beside `moov` or in it) is edited in place of its box; one is created at the end of the file only when XMP is named in
+  `TagWriteOptions.Systems`. Title, Artist (first creator), Description, Copyright, Keywords (`dc:`) and Date (`xmp:CreateDate`) are written as elements of the first `rdf:Description`; the
+  same property in attribute form is removed; every other property, namespace and attribute stays. Title, Description and Copyright become one `x-default` language alternative (other languages
+  of that property are dropped and named). The packet keeps its length when the result fits (the `xpacket` whitespace padding absorbs it), else it grows by 2 KiB of padding. A packet that is
+  not well-formed XML is refused. `XMP_` atoms in `udta` are not edited.
+- **iXML.** The `iXML` chunk of a WAVE file is edited by native key only (the iXML specification has no common-view field): `SetNative("ixml", "PROJECT", ...)`, key = element path below the
+  root, for example `BEXT/BWF_ORIGINATOR`. Other elements are kept; a document that gets shorter is padded with spaces to its old length so the chunk keeps its size; the document is written
+  as UTF-8 (a different declared encoding is converted and noted). A chunk is created when iXML is named in `Systems`.
+
+## Chunks and boxes added after an unpadded chunk
+
+A chunk of odd length at the end of a RIFF/IFF file may lack its pad byte. The first chunk added after it carries one zero pad byte so the new chunk starts on an even offset; chunks added
+after that start on even offsets already (found by the check on `wav-alaw.wav` and `Fnonull.aif`, where each added chunk used to add its own pad byte and shifted the next one). The box,
+EBML and chunk editors refuse (`ArgumentException`) an addition inside an element that another edit replaces or removes, instead of losing it.
+
 ## Not done
 
-ASF descriptors, XMP packets in `uuid`/`meta`, iXML, Speex/Theora comments, ID3 tag-wide unsynchronisation, ID3v2 at the end of a file, QuickTime `mdta` key creation when the file has no
-`keys` box, picture dimensions in FLAC PICTURE blocks (written as 0).
+Speex/Theora comments, ID3 tag-wide unsynchronisation, ID3v2 at the end of a file, QuickTime `mdta` key creation when the file has no `keys` box, picture dimensions in FLAC PICTURE blocks
+(written as 0), XMP in `XMP_` atoms and in files other than ISO BMFF, ASF Metadata/Metadata Library attributes, 3GPP text boxes.
 
 ## Checks
 
