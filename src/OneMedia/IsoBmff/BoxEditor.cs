@@ -197,7 +197,8 @@ public sealed class BoxEditor
         return rw.Rewrite().ToPlan(_tree.Length, used, available, required);
     }
 
-    private static bool IsPadding(BoxNode n) => n.Type is BoxTypes.Free or BoxTypes.Skip;
+    // A free box whose size was inferred or cut down to fit (a damaged file) may hide real boxes inside the bytes it claims; it is not padding to reuse.
+    private static bool IsPadding(BoxNode n) => n.Type is BoxTypes.Free or BoxTypes.Skip && !n.IsSizeInferred && !n.Header.IsClamped;
 
     private static long TotalSize(BoxNode n) => n.Header.End - n.Offset;
 

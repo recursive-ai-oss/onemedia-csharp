@@ -217,7 +217,8 @@ public sealed class EbmlEditor
         return rw.Rewrite().ToPlan(_source.Length, used, available, required);
     }
 
-    private static bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void;
+    // A Void whose stated size was cut down to fit (a damaged file) may hide real elements inside the bytes it claims; it is not padding to reuse.
+    private static bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred;
 
     private static long TotalSize(EbmlElement e) => e.HeaderSize + e.PayloadSize;
 

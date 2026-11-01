@@ -163,7 +163,8 @@ public sealed class ChunkEditor
         return false;
     }
 
-    private bool IsPadding(ChunkNode n) => _file.Layout switch
+    // A padding chunk whose size was inferred (a damaged file) may hide real chunks inside the bytes it claims; it is not padding to reuse.
+    private bool IsPadding(ChunkNode n) => !n.IsSizeInferred && _file.Layout switch
     {
         ChunkLayout.Wave64 => n.ChunkGuid == ChunkBuilder.Wave64Junk,
         ChunkLayout.Iff => n.Id is "JUNK" or "FLLR" or "PAD ",

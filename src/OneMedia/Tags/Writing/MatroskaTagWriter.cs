@@ -185,7 +185,9 @@ internal static class MatroskaTagWriter
                 break;
             }
 
-            if (c.Id != 0xEC && !blocked.Contains(c.Offset))
+            // The SeekHead and Cues hold positions that the editor moves when something is inserted; an element that is replaced is skipped by that
+            // pass, so neither can be the anchor. A Void is no anchor either.
+            if (c.Id is not (0xEC or 0x114D9B74 or 0x1C53BB6B) && !blocked.Contains(c.Offset))
             {
                 candidates.Add(c);
             }
