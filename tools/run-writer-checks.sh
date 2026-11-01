@@ -8,6 +8,7 @@
 #   tools/run-writer-checks.sh inplace     [corpus-dir]
 #   tools/run-writer-checks.sh large       <file>...       one big file each: edit with peak memory
 #   tools/run-writer-checks.sh kill        <file> [rounds] kill -9 an atomic Save at several points
+#   tools/run-writer-checks.sh promote     <moov-last.mp4> grow a moov-first MP4 across 4 GiB (stco -> co64) and a plain WAVE across 4 GiB (-> RF64)
 #
 # Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), OUT (default ~/onemedia/u25-writer/out), JOBS (default 6),
 # MAXSIZE (bytes, default 1 GiB: larger files are left to the "large" stage).
@@ -101,20 +102,53 @@ kill)
   want=$(sha256sum "$f" | cut -d' ' -f1)
   d="$WORK/kill"; rm -rf "$d"; mkdir -p "$d"
   # What a Save that is allowed to finish produces (the result is deterministic).
-  cp "$f" "$d/target.${f##*.}"; $TOOL save "$d/target.${f##*.}" > /dev/null 2>&1; finished=$(sha256sum "$d/target.${f##*.}" | cut -d' ' -f1); rm -rf "$d"; mkdir -p "$d"
+  cp "$f" "$d/target.${f##*.}"; t0=$(date +%s%N); $TOOL save "$d/target.${f##*.}" > /dev/null 2>&1; ms=$(( ($(date +%s%N) - t0) / 1000000 )); echo "an uninterrupted Save takes $ms ms"; finished=$(sha256sum "$d/target.${f##*.}" | cut -d' ' -f1); rm -rf "$d"; mkdir -p "$d"
   for i in $(seq 1 "$rounds"); do
     cp "$f" "$d/target.bin"; mv "$d/target.bin" "$d/target.${f##*.}"; t="$d/target.${f##*.}"
     $TOOL save "$t" > /dev/null 2>&1 &
     pid=$!
-    sleep "0.$(printf '%02d' $((RANDOM % 90 + 5)))"
+    # Kill somewhere between 5% and 100% of an uninterrupted Save (process start-up included).
+    delay=$(( ms * (5 + RANDOM % 96) / 100 )); sleep "$(printf '%d.%03d' $((delay / 1000)) $((delay % 1000)))"
     kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
     now=$(sha256sum "$t" | cut -d' ' -f1)
     stray=$(find "$d" -name '.*.tmp' | wc -l); others=$(find "$d" -type f -not -name 'target.*' -not -name '.*.tmp' | wc -l)
     state=CORRUPT; [ "$now" = "$want" ] && state=original-intact; [ "$now" = "$finished" ] && state=save-completed
-    echo -e "round $i\t$state\tstray-temp-files=$stray\tother-files=$others"
+    tsz=$(stat -c %s "$d"/.*.tmp 2>/dev/null | head -1)
+    echo -e "round $i\t$state\tkilled-at=${delay}ms\ttemp-bytes-written=${tsz:-none}\tstray-temp-files=$stray\tother-files=$others"
     rm -rf "$d"; mkdir -p "$d"
   done
   ;;
+promote)
+  big=$2; d="$WORK/promote"; rm -rf "$d"; mkdir -p "$d"
+  fp() { ffprobe -v error -show_packets -show_data_hash CRC32 -show_entries packet=stream_index,pts,dts,duration,size,flags,data_hash -of csv=p=0 "$1" 2>&1 | md5sum | cut -c1-12; }
+  # 1. A moov-first MP4 whose chunk offsets all fit 32 bits but whose end sits within a few MB of 4 GiB.
+  for t in 830 826 822 818 814; do
+    ffmpeg -v error -y -t $t -i "$big" -c copy -movflags +faststart "$d/near4g.mp4"
+    sz=$(stat -c %s "$d/near4g.mp4"); echo "trial -t $t: $sz bytes"
+    [ "$sz" -lt 4290000000 ] && break
+  done
+  /usr/bin/time -v $TOOL grow "$d/near4g.mp4" "$d/grown.mp4" 16777216 > "$OUT/promote-mp4.out" 2> "$OUT/promote-mp4.time"
+  cut -c1-400 "$OUT/promote-mp4.out"; grep -E 'Maximum resident|Elapsed' "$OUT/promote-mp4.time"
+  echo "ffprobe packets in=$(fp "$d/near4g.mp4") out=$(fp "$d/grown.mp4")"
+  echo "stco/co64 in: $(MP4Box -info "$d/near4g.mp4" 2>&1 | grep -c -i 'error')  out: $(MP4Box -info "$d/grown.mp4" 2>&1 | grep -c -i 'error') MP4Box error lines"
+  $TOOL hash "$d/near4g.mp4" | md5sum | cut -c1-12; $TOOL hash "$d/grown.mp4" | md5sum | cut -c1-12
+  rm -f "$d/near4g.mp4" "$d/grown.mp4"
+  # 2. A plain WAVE just under 4 GiB (sparse), grown by 16 MB: the outer size no longer fits 32 bits, so the file becomes RF64.
+  python3 - "$d/plain.wav" <<'PY'
+import struct, sys
+data = 4290000000
+with open(sys.argv[1], "wb") as f:
+    fmt = struct.pack("<HHIIHH", 1, 2, 48000, 192000, 4, 16)
+    f.write(b"RIFF" + struct.pack("<I", 4 + 8 + len(fmt) + 8 + data) + b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", data))
+    f.truncate(12 + 8 + len(fmt) + 8 + data)
+PY
+  /usr/bin/time -v $TOOL grow "$d/plain.wav" "$d/grown.wav" 16777216 > "$OUT/promote-wav.out" 2> "$OUT/promote-wav.time"
+  cut -c1-500 "$OUT/promote-wav.out"; grep -E 'Maximum resident|Elapsed' "$OUT/promote-wav.time"
+  xxd -l 64 "$d/grown.wav"
+  ffprobe -v error -show_entries format=format_name,duration,size -show_entries stream=codec_name,channels,sample_rate -of default=nw=1 "$d/grown.wav"
+  ffprobe -v error -show_entries format=duration -of csv=p=0 "$d/plain.wav"
+  rm -rf "$d"
+  ;;
 *)
-  sed -n '2,12p' "$0"; exit 2 ;;
+  sed -n '2,13p' "$0"; exit 2 ;;
 esac

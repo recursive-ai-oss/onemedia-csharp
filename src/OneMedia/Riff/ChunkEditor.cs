@@ -210,7 +210,7 @@ public sealed class ChunkEditor
         }
 
         long rootPayloadEnd = root.Offset + root.HeaderSize + root.PayloadSize;
-        if (!root.IsSizeInferred && !shift.IsEmpty)
+        if ((!root.IsSizeInferred || root.StatedEndPastFile) && !shift.IsEmpty)
         {
             AdjustLargeSizes(rw, shift, consumed, rootPayloadEnd, cancellationToken);
         }
@@ -508,7 +508,9 @@ public sealed class ChunkEditor
             long region = node.HeaderSize + Prefix;
             long newPayload = Prefix + areaLength;
             bool root = node.Offset == _file.Root.Offset;
-            if (node.IsSizeInferred || (!_regenerate && !(root && Promote) && newPayload == node.PayloadSize))
+            // A size that overshoots the end of the file (some writers state the file length instead of the length minus the header) is
+            // replaced by the real one once content moves; an unbounded size (all ones, or zero) keeps meaning 'to the end'.
+            if ((node.IsSizeInferred && !(node.StatedEndPastFile && newPayload != node.PayloadSize)) || (!_regenerate && !(root && Promote) && newPayload == node.PayloadSize))
             {
                 into.AddCopy(node.Offset, region);
                 return;

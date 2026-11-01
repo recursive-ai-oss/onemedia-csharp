@@ -333,4 +333,113 @@ public class RiffWriterTests
         EditPlan strict = new ChunkEditor(cf, src) { RewriteHeaders = true }.Build();
         Assert.Equal(file, WriterTestSupport.Apply(strict, file));
     }
+
+    private static byte[] Chunk(string id, byte[] payload)
+    {
+        byte[] c = new byte[8 + payload.Length + (payload.Length & 1)];
+        System.Text.Encoding.ASCII.GetBytes(id, c);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(c.AsSpan(4), (uint)payload.Length);
+        payload.CopyTo(c, 8);
+        return c;
+    }
+
+    // A small WAVE file; rootSizeDelta moves the stated RIFF size away from the true one (writers that state the file length get +8).
+    private static byte[] Wave(int rootSizeDelta, int dataBytes, byte[]? junk = null)
+    {
+        byte[] fmt = new byte[16];
+        fmt[0] = 1;
+        fmt[2] = 1;
+        fmt[4] = 0x40;
+        fmt[5] = 0x1F;
+        fmt[8] = 0x80;
+        fmt[9] = 0x3E;
+        fmt[12] = 2;
+        fmt[14] = 16;
+        List<byte> body = [.. "WAVE"u8.ToArray(), .. Chunk("fmt ", fmt)];
+        if (junk is not null)
+        {
+            body.AddRange(Chunk("JUNK", junk));
+        }
+
+        body.AddRange(Chunk("data", new byte[dataBytes]));
+        byte[] file = new byte[8 + body.Count];
+        "RIFF"u8.CopyTo(file);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(4), (uint)(body.Count + rootSizeDelta));
+        body.CopyTo(file, 8);
+        return file;
+    }
+
+    [Fact]
+    public void AppendingToAFileWhoseOuterSizeOvershootsStatesTheRealSize()
+    {
+        byte[] file = Wave(rootSizeDelta: 8, dataBytes: 100);
+        using MemoryMediaSource src = new(file);
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+        Assert.True(cf.Root.StatedEndPastFile);
+        ChunkEditor e = new(cf, src);
+        e.AppendChild(null, ChunkBuilder.CreatePadding(cf.Layout, 64));
+        byte[] output = WriterTestSupport.Apply(e.Build(), file);
+        Assert.Equal(file.Length + 64, output.Length);
+        Assert.Equal(output.Length - 8, (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(output.AsSpan(4)));
+        using MemoryMediaSource back = new(output);
+        ChunkFile reopened = ChunkFile.TryOpen(back, MediaLimits.Default, new DefectLog())!;
+        Assert.False(reopened.Root.StatedEndPastFile);
+        Assert.Equal("JUNK", reopened.Root.Chunks[^1].Id);
+    }
+
+    [Fact]
+    public void AppendingAfterACutOffChunkIsRefused()
+    {
+        byte[] file = Wave(rootSizeDelta: 0, dataBytes: 100);
+        byte[] cut = file[..^10];
+        using MemoryMediaSource src = new(cut);
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+        ChunkEditor e = new(cf, src);
+        e.AppendChild(null, ChunkBuilder.CreatePadding(cf.Layout, 64));
+        Assert.Throws<UnsupportedMediaException>(() => e.Build());
+    }
+
+    [Fact]
+    public void RiffEditFitsJunkInPlaceAndRefusesWhenTooLarge()
+    {
+        byte[] file = Wave(rootSizeDelta: 0, dataBytes: 100, junk: new byte[200]);
+        string path = Path.Combine(Path.GetTempPath(), "onemedia-riff-" + Guid.NewGuid().ToString("N") + ".wav");
+        File.WriteAllBytes(path, file);
+        try
+        {
+            byte[] list = ChunkBuilder.CreateList(ChunkLayout.Riff, "INFO", Chunk("INAM", "hello\0"u8.ToArray()));
+            using (MemoryMediaSource src = new(file))
+            {
+                ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+                ChunkEditor e = new(cf, src);
+                e.Replace(cf.Chunks.First(c => c.Id == "JUNK"), list);
+                EditPlan plan = e.Build();
+                Assert.True(plan.IsSameLayout);
+                WriteReport r = SafeWriter.SaveInPlace(plan, path);
+                Assert.Equal(file.Length, new FileInfo(path).Length);
+                Assert.NotEmpty(r.Changes);
+            }
+
+            byte[] after = File.ReadAllBytes(path);
+            Assert.NotEqual(file, after);
+            Assert.Equal(file.AsSpan(0, 36).ToArray(), after.AsSpan(0, 36).ToArray());
+            Assert.Equal(file.AsSpan(file.Length - 108).ToArray(), after.AsSpan(after.Length - 108).ToArray());
+
+            using (MemoryMediaSource src = new(after))
+            {
+                ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+                ChunkEditor e = new(cf, src);
+                e.Replace(cf.Chunks.First(c => c.Id == "LIST"), ChunkBuilder.CreateList(ChunkLayout.Riff, "INFO", Chunk("INAM", new byte[5000])));
+                EditPlan plan = e.Build();
+                Assert.False(plan.IsSameLayout);
+                Assert.Throws<PaddingRequiredException>(() => SafeWriter.SaveInPlace(plan, path));
+            }
+
+            Assert.Equal(after, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

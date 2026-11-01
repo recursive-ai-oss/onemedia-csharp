@@ -522,14 +522,3 @@ internal static class PieceWriter
         }
     }
 }
-
-/// <summary>Big-endian helpers shared by the box writers.</summary>
-internal static class WriteBytes
-{
-    public static byte[] U32(uint value)
-    {
-        byte[] b = new byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(b, value);
-        return b;
-    }
-}

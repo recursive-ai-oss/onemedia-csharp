@@ -36,6 +36,7 @@ internal static class Checker
                 "hash" => Hash(args[1]),
                 "inplace" => InPlace(args[1], args[2]),
                 "save" => Save(args[1]),
+                "grow" => Grow(args[1], args[2], long.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture)),
                 _ => 2,
             };
         }
@@ -345,6 +346,52 @@ internal static class Checker
         return 0;
     }
 
+    // Adds a padding element of the given size at the end of the metadata area (the movie box, the segment, the outer chunk): the
+    // layout moves, so chunk offsets, SeekHead positions or the RIFF size have to follow, including promotion past 4 GiB.
+    private static int Grow(string input, string output, long bytes)
+    {
+        Family family = Detect(input);
+        Stopwatch sw = Stopwatch.StartNew();
+        EditPlan plan;
+        using (FileMediaSource src = FileMediaSource.Open(input))
+        {
+            switch (family)
+            {
+                case Family.Iso:
+                    {
+                        BoxTree tree = new(src);
+                        BoxEditor e = new(tree, src);
+                        e.AppendChild(tree.Find(BoxTypes.Moov)!, BoxBuilder.CreateFree(bytes));
+                        plan = e.Build();
+                        break;
+                    }
+
+                case Family.Matroska:
+                    {
+                        EbmlDocument doc = EbmlDocument.Open(src);
+                        EbmlEditor e = new(doc, src);
+                        e.AppendChild(doc.Segment, EbmlWriter.Void(bytes));
+                        plan = e.Build();
+                        break;
+                    }
+
+                default:
+                    {
+                        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+                        ChunkEditor e = new(cf, src);
+                        e.AppendChild(null, ChunkBuilder.CreatePadding(cf.Layout, bytes));
+                        plan = e.Build();
+                        break;
+                    }
+            }
+        }
+
+        WriteReport report = SafeWriter.SaveAs(plan, input, output, overwrite: true);
+        string verify = VerifyCopies(plan, input, output);
+        Console.WriteLine($"{(verify == "ok" ? "OK" : "FAIL")}\t{family}\t{input}\tsameLayout={plan.IsSameLayout}\tsrc={plan.SourceLength}\tout={plan.Length}\tcopied={report.BytesCopied}\twritten={report.BytesWritten}\tcopies={verify}\tchanges={string.Join("|", plan.Changes.Select(c => c.Description))}\t{sw.ElapsedMilliseconds}ms");
+        return 0;
+    }
+
     // Every copied piece must read back from the output exactly as it was in the input.
     private static string VerifyCopies(EditPlan plan, string input, string output)
     {
@@ -423,9 +470,15 @@ internal static class Checker
 
         // 1. A new file with 2 KiB of padding, then the metadata unit written into that padding.
         string padOnly = Path.Combine(workDir, "pad-only" + Path.GetExtension(input));
-        using (FileMediaSource src = FileMediaSource.Open(input))
+        try
         {
+            using FileMediaSource src = FileMediaSource.Open(input);
             SafeWriter.SaveAs(PlanPadded(family, src, null), input, padOnly, overwrite: true);
+        }
+        catch (UnsupportedMediaException e)
+        {
+            Console.WriteLine($"REFUSED\t{family}\t{name}\t{e.Message}");
+            return 0;
         }
 
         using (FileMediaSource src = FileMediaSource.Open(padOnly))
@@ -447,7 +500,7 @@ internal static class Checker
         string fitResult;
         if (!fit.IsSameLayout)
         {
-            fitResult = "NOT-SAME-LAYOUT";
+            fitResult = "NOT-SAME-LAYOUT " + string.Join("; ", fit.Changes.Select(c => $"{c.Description} src={c.Source.Offset}+{c.Source.Length} out={c.Output.Offset}+{c.Output.Length}")) + $" padReq={fit.PaddingRequired} padAvail={fit.PaddingAvailable}";
         }
         else
         {
