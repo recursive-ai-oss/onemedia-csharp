@@ -40,7 +40,7 @@ public sealed class EbmlEditor
     }
 
     /// <summary>
-    /// Diagnostic: re-emit the header of every master element (Clusters excluded) and recompute every CRC-32 instead of copying them.
+    /// Diagnostic: re-emit the header of every master element (Clusters excluded, whose blocks would all have to be parsed) and recompute every CRC-32 instead of copying them.
     /// Untouched files with canonical sizes must still come out byte-identical. Off by default.
     /// </summary>
     public bool RewriteHeaders { get; set; }
@@ -522,10 +522,6 @@ public sealed class EbmlEditor
                     {
                         stack.Push(c);
                     }
-                }
-                else if (e.Id == MatroskaIds.Cluster)
-                {
-                    ForceTouched(e);
                 }
             }
         }

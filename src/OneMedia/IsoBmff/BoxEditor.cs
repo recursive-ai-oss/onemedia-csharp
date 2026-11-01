@@ -760,9 +760,10 @@ public sealed class BoxEditor
             long headerRegion = node.ChildrenOffset - node.Offset;
             long newTotal = headerRegion + areaLength;
             long oldTotal = node.Header.End - node.Offset;
-            if (node.IsSizeInferred || (newTotal == oldTotal && !_regenerate))
+            if (node.IsSizeInferred || (newTotal == oldTotal && (!_regenerate || node.Header.IsClamped)))
             {
-                // A size of 0 ("to the end of the file") stays as it is; an unchanged size needs no new header.
+                // A size of 0 ("to the end of the file") stays as it is, and so does a size that was cut back to fit (a damaged file);
+                // an unchanged size needs no new header.
                 into.AddCopy(node.Offset, headerRegion);
                 return;
             }

@@ -158,7 +158,10 @@ public sealed class ChunkEditor
         _ => n.Id is "JUNK" or "PAD ",
     };
 
-    private static long Slot(ChunkNode n) => n.NextOffset - n.Offset;
+    // A last chunk may lack its pad byte at the end of the file; the slot then ends where the file does.
+    private long Slot(ChunkNode n) => NextOf(n) - n.Offset;
+
+    private long NextOf(ChunkNode n) => Math.Min(n.NextOffset, _source.Length);
 
     private bool Fits(long remainder) => remainder == 0 || remainder >= ChunkBuilder.HeaderSize(_file.Layout);
 
@@ -225,10 +228,10 @@ public sealed class ChunkEditor
         }
         else
         {
-            list.AddCopy(root.Offset, root.NextOffset - root.Offset);
+            list.AddCopy(root.Offset, NextOf(root) - root.Offset);
         }
 
-        list.AddCopy(root.NextOffset, _source.Length - root.NextOffset);
+        list.AddCopy(NextOf(root), _source.Length - NextOf(root));
         return list.ToPlan(_source.Length, used, available, required);
     }
 
@@ -274,7 +277,7 @@ public sealed class ChunkEditor
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? Slot(next) : 0;
                 available += free;
                 required += m > n ? Math.Max(1, m - n - free) : 1;
-                shift.Add(node.NextOffset, m - n);
+                shift.Add(NextOf(node), m - n);
             }
         }
 
@@ -288,7 +291,7 @@ public sealed class ChunkEditor
         PieceList repl = new();
         if (r.Reclaim)
         {
-            shift.Add(node.NextOffset, -n);
+            shift.Add(NextOf(node), -n);
         }
         else
         {
@@ -335,7 +338,7 @@ public sealed class ChunkEditor
         required += Math.Max(1, m - free);
         PieceList added = new();
         added.AddData(bytes);
-        shift.Add(kids.Count > 0 ? kids[^1].NextOffset : parent.Offset + parent.HeaderSize, m);
+        shift.Add(kids.Count > 0 ? NextOf(kids[^1]) : parent.Offset + parent.HeaderSize, m);
         rw.AddAppendChunk(parent, added);
     }
 
@@ -480,7 +483,7 @@ public sealed class ChunkEditor
 
         protected override long ChildEnd(ChunkNode? node) => node is null ? Source.Length : node.Offset + node.HeaderSize + node.PayloadSize;
 
-        protected override long SlotEnd(ChunkNode node) => node.NextOffset;
+        protected override long SlotEnd(ChunkNode node) => Math.Min(node.NextOffset, Source.Length);
 
         protected override void EmitHeader(ChunkNode node, long areaLength, PieceList into)
         {
@@ -530,14 +533,20 @@ public sealed class ChunkEditor
 
         protected override void EmitTrailer(ChunkNode node, long areaLength, PieceList into)
         {
-            if (node.IsSizeInferred)
+            if (node.IsSizeInferred || node.NextOffset > Source.Length)
             {
-                return;
+                return; // an unbounded chunk has no pad, and a file may end without its last pad byte
             }
 
             long payload = Prefix + areaLength;
             long pad = _file.Layout == ChunkLayout.Wave64 ? (-(24 + payload)) & 7 : payload & 1;
-            if (pad > 0)
+            long payloadEnd = node.Offset + node.HeaderSize + node.PayloadSize;
+            long originalPad = Math.Min(node.NextOffset, Source.Length) - payloadEnd;
+            if (pad > 0 && pad == originalPad)
+            {
+                into.AddCopy(payloadEnd, pad); // keep whatever pad bytes the writer of the file used
+            }
+            else if (pad > 0)
             {
                 into.AddData(new byte[pad]);
             }
