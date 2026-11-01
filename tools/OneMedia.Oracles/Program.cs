@@ -11,7 +11,7 @@ internal static class Program
     private const string Usage = """
         OneMedia.Oracles: packet differential, structure listing and I/O harness for the reference tools.
 
-          diff [--family isobmff|matroska|all] [--root DIR] [--out DIR] [--exceptions FILE]
+          diff [--family isobmff|matroska|asf|all] [--root DIR] [--out DIR] [--exceptions FILE]
                [--jobs N] [--budget MINUTES] [--resume] [--audio] [FILES...]
               Compare our demuxer's packets with ffprobe's (track, pts, dts, duration, size, pos, key, payload hash).
               --audio adds OneAudio's Mp4PacketSource (MP4/3GP) and Ogg comparisons for audio tracks.
@@ -23,10 +23,13 @@ internal static class Program
               Compare Media.Open (tracks, codecs, sizes, rates, languages, duration) with ffprobe.
           audiodecode [--family F] [--out DIR] [FILES...]
               Decode the first audio stream through the OneMedia adapter and through OneAudio's own path; compare samples.
+          drain FILES...                       Read every packet through Media.Open; packets, bytes, allocation after warm-up, peak working set.
           packetset FILES...                   Compare which stored samples (file position and size) ffprobe and we list, ignoring time.
           audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
           meta [--family F] [--out DIR] [FILES...]
               Compare our tags and basic facts with ExifTool and MediaInfo field by field; writes metadata-compare.tsv.
+          atlcompare [--family F] [--out DIR] [FILES...]
+              Compare the common tag view with ATL.NET field by field; writes atl-compare.tsv.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
           selftest [FILES...]                  Check the harness against exact and deliberately wrong fake formats.
           list [--family F] [--root DIR]       Print the files a family selects.
@@ -37,6 +40,8 @@ internal static class Program
     private static readonly string[] IsoExtensions = [".mp4", ".m4a", ".m4v", ".mov", ".3gp", ".3g2", ".ismv", ".qt"];
     private static readonly string[] OggExtensions = [".ogg", ".opus", ".oga"];
     private static readonly string[] MatroskaExtensions = [".mkv", ".mka", ".webm", ".mk3d", ".mks"];
+
+    private static readonly string[] AsfExtensions = [".asf", ".wma", ".wmv", ".wm", ".dvr-ms"];
 
     public static int Main(string[] args)
     {
@@ -52,9 +57,13 @@ internal static class Program
             case "diff": return Diff(o);
             case "structure": return Structure(o);
             case "io": return Io(o);
-            case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
+            case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), o.Exceptions is null ? Oracles.Exceptions.None : Oracles.Exceptions.Load(o.Exceptions));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
+            case "drain": return DrainCheck.Run(o.Files);
             case "packetset": return PacketSets.Run(o.Files);
+            case "atlcompare": return AtlCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
+            case "asfinfo": return AsfInfo.Run(o.Files);
+            case "asfseek": return AsfSeekCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, "asf"));
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "metadump": return MetadataCompare.Dump(o.Files.Select(Path.GetFullPath).ToList());
@@ -122,7 +131,13 @@ internal static class Program
         {
             "isobmff" => IsoExtensions,
             "matroska" => MatroskaExtensions,
-            _ => [.. IsoExtensions, .. MatroskaExtensions],
+            "asf" => AsfExtensions,
+            "mpa" => [".mp3", ".mp2", ".mpa"],
+            "adts" => [".aac"],
+            "ac3" => [".ac3", ".eac3", ".ec3"],
+            "amr" => [".amr", ".awb"],
+            "audio-es" => [".mp3", ".mp2", ".mpa", ".aac", ".ac3", ".eac3", ".ec3", ".amr", ".awb"],
+            _ => [.. IsoExtensions, .. MatroskaExtensions, .. AsfExtensions],
         };
         List<string> files = [];
         foreach (string f in Directory.EnumerateFiles(o.Root, "*", SearchOption.AllDirectories))
@@ -170,7 +185,17 @@ internal static class Program
                 List<ProbeStream> streams = FfprobeReader.ReadStreams(file);
                 if (streams.Count == 0)
                 {
-                    report = new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" };
+                    // A file ffprobe finds no streams in is agreed on when we reject it too (typed, without an exception).
+                    OurResult rejected = OurReader.Read(registry, file);
+                    report = rejected.Status == "ok"
+                        ? new FileReport { File = file, Status = "error", Message = "ffprobe reports no streams" }
+                        : new FileReport { File = file, Status = "ok", Message = $"neither reads the file: ffprobe finds no streams, ours: {rejected.Message}" };
+                    // A scoped "open" rule accepts files the oracle itself cannot open.
+                    if (report.Status != "ok" && exceptions.Match("*", "open", file, null, "", "", "", false, false, 0) is not null)
+                    {
+                        report = new FileReport { File = file, Status = "ok" };
+                        report.Excepted["open"] = 1;
+                    }
                 }
                 else
                 {

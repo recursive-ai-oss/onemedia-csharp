@@ -27,6 +27,20 @@ public static class TagSystems
 
     /// <summary>The XMP packet carried in a <c>uuid</c> or <c>XMP_</c> box.</summary>
     public const string Xmp = "xmp";
+
+    /// <summary>Tags of an ASF file: the content description, extended content description and metadata objects.</summary>
+    public const string Asf = "asf";
+    /// <summary>ID3v2.2, 2.3 and 2.4 frames. Keys are the frame identifiers as stored (<c>TIT2</c>, <c>TT2</c>), with a <c>:description</c> suffix for frames that carry one.</summary>
+    public const string Id3v2 = "id3v2";
+
+    /// <summary>ID3v1 and ID3v1.1 fields (<c>title</c>, <c>artist</c>, <c>album</c>, <c>year</c>, <c>comment</c>, <c>track</c>, <c>genre</c>).</summary>
+    public const string Id3v1 = "id3v1";
+
+    /// <summary>APEv2 items, keyed by the item key as stored.</summary>
+    public const string Ape = "ape";
+
+    /// <summary>Lyrics3 v2.00 fields (and the block itself when it cannot be split), keyed by the three-letter field code.</summary>
+    public const string Lyrics3 = "lyrics3";
 }
 
 /// <summary>How the bytes of a <see cref="NativeTag"/> value are to be read.</summary>
@@ -107,6 +121,12 @@ public sealed class NativeTag
     /// <summary>The whole item in the file, header included (the box that a writer replaces).</summary>
     public ByteRange Range { get; }
 
+    /// <summary>
+    /// Reads the value from memory instead of the source when the stored bytes are not the value (an unsynchronised, compressed or
+    /// otherwise transformed ID3 frame). Null for tags whose value is the bytes at <see cref="ValueRange"/>.
+    /// </summary>
+    internal Func<byte[]>? Loader { get; init; }
+
     /// <summary>Just the value bytes (after the type and locale fields of a <c>data</c> atom).</summary>
     public ByteRange ValueRange { get; }
 
@@ -115,6 +135,14 @@ public sealed class NativeTag
 
     /// <summary>For <see cref="TagValueKind.Image"/>, the media type (<c>image/jpeg</c>, <c>image/png</c>, <c>image/bmp</c>, <c>image/gif</c>); else <c>null</c>.</summary>
     public string? MimeType { get; internal set; }
+
+    /// <summary>For a picture, the role the file states for it, as an ID3v2 picture type number (3 is the front cover); null when the system does not state one.</summary>
+    public int? PictureTypeNumber { get; internal set; }
+    /// <summary>For <see cref="TagValueKind.Image"/> in tag systems that name the picture's role (ID3v2 attached pictures), the role; else <c>null</c>.</summary>
+    public PictureType? PictureRole { get; internal set; }
+
+    /// <summary>A free-text description the tag system attaches to the value (the content description of an ID3v2 comment or picture); else <c>null</c>.</summary>
+    public string? Description { get; internal set; }
 
     /// <summary>The whole number for <see cref="TagValueKind.Number"/> values, else <c>null</c>.</summary>
     public long? Number { get; internal set; }
@@ -176,7 +204,7 @@ public sealed class NativeTag
             _io.Limits.CheckTag(ValueRange.Length, ValueRange.Offset);
         }
 
-        return _io.Read(ValueRange);
+        return Loader is not null ? Loader() : _io.Read(ValueRange);
     }
 
     private string? LoadText()
@@ -191,7 +219,7 @@ public sealed class NativeTag
             return null;
         }
 
-        return TextDecoder.Decode(_io.Read(ValueRange), Encoding, ValueRange.Offset, _io.Defects);
+        return TextDecoder.Decode(Loader is not null ? Loader() : _io.Read(ValueRange), Encoding, ValueRange.Offset, _io.Defects);
     }
 
     /// <inheritdoc />
@@ -204,6 +232,8 @@ internal enum TagTextEncoding
     Utf8,
     Utf16BigEndian,
     Utf16WithByteOrderMark,
+    Utf16LittleEndian,
+    Latin1,
 }
 
 /// <summary>Where tag values are read from: the source, the limits, and where defects go.</summary>
@@ -250,6 +280,16 @@ internal static class TextDecoder
         if (encoding == TagTextEncoding.Utf16BigEndian)
         {
             return DecodeUtf16Be(bytes, offset, defects);
+        }
+
+        if (encoding == TagTextEncoding.Utf16LittleEndian)
+        {
+            return DecodeUtf16Le(bytes, offset, defects);
+        }
+
+        if (encoding == TagTextEncoding.Latin1)
+        {
+            return TrimNul(System.Text.Encoding.Latin1.GetString(bytes));
         }
 
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)

@@ -4,6 +4,24 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- ASF/WMV/WMA reading (`RecursiveAI.OneMedia.Asf`, `docs/asf.md`): header objects as a range tree, packets in file order with exact presentation times, keyframe seeks, audio de-scrambling, forward-only and ranged sources, `Protected` for DRM files (`MediaFile.IsProtected`), and native `asf` tags (Content Description, extended attributes, Metadata and Metadata Library, WM/Picture) in the common view. Content Description's description is `Description`. Tags and packets agree with ffprobe, ExifTool, MediaInfo and ATL.NET on the corpus; WMA audio does not decode, MP3 in ASF does through `.Audio`.
+- New codec ids for ASF: `Mp2`, `WmaV1`, `WmaV2`, `WmaPro`, `WmaLossless`, `WmaVoice`, `Mpeg4`, `Wmv1`, `Wmv2`, `Wmv3`, `Vc1`.
+- MPEG transport streams (188, 192 M2TS/MTS and 204-byte packets, PSI, service names, AVCHD camera data), program streams and VOB (MPEG-1 and MPEG-2, DVD streams), and elementary video: Annex B H.264/HEVC/VVC, MPEG-1/2 video and AV1 OBU, plus IVF. Access-unit, audio-frame and PES packets with exact 90 kHz times, field-picture and repeated-field timing, key frames from the bitstream, damage handling with typed defects, and a fixed-size probe (1.58 MB read from a 2.37 GB transport stream, 0 bytes allocated per packet). Details and every difference from ffprobe 7.0.2 in `docs/mpeg.md`.
+- Audio elementary streams: MPEG audio (MP1/MP2/MP3, MPEG-2.5; Xing, Info, LAME and VBRI tags, free-format frames, resynchronisation with typed defects), ADTS AAC, AC-3/E-AC-3 and AMR/AMR-WB files, with `OpenAsync` over ranged sources and the MP3 encoder delay and padding as priming and end trim. `media.Decode()` plays them through OneAudio with ffmpeg's length.
+- `Tags.Id3` (ID3v1/1.1, ID3v2.2–2.4 with unsynchronisation, extended header, footer, compressed frames; public `Id3Tag.Read` for other containers), `Tags.Ape` (APEv1/v2) and Lyrics3 as native tags with common-view rows, including ReplayGain and cover art.
+- ID3v2 tags embedded in other containers are read as `id3v2` native tags: an ASF `ID3` attribute (the attribute stays as a binary tag) and `ID32` boxes in an MP4 `meta` box.
+
+### Fixed
+
+- Raw AV1 streams: an OBU whose size field was close to `int.MaxValue` overflowed the end-of-OBU test and threw `ArgumentOutOfRangeException`; it is now a malformed unit.
+- Format sniffing: the Annex B video sniffer read past the end of a head that ended right after a start code.
+
+### Changed
+
+- `Decode()` on an AAC track that signals SBR or PS now passes OneAudio 1.5.1's own `UnsupportedAudioFormatException` through (it also covers the MP4Box form missing its trailing extension flag, and no longer calls a backward-compatible signal "explicit"). `AudioDecodeReport.Signalling` and `CodecParameters.SbrSignalling` still say how the file signals it. `RecursiveAI.OneAudio` is 1.5.1.
+
 ## [0.1.0-preview.3] - 2026-11-01
 
 Fixes from a review of the second preview.

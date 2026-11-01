@@ -60,7 +60,7 @@ internal static class Oracle
 internal readonly record struct PacketRecord(int Track, MediaTime Pts, MediaTime Dts, MediaTime Duration, long Size, long Pos, bool Key, string Hash);
 
 /// <summary>A stream as ffprobe reports it, with the exact time base its packet times are in.</summary>
-internal sealed record ProbeStream(int Index, long Id, string CodecType, string CodecName, long TimeBaseNum, long TimeBaseDen)
+internal sealed record ProbeStream(int Index, long Id, string CodecType, string CodecName, long TimeBaseNum, long TimeBaseDen, bool AttachedPicture = false)
 {
     /// <summary>A time in this stream's time base, exact whatever the base's numerator.</summary>
     public MediaTime Time(long ticks) => new(checked(ticks * TimeBaseNum), TimeBaseDen);
@@ -105,7 +105,8 @@ internal static class FfprobeReader
                 s.TryGetProperty("codec_type", out JsonElement ct) ? ct.GetString() ?? "" : "",
                 s.TryGetProperty("codec_name", out JsonElement cn) ? cn.GetString() ?? "" : "",
                 num,
-                den));
+                den,
+                s.TryGetProperty("disposition", out JsonElement disp) && disp.TryGetProperty("attached_pic", out JsonElement ap) && ap.GetInt32() == 1));
         }
 
         return result;

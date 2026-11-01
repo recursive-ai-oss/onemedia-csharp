@@ -88,6 +88,16 @@ public readonly record struct CodecId(string Name)
     public static CodecId Mpeg2Video => new("mpeg2video");
     /// <summary>Motion JPEG.</summary>
     public static CodecId Mjpeg => new("mjpeg");
+    /// <summary>MPEG-4 part 2 visual.</summary>
+    public static CodecId Mpeg4 => new("mpeg4");
+    /// <summary>Windows Media Video version 1.</summary>
+    public static CodecId Wmv1 => new("wmv1");
+    /// <summary>Windows Media Video version 2.</summary>
+    public static CodecId Wmv2 => new("wmv2");
+    /// <summary>Windows Media Video 9 (WMV3), simple and main profiles.</summary>
+    public static CodecId Wmv3 => new("wmv3");
+    /// <summary>SMPTE 421M VC-1 (WMV9 advanced profile, "WVC1").</summary>
+    public static CodecId Vc1 => new("vc1");
 
     /// <summary>AAC.</summary>
     public static CodecId Aac => new("aac");
@@ -109,6 +119,18 @@ public readonly record struct CodecId(string Name)
     public static CodecId AmrWb => new("amr-wb");
     /// <summary>Uncompressed PCM; the sample layout is in the track's audio info and configuration.</summary>
     public static CodecId Pcm => new("pcm");
+    /// <summary>MPEG-1/2 audio layer II.</summary>
+    public static CodecId Mp2 => new("mp2");
+    /// <summary>Windows Media Audio version 1 (format tag 0x0160).</summary>
+    public static CodecId WmaV1 => new("wmav1");
+    /// <summary>Windows Media Audio version 2 (format tag 0x0161).</summary>
+    public static CodecId WmaV2 => new("wmav2");
+    /// <summary>Windows Media Audio Professional (format tag 0x0162).</summary>
+    public static CodecId WmaPro => new("wmapro");
+    /// <summary>Windows Media Audio Lossless (format tag 0x0163).</summary>
+    public static CodecId WmaLossless => new("wmalossless");
+    /// <summary>Windows Media Audio Voice (format tags 0x000A and 0x000B).</summary>
+    public static CodecId WmaVoice => new("wmavoice");
 
     /// <summary>3GPP timed text (tx3g).</summary>
     public static CodecId TimedText => new("tx3g");

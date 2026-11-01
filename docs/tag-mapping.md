@@ -103,3 +103,77 @@ generated from it, and a test fails when they differ.
 | DiscNumber | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | ffmpeg writes DISC, optionally as number/total |
 | DiscTotal | mkv | `DISC` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of DISC |
 | TrackTotal | mkv | `TOTAL_PARTS`, `TRACK` | Matroska tag names (matroska.org/technical/tagging.html), RFC 9559 §5.1.8 | the part after the slash of TRACK when TOTAL_PARTS is absent |
+| Title | asf | `Title` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description title |
+| Artist | asf | `Author`, `WM/Author` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description author; WM/Author is the same attribute in the extended description |
+| AlbumArtist | asf | `WM/AlbumArtist` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Album | asf | `WM/AlbumTitle` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Composer | asf | `WM/Composer` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Director | asf | `WM/Director` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Genre | asf | `WM/Genre` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Description | asf | `Description` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description description; ExifTool and MediaInfo also call it Description |
+| Date | asf | `WM/Year` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/Year holds a year or a date as the writer typed it |
+| Copyright | asf | `Copyright` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | Content Description copyright |
+| Encoder | asf | `WM/ToolName`, `WM/EncodingSettings` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| EncodedBy | asf | `WM/EncodedBy` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Grouping | asf | `WM/ContentGroupDescription` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Lyrics | asf | `WM/Lyrics` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media |  |
+| Rating | asf | `WM/SharedUserRating`, `Rating` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/SharedUserRating is a number from 0 to 99; Rating is the Content Description text |
+| TrackNumber | asf | `WM/TrackNumber` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/TrackNumber, optionally written as number/total |
+| TrackTotal | asf | `WM/TrackNumber` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | the part after the slash of WM/TrackNumber |
+| DiscNumber | asf | `WM/PartOfSet` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | WM/PartOfSet, optionally written as number/total |
+| DiscTotal | asf | `WM/PartOfSet` | ExifTool ASF tags (ContentDescr, ExtendedDescr); Picard tag map, ASF/Windows Media | the part after the slash of WM/PartOfSet |
+| Title | mpegts | `event_name`, `service_name` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's name first, then the service name |
+| Description | mpegts | `event_text` | ETSI EN 300 468 §6.2.33 (service descriptor) and §6.2.37 (short event descriptor) | the present event's short text |
+| Date | mdpm | `DateTimeOriginal` | ExifTool H264 tags (MDPM) | the camera clock in AVCHD; local time of unknown zone |
+| Title | id3v2 | `TIT2`, `TT2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Artist | id3v2 | `TPE1`, `TP1` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| AlbumArtist | id3v2 | `TPE2`, `TP2` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Album | id3v2 | `TALB`, `TAL` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Composer | id3v2 | `TCOM`, `TCM` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Genre | id3v2 | `TCON`, `TCO` | Picard tag map, ID3v2.3/2.4 column (CC0) | content type: (17) references, numbers and RX/CR are resolved to names (ID3v2.3 §4.2.1) |
+| Comment | id3v2 | `COMM`, `COM` | Picard tag map, ID3v2.3/2.4 column (CC0) | the comment with an empty description; other descriptions stay on the native list |
+| Date | id3v2 | `TDRC`, `TYER`, `TYE` | Picard tag map, ID3v2.3/2.4 column (CC0) | 2.4 recording time; 2.3 and 2.2 hold only the year here (the day and month are in TDAT) |
+| Copyright | id3v2 | `TCOP`, `TCR` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Encoder | id3v2 | `TSSE`, `TSS` | ExifTool ID3 tags | TSSE is the software and settings used for encoding |
+| EncodedBy | id3v2 | `TENC`, `TEN` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Grouping | id3v2 | `GRP1`, `GP1`, `TIT1`, `TT1` | Picard tag map, ID3v2.3/2.4 column (CC0) | iTunes writes GRP1; TIT1 is the content group description |
+| Lyrics | id3v2 | `USLT`, `ULT` | Picard tag map, ID3v2.3/2.4 column (CC0) | unsynchronised lyrics |
+| TrackNumber | id3v2 | `TRCK`, `TRK` | Picard tag map, ID3v2.3/2.4 column (CC0) | the part before the slash of TRCK |
+| TrackTotal | id3v2 | `TRCK`, `TRK` | Picard tag map, ID3v2.3/2.4 column (CC0) | the part after the slash of TRCK |
+| DiscNumber | id3v2 | `TPOS`, `TPA` | Picard tag map, ID3v2.3/2.4 column (CC0) | the part before the slash of TPOS |
+| DiscTotal | id3v2 | `TPOS`, `TPA` | Picard tag map, ID3v2.3/2.4 column (CC0) | the part after the slash of TPOS |
+| ReplayGainTrackGain | id3v2 | `TXXX:REPLAYGAIN_TRACK_GAIN`, `TXX:REPLAYGAIN_TRACK_GAIN` | Picard tag map, ID3v2.3/2.4 column (CC0) | user text frames; the description is compared without regard to case |
+| ReplayGainTrackPeak | id3v2 | `TXXX:REPLAYGAIN_TRACK_PEAK`, `TXX:REPLAYGAIN_TRACK_PEAK` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| ReplayGainAlbumGain | id3v2 | `TXXX:REPLAYGAIN_ALBUM_GAIN`, `TXX:REPLAYGAIN_ALBUM_GAIN` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| ReplayGainAlbumPeak | id3v2 | `TXXX:REPLAYGAIN_ALBUM_PEAK`, `TXX:REPLAYGAIN_ALBUM_PEAK` | Picard tag map, ID3v2.3/2.4 column (CC0) |  |
+| Title | ape | `Title` | Picard tag map, APEv2 column (CC0) |  |
+| Artist | ape | `Artist` | Picard tag map, APEv2 column (CC0) |  |
+| AlbumArtist | ape | `Album Artist`, `AlbumArtist` | Picard tag map, APEv2 column (CC0) |  |
+| Album | ape | `Album` | Picard tag map, APEv2 column (CC0) |  |
+| Composer | ape | `Composer` | Picard tag map, APEv2 column (CC0) |  |
+| Genre | ape | `Genre` | Picard tag map, APEv2 column (CC0) |  |
+| Comment | ape | `Comment` | Picard tag map, APEv2 column (CC0) |  |
+| Date | ape | `Year`, `Date` | Picard tag map, APEv2 column (CC0) |  |
+| Copyright | ape | `Copyright` | Picard tag map, APEv2 column (CC0) |  |
+| Grouping | ape | `Grouping` | Picard tag map, APEv2 column (CC0) |  |
+| Lyrics | ape | `Lyrics`, `Unsynced Lyrics` | Picard tag map, APEv2 column (CC0) |  |
+| EncodedBy | ape | `EncodedBy` | Picard tag map, APEv2 column (CC0) |  |
+| TrackNumber | ape | `Track` | Picard tag map, APEv2 column (CC0) | the part before the slash |
+| TrackTotal | ape | `Track` | Picard tag map, APEv2 column (CC0) | the part after the slash |
+| DiscNumber | ape | `Disc` | Picard tag map, APEv2 column (CC0) | the part before the slash |
+| DiscTotal | ape | `Disc` | Picard tag map, APEv2 column (CC0) | the part after the slash |
+| ReplayGainTrackGain | ape | `REPLAYGAIN_TRACK_GAIN` | Picard tag map, APEv2 column (CC0) |  |
+| ReplayGainTrackPeak | ape | `REPLAYGAIN_TRACK_PEAK` | Picard tag map, APEv2 column (CC0) |  |
+| ReplayGainAlbumGain | ape | `REPLAYGAIN_ALBUM_GAIN` | Picard tag map, APEv2 column (CC0) |  |
+| ReplayGainAlbumPeak | ape | `REPLAYGAIN_ALBUM_PEAK` | Picard tag map, APEv2 column (CC0) |  |
+| Title | id3v1 | `title` | ID3v1 and v1.1 (id3.org) |  |
+| Artist | id3v1 | `artist` | ID3v1 and v1.1 (id3.org) |  |
+| Album | id3v1 | `album` | ID3v1 and v1.1 (id3.org) |  |
+| Comment | id3v1 | `comment` | ID3v1 and v1.1 (id3.org) |  |
+| Date | id3v1 | `year` | ID3v1 and v1.1 (id3.org) | the year |
+| Genre | id3v1 | `genre` | ID3v1 and v1.1 (id3.org) | the genre number, resolved through the ID3v1 list with the Winamp extensions |
+| TrackNumber | id3v1 | `track` | ID3v1 and v1.1 (id3.org) | ID3v1.1 only |
+| Title | lyrics3 | `ETT` | Lyrics3 v2.00 (id3.org) | extended title |
+| Artist | lyrics3 | `EAR` | Lyrics3 v2.00 (id3.org) | extended artist |
+| Album | lyrics3 | `EAL` | Lyrics3 v2.00 (id3.org) | extended album |
+| Lyrics | lyrics3 | `LYR`, `LYRICS` | Lyrics3 v2.00 (id3.org) | version 2.00 field LYR; the whole block in version 1 |

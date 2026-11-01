@@ -14,6 +14,8 @@
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
     <!-- Comparator for audio tracks: OneAudio's own MP4 and Ogg packet readers. -->
     <PackageReference Include="RecursiveAI.OneAudio" />
+    <!-- Comparator for the common tag view (public API only). -->
+    <PackageReference Include="z440.atl.core" />
   </ItemGroup>
 
 </Project>

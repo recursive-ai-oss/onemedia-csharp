@@ -27,9 +27,7 @@ internal static partial class MetadataCompare
     {
         Directory.CreateDirectory(outDir);
         List<Row> rows = [];
-        MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffFormat());
-        registry.Add(new MatroskaFormat());
+        MediaFormatRegistry registry = MediaFormats.Create();
         foreach (string file in files)
         {
             try
@@ -90,9 +88,7 @@ internal static partial class MetadataCompare
     /// <summary>Prints every native tag and the common view of each file, for looking at a difference.</summary>
     public static int Dump(IReadOnlyList<string> files)
     {
-        MediaFormatRegistry registry = new();
-        registry.Add(new IsoBmffFormat());
-        registry.Add(new MatroskaFormat());
+        MediaFormatRegistry registry = MediaFormats.Create();
         foreach (string file in files)
         {
             using IDemuxer demuxer = registry.Open(FileMediaSource.Open(file));
@@ -171,6 +167,9 @@ internal static partial class MetadataCompare
                 TagSystems.QuickTimeUserData or TagSystems.ThreeGpp => ["UserData"],
                 TagSystems.Xmp => ["XMP-x", "XMP-xmp", "XMP-dc", "XMP-exif", "XMP-tiff", "XMP-photoshop"],
                 TagSystems.MatroskaInfo => ["Info", "Matroska"],
+                TagSystems.Asf => ["ASF"],
+                RecursiveAI.OneMedia.MpegTs.MpegTsTagSystems.CameraData => ["H264"],
+                RecursiveAI.OneMedia.MpegTs.MpegTsTagSystems.ServiceInformation => ["M2TS"],
                 _ => t.TrackId > 0 ? ["Track"] : ["Matroska"],
             };
             List<string> etVals = [.. et.Where(kv => groups.Any(g => kv.Key.StartsWith(g, StringComparison.Ordinal))).SelectMany(kv => kv.Value)];
@@ -210,8 +209,10 @@ internal static partial class MetadataCompare
         Common(rows, name, "Artist", c.Artist ?? c.Author, etMovie, ["Artist", "Performer", "Author"], miGeneral, ["Performer"]);
         Common(rows, name, "Album", c.Album, etMovie, ["Album"], miGeneral, ["Album"]);
         Common(rows, name, "Genre", c.Genre, etMovie, ["Genre"], miGeneral, ["Genre"]);
-        Common(rows, name, "Comment", c.Comment, etMovie, ["Comment"], miGeneral, ["Comment"]);
-        Common(rows, name, "Description", c.Description, etMovie, ["Description"], miGeneral, ["Description"]);
+        // MediaInfo calls an ASF file's Content Description description "Comment"; ExifTool and we call it Description.
+        bool asf = m.NativeTags.Any(t => t.System == TagSystems.Asf);
+        Common(rows, name, "Comment", c.Comment, etMovie, ["Comment"], miGeneral, asf ? [] : ["Comment"]);
+        Common(rows, name, "Description", c.Description, etMovie, ["Description"], miGeneral, asf ? ["Description", "Comment"] : ["Description"]);
         Common(rows, name, "Copyright", c.Copyright, etMovie, ["Copyright"], miGeneral, ["Copyright"]);
         Common(rows, name, "Composer", c.Composer, etMovie, ["Composer"], miGeneral, ["Composer"]);
         // MediaInfo's "Writing application" also carries the QuickTime software atom, which is our Software fact rather than the Encoder field.
@@ -292,7 +293,8 @@ internal static partial class MetadataCompare
     private static void Common(List<Row> rows, string file, string field, string? ours, Dictionary<string, List<string>> et, string[] etKeys, Dictionary<string, List<string>> mi, string[] miKeys,
         bool leadingNumber = false, bool presence = false)
     {
-        List<string> e = Values(et, etKeys), x = Values(mi, miKeys);
+        // An attribute written with no text is the same as no attribute (ExifTool prints it as an empty string).
+        List<string> e = Values(et, etKeys).FindAll(v => v.Length > 0), x = Values(mi, miKeys).FindAll(v => v.Length > 0);
         if (ours is null && e.Count == 0 && x.Count == 0)
         {
             return;

@@ -272,6 +272,33 @@ if [ -s "$S" ]; then
   mkvm "mkvmerge/mpeg4-header-removal.mkv" --engage native_mpeg4 "$G/mkv/mpeg4-vorbis.mkv"
 fi
 
+# --- ASF / WMV / WMA (ffmpeg's ASF muxer is the only writer here) ------------------------------------------
+V_WMV2=(-c:v wmv2 -b:v 500k -g 30)
+V_WMV1=(-c:v wmv1 -b:v 500k -g 30)
+V_MSMP4=(-c:v msmpeg4 -b:v 500k -g 30)
+A_WMA2=(-c:a wmav2 -b:a 96k)
+A_WMA1=(-c:a wmav1 -b:a 96k)
+ff "asf/wmv2-wmav2.wmv" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_WMA2[@]}" -f asf
+ff "asf/wmv1-wmav1.wmv" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV1[@]}" "${A_WMA1[@]}" -f asf
+ff "asf/msmpeg4v3-mp3.asf" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_MSMP4[@]}" "${A_MP3[@]}" -f asf
+ff "asf/wmv2-pcm.asf" "${VID_QCIF[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_PCM16[@]}" -f asf
+ff "asf/wmv2-only.wmv" "${VID_320[@]}" -t 4 "${V_WMV2[@]}" -f asf
+ff "asf/wmav2.wma" "${SINE[@]}" -t 4 "${A_WMA2[@]}" -f asf
+ff "asf/mp3.wma" "${NOISE[@]}" -t 4 "${A_MP3[@]}" -f asf
+ff "asf/wmv2-wmav2-packet800.wmv" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_WMA2[@]}" -packetsize 800 -f asf
+ff "asf/wmv2-wmav2-tagged.wmv" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_WMA2[@]}" \
+  -metadata title="Tagged clip" -metadata author="Test Author" -metadata copyright="(c) Example" -metadata comment="A comment" \
+  -metadata album="Test Album" -metadata genre="Test" -metadata track=3 -metadata date=2020 -f asf
+ff "asf/wmav2-tagged.wma" "${SINE[@]}" -t 4 "${A_WMA2[@]}" \
+  -metadata title="Tone" -metadata artist="Sine" -metadata album="Tones" -metadata album_artist="Various" -metadata composer="C" \
+  -metadata genre="Sound" -metadata track=2/9 -metadata disc=1/2 -metadata date=1999 -metadata comment="Sound check" -metadata copyright="None" -f asf
+ff "asf/mp3-tagged-unicode.wma" "${NOISE[@]}" -t 4 "${A_MP3[@]}" -metadata title="Zażółć gęślą jaźń" -metadata artist="日本語のアーティスト" -metadata lyrics="la la" -f asf
+if echo asf | grep -qE "$FILTER|asf"; then
+  mkdir -p "$G/_src"
+  [ -s "$G/_src/cover.png" ] || "$FF" "${FFG[@]}" -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" -frames:v 1 "$G/_src/cover.png" 2>/dev/null
+  ff "asf/wmav2-cover.wma" "${SINE[@]}" -i "$G/_src/cover.png" -t 4 -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic "${A_WMA2[@]}" -metadata title="With cover" -f asf
+fi
+
 # --- large files by stream-copy concatenation --------------------------------------------------------
 # A short high-bitrate clip is repeated until the output passes 4 GiB, so 64-bit offsets (co64) and long
 # files are covered without paying for encoding.
@@ -288,6 +315,18 @@ if [ "${LARGE:-1}" = 1 ]; then
     : > "$G/_src/large-list.txt"; for _ in $(seq "$n"); do echo "file '$BASE'" >> "$G/_src/large-list.txt"; done
     ff "large/over4gb-moov-at-end.mp4" -f concat -safe 0 -i "$G/_src/large-list.txt" -c:v copy -c:a aac -b:a 96k -f mp4
     ff "large/over4gb.mkv" -f concat -safe 0 -i "$G/_src/large-list.txt" -c copy -f matroska
+  fi
+  # ASF: a short wmv2 + wmav2 clip at 40 Mbit/s, repeated by stream copy past 2 GiB.
+  ABASE="$G/_src/large-base.asf"
+  if [ ! -s "$ABASE" ] && echo large | grep -qE "$FILTER|large"; then
+    "$FF" "${FFG[@]}" -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=10,noise=alls=60:allf=t" \
+      -f lavfi -i "anoisesrc=seed=3:amplitude=0.5:sample_rate=48000:duration=10" -t 10 \
+      -c:v wmv2 -b:v 40M -maxrate 40M -bufsize 40M -g 30 -c:a wmav2 -b:a 128k -f asf "$ABASE" 2>"$G/.last.log" || echo "FAILED large asf base" >&2
+  fi
+  if [ -s "$ABASE" ]; then
+    sz=$(stat -c %s "$ABASE"); n=$(( 2300000000 / sz + 1 ))
+    : > "$G/_src/large-asf-list.txt"; for _ in $(seq "$n"); do echo "file '$ABASE'" >> "$G/_src/large-asf-list.txt"; done
+    ff "large/over2gb.wmv" -f concat -safe 0 -i "$G/_src/large-asf-list.txt" -c copy -f asf
   fi
 fi
 

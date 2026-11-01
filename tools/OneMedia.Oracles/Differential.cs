@@ -13,6 +13,19 @@ internal static class Readers
         MediaFormatRegistry registry = new();
         registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
         registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
+        registry.Add(new RecursiveAI.OneMedia.Asf.AsfFormat());
+        registry.Add(new RecursiveAI.OneMedia.MpegTs.MpegTsFormat());
+        registry.Add(new RecursiveAI.OneMedia.MpegPs.MpegPsFormat());
+        registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.IvfFormat());
+        foreach (RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind k in Enum.GetValues<RecursiveAI.OneMedia.ElementaryStreams.VideoStreamKind>())
+        {
+            registry.Add(new RecursiveAI.OneMedia.ElementaryStreams.VideoStreamFormat(k));
+        }
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Id3AudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.MpegAudioFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AdtsFormat());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Ac3Format());
+        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AmrFormat());
         return registry;
     }
 }
@@ -25,6 +38,12 @@ internal sealed class OurResult
     public string Format { get; init; } = "";
     public List<MediaTrack> Tracks { get; init; } = [];
     public List<PacketRecord> Packets { get; init; } = [];
+
+    /// <summary>SHA-256 of each picture in the file's tags (ASF only), to compare with the attached pictures ffprobe lists as streams.</summary>
+    public List<string> PictureHashes { get; init; } = [];
+
+    /// <summary>True when the demuxer reports the content as protected and so delivers no packets.</summary>
+    public bool IsProtected { get; init; }
 
     /// <summary>Per track, the shift applied to our times to place them where ffprobe puts them (ISO edit lists); empty when none was applied.</summary>
     public MediaTime[] Shifts { get; init; } = [];
@@ -40,7 +59,7 @@ internal static class OurReader
             using FileMediaSource source = FileMediaSource.Open(path);
             using IDemuxer demuxer = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
             MediaTime[] shift = demuxer.Format == MediaFormatId.IsoBmff ? [.. demuxer.Tracks.Select(EditShift)] : [];
-            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift };
+            OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift, IsProtected = demuxer.IsProtected };
             Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
             while (demuxer.TryReadPacket(out PacketView view))
             {
@@ -53,6 +72,15 @@ internal static class OurReader
                 }
 
                 result.Packets.Add(new PacketRecord(i.TrackIndex, i.Pts, i.Dts, i.Duration, view.Data.Length, i.SourceRange.IsNone ? -1 : i.SourceRange.Offset, i.IsKeyframe, Convert.ToHexStringLower(digest)));
+            }
+
+            if (demuxer is RecursiveAI.OneMedia.Metadata.IMetadataProvider provider && demuxer.Format == MediaFormatId.Asf)
+            {
+                // ffprobe turns WM/Picture attributes into attached-picture streams; we hand them out as tags.
+                foreach (RecursiveAI.OneMedia.Tags.TagPicture picture in provider.ReadMetadata().Tags.Pictures)
+                {
+                    result.PictureHashes.Add(Convert.ToHexStringLower(SHA256.HashData(picture.ReadData())));
+                }
             }
 
             return result;
@@ -127,7 +155,7 @@ internal sealed class Exceptions
     }
 
     /// <summary>The rule excusing this difference, or null.</summary>
-    public Rule? Match(string format, string field, string file, MediaTrack? track, string codecName, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta, bool isLast = false)
+    public Rule? Match(string format, string field, string file, MediaTrack? track, string codecName, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta, bool isLast = false, long index = 0)
     {
         foreach (Rule r in _rules)
         {
@@ -139,7 +167,9 @@ internal sealed class Exceptions
             if (r.Kind == "ignore" ||
                 (r.Kind == "ffprobe-na" && theirsUnknown) ||
                 (r.Kind == "ours-na" && oursUnknown) ||
-                (r.Kind.StartsWith("tolerance=", StringComparison.Ordinal) && Math.Abs(delta) <= long.Parse(r.Kind.AsSpan(10), CultureInfo.InvariantCulture)))
+                (r.Kind.StartsWith("tolerance=", StringComparison.Ordinal) && Math.Abs(delta) <= long.Parse(r.Kind.AsSpan(10), CultureInfo.InvariantCulture)) ||
+                // drift=N: the other side truncates every packet duration to its integer scale, so the error grows by up to N ticks per packet.
+                (r.Kind.StartsWith("drift=", StringComparison.Ordinal) && Math.Abs(delta) <= long.Parse(r.Kind.AsSpan(6), CultureInfo.InvariantCulture) * (index + 1)))
             {
                 return r;
             }
@@ -208,6 +238,41 @@ internal static class Comparer
         }
 
         report.OurPackets = ours.Packets.Count;
+        if (ours.Format == "asf" && streams.Any(q => q.AttachedPicture))
+        {
+            // Attached pictures are tags for us: take them out of ffprobe's streams (renumbering the rest) and compare the picture bytes instead.
+            List<string> pictureHashes = [.. ours.PictureHashes];
+            Dictionary<int, int> renumber = [];
+            foreach (ProbeStream q in streams.Where(q => !q.AttachedPicture))
+            {
+                renumber[q.Index] = renumber.Count;
+            }
+
+            List<PacketRecord> kept = [];
+            foreach (PacketRecord pr in theirs)
+            {
+                if (renumber.TryGetValue(pr.Track, out int mapped))
+                {
+                    kept.Add(pr with { Track = mapped });
+                }
+                else if (!pictureHashes.Remove(pr.Hash))
+                {
+                    Note(report, new Dictionary<(int, string), int>(), exceptions, ours.Format, file, null, "", -1, pr.Track, -1, "picture", pr.Hash, "none", false, true, 0);
+                }
+            }
+
+            theirs = kept;
+            streams = [.. streams.Where(q => !q.AttachedPicture).Select(q => q with { Index = renumber[q.Index] })];
+        }
+
+        if (ours.IsProtected && ours.Packets.Count == 0)
+        {
+            // Protected content is reported with its tracks and tags and no packets, by design; ffprobe lists the encrypted packets.
+            report.Status = "protected";
+            report.Message = $"protected: {ours.Tracks.Count} tracks, ffprobe lists {streams.Count} streams and {theirs.Count} packets";
+            return report;
+        }
+
         Dictionary<int, List<PacketRecord>> a = Group(theirs), b = Group(ours.Packets);
         Dictionary<(int, string), int> shown = [];
         foreach (int track in a.Keys.Union(b.Keys).Order())
@@ -217,6 +282,30 @@ internal static class Comparer
             long last = Math.Min(x.Count, y.Count) - 1;
             MediaTrack? t = ours.Tracks.FirstOrDefault(q => q.Index == track);
             string codec = streams.FirstOrDefault(s => s.Index == track)?.CodecName ?? "";
+            // A scoped "leading" rule excuses ffprobe listing the broken start of a stream (the tail of a unit that began before the
+            // file did) as packets of their own. How many to drop is the count that pairs the packets best: the surplus may also be at the end.
+            int surplus = x.Count - y.Count;
+            if (surplus is >= 1 and <= 3 && exceptions.Match(ours.Format, "leading", file, t, codec, "", "", false, false, 0) is not null)
+            {
+                int best = 0, bestScore = Mismatches(x, y);
+                for (int d = 1; d <= surplus; d++)
+                {
+                    int score = Mismatches(x.Skip(d), y);
+                    if (score < bestScore)
+                    {
+                        (best, bestScore) = (d, score);
+                    }
+                }
+
+                if (best > 0)
+                {
+                    x = x.GetRange(best, x.Count - best);
+                    report.Excepted["leading"] = report.Excepted.GetValueOrDefault("leading") + best;
+                    report.PacketCounts[track] = (x.Count + best, y.Count);
+                    last = Math.Min(x.Count, y.Count) - 1;
+                }
+            }
+
             if (x.Count != y.Count)
             {
                 Note(report, shown, exceptions, ours.Format, file, t, codec, last, track, -1, "count", x.Count.ToString(CultureInfo.InvariantCulture), y.Count.ToString(CultureInfo.InvariantCulture), false, false, 0);
@@ -254,6 +343,10 @@ internal static class Comparer
         return report;
     }
 
+    // How many of the first 64 pairs differ in size: picks between a stream that starts with extra packets and one that ends with them.
+    private static int Mismatches(IEnumerable<PacketRecord> x, IReadOnlyList<PacketRecord> y) =>
+        x.Take(64).Zip(y.Take(64), (p, q) => p.Size != q.Size || p.Hash != q.Hash).Count(b => b);
+
     private static Dictionary<int, List<PacketRecord>> Group(IEnumerable<PacketRecord> packets)
     {
         Dictionary<int, List<PacketRecord>> d = [];
@@ -274,7 +367,7 @@ internal static class Comparer
     {
         if (theirs.IsKnown != ours.IsKnown || (theirs.IsKnown && theirs != ours))
         {
-            long delta = theirs.IsKnown && ours.IsKnown ? (theirs - ours).Ticks * 1 : 0;
+            long delta = 0;
             // Tolerance rules count ticks of the finer of the two scales; keep the difference in ffprobe's scale.
             if (theirs.IsKnown && ours.IsKnown)
             {
@@ -287,7 +380,7 @@ internal static class Comparer
 
     private static void Note(FileReport r, Dictionary<(int, string), int> shown, Exceptions ex, string format, string file, MediaTrack? t, string codec, long last, int track, long index, string field, string theirs, string ours, bool theirsUnknown, bool oursUnknown, long delta)
     {
-        Exceptions.Rule? rule = ex.Match(format, field, file, t, codec, theirs, ours, theirsUnknown, oursUnknown, delta, index >= 0 && index == last);
+        Exceptions.Rule? rule = ex.Match(format, field, file, t, codec, theirs, ours, theirsUnknown, oursUnknown, delta, index >= 0 && index == last, index);
         Dictionary<string, long> bucket = rule is null ? r.Differences : r.Excepted;
         bucket[field] = bucket.GetValueOrDefault(field) + 1;
         if (rule is not null)

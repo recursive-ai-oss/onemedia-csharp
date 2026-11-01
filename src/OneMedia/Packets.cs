@@ -131,6 +131,12 @@ public interface IMediaContainer
     bool CanSeek { get; }
 
     /// <summary>
+    /// True when the content is protected (encrypted or under digital rights management). A protected file still lists its tracks and
+    /// metadata, but its demuxer delivers no payloads. False unless the container says otherwise.
+    /// </summary>
+    bool IsProtected => false;
+
+    /// <summary>
     /// Turns a track off or on. Packets of a disabled track are skipped without reading their payload, so reading one stream of a
     /// large file costs only that stream's bytes. All tracks start enabled.
     /// </summary>

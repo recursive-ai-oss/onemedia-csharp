@@ -5,6 +5,7 @@ using RecursiveAI.OneMedia.Tags;
 using RecursiveAI.OneMedia.Tags.ITunes;
 using RecursiveAI.OneMedia.Tags.QuickTime;
 using RecursiveAI.OneMedia.Tags.ThreeGpp;
+using RecursiveAI.OneMedia.Tags.Id3;
 using RecursiveAI.OneMedia.Tags.Xmp;
 
 namespace RecursiveAI.OneMedia.IsoBmff;
@@ -219,7 +220,27 @@ internal sealed class IsoMetadataReader
         {
             _containers.Add(ItunesItemList.Read(ilst, _source, _limits, _defects, trackId));
         }
+
+        // ID3v2 in ISO files (the ID3 registration for MP4): a meta box with handler 'ID32' holds ID32 boxes, each a full box (4 bytes) plus a
+        // packed language (2 bytes) before the ID3v2 tag. A box that does not hold a tag is left alone.
+        foreach (BoxNode box in meta.Children)
+        {
+            if (box.Type == Id32Type && box.PayloadSize >= Id32Prefix + Id3Header.HeaderSize)
+            {
+                if (Id3Tag.TryRead(_source, box.Header.PayloadOffset + Id32Prefix, out Id3Tag? id3, _limits, _defects) && id3 is not null)
+                {
+                    _containers.Add(id3);
+                }
+                else
+                {
+                    _defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, box.Header.PayloadOffset + Id32Prefix, "An ID32 box does not hold an ID3v2 tag.", "tags.id32-not-id3");
+                }
+            }
+        }
     }
+
+    private static readonly uint Id32Type = BoxTypes.Make("ID32");
+    private const int Id32Prefix = 6;
 
     private void AddXmp(BoxNode box, long trackId) =>
         _containers.Add(XmpPacket.Read(_source, new ByteRange(box.Offset, box.Header.HeaderSize + box.PayloadSize), new ByteRange(box.Header.PayloadOffset, box.PayloadSize), _limits, _defects, trackId));
