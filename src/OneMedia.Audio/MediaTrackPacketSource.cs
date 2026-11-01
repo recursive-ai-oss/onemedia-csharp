@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Buffers;
+using RecursiveAI.OneMedia.Codecs;
 using RecursiveAI.OneMedia.Codecs.Aac;
 using RecursiveAI.OneMedia.Codecs.Flac;
 using RecursiveAI.OneMedia.Codecs.Opus;
@@ -26,7 +27,8 @@ public enum AudioSeamLimitations
     EndPaddingNotApplied = 1 << 2,
 
     /// <summary>
-    /// The AAC configuration signals spectral band replication (HE-AAC) and OneAudio's AAC decoder does not apply it. It decodes the core coder
+    /// The AAC configuration signals spectral band replication (HE-AAC), or only the container declares twice the core rate (a hint, see
+    /// <see cref="MediaTrackPacketSource.SbrSignalling"/>), and OneAudio's AAC decoder does not apply SBR. It decodes the core coder
     /// only, so the PCM comes out at the core sampling rate (typically half the signalled output rate) and without the high band.
     /// <see cref="MediaTrackPacketSource.SampleRate"/> is that core rate; <see cref="MediaTrackPacketSource.SignalledSampleRate"/> is the rate the file asks for.
     /// </summary>
@@ -47,7 +49,10 @@ public enum AudioSeamLimitations
 /// <param name="SignalledChannels">The channel count the file asks for when it differs from <paramref name="DecodedChannels"/> (HE-AACv2); 0 when the same.</param>
 public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations, int DecodedSampleRate, int SignalledSampleRate, int DecodedChannels, int SignalledChannels)
 {
-    /// <summary>True when the file signals SBR or PS and the decoder returns the core coder's audio only.</summary>
+    /// <summary>How the file signals SBR: <see cref="SbrSignalling.Explicit"/> or <see cref="SbrSignalling.BackwardCompatible"/> in the configuration, <see cref="SbrSignalling.ContainerRate"/> when only the container's doubled rate suggests it (a hint, which may be wrong), else <see cref="SbrSignalling.None"/>.</summary>
+    public SbrSignalling Signalling { get; init; }
+
+    /// <summary>True when the file signals SBR or PS, or its container declares twice the core rate, and the decoder returns the core coder's audio only.</summary>
     public bool IsCoreOnly => (Limitations & (AudioSeamLimitations.SbrNotApplied | AudioSeamLimitations.PsNotApplied)) != 0;
 }
 
@@ -153,6 +158,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         long opusEnd = -1;
         int signalledRate = 0;
         int signalledChannels = 0;
+        SbrSignalling signalling = SbrSignalling.None;
         AudioSeamLimitations limitations = AudioSeamLimitations.None;
 
         switch (track.Codec.Name)
@@ -177,9 +183,10 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 // ISO/IEC 14496-3 §1.6.2.1: with SBR or PS signalled, the file's sample entry and the configuration's extension rate describe the
                 // output of a full HE-AAC decoder. OneAudio decodes the core coder only, so frames, priming and channels are counted at the core
                 // rate and the difference is reported, never hidden.
-                if (track.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.SbrImplied) && heaac.CoreSampleRate > 0)
+                if (track.DescribeCodec() is { } heaac && (heaac.SbrPresent || heaac.ContainerDeclaresDoubleRate) && heaac.CoreSampleRate > 0)
                 {
                     signalledRate = heaac.SampleRate;
+                    signalling = heaac.SbrSignalling;
                     limitations = AudioSeamLimitations.SbrNotApplied | (heaac.PsPresent ? AudioSeamLimitations.PsNotApplied : 0);
                     rate = heaac.CoreSampleRate;
                     if (heaac.Channels > 0)
@@ -238,7 +245,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 break;
         }
 
-        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd, _signalledRate = signalledRate, _signalledChannels = signalledChannels, Limitations = limitations };
+        return new MediaTrackPacketSource(demuxer, track, ownsDemuxer, AudioCodecMap.ToOneAudio(track.Codec), headers, config, rate, channels, priming, length) { _opusEnd = opusEnd, _signalledRate = signalledRate, _signalledChannels = signalledChannels, SbrSignalling = signalling, Limitations = limitations };
     }
 
     // Priming and length in frames at the track's rate, from what the container states. With an edit list the first non-empty edit gives both
@@ -368,6 +375,12 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     /// <summary>An object to dispose after the demuxer when this source is disposed (the stream a container format was opened over).</summary>
     internal IDisposable? AlsoDispose { get; set; }
 
+    // Set when the source reads a MediaFile's demuxer: a later read of the file supersedes this source, which then fails loudly
+    // instead of returning packets from a moved position.
+    internal MediaFile? Owner { get; set; }
+
+    internal int Generation { get; set; }
+
     /// <summary>The track this source reads.</summary>
     public MediaTrack Track => _track;
 
@@ -376,6 +389,9 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     /// Zero when the two are the same. <see cref="SampleRate"/> is always the rate of the PCM the decoder returns.
     /// </summary>
     public int SignalledSampleRate => _signalledRate;
+
+    /// <summary>How the file signals SBR for an HE-AAC track: explicitly, by the backward-compatible extension, or only by a container rate twice the core's (a hint). <see cref="SbrSignalling.None"/> for every other track.</summary>
+    public SbrSignalling SbrSignalling { get; private init; }
 
     /// <summary>The channel count the file asks for when it differs from <see cref="Channels"/> (HE-AACv2 parametric stereo); zero when the same.</summary>
     public int SignalledChannels => _signalledChannels;
@@ -390,6 +406,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     public bool TryReadPacket(out global::OneAudio.PacketView packet)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        Owner?.EnsureCurrentRead(Generation);
         if (_nextHeader < _headers.Length)
         {
             packet = new global::OneAudio.PacketView(_headers[_nextHeader++], -1, true);
@@ -474,6 +491,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     public void SeekToFrame(long frame, out long startFrame)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        Owner?.EnsureCurrentRead(Generation);
         if (!_demuxer.CanSeek)
         {
             throw new NotSupportedException("The container cannot seek.");

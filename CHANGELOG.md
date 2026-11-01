@@ -4,8 +4,26 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.1.0-preview.3] - 2026-11-01
+
+Fixes from a review of the second preview.
+
+### Fixed
+
+- **A second read of a `MediaFile` returned nothing without an error.** After `media.Packets(...)`, `Decode()` produced no audio; decoding one track and then another did the same, on MP4 and Matroska. Every read after the first now starts again from the beginning of the file (`Packets`, `PacketsAsync` and `Decode`, in any order). Where that is impossible, it throws instead of returning nothing: `MediaReadStateException` with `Reason` `CannotRewind` when the source cannot seek, and `Superseded` when a reader that is still alive is overtaken by a newer read of the same file. Seeking before the start of an MP4 now lands on the first sample.
+- `Decode` throws `UnsupportedAudioFormatException`, as documented, for every AAC track whose configuration signals SBR or PS. OneAudio reported explicit signalling written one bit short (as MP4Box writes it) as an invalid configuration; the adapter now says what the track signals.
+- The refusal message and the reports name the signalling correctly: explicit (audio object type 5/29 first) or backward-compatible (extension after the core configuration). Before, a backward-compatible track was described as explicit.
+- `SbrImplied` said "SBR" for a plain AAC-LC track whose container declares twice its rate even when the stream has no SBR (a Matroska test file's commentary track). The container's rate is a hint, not evidence; it is now named and documented as one.
+
+### Added
+
+- `MediaReadStateException` and `MediaReadStateReason`.
+- `CodecParameters.SbrSignalling` (`SbrSignalling`: `None`, `Explicit`, `BackwardCompatible`, `ContainerRate`), `AudioDecodeReport.Signalling` and `MediaTrackPacketSource.SbrSignalling`.
+- `CodecParameters.ContainerDeclaresDoubleRate`, the new name of `SbrImplied`.
+
 ### Changed
 
+- `CodecParameters.SbrImplied` is `[Obsolete]` and forwards to `ContainerDeclaresDoubleRate`. `onemedia info` prints `container declares twice the core rate` for it and `SBR, explicit signalling` or `SBR, backward-compatible signalling` for signalled tracks.
 - `RecursiveAI.OneMedia.Audio` depends on `RecursiveAI.OneAudio` 1.5.0.
 - Audio adapter: Matroska `DiscardPadding` on any block (not only the last) is passed to OneAudio as `PacketView.DiscardEndFrames`, for Opus, Vorbis, AAC, FLAC and AMR, converted at the rate OneAudio decodes (the core rate for HE-AAC). Vorbis end padding is now applied. `AudioSeamLimitations.MidStreamDiscardPadding` and `EndPaddingNotApplied` are marked `[Obsolete]` and never set; nothing is left unapplied except padding that asks to cut the start of a block (`LeadingDiscardPadding`).
 - AMR samples that hold several frames (3GP with `damr` frames-per-sample above 1) decode through the adapter, since OneAudio 1.5.0 splits them by their table of contents.
