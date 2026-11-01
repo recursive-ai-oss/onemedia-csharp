@@ -225,8 +225,53 @@ public static class IsoJoiner
 
         foreach (Joined? j in joined)
         {
-            j?.Edits.Set(j.All);
+            j?.Edits.Set(Merge(j.All, j.Source.Timescale));
         }
+    }
+
+    // Neighbouring segments that continue each other in media time are one segment. Joining the parts of a split then gives back the edit list the
+    // whole file had, and readers that only follow one segment (or repeat samples at every boundary) see a plain file. A gap of exactly the media the
+    // first segment stopped short of (a split part ends mid-packet and the next one starts a few samples later) is closed the same way.
+    private static List<EditSegment> Merge(List<EditSegment> segments, long scale)
+    {
+        List<EditSegment> merged = [];
+        int i = 0;
+        while (i < segments.Count)
+        {
+            EditSegment a = segments[i++];
+            while (!a.IsEmpty && i < segments.Count)
+            {
+                int next = i;
+                long gap = 0;
+                if (segments[next].IsEmpty)
+                {
+                    gap = segments[next].Duration.Rescale(scale, MediaRounding.NearestAwayFromZero).Ticks;
+                    next++;
+                }
+
+                if (next >= segments.Count || segments[next].IsEmpty)
+                {
+                    break;
+                }
+
+                EditSegment b = segments[next];
+                long aEnd = a.MediaStart.Rescale(scale, MediaRounding.NearestAwayFromZero).Ticks + a.Duration.Rescale(scale, MediaRounding.NearestAwayFromZero).Ticks;
+                long bStart = b.MediaStart.Rescale(scale, MediaRounding.NearestAwayFromZero).Ticks;
+                long tolerance = Math.Max(1, scale / Math.Max(1, a.Duration.Timescale)) + 1;
+                if (Math.Abs(bStart - gap - aEnd) > tolerance)
+                {
+                    break;
+                }
+
+                long total = a.Duration.Ticks + (gap > 0 ? segments[i].Duration.Rescale(a.Duration.Timescale, MediaRounding.NearestAwayFromZero).Ticks : 0) + b.Duration.Rescale(a.Duration.Timescale, MediaRounding.NearestAwayFromZero).Ticks;
+                a = new EditSegment(a.MediaStart, new MediaTime(total, a.Duration.Timescale));
+                i = next + 1;
+            }
+
+            merged.Add(a);
+        }
+
+        return merged;
     }
 
     private static long Ticks(MediaTime t, long scale) =>
