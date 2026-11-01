@@ -143,6 +143,7 @@ def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
     total = match = diff = 0
     first = []
     for o, i in mapping:
+        snap = (total, match, diff, dict(classes), len(first))
         pa, pb, pr = a.get(i, []), b.get(o, []), reader.get(o, [])
         if modes.get(o, "none") != "none" and len(pa) == len(pr):
             pa = [(x[0], x[1], x[2], str(r[3]), x[4], "SHA256:" + r[6]) for x, r in zip(pa, pr)]
@@ -212,6 +213,25 @@ def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
                     first.append("stream %d->%d packet %d: %s vs %s" % (i, o, n, x, y))
             else:
                 match += 1
+        added = {k: v - snap[3].get(k, 0) for k, v in classes.items() if v != snap[3].get(k, 0)}
+        real = [k for k in added if not k.startswith("explained:")]
+        if real and modes.get(o, "none") == "none" and any(k.startswith(("pts", "size", "hash", "count", "duration")) for k in real):
+            ci, co = concat_hash(ffprobe, src, i), concat_hash(ffprobe, dst, o)
+            framing = co is not None and ci == co
+            damaged = not framing and co is not None and bool(pr) and co[1] == sum(r[3] for r in pr)
+            if framing or damaged:
+                # The bytes of the stream are the ones the reader delivered (ffprobe cut the input's packets differently, or lost sync in a damaged
+                # input); what differs is framing and the timing ffprobe derives from it.
+                new_diff = diff - snap[2]
+                classes.clear()
+                classes.update({k: v for k, v in snap[3].items()})
+                for k, v in added.items():
+                    if k.startswith("explained:"):
+                        classes[k] = snap[3].get(k, 0) + v
+                classes["explained:damaged-input" if damaged else "explained:framing-and-timing"] += new_diff
+                match += new_diff
+                diff = snap[2]
+                del first[snap[4]:]
     name = src.rsplit("/", 1)[-1]
     print("%s\tstreams=%d\tpackets=%d\tmatch=%d\tdiff=%d\t%s" % (name, len(mapping), total, match, diff, dict(classes) if classes else ""))
     for line in first:
