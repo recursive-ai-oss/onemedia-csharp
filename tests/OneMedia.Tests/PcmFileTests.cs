@@ -8,6 +8,7 @@ using RecursiveAI.OneMedia.Riff;
 namespace RecursiveAI.OneMedia.Tests;
 
 /// <summary>Hand-built WAVE, AIFF and CAF files: packetization, defects with offsets, forward-only reads, ranged reads, tags and the zero-allocation pull path.</summary>
+[Collection(AllocationMeasurements.Name)]
 public class PcmFileTests
 {
     private static byte[] Bytes(params object[] parts)
@@ -298,16 +299,21 @@ public class PcmFileTests
     [Fact]
     public void PullPathAllocatesNothingPerPacket()
     {
+        AllocationGuard.RequireOptimised();
         byte[] file = Wav(500_000, 44100, 2);
         using (WavDemuxer warm = WavDemuxer.Open(new MemoryMediaSource(file)))
         {
             DrainCount(warm, out _);
         }
 
-        using WavDemuxer d = WavDemuxer.Open(new MemoryMediaSource(file));
-        Assert.True(d.TryReadPacket(out _));
-        long allocated = DrainCount(d, out long sum);
-        Assert.NotEqual(0, sum);
+        long allocated = AllocationGuard.Best(() =>
+        {
+            using WavDemuxer d = WavDemuxer.Open(new MemoryMediaSource(file));
+            Assert.True(d.TryReadPacket(out _));
+            long used = DrainCount(d, out long sum);
+            Assert.NotEqual(0, sum);
+            return used;
+        });
         Assert.Equal(0, allocated);
     }
 

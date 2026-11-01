@@ -8,6 +8,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 - Preview: Matroska and WebM writing (`MatroskaMuxer`, `MatroskaMuxOptions`, `docs/muxing-matroska.md`): `IMuxer` over seekable output (SeekHead, Info with Duration, Tracks, a Void reserve for tags, Clusters cut on key frames, Cues, optional CRC-32) and a live mode for forward-only output (unknown-size Segment and Clusters). Codec setup bytes are repackaged from ISO sample entries (`avcC`/`hvcC` as stored, ASC from `esds`, `OpusHead` from `dOps`, FLAC and VP9 records), a track read from Matroska keeps its CodecID and CodecPrivate, WebM refuses codecs it does not allow. `TrackEditInfo.PacketTimesIncludePriming` is now also set for Matroska tracks with a `CodecDelay`, whose packet times already have it taken off.
 
+### Fixed
+
+- H.264, HEVC and VVC in AVI written from an MP4 by stream copy (`avc1`, `avcC` after the bitmap header) get their codec description and RFC 6381 string (`Rfc6381Codec()`, `DescribeCodec()`) from that record, the same string as the source MP4 gives; the in-stream parameter sets are read only when there is no record.
+- Frame rates taken from H.264, HEVC and AV1 parameter sets (`CodecParameters.FrameRateNumerator`/`FrameRateDenominator`, so MP4 `avcC` tracks and AVI/TS fallbacks too) are in lowest terms: 10/1, not 20/2.
+
 ## [0.2.0-preview.2] - 2026-11-01
 
 Fixes for AAC decoding from MPEG-TS/PS, MPEG-TS service names and several smaller reading issues. Two new layers ship as **previews**, not yet covered by the project's writer and playback gates or advertised: the ISO base media muxer and browser playability (`CanPlay`). Their APIs may change before 0.3.

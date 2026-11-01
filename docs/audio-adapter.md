@@ -96,3 +96,19 @@ What the file says and what the decode delivers differ for HE-AAC, so both are r
 A `MediaFile` has one read position. The first read starts where `Open` left it. Every later read (`Packets`, `PacketsAsync`, `Decode`, in any order, also for another track) first returns to the start with a seek, so it needs a source that can seek; a file that cannot rewind throws `MediaReadStateException` (`CannotRewind`). That is the normal case for a file opened with `Media.Open(Stream)` from a stream that cannot seek: it opens when its format can be read front to back (Matroska/WebM, MP4 laid out for it, ASF, MPEG-TS and program streams, elementary streams), reads once, and refuses a second pass; a format that needs to seek throws `UnsupportedMediaException` naming it. A synchronous read (`Packets`, `Decode`, `DescribeDecode`) of a file opened with `OpenAsync` throws `MediaReadStateException` (`AsynchronousSource`); use `PacketsAsync`. A read that is still alive when a newer one starts is superseded and throws `MediaReadStateException` (`Superseded`) on its next call, so two readers never interleave and nothing returns silently empty. Seeking to a time before the start lands on the first sample (ISO tables start at decode time zero). Reading `media.Demuxer` directly is not tracked: a caller that does that owns the position.
 
 The test files are in `testdata/heaac` (`tools/gen-heaac-testdata.sh`): plain AAC-LC frames from a synthetic sine, with MP4Box rewriting only the signalling, because no encoder available here writes real SBR.
+
+## Frame counts against ffmpeg (`tools/audio-es/ffmpeg-frames.py`)
+
+The script decodes the first audio stream through the adapter and through `ffmpeg -f f32le` (ffmpeg 7.0.2, one thread) and prints both
+frame counts and the largest sample difference with the two aligned at the start and at the end. Findings on the AAC files of the
+corpus (TS, MP4/MOV/3GP, Matroska):
+
+- **No priming declared** (no edit list, no iTunSMPB, no CodecDelay: `h264-aac-no-editlist.mp4`, every MPEG-TS and program stream,
+  fragmented files without an edit list): ffmpeg trims nothing and the adapter trims nothing, so the counts are equal and the samples
+  agree to 5e-4 or better (4e-7 on real music), aligned at the start. A container that declares nothing is therefore decoded in full,
+  the encoder delay included; the adapter does not assume one.
+- **Priming declared by an edit list** (MP4, MOV, 3GP written by ffmpeg, Apple and others): both sides drop the first edit's `media_time`
+  at the start. The adapter also stops at the edit's `segment_duration`, as OneAudio's own MP4 reader does; ffmpeg ignores the end of
+  the edit and decodes every frame, so it is longer by the end padding (512 frames in the 48 kHz test files, 44 on the music clip). The
+  samples agree at the start. (`audio-aac-stereo-noise.mp4`, white noise, differs by up to 0.36 at the same frames; that is a decoder difference on noise, not a timing one, and is not investigated here.)
+- **Matroska `CodecDelay`**: see above; ffmpeg keeps the delay, the adapter removes it.

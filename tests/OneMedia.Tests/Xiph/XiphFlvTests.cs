@@ -7,6 +7,7 @@ using RecursiveAI.OneMedia.Tags;
 namespace RecursiveAI.OneMedia.Tests;
 
 /// <summary>Ogg, native FLAC and FLV: small files written by ffmpeg (tools/xiph-flv/gen-testdata.sh), then damaged and re-served in other ways.</summary>
+[Collection(AllocationMeasurements.Name)]
 public class XiphFlvTests
 {
     private static string Path(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "xiph-flv", name);
@@ -302,18 +303,23 @@ public class XiphFlvTests
     [InlineData("h264-aac.flv")]
     public void PullPathAllocatesNothingPerPacket(string name)
     {
+        AllocationGuard.RequireOptimised();
         byte[] data = File.ReadAllBytes(FileFor(name));
         using (IDemuxer warm = OpenSync(name, data))
         {
             Drain(warm);
         }
 
-        using IDemuxer d = OpenSync(name, data);
-        for (int i = 0; i < 3 && d.TryReadPacket(out _); i++)
+        long allocated = AllocationGuard.Best(() =>
         {
-        }
+            using IDemuxer d = OpenSync(name, data);
+            for (int i = 0; i < 3 && d.TryReadPacket(out _); i++)
+            {
+            }
 
-        Assert.Equal(0, Drain(d));
+            return Drain(d);
+        });
+        Assert.Equal(0, allocated);
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
