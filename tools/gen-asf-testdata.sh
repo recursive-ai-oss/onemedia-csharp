@@ -18,6 +18,5 @@ A=(-f lavfi -i "sine=frequency=440:sample_rate=22050:duration=1")
 "$FF" "${G[@]}" "${V[@]}" "${A[@]}" -t 1 -c:v msmpeg4 -b:v 100k -g 5 -c:a pcm_s16le -packetsize 800 "${O[@]}" -f asf "$out/msmpeg4v3-pcm-small-packets.asf"
 "$FF" "${G[@]}" "${A[@]}" -t 1 -c:a wmav2 -b:a 32k -metadata title="Tone" -metadata artist="Sine" -metadata album="Tones" \
   -metadata genre="Sound" -metadata track=2 -metadata date=1999 -metadata comment="Sound check" -metadata copyright="None" "${O[@]}" -f asf "$out/wmav2-tagged.wma"
-"$FF" "${G[@]}" "${V[@]}" -t 1 -c:v wmv2 -b:v 100k -g 5 "${O[@]}" -f asf_stream "$out/wmv2-stream.asf"
 "$FF" -version | head -1 | cut -d' ' -f1-3 > "$out/VERSION"
 ls -l "$out"

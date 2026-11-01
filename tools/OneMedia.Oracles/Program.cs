@@ -27,6 +27,8 @@ internal static class Program
           audiopcm FILE OUT.f32                Decode the first audio stream through the OneMedia adapter into raw little-endian float32.
           meta [--family F] [--out DIR] [FILES...]
               Compare our tags and basic facts with ExifTool and MediaInfo field by field; writes metadata-compare.tsv.
+          atlcompare [--family F] [--out DIR] [FILES...]
+              Compare the common tag view with ATL.NET field by field; writes atl-compare.tsv.
           rangeserver DIR [--port N]           Serve DIR with HTTP range support until Enter is pressed.
           selftest [FILES...]                  Check the harness against exact and deliberately wrong fake formats.
           list [--family F] [--root DIR]       Print the files a family selects.
@@ -57,6 +59,7 @@ internal static class Program
             case "infocheck": return InfoCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family));
             case "audiodecode": return AudioDecodeCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, o.Family), Path.Combine(o.Out, "audiodecode-work"));
             case "packetset": return PacketSets.Run(o.Files);
+            case "atlcompare": return AtlCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);
             case "asfseek": return AsfSeekCheck.Run(o.Files.Count > 0 ? o.Files : Select(o, "asf"));
             case "audiopcm": return AudioDecodeCheck.DumpPcm(o.Files[0], o.Files[1]);
             case "meta": return MetadataCompare.Run(o.Files.Count > 0 ? [.. o.Files.Select(Path.GetFullPath)] : Select(o, o.Family), o.Out);

@@ -35,6 +35,17 @@ internal static class Rows
         "generated/large/over4gb.mkv",
     ];
 
+    // Generated ASF files with tags, then published tagged samples (cover art, large picture tags).
+    private static readonly string[] AsfFiles =
+    [
+        "generated/asf/wmv2-wmav2-tagged.wmv",
+        "generated/asf/wmav2-tagged.wma",
+        "generated/asf/wmav2-cover.wma",
+        "generated/asf/mp3-tagged-unicode.wma",
+        "samples/ASF/wma_with_WmPicture.wma",
+        "samples/ASF/wma_with_ID3_APIC.wma",
+    ];
+
     private static NativeTool FfmpegCopy { get; } = new("ffmpeg -c copy -f null", "ffmpeg", f => ["-v", "error", "-nostdin", "-i", f, "-map", "0", "-c", "copy", "-f", "null", "-"]);
 
     private static NativeTool Ffprobe { get; } = new("ffprobe -show_format -show_streams", "ffprobe", f => ["-v", "error", "-show_format", "-show_streams", "-of", "json", f]);
@@ -65,5 +76,8 @@ internal static class Rows
         new("mkv-probe", "0.1", "Matroska/WebM: open, track list, duration", MkvFiles,
             [new("OneMedia", Role.Ours, Impls.OursProbe), new("NEbml element reader", Role.Gate, Impls.NEbmlProbe)],
             [Ffprobe, MediaInfo, ExifTool, new("mkvmerge -J", "mkvmerge", f => ["-J", f]), new("mkvinfo", "mkvinfo", f => [f])]),
+        new("asf-tags", "0.2", "ASF/WMA/WMV: open and read the tags (title, artist, album, genre, pictures)", AsfFiles,
+            [new("OneMedia", Role.Ours, Impls.OursTags), new("TagLib#", Role.Gate, Impls.TagLibTags), new("ATL.NET", Role.Gate, Impls.AtlTags)],
+            [Ffprobe, MediaInfo, ExifTool]),
     ];
 }

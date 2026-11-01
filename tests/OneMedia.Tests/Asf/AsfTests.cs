@@ -171,6 +171,26 @@ public class AsfTests
     }
 
     [Fact]
+    public void Mp3InAsfDecodesThroughTheAdapter()
+    {
+        // testdata/asf/mp3.wma: one second of 22.05 kHz mono MP3 in an ASF audio file (made with an ASF muxer from synthetic input).
+        string path = System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "asf", "mp3.wma");
+        using OneAudio.IAudioDecoder d = OneAudio.AudioDecoder.OpenFile(path, RecursiveAI.OneMedia.Audio.MediaAudioExtensions.CreateRegistry());
+        Assert.Equal(22050, d.Format.SampleRate);
+        Assert.Equal(1, d.Format.Channels);
+        float[] buffer = new float[4096];
+        long frames = 0;
+        int got;
+        while ((got = d.Read(buffer)) > 0)
+        {
+            frames += got;
+        }
+
+        // 41 frames of 576 samples: the length another decoder gives for the same packets, to the frame.
+        Assert.Equal(23616, frames);
+    }
+
+    [Fact]
     public void SeekWithoutAnIndexScansForKeyframes()
     {
         AsfBuilder b = new();

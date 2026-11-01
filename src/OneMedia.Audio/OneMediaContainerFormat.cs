@@ -167,11 +167,23 @@ public sealed class MatroskaAudioFormat : OneMediaContainerFormat
     }
 }
 
+/// <summary>ASF, WMA and WMV read by OneMedia's ASF reader. Only audio streams in codecs OneAudio decodes (MP3, AAC) can be opened; WMA itself has no decoder.</summary>
+public sealed class AsfAudioFormat : OneMediaContainerFormat
+{
+    /// <summary>The shared instance.</summary>
+    public static AsfAudioFormat Instance { get; } = new();
+
+    private AsfAudioFormat()
+        : base(new Asf.AsfFormat(), "ASF (OneMedia)", [".asf", ".wma", ".wmv"])
+    {
+    }
+}
+
 /// <summary>Registers OneMedia's containers with a OneAudio registry.</summary>
 public static class OneMediaRegistryExtensions
 {
     /// <summary>
-    /// Registers the MP4/MOV/3GP and Matroska/WebM readers of OneMedia. Codecs (AAC, Opus, Vorbis, FLAC, AMR) are registered separately
+    /// Registers the MP4/MOV/3GP, Matroska/WebM and ASF readers of OneMedia. Codecs (AAC, Opus, Vorbis, FLAC, AMR) are registered separately
     /// as usual. Register these before OneAudio's own MP4 reader if OneMedia's should open MP4 files.
     /// </summary>
     /// <param name="registry">The registry to add to.</param>
@@ -179,6 +191,6 @@ public static class OneMediaRegistryExtensions
     public static global::OneAudio.AudioCodecRegistry AddOneMedia(this global::OneAudio.AudioCodecRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        return registry.Add(IsoBmffAudioFormat.Instance).Add(MatroskaAudioFormat.Instance);
+        return registry.Add(IsoBmffAudioFormat.Instance).Add(MatroskaAudioFormat.Instance).Add(AsfAudioFormat.Instance);
     }
 }

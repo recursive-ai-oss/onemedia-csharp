@@ -286,7 +286,6 @@ ff "asf/wmv2-only.wmv" "${VID_320[@]}" -t 4 "${V_WMV2[@]}" -f asf
 ff "asf/wmav2.wma" "${SINE[@]}" -t 4 "${A_WMA2[@]}" -f asf
 ff "asf/mp3.wma" "${NOISE[@]}" -t 4 "${A_MP3[@]}" -f asf
 ff "asf/wmv2-wmav2-packet800.wmv" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_WMA2[@]}" -packetsize 800 -f asf
-ff "asf/wmv2-wmav2-stream.asf" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_WMA2[@]}" -f asf_stream
 ff "asf/wmv2-wmav2-tagged.wmv" "${VID_320[@]}" "${SINE[@]}" -t 4 "${V_WMV2[@]}" "${A_WMA2[@]}" \
   -metadata title="Tagged clip" -metadata author="Test Author" -metadata copyright="(c) Example" -metadata comment="A comment" \
   -metadata album="Test Album" -metadata genre="Test" -metadata track=3 -metadata date=2020 -f asf
