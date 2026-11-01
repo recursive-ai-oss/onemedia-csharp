@@ -100,6 +100,10 @@ EBML and chunk editors refuse (`ArgumentException`) an addition inside an elemen
 - **WebM gets no cover art.** The WebM profile has no Attachments element, so a picture edit on a `webm` file is reported as not written.
 - **Padding that hides something is not reused.** A `Void`/`free`/`JUNK` element whose stated size was cut to fit the file (damaged), or that a Matroska SeekHead entry points into, is not
   taken as padding: a reader may reach an element inside it.
+- **Damaged files are refused, not guessed at.** A Matroska file for which the reader reports errors (other than a wrong CRC-32 or a Segment cut off by the end of a truncated file), a SeekHead
+  with cut-back entries, or an element of invalid unknown size is refused with `UnsupportedMediaException`: the reader found its way by searching, and moving bytes could change what it finds.
+  In MP3 files an ID3v2 tag that overlaps the ID3v1 tag is refused, an APEv2 footer whose items do not parse is left untouched, and a file that merely ends in `TAG` is not taken for MP3
+  unless the reader agrees it is MPEG audio. `TagWriteOptions.Systems` is honoured for Matroska: naming other systems leaves its Tags and attachments alone.
 - **Matroska Tags after the Clusters.** When a file has file-level Tags after the Clusters and no SeekHead entry for them, the edit goes into those Tags (the bytes are right: `mkvextract`
   shows the new values) but the reader, which does not scan for them, does not see them. Files written with an index of `Tags` are unaffected.
 - **ASF `ID3` attribute.** The embedded ID3 tag in an ASF attribute is kept as it is and noted in the report; removing a field that the ID3 tag also holds does not remove it there.
