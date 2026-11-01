@@ -147,6 +147,15 @@ def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
         if modes.get(o, "none") != "none" and len(pa) == len(pr):
             pa = [(x[0], x[1], x[2], str(r[3]), x[4], "SHA256:" + r[6]) for x, r in zip(pa, pr)]
         if len(pa) != len(pb):
+            if pr and len(pr) == len(pb):
+                # ffprobe reads the input differently from the container reader (it lost sync, or reads another link of a chained stream); the
+                # output holds what the reader delivered, so size and hash are checked against what was written.
+                classes["explained:count-reader(%d->%d:%d!=%d)" % (i, o, len(pa), len(pb))] += 1
+                bad_rows = sum(1 for y, r in zip(pb, pr) if to_int(y[3]) != r[3] or y[5] != "SHA256:" + r[6])
+                total += len(pb)
+                match += len(pb) - bad_rows
+                diff += bad_rows
+                continue
             classes["count(%d->%d:%d!=%d)" % (i, o, len(pa), len(pb))] += 1
             diff += abs(len(pa) - len(pb))
         deltas = [to_float(y[0]) - to_float(x[0]) for x, y in zip(pa, pb) if to_float(x[0]) is not None and to_float(y[0]) is not None]

@@ -196,9 +196,10 @@ internal static class MatroskaTrackWriter
 
                 return Is(c, "OpusHead") && OpusHead.TryParseOpusHead(data, out _) ? data.ToArray() : throw Missing("the Opus setup bytes are not an OpusHead.");
             case "vorbis":
+            case "theora": // Matroska codec mapping: V_THEORA keeps the three headers in Xiph lacing, as A_VORBIS does
                 return !data.IsEmpty && IsAny(c, "CodecPrivate", "xiph-lacing") && MatroskaCodecPrivate.TrySplitXiphLacing(data, out ReadOnlyMemory<byte>[] headers) && headers.Length == 3
                     ? data.ToArray()
-                    : throw Missing("Vorbis in Matroska needs the three headers in Xiph lacing as CodecPrivate.");
+                    : throw Missing("Vorbis and Theora in Matroska need the three headers in Xiph lacing as CodecPrivate.");
             case "flac":
                 if (data.IsEmpty)
                 {
