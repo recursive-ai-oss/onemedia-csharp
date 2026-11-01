@@ -172,7 +172,7 @@ public class RereadTests
         {
             Assert.True(media.Packets(media.Audio!).Any());
             float[] buf = new float[4096 * decoder.Format.Channels];
-            // OneAudio 1.6.0 reads the first access units when it opens an AAC decoder (to look for SBR) and replays them, so reading
+            // OneAudio 1.6.1 reads the first access units when it opens an AAC decoder (to look for SBR) and replays them, so reading
             // alone may never reach the source; a seek does.
             Assert.Throws<MediaReadStateException>(() =>
             {
@@ -243,7 +243,7 @@ public class RereadTests
         Assert.Throws<MediaReadStateException>(() => once.Packets(once.Audio!).Count());
     }
 
-    // OneAudio 1.6.0 decodes signalled HE-AAC; this library reports how the file signals it.
+    // OneAudio 1.6.1 decodes signalled HE-AAC; this library reports how the file signals it.
     [Theory]
     [InlineData("sbr-compatible.m4a", SbrSignalling.BackwardCompatible)]
     [InlineData("sbr-explicit.m4a", SbrSignalling.Explicit)]

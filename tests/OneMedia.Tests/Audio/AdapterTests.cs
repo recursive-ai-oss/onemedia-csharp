@@ -267,6 +267,7 @@ public class AdapterTests
         Assert.Equal(22050, format.SampleRate);
         Assert.Equal(22050, report.DecodedSampleRate);
         Assert.Equal(44100, report.SignalledSampleRate);
+        Assert.False(report.SbrActive);
         using IAudioDecoder again = media.Decode();
         AudioDecodeReport settled = report.AfterReading(again);
         Assert.Equal(report, settled);
@@ -289,6 +290,10 @@ public class AdapterTests
         Assert.Equal(AudioSeamLimitations.None, report.Limitations);
         Assert.Equal(0, report.SignalledSampleRate);
         Assert.Equal(0, report.SignalledChannels);
+        Assert.True(report.SbrActive);
+        // The PS fixture holds a stereo core (plain AAC-LC frames), so the decoder runs SBR without parametric stereo even though the file
+        // signals PS: the report says what ran, not what was signalled.
+        Assert.False(report.PsActive);
         Assert.Equal(24576, samples.Length / format.Channels);
         Assert.Equal(channels, format.Channels);
         Assert.NotEqual(SbrSignalling.None, report.Signalling);

@@ -33,11 +33,11 @@ public enum AudioSeamLimitations
     /// </summary>
     SbrNotApplied = 1 << 3,
 
-    /// <summary>Never set since OneAudio 1.6.0 decodes parametric stereo. Kept so code written against earlier previews still compiles.</summary>
+    /// <summary>Never set since OneAudio 1.6.1 decodes parametric stereo. Kept so code written against earlier previews still compiles.</summary>
     [Obsolete("OneAudio decodes parametric stereo; this flag is never set.")]
     PsNotApplied = 1 << 4,
 
-    /// <summary>Never set since OneAudio 1.6.0 looks for SBR in the stream itself when only the container hints at it. Kept so code written against earlier previews still compiles.</summary>
+    /// <summary>Never set since OneAudio 1.6.1 looks for SBR in the stream itself when only the container hints at it. Kept so code written against earlier previews still compiles.</summary>
     [Obsolete("OneAudio decides from the stream; this flag is never set. Use AudioDecodeReport.AfterReading for the decoded format.")]
     SbrPossiblyNotApplied = 1 << 5,
 }
@@ -53,10 +53,16 @@ public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations
     /// <summary>How the file signals SBR: <see cref="SbrSignalling.Explicit"/> or <see cref="SbrSignalling.BackwardCompatible"/> in the configuration, <see cref="SbrSignalling.ContainerRate"/> when only the container's doubled rate suggests it (a hint, which may be wrong), else <see cref="SbrSignalling.None"/>.</summary>
     public SbrSignalling Signalling { get; init; }
 
+    /// <summary>True when the decoder runs spectral band replication, as OneAudio's AAC decoder reports (<c>SbrActive</c>). False before <see cref="AfterReading"/> and for every other codec.</summary>
+    public bool SbrActive { get; init; }
+
+    /// <summary>True when the decoder runs parametric stereo, as OneAudio's AAC decoder reports (<c>PsActive</c>). False before <see cref="AfterReading"/> and for every other codec.</summary>
+    public bool PsActive { get; init; }
+
     /// <summary>True when SBR data was skipped (<see cref="AudioSeamLimitations.SbrNotApplied"/>): the audio lacks its high band. Settled only by <see cref="AfterReading"/>.</summary>
     public bool IsCoreOnly => (Limitations & AudioSeamLimitations.SbrNotApplied) != 0;
 
-    /// <summary>Never true since OneAudio 1.6.0 decodes implicit HE-AAC at the full rate.</summary>
+    /// <summary>Never true since OneAudio 1.6.1 decodes implicit HE-AAC at the full rate.</summary>
     [Obsolete("OneAudio decides from the stream; this is never true.")]
     public bool IsPossiblyCoreOnly => false;
 
@@ -77,6 +83,8 @@ public readonly record struct AudioDecodeReport(AudioSeamLimitations Limitations
         int declaredChannels = SignalledChannels != 0 ? SignalledChannels : DecodedChannels;
         return this with
         {
+            SbrActive = decoder is global::OneAudio.Aac.AacDecoder { SbrActive: true },
+            PsActive = decoder is global::OneAudio.Aac.AacDecoder { PsActive: true },
             Limitations = decoder.SbrDataIgnored() ? Limitations | AudioSeamLimitations.SbrNotApplied : Limitations,
             DecodedSampleRate = rate,
             DecodedChannels = channels,
@@ -417,7 +425,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
     public MediaTrack Track => _track;
 
     /// <summary>
-    /// The sampling rate the file asks for when it differs from <see cref="SampleRate"/>. Always zero since OneAudio 1.6.0 decodes HE-AAC at
+    /// The sampling rate the file asks for when it differs from <see cref="SampleRate"/>. Always zero since OneAudio 1.6.1 decodes HE-AAC at
     /// its output rate, which <see cref="SampleRate"/> now is; see <see cref="AudioDecodeReport.AfterReading"/> for the decoder's own rate.
     /// </summary>
     public int SignalledSampleRate => _signalledRate;
