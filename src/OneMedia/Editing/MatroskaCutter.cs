@@ -660,6 +660,12 @@ public static class MatroskaCutter
             }
 
             st.Started = true;
+            if (mode == TrimMode.Keyframe && !plan.Partition && pts < plan.Key)
+            {
+                // A picture that shows before the keyframe it follows in decode order (open GOP) refers to the previous group, which is not in the clip.
+                return;
+            }
+
             if (plan.End.IsKnown && pts >= plan.End)
             {
                 // Matroska cannot hide a frame at the end, and a frame past the end that was coded before a kept one cannot be dropped without

@@ -84,10 +84,15 @@ def framemd5(ff, path, from_zero=False):
         elif line and not line.startswith("#"):
             f = [x.strip() for x in line.split(",")]
             frames.append((Fraction(int(f[2])) * tb, int(f[3]) * tb, f[5]))
-    if from_zero and frames:
-        # Generated sources start at 0. ffmpeg moves every stream's times so the earliest one (a negative audio start) is 0, which shifts the video by a frame.
-        first = frames[0][0]
-        frames = [(t - first, d, h) for t, d, h in frames]
+    if from_zero and path.endswith(".mkv") and frames:
+        # ffmpeg moves all times by the audio's negative start, which turns the container's millisecond times into rounded sums; the container's own
+        # presentation times (ffprobe packets, in display order) are the cut points the tool works with.
+        ff_probe = os.path.join(os.path.dirname(ff), "ffprobe")
+        r2 = run([ff_probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", path])
+        times = sorted(Fraction(x).limit_denominator(1000) for x in r2.stdout.split() if x != "N/A")
+        if len(times) == len(frames):
+            frames = [(t, d, h) for t, (_, d, h) in zip(times, frames)]
+        return frames
     return frames
 
 
@@ -207,13 +212,17 @@ def check_case(a, src, idx, kind, frames, keys, src_pcm, src_packets, from_t, to
             if best is None or best_err > 1e-4:
                 problems.append(f"audio does not line up with the source (err {best_err})")
             else:
-                end_overshoot = (s_samp - best + len(clip)) - (s_samp + want_len) + short * 0
-                audio += f" aend{end_overshoot:+d}"
-                # The audio may begin up to two packets before the first shown frame and end up to one packet after the last kept one.
+                # The audio may begin up to two packets before the first shown frame and end up to one packet after the last kept video frame
+                # (measured on the packets, so the decoder's own padding does not count).
                 if best > (4 * frame if "opus" in kind else 3 * frame):
                     problems.append(f"audio starts {best} samples early")
-                if end_overshoot > frame + 1 and not short:
-                    problems.append(f"audio ends {end_overshoot} samples late")
+                rp = run([a.ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "packet=pts_time,duration_time", "-of", "csv=p=0", out])
+                a_end = max(Fraction(x.split(",")[0]).limit_denominator(10**6) + Fraction(x.split(",")[1]).limit_denominator(10**6) for x in rp.stdout.split())
+                v_end = expected[-1][0] + expected[-1][1] - S
+                late = int(round((a_end - v_end) * SAMPLE_RATE))
+                audio += f" aend{late:+d}"
+                if late > frame + 48 or late < -frame:
+                    problems.append(f"audio ends {late} samples after the video")
         if not mkv:
             d_len = len(clip) - min(want_len, max(0, len(src_pcm) - s_samp))
             # Align the clip against the source around the expected sample (skip the first 2048 samples: the lossy codec's start-up).

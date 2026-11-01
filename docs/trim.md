@@ -1,6 +1,6 @@
 # Trimming, splitting and joining
 
-`Media.Trim`, `Media.Split`, `Media.SplitBySize` and `Media.Concat` (and `onemedia trim|split|concat`) cut and join ISO base media files (MP4, MOV, 3GP, M4A, fragmented MP4 as input) without decoding or re-encoding. The layer underneath is `RecursiveAI.OneMedia.Editing`: `IsoCutter` (trim, split) and `IsoJoiner` (concat), over `IsoBmffDemuxer` and `IsoMuxer`. Packet payloads are copied unchanged. Matroska/WebM output is not part of this page yet (see the end).
+`Media.Trim`, `Media.Split`, `Media.SplitBySize` and `Media.Concat` (and `onemedia trim|split|concat`) cut and join ISO base media files (MP4, MOV, 3GP, M4A, fragmented MP4 as input) and Matroska/WebM files without decoding or re-encoding; the output has the container of the input. The layer underneath is `RecursiveAI.OneMedia.Editing`: `IsoCutter` and `IsoJoiner` over `IsoBmffDemuxer` and `IsoMuxer`, `MatroskaCutter` and `MatroskaJoiner` over `MatroskaDemuxer` and `MatroskaMuxer`. Packet payloads are copied unchanged. Matroska differs in how a frame-accurate start is written and in what it can express; see the last section.
 
 ## Trim
 
@@ -44,7 +44,7 @@ ffmpeg-based tools honour the start of the audio edit to the sample but decode t
 
 ### Refusals
 
-`EditRefusedException` with an `EditRefusalReason`: `EmptyRange` (end not after start, start past the last frame, no frame in range), `NoKeyframe`, `ComplexEditList` (a track whose edit list has several media segments or a gap after media; join first, cut second is not possible: such a file is usually the output of `Concat`), `UnsupportedSource` (not an ISO file, not seekable, no track the muxer can carry; a video track the muxer refuses is `UnsupportedSource` with the muxer's reason). A cut that would need a re-encode does not arise: any start is expressible with an edit list.
+`EditRefusedException` with an `EditRefusalReason`: `EmptyRange` (end not after start, start past the last frame, no frame in range), `NoKeyframe`, `ComplexEditList` (a track whose edit list has several media segments or a gap after media; join first, cut second is not possible: such a file is usually the output of `Concat`), `UnsupportedSource` (neither an ISO nor a Matroska file, not seekable, no track the muxer can carry; a video track the muxer refuses is `UnsupportedSource` with the muxer's reason). `ExactStartNotSupported` (Matroska only, above). A cut that would need a re-encode does not arise in ISO files: any start is expressible with an edit list.
 
 ### Limits
 
@@ -71,4 +71,32 @@ Tracks whose inputs have no edit lists at all produce none; when any input has o
 
 ## Matroska and WebM
 
-Matroska has no edit list. RFC 9559 §11.2 gives the mechanism: Block timestamps are signed offsets from the Cluster timestamp, and a frame whose timestamp is negative "MUST be decoded by the decoder but not played". A frame-accurate cut therefore shifts all times so the first shown frame is at zero, which puts the frames from the keyframe to it before zero; audio pre-roll is the same, and `CodecDelay`/`DiscardPadding` state codec delay and end padding. A cut at a keyframe needs nothing special. The Matroska muxer has to write a first Cluster with timestamp 0 and negative block offsets for this (the cluster timestamp is unsigned and is chosen from the earliest block today), so a Matroska output is not part of this change: the operations take ISO files in and write ISO files, and `Media.Trim` on a Matroska source is refused with `UnsupportedSource`. No player behaviour for Matroska output has been measured.
+`Media.Trim`, `Split`, `SplitBySize` and `Concat` take Matroska and WebM files too and write Matroska or WebM (a WebM source gives WebM). The content of the file is detected, not the extension. Splitting and joining work as for ISO files (cuts at video keyframes, packets partitioned, each part's timeline starting at zero; joining places each input after the end of the previous one's video). The differences come from the container.
+
+### Frame-accurate start
+
+Matroska has no edit list. RFC 9559 §11.2 gives the one mechanism: Block timestamps are signed offsets from the Cluster timestamp, and a frame whose timestamp is negative "MUST be decoded by the decoder but not played". A frame-accurate trim therefore writes the packets from the keyframe before `from`, shifts all times so the first wanted frame is at zero, and leaves the frames before it at negative timestamps (the Cluster timestamp is 0 and the blocks carry negative offsets; with 1 ms units a lead-in of up to 32 s fits). Audio is written the same way: packets that end before the start (plus the codec's pre-roll: one packet, two for MP3, 80 ms for Opus) are dropped, and the packet or two that straddle the start keep their negative start time. So the audio begins up to one codec frame (plus the pre-roll) before the first shown frame, in step with the video, and a player that follows the RFC does not play it; `ClipReport.HiddenVideoPackets` counts the video frames in front.
+
+What players do with such a file (`tools/trim/playback-trim.py --container webm|mkv`, a clip cut from frame 53 to frame 143 of a 25 fps source, frame numbers burned into the picture):
+
+| Player | Start | End |
+|---|---|---|
+| Chrome 156 (system build) and Chromium 140 (Playwright), VP9 and AV1, WebM and MKV | requested frame (53) | requested last frame (142) |
+| WebKit 26 (Playwright, Linux), WebM and MKV | shows the lead-in: starts at the keyframe (48) | last frame (142) |
+| Firefox 141 (Playwright, Linux), WebM | shows the lead-in: starts at the keyframe (48) | last frame (142) |
+| Firefox 141, MKV | does not play Matroska (media error 4) | |
+| ffmpeg (CLI decode and `ffprobe -show_frames`) | outputs the negative-time frames in front, in decode order; the frames after them are exactly the requested ones | |
+
+So the shown range is exact where the player follows §11.2, and a player that ignores it shows at most one group of pictures of lead-in. A clip that must look right everywhere is cut in keyframe mode. For H.264, HEVC, VVC, MPEG-2, MPEG-4 and VC-1 video a frame-accurate start between keyframes is **refused** (`EditRefusalReason.ExactStartNotSupported`): the demuxers of ffmpeg-based players (Chrome among them) recompute the times of these codecs from a parser and report a negative presentation time as undefined (`FFmpegDemuxer: PTS is not defined`, media error 4), so the written file would not play there. Cut those in keyframe mode, or write MP4, where an edit list hides the frames. VP8, VP9 and AV1 have no such parser and play. A cut that falls on a keyframe has nothing to hide and works for every codec.
+
+### End of a clip
+
+Matroska cannot hide the last frames either. The clip ends at the first frame, in decode order, that is shown at or after `to`; frames that show earlier but are coded after it refer to it and go with it. With B-frames the clip can therefore end up to the reorder depth (one to three frames) before `to`; `ClipReport.Notes` says by how many milliseconds. Without B-frames the end is exact. Audio ends with the last packet that starts before the end of the video, so it can run up to one packet past it.
+
+### Concat
+
+Tracks are matched by index and must agree in codec, codec private data, audio format and frame size/aspect/rotation; a difference is refused as `NeedsReencode` naming the track (Matroska keeps one CodecPrivate per track). Each input's times are shifted to follow the end of the previous input's video.
+
+### Other
+
+Subtitle tracks are rebased and clamped as in ISO files. Cues, SeekHead and Duration come from the Matroska muxer (`docs/muxing-matroska.md`); tags, chapters and attachments of the source are not copied.

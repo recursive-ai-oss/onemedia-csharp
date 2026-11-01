@@ -1,5 +1,6 @@
 using RecursiveAI.OneMedia.Editing;
 using RecursiveAI.OneMedia.IsoBmff;
+using RecursiveAI.OneMedia.Matroska;
 
 namespace RecursiveAI.OneMedia.Smoke;
 
@@ -65,6 +66,87 @@ internal static class EditSmoke
         }
 
         check("split and concat", parts.Count == 2 && Count(joined.ToArray()) == Count(source));
+        RunMatroska(check);
+    }
+
+    // The same operations on a Matroska file: VP9 frames before the start get negative timestamps; two parts join back.
+    private static void RunMatroska(Action<string, bool> check)
+    {
+        byte[] source = BuildMatroska();
+        using MemoryMediaSource src = new(source);
+        using MatroskaDemuxer d = MatroskaDemuxer.Open(src);
+        using MemoryStream clip = new();
+        ClipReport report = MatroskaCutter.Trim(d, clip, new MediaTime(7, 25), new MediaTime(19, 25));
+        check("matroska trim frame-accurate", report.SourceStart == new MediaTime(7, 25) && report.HiddenVideoPackets == 7);
+
+        List<MemoryStream> parts = [];
+        MatroskaCutter.Split(d, _ =>
+        {
+            MemoryStream ms = new();
+            parts.Add(ms);
+            return ms;
+        }, [new MediaTime(10, 25)]);
+        List<MemoryMediaSource> sources = [];
+        List<MatroskaDemuxer> inputs = [];
+        foreach (MemoryStream p in parts)
+        {
+            MemoryMediaSource s = new(p.ToArray());
+            sources.Add(s);
+            inputs.Add(MatroskaDemuxer.Open(s));
+        }
+
+        using MemoryStream joined = new();
+        MatroskaJoiner.Concat(inputs, joined);
+        foreach (MatroskaDemuxer m in inputs)
+        {
+            m.Dispose();
+        }
+
+        foreach (MemoryMediaSource s in sources)
+        {
+            s.Dispose();
+        }
+
+        check("matroska split and concat", parts.Count == 2 && CountMatroska(joined.ToArray()) == CountMatroska(source));
+    }
+
+    private static int CountMatroska(byte[] file)
+    {
+        using MemoryMediaSource src = new(file);
+        using MatroskaDemuxer d = MatroskaDemuxer.Open(src);
+        int n = 0;
+        while (d.TryReadPacket(out _))
+        {
+            n++;
+        }
+
+        return n;
+    }
+
+    private static byte[] BuildMatroska()
+    {
+        using MemoryStream output = new();
+        using (MatroskaMuxer mux = new(output))
+        {
+            int v = mux.AddTrack(new MediaTrack
+            {
+                Index = 0,
+                Kind = TrackKind.Video,
+                Codec = CodecId.Vp9,
+                Timescale = 1000,
+                Video = new VideoTrackInfo(320, 180, FrameRateNumerator: 25, FrameRateDenominator: 1),
+            });
+            byte[] payload = new byte[48];
+            for (int i = 0; i < 30; i++)
+            {
+                MediaTime t = new(i * 40L, 1000);
+                mux.WritePacket(new PacketInfo(v, t, MediaTime.Unknown, new MediaTime(40, 1000), i % 10 == 0 ? PacketAttributes.Keyframe : PacketAttributes.None, ByteRange.None, payload.Length), payload);
+            }
+
+            mux.Finish();
+        }
+
+        return output.ToArray();
     }
 
     private static int Count(byte[] file)
