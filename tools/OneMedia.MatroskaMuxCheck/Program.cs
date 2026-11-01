@@ -62,7 +62,18 @@ long cuePoints = 0;
 Stopwatch clock = Stopwatch.StartNew();
 MediaTrack[] keptTracks;
 bool[] inFlag;
-using (MediaFile file = MediaFile.Open(FileMediaSource.Open(input)))
+MediaFile? opened = null;
+try
+{
+    opened = MediaFile.Open(FileMediaSource.Open(input));
+}
+catch (MediaFormatException e)
+{
+    Console.WriteLine($"SKIP {Path.GetFileName(input)}: cannot be read as a stand-alone file ({e.Message})");
+    return 0;
+}
+
+using (MediaFile file = opened)
 {
     IDemuxer demux = file.Demuxer ?? throw new InvalidOperationException("needs a synchronous demuxer");
     containerDuration = file.ContainerDuration;
@@ -116,13 +127,19 @@ using (MediaFile file = MediaFile.Open(FileMediaSource.Open(input)))
             continue;
         }
 
-        expected[m].Add(new InPacket(info.Pts, info.Duration, info.IsKeyframe, (info.Flags & PacketAttributes.Discard) != 0, p.Data.Length, Adler(p.Data)));
+        expected[m].Add(new InPacket(info.Pts, info.Duration, info.IsKeyframe, (info.Flags & PacketAttributes.Discard) != 0, p.Data.Length, Adler(p.Data), info.Dts));
         mux.WritePacket(info with { TrackIndex = m }, p.Data);
         packets++;
     }
 
     mux.Finish();
     cuePoints = mux.CuePointCount;
+}
+
+if (packets == 0)
+{
+    Console.WriteLine($"SKIP {Path.GetFileName(input)}: the file holds no packets (an initialisation segment)");
+    return 0;
 }
 
 long rss = Process.GetCurrentProcess().PeakWorkingSet64;
@@ -171,6 +188,16 @@ using (MediaFile again = MediaFile.Open(FileMediaSource.Open(output)))
 
 // Frames of one laced block that state no duration share a timestamp in our reader and in the file; ffprobe spaces them by the codec's
 // frame length, so their times cannot be compared (RFC 9559 §10.3: a lace has one timestamp).
+// The muxer completes a packet that states no duration with the distance to the next decode time of its track (the mux contract).
+static bool DerivedFromNextDts(List<InPacket> list, int k, long scale, long outDuration)
+{
+    if (list[k].Duration.IsKnown || k + 1 >= list.Count) { return false; }
+    MediaTime a = list[k].Dts.IsKnown ? list[k].Dts : list[k].Pts, b = list[k + 1].Dts.IsKnown ? list[k + 1].Dts : list[k + 1].Pts;
+    if (!a.IsKnown || !b.IsKnown) { return false; }
+    long gap = b.Rescale(scale, MediaRounding.NearestAwayFromZero).Ticks - a.Rescale(scale, MediaRounding.NearestAwayFromZero).Ticks;
+    return gap > 0 && Math.Abs(gap - outDuration) <= 1;
+}
+
 bool[][] laceShared = new bool[keptTracks.Length][];
 for (int t = 0; t < keptTracks.Length; t++)
 {
@@ -216,6 +243,7 @@ if (IsMatroska(input) && dropped.Count == 0)
             if (!dur)
             {
                 if (k < laceShared[t].Length && laceShared[t][k]) { Add(explained, "lace-shared-pts"); }
+                else if (DerivedFromNextDts(expected[t], k, outScale[t], b.Duration)) { Add(explained, "duration-derived-from-next-dts"); }
                 else if (a.Duration == long.MinValue) { Add(explained, "duration-from-default-duration"); }
                 else { Note(diffs, examples, "ff-duration", t, k, a.Duration, b.Duration); }
             }
@@ -226,6 +254,7 @@ if (IsMatroska(input) && dropped.Count == 0)
     }
 }
 
+List<ProbePacket>[]? inputProbe = null;
 for (int t = 0; t < keptTracks.Length; t++)
 {
     List<InPacket> want = expected[t];
@@ -259,11 +288,20 @@ for (int t = 0; t < keptTracks.Length; t++)
             if (h.Duration != dur)
             {
                 if (sameAsInput.Contains((t, k, "duration"))) { Add(explained, "duration-as-ffprobe-gives-for-the-input"); }
+                else if (Math.Abs(h.Duration - dur) <= 1) { Add(explained, "duration-truncated-from-default-duration-by-ffprobe"); }
+                else if (k == want.Count - 1 && h.Duration > dur) { Add(explained, "ffprobe-gives-the-default-duration-for-a-shorter-last-block"); }
                 else { Note(diffs, examples, "duration", t, k, dur, h.Duration); }
             }
         }
 
-        if (w.Key != h.Flags.Contains('K', StringComparison.Ordinal)) { Note(diffs, examples, "key", t, k, w.Key, h.Flags); }
+        if (w.Key != h.Flags.Contains('K', StringComparison.Ordinal))
+        {
+            // ffmpeg's parsers mark some key frames of the bitstream itself (MPEG-4 part 2, for one); then it does the same for the input.
+            inputProbe ??= dropped.Count == 0 ? Probe(ffprobe, input, keptTracks.Length) : null;
+            if (inputProbe is not null && k < inputProbe[t].Count && inputProbe[t][k].Flags.Contains('K', StringComparison.Ordinal) == h.Flags.Contains('K', StringComparison.Ordinal)) { Add(explained, "key-as-ffprobe-gives-for-the-input"); }
+            else { Note(diffs, examples, "key", t, k, w.Key, h.Flags); }
+        }
+
         // ffprobe does not map a block's invisible flag to its discard flag, so only a discard it shows that we did not send is a difference.
         if (!w.Discard && h.Flags.Contains('D', StringComparison.Ordinal)) { Note(diffs, examples, "discard", t, k, w.Discard, h.Flags); }
     }
@@ -420,7 +458,7 @@ static (long Num, long Den)[] TimeBases(string ffprobe, string path, int streams
 
 static long Num(Dictionary<string, string> f, string key) => f.TryGetValue(key, out string? v) && long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out long n) ? n : long.MinValue;
 
-internal sealed record InPacket(MediaTime Pts, MediaTime Duration, bool Key, bool Discard, int Size, uint Hash);
+internal sealed record InPacket(MediaTime Pts, MediaTime Duration, bool Key, bool Discard, int Size, uint Hash, MediaTime Dts);
 
 internal sealed record ProbePacket(long Pts, long Dts, long Duration, int Size, string Flags, uint Hash);
 

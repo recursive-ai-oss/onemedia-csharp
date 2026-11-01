@@ -37,7 +37,13 @@ while IFS= read -r f <&3; do
   "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$out" -f null - > "$work/logs/ffm-$b.log" 2>&1; "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$f" -f null - > "$work/logs/ffmin-$b.log" 2>&1
   if [ "$(wc -l < "$work/logs/ffm-$b.log")" -gt "$(wc -l < "$work/logs/ffmin-$b.log")" ]; then
     # ffmpeg derives decode times for streams with B-frames; where ffprobe states no presentation time for the input's packets it warns about the output's
-    if grep -q 'not-stated-by-ffprobe' "$log"; then fm=explained; else fm=NOISY; fi
+    if grep -q 'not-stated-by-ffprobe' "$log"; then fm=explained
+    else
+      # the same warnings appear when ffmpeg reads a file it wrote itself from the input (its decode-time guess for B-frames at millisecond resolution)
+      "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$f" -c copy -f matroska "$work/out/ref-$b.mkv" > /dev/null 2>&1
+      "$ORACLES/ffmpeg" -nostdin -threads 1 -v error -i "$work/out/ref-$b.mkv" -f null - > "$work/logs/ffmref-$b.log" 2>&1; rm -f "$work/out/ref-$b.mkv"
+      if [ "$(wc -l < "$work/logs/ffm-$b.log")" -le "$(wc -l < "$work/logs/ffmref-$b.log")" ]; then fm=explained; else fm=NOISY; fi
+    fi
   fi
   vw=$(grep -c 'WRN' "$work/logs/val-$b.log"); viw=$(grep -c 'WRN' "$work/logs/valin-$b.log")
   status=OK; if [ $rc -ne 0 ] || [ $v != ok ] || [ $vi != ok ] || [ $fm = NOISY ]; then status=BAD; bad=$((bad+1)); fi
