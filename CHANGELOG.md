@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- HLS and DASH presentations as sources (`PresentationSource`, `PresentationDemuxer`, `IPresentationResolver`, `Media.OpenPresentationAsync`; `Media.Open` also opens a local playlist or manifest): the segments of a chosen variant read as one media file with continuous times, discontinuity flags, several renditions interleaved, protected presentations reported, memory bounded by the largest segment (`MediaLimits.MaxSegmentBytes`, `MaxSegments`). Equal to ffprobe packet for packet on 34 generated presentations except for documented ffprobe behaviours (`docs/streaming-sources.md`).
+- Growing files as sources (`GrowingFileSource`, `GrowthPolicy`, `Media.OpenGrowing`): fragmented MP4, live Matroska, MPEG-TS and FLV are read as they are written, in about 50 MiB over 683 MB.
+- `onemedia` harness commands `presdiff`, `growing` and `presio`; fuzz target `presentation`.
+
 ## [0.4.0-preview.1] - 2026-11-02
 
 The privacy strip and capture-date writes, subtitles and captions, timed events, AAC and FLAC targets for `MakePlayable`, and fixes. Capture facts and telemetry shipped as unadvertised previews in 0.3.0-preview.2 and are described here as previews.

@@ -150,6 +150,12 @@ public sealed class PresentationDemuxer : IDemuxer, IAsyncDemuxer, IMetadataProv
             throw new UnsupportedMediaException("The resource is neither an HLS playlist nor a DASH manifest.");
         }
 
+        if (plan.Variants.Count == 0)
+        {
+            // A multivariant playlist whose stream entries were all unusable, or an MPD without a representation.
+            throw new ManifestFormatException("The presentation lists no variant to play.");
+        }
+
         _variants = plan.Variants;
         _variantIndex = Math.Clamp(_options.VariantIndex, 0, plan.Variants.Count - 1);
         List<PlannedRendition> parts = plan.VariantRenditions[_variantIndex];

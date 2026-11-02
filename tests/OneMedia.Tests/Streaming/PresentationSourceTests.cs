@@ -175,6 +175,17 @@ public sealed class PresentationSourceTests
     }
 
     [Fact]
+    public async Task AMultivariantPlaylistWithNoUsableEntryIsRefusedWithATypedException()
+    {
+        // Found by fuzzing: the malformed STREAM-INF is dropped by the lenient reader, which left no variant to choose.
+        Dictionary<string, byte[]> files = new()
+        {
+            ["/p/master.m3u8"] = Text("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=abc\nlow.m3u8\n"),
+        };
+        await Assert.ThrowsAsync<RecursiveAI.OneMedia.Streaming.ManifestFormatException>(async () => await PresentationSource.OpenAsync(new Uri("http://example.test/p/master.m3u8"), Memory(files)));
+    }
+
+    [Fact]
     public async Task AVariantIsChosenByIndexAndListed()
     {
         string dir = Data("hls-fmp4-av");
