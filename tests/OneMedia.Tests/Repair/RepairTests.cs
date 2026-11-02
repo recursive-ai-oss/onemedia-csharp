@@ -336,6 +336,21 @@ public class RepairTests
         RepairAndCheck(Data("tiny.ts"), b[1234..(b.Length - 100)], ".ts", RepairStatus.Repaired, out _);
     }
 
+    [Theory]
+    [InlineData(40)]
+    [InlineData(75)]
+    [InlineData(97)]
+    public void FaststartFileCutInsideMediaDataGetsShorterSampleTables(int percent)
+    {
+        byte[] b = File.ReadAllBytes(Data("tiny.mp4"));
+        int mdat = IndexOf(b, "mdat"u8.ToArray());
+        int cut = mdat + (int)((b.Length - mdat) * (long)percent / 100);
+        RepairReport r = RepairAndCheck(Data("tiny.mp4"), b[..cut], ".mp4", RepairStatus.Repaired, out int missing);
+        Assert.True(missing > 0);
+        Assert.Contains(r.Items, i => i.Structure == "stbl" && i.Action == RepairAction.Rebuilt);
+        Assert.All(r.Tracks, t => Assert.True(t.DroppedPackets > 0 || t.Packets > 0));
+    }
+
     // Inputs the fuzzer found that once escaped as untyped exceptions or reported Repaired with no output.
     [Theory]
     [InlineData("avi")]

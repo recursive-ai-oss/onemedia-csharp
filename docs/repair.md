@@ -22,7 +22,7 @@ Truncated-file reconstruction (a lost `moov`) is a separate path; index repair r
 
 One scan reads element headers and the first bytes of every block. Rebuilt: SeekHead (always, as the layout moves), Info `Duration` (the last block's end,
 using `BlockDuration` or the track's `DefaultDuration`; a stated value within 100 ms plus two default durations of the computed one is kept), Cues (one cue
-per video keyframe of the first video track; for audio-only files one per Cluster per audio track; `CueRelativePosition` points at the block or block
+per video keyframe of the first video track; for audio-only files one per Cluster per audio track; `CueRelativePosition`, written only when the EBML header declares DocTypeVersion 4 or higher, points at the block or block
 group), Segment size, and the size of every Cluster (8-byte size field; unknown-size Clusters from a live recording become known-size).
 A final Cluster cut in the middle of a block loses that block (reported as `Dropped` with its byte range); garbage between Clusters is skipped by scanning for
 the next Cluster header whose size fits; a truncated element other than a Cluster ends the scan; a missing or cut `Tracks` is `Unrepairable`.
@@ -42,10 +42,18 @@ or an `AVIX` RIFF. Old index chunks are never reused.
 
 *Progressive* files are copied byte for byte and patched in place: `stco`/`co64` entries (same count and width), `mdhd` (sum of `stts`), `tkhd` (edit list sum or the
 scaled media duration; a stated value within one tick is kept), `mvhd` (the longest track), and the size of a truncated `mdat`. Bytes after the last valid box are dropped.
-Chunk offsets are decided in order: the stated ones if they point into the media data without overlap (and, for video, each chunk starts with a plausible length-prefixed
-NAL unit); all moved by one constant; chunks laid out one after another in decode-time order (`Medium`, `Low` without a video track to check against). If none fits the
-repair refuses to guess (`Unrepairable`). A file cut inside `mdat` with `moov` in front keeps its tables: `PartiallyRepaired`, with the number of chunks that lie beyond the
-end in `Warnings` (removing them from the tables is not done).
+Chunk offsets are decided in order: the stated ones if they point into the media data without overlap (and, for video whose samples can be recognised, each
+chunk starts like one: a plausible length before a NAL unit for `avc1`/`hvc1`/`vvc1`/Dolby Vision entries, a `00 00 01` start code for `mp4v`/`mp2v`); all moved by one
+constant; chunks laid out one after another in decode-time order (the layout is tried from the start of the media data and flush with its end, because some
+writers put a few bytes of their own first); and, for files with recognisable video, a walk through the media data in which the next chunk is the video chunk that starts
+like one, or else the next chunk of the other tracks in decode-time order (`Medium`). A file with several tracks whose video cannot be recognised (VP9, AV1, MJPEG, ...) and
+whose offsets are lost is not guessed: `Unrepairable`.
+
+A file whose media data is cut off with the movie box intact (faststart recordings): the sample tables (`stts`, `ctts`, `stsz`, `stsc`, `stco`/`co64`, `stss`, `stps`,
+`sdtp`) are cut back to the samples that lie wholly inside the file, the edit list, `mdhd`, `tkhd` and `mvhd` durations follow, and the new movie box is padded with a `free`
+box to its old size so no chunk offset moves. A sample that is only partly there is dropped (reported with its byte range). A track left without samples is removed. Tables
+not listed (`sbgp`, `sgpd`, `subs`, `saiz`, ...) are copied as they were. If the shorter box would leave a gap of 1 to 7 bytes, nothing is cut and the status is
+`PartiallyRepaired`. Files without a usable movie box belong to reconstruction.
 *Fragmented* files get a new `mfra` (§8.8.9-8.8.11: one `tfra` per track, one entry per fragment) and `mehd` is corrected; a single `sidx` directly before the first fragment
 of a one-track file is rebuilt (§8.16.3). A fragment whose `moof` or `mdat` is cut is dropped. Other `sidx` layouts are kept and reported.
 
