@@ -134,6 +134,7 @@ internal static class SmokeRun
         StripSmoke.Run(Check);
         SubtitleSmoke.Run(Check);
         TelemetrySmoke.RunSidecar(Check);
+        BitmapSubtitleSmoke.Run(Check);
         WriterSmoke.Run(Check);
         TagWriteSmoke.Run(Check);
         MatroskaMuxSmoke.Run(Check);

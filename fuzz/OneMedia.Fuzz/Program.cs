@@ -35,6 +35,7 @@ StripTarget.Register(targets);
 SubtitleTargets.Register(targets);
 TextTrackTarget.Register(targets);
 TeletextTarget.Register(targets);
+BitmapSubtitleTargets.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;
