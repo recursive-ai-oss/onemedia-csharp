@@ -79,4 +79,13 @@ public static partial class Media
     /// <returns>What was moved.</returns>
     /// <exception cref="UnsupportedMediaException">The input is not a progressive ISO base media file.</exception>
     public static Remuxing.FaststartReport Faststart(string input, string output) => Remuxing.Remuxer.Faststart(input, output);
+
+    /// <summary>Makes a file play in a browser profile without decoding video: moves the movie box first or remuxes into a container the profile accepts.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The new file; refused if it exists. Written only when the result is <see cref="Playback.MakePlayableStatus.Made"/> or <see cref="Playback.MakePlayableStatus.AlreadyPlayable"/>.</param>
+    /// <param name="profile">The browser profile, for example <see cref="Playback.BrowserProfiles.Chromium"/>.</param>
+    /// <returns>What was decided and done. A file whose audio needs re-encoding is reported as <see cref="Playback.MakePlayableStatus.NeedsAudioTranscode"/> and nothing is written: the core decodes nothing. Add <c>RecursiveAI.OneMedia.Audio</c> and call its <c>MakePlayable</c> for that case. Video blockers are reported as <see cref="Playback.MakePlayableStatus.Refused"/> with their codes.</returns>
+    /// <exception cref="IOException">The output exists, or a file cannot be read or written.</exception>
+    /// <exception cref="UnsupportedMediaException">The input is not recognised.</exception>
+    public static Playback.MakePlayableReport MakePlayable(string input, string output, Playback.BrowserProfile profile) => Playback.PlayableMaker.MakePlayable(input, output, profile);
 }

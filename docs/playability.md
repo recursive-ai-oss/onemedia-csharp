@@ -188,6 +188,7 @@ The matrix was run until nothing disagreed. Each disagreement was one of these, 
 
 ## Findings worth knowing
 
+- WebKit on Linux (GStreamer) plays PCM from WAV, AIFF, CAF and QuickTime files but not from MP4; found by playing `MakePlayable` output (`make-playable.md`).
 - Chromium without proprietary codecs plays *no* H.264, HEVC, AAC, AC-3 or ALAC; what Chrome adds is exactly those plus a wider container set (MOV, 3GP,
   ADTS; Matroska is accepted by both).
 - Chrome on macOS plays H.264 High 10, 4:2:2 and 4:4:4 and HEVC (hev1 as well as hvc1) through the system decoders; they are warnings, not guarantees.

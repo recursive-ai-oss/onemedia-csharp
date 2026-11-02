@@ -106,4 +106,10 @@ public sealed record RemuxOptions
     /// never do; their report lists every tag as not written. Chapters are not carried.
     /// </summary>
     public bool CarryTags { get; init; } = true;
+
+    /// <summary>
+    /// Input tracks whose packets come from a feed instead of the input's reader (default none). The reader is not asked for those tracks; the feed's packets are
+    /// merged by decode time. The feeds belong to the caller, who disposes them after the remux. Used by <c>MakePlayable</c> to carry re-encoded audio.
+    /// </summary>
+    public IReadOnlyList<TrackReplacement>? Replacements { get; init; }
 }

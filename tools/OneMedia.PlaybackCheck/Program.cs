@@ -6,11 +6,17 @@ using System.Text;
 using System.Text.Json;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Playback;
+using RecursiveAI.OneMedia.Audio;
+using RecursiveAI.OneMedia.Remuxing;
 
 // describe DIR MANIFEST.json            writes the probe manifest for every file in DIR
 // verdicts DIR PROFILE                  prints our verdict per file for one profile
 // compare MANIFEST RESULTS.jsonl PROFILE [TABLE.tsv]
 //                                       compares our verdicts with the browser's observed playback; exit 1 on any disagreement
+// makeplayable DIR OUTDIR PROFILE REPORT.tsv
+//                                       runs MakePlayable (with audio transcoding) on every file of DIR for one profile and writes what it did
+// expect REPORT.tsv MANIFEST RESULTS.jsonl TABLE.tsv
+//                                       checks that every file MakePlayable wrote plays (progressive) in the browser, with the audio and video it should have; exit 1 otherwise
 if (args.Length < 2)
 {
     Console.Error.WriteLine("usage: describe DIR MANIFEST | verdicts DIR PROFILE | compare MANIFEST RESULTS PROFILE [TABLE]");
@@ -25,6 +31,10 @@ switch (args[0])
         return Verdicts(args[1], args[2]);
     case "compare":
         return Compare(args[1], args[2], args[3], args.Length > 4 ? args[4] : null);
+    case "makeplayable":
+        return MakeAll(args[1], args[2], args[3], args[4]);
+    case "expect":
+        return Expect(args[1], args[2], args[3], args[4]);
     default:
         Console.Error.WriteLine("unknown command " + args[0]);
         return 2;
@@ -207,3 +217,110 @@ static (bool Plays, string Note) Observe(JsonElement r, string mode, bool hasVid
 }
 
 static double Count(JsonElement r, string name) => r.TryGetProperty(name, out JsonElement e) && e.ValueKind == JsonValueKind.Number ? e.GetDouble() : 0;
+
+static int MakeAll(string dir, string outDir, string profileId, string reportPath)
+{
+    BrowserProfile profile = ProfileOf(profileId);
+    Directory.CreateDirectory(outDir);
+    StringBuilder tsv = new();
+    tsv.AppendLine("source\toutput\tstatus\ttarget\tinVideo\tinAudio\tbefore\tremaining\tactions\tseconds");
+    foreach (string path in Directory.EnumerateFiles(dir).Where(f => !f.EndsWith(".json", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+    {
+        string name = Path.GetFileName(path);
+        bool inVideo, inAudio;
+        try
+        {
+            using MediaFile f = Media.Open(path);
+            PlaybackDescription d = f.DescribePlayback();
+            inVideo = d.HasVideo;
+            inAudio = d.Tracks.Any(t => t.Kind == TrackKind.Audio);
+        }
+        catch (Exception e) when (e is MediaException or IOException)
+        {
+            tsv.AppendLine($"{name}\t-\tnot-opened\t-\t-\t-\t-\t{e.Message.Replace('\t', ' ')}\t-\t0");
+            continue;
+        }
+
+        string temp = Path.Combine(outDir, name + ".tmp");
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        MakePlayableReport r;
+        try
+        {
+            r = PlayableMaker.MakePlayable(path, temp, profile, new MakePlayableOptions { AudioTranscoder = AudioTranscoder.Default, Overwrite = true });
+        }
+        catch (Exception e) when (e is MediaException or IOException or OneAudio.OneAudioException)
+        {
+            tsv.AppendLine($"{name}\t-\texception\t-\t{inVideo}\t{inAudio}\t-\t{e.GetType().Name}: {e.Message.Replace('\t', ' ')}\t-\t{sw.Elapsed.TotalSeconds:0.0}");
+            continue;
+        }
+
+        string output = "-";
+        if (r.OutputWritten)
+        {
+            string ext = r.Target switch { RemuxFormat.WebM => ".webm", RemuxFormat.Matroska => ".mkv", RemuxFormat.Mov => ".mov", RemuxFormat.Mp4 => ".mp4", _ => Path.GetExtension(name) };
+            output = Path.GetFileNameWithoutExtension(name) + "." + Path.GetExtension(name).TrimStart('.') + ".made" + ext;
+            File.Move(temp, Path.Combine(outDir, output), true);
+        }
+        else if (File.Exists(temp))
+        {
+            File.Delete(temp);
+        }
+
+        string Codes(IEnumerable<PlaybackBlocker> bs) => string.Join(' ', bs.Select(b => $"{b.Code}[{b.TrackIndex}]"));
+        string actions = string.Join("; ", r.Actions.Select(a => a.Kind + (a.Track >= 0 ? "#" + a.Track : "")));
+        tsv.AppendLine($"{name}\t{output}\t{r.Status}\t{r.Target?.ToString() ?? "-"}\t{inVideo}\t{inAudio}\t{Codes(r.Before.Progressive.Blockers)}\t{Codes(r.Remaining)}\t{actions}\t{sw.Elapsed.TotalSeconds:0.0}");
+    }
+
+    File.WriteAllText(reportPath, tsv.ToString());
+    string[] lines = tsv.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).ToArray();
+    foreach (IGrouping<string, string> g in lines.GroupBy(l => l.Split('\t')[2]).OrderBy(g => g.Key, StringComparer.Ordinal))
+    {
+        Console.WriteLine($"{profileId}: {g.Key} {g.Count()}");
+    }
+
+    return 0;
+}
+
+static int Expect(string reportPath, string manifestPath, string resultsPath, string tablePath)
+{
+    Dictionary<string, string[]> report = File.ReadLines(reportPath).Skip(1).Select(l => l.Split('\t')).Where(f => f[1] != "-").ToDictionary(f => f[1], f => f, StringComparer.Ordinal);
+    using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+    Dictionary<string, (bool Video, bool Audio)> described = manifest.RootElement.EnumerateArray().ToDictionary(m => m.GetProperty("file").GetString()!, m => (m.GetProperty("hasVideo").GetBoolean(), m.GetProperty("hasAudio").GetBoolean()), StringComparer.Ordinal);
+    StringBuilder table = new();
+    table.AppendLine("output\tstatus\tresult\tnote");
+    int total = 0, bad = 0;
+    foreach (string line in File.ReadLines(resultsPath))
+    {
+        using JsonDocument doc = JsonDocument.Parse(line);
+        JsonElement r = doc.RootElement;
+        string file = r.GetProperty("file").GetString()!;
+        string mode = r.GetProperty("mode").GetString()!;
+        if (mode != "progressive" || !report.TryGetValue(file, out string[]? row))
+        {
+            continue;
+        }
+
+        (bool video, bool audio) = described[file];
+        bool wantVideo = bool.Parse(row[4]), wantAudio = bool.Parse(row[5]);
+        (bool plays, string note) = Observe(r, mode, video, audio);
+        string shape = video == wantVideo && audio == wantAudio ? "" : $" tracks changed: in V={wantVideo} A={wantAudio}, out V={video} A={audio}";
+        total++;
+        bool ok = plays && shape.Length == 0;
+        if (!ok)
+        {
+            bad++;
+        }
+
+        table.AppendLine($"{file}\t{row[2]}\t{(ok ? "ok" : "FAIL")}\t{note}{shape}");
+    }
+
+    string text = table.ToString();
+    File.WriteAllText(tablePath, text);
+    foreach (string l in text.Split('\n').Where(l => l.Contains("\tFAIL\t", StringComparison.Ordinal)))
+    {
+        Console.WriteLine(l);
+    }
+
+    Console.WriteLine($"{total} outputs played in the browser, {bad} failed");
+    return bad == 0 ? 0 : 1;
+}

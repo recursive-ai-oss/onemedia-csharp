@@ -118,7 +118,9 @@ public static class BrowserProfiles
         [C("mp4", B), C("mov", P), C("3gp", P), C("matroska", P), C("webm", B), C("ogg", P), C("mp3", P), C("adts", P), C("flac", P), C("wav", P), C("aiff", P), C("ac3", P), C("avi", P), C("flv", P), C("mpegts", P), C("asf", P)],
         [
             R("h264", "*"), R("hevc", "*"), R("mpeg4", "*"), R("av1", "*"), R("vp8", "*"), R("vp9", "*"),
-            R("aac", "*"), R("mp3", "*"), R("ac3", "*"), R("eac3", "*"), R("alac", "*"), R("flac", "*"), R("opus", "*"), R("vorbis", "*"), R("pcm", "*"),
+            R("aac", "*"), R("mp3", "*"), R("ac3", "*"), R("eac3", "*"), R("alac", "*"), R("flac", "*"), R("opus", "*"), R("vorbis", "*"),
+            // Observed: PCM plays from WAV, AIFF, CAF and QuickTime files, not from MP4 (found by the MakePlayable matrix).
+            R("pcm", "wav", "aiff", "caf", "mov"),
             R("wmv2", "*"), R("wmav2", "*"),
         ])
     { VerifiedWith = "WebKit 26.0 (Playwright WPE build) on Linux x64, driven by Playwright 1.55.0" };

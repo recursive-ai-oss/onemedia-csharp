@@ -117,7 +117,7 @@ profile webkit-linux | WebKit (Linux, GStreamer) | Linux (GStreamer with FFmpeg 
   codec flac in * Both
   codec opus in * Both
   codec vorbis in * Both
-  codec pcm in * Both
+  codec pcm in wav,aiff,caf,mov Both
   codec wmv2 in * Both
   codec wmav2 in * Both
 profile ios-safari | Safari (iOS) | iOS, iPadOS | 
