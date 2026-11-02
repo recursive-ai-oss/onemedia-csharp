@@ -257,6 +257,14 @@ internal sealed class MediaDataScanner
         long unframedStart = -1;
         bool atBoundary = true;
         List<TrackFramer> order = OrderedFramers();
+        // Some recorders put a small fixed-size item of a track nobody can frame (GoPro's 16-byte descriptor samples) after every sample. Once
+        // the same gap has followed a few samples in a row, the next sample is looked for there first, so bytes inside the item that happen to
+        // parse as a tiny sample are not taken for one.
+        long lastEnd = -1;
+        long lastGap = 0;
+        int gapRun = 0;
+        long jumpedFrom = -1;
+        bool justJumped = false;
         while (pos < _end)
         {
             _cancellation.ThrowIfCancellationRequested();
@@ -312,14 +320,54 @@ internal sealed class MediaDataScanner
             {
                 if (unframedStart >= 0)
                 {
+                    long gap = pos - unframedStart;
+                    if (unframedStart == lastEnd && gap == lastGap)
+                    {
+                        gapRun++;
+                    }
+                    else if (unframedStart == lastEnd)
+                    {
+                        lastGap = gap;
+                        gapRun = 1;
+                    }
+                    else
+                    {
+                        gapRun = 0;
+                    }
+
                     AddSkipped(unframedStart, pos, SkippedReason.Unframed, -1);
                     unframedStart = -1;
                 }
+                else
+                {
+                    lastGap = 0;
+                    gapRun = 0;
+                }
 
+                justJumped = false;
                 AddSample(hit, pos, hitInfo);
                 pos += hitInfo.Length;
+                lastEnd = pos;
                 atBoundary = true;
                 continue;
+            }
+
+            if (unframedStart < 0 && pos == lastEnd && gapRun >= 2 && lastGap > 0 && jumpedFrom != lastEnd && pos + lastGap < _end)
+            {
+                // Nothing starts right here: try where the usual gap ends. If nothing starts there either, come back and scan every position.
+                jumpedFrom = lastEnd;
+                justJumped = true;
+                unframedStart = pos;
+                pos += lastGap;
+                atBoundary = false;
+                continue;
+            }
+
+            if (justJumped)
+            {
+                // The jump found nothing: scan from the start of the gap, positions one by one, as usual.
+                justJumped = false;
+                pos = unframedStart;
             }
 
             if (partial is not null && unframedStart < 0)
