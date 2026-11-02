@@ -53,6 +53,25 @@ public class StripTests
     }
 
     [Fact]
+    public void EveryReportListsTheAreasNotExamined()
+    {
+        (string path, byte[] original) = Copy("strip-mixed.mp4");
+        try
+        {
+            Run(path, original, null, out StripReport report);
+            Assert.Equal(3, StripReport.NotExamined.Count);
+            Assert.Contains(StripReport.NotExamined, x => x.Contains("free text", StringComparison.Ordinal));
+            Assert.Contains(StripReport.NotExamined, x => x.Contains("vendor", StringComparison.Ordinal));
+            Assert.Contains(StripReport.NotExamined, x => x.Contains("trailers", StringComparison.Ordinal));
+            Assert.NotNull(report);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void StripAllRemovesEverythingTheFixtureHolds()
     {
         (string path, byte[] original) = Copy("strip-mixed.mp4");

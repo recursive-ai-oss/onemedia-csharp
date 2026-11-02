@@ -123,6 +123,8 @@ packets are renamed to an unassigned type, GPMF keys to `EMPT`, mebx atoms to lo
 
 ## Not covered (and what the report says)
 
+Every `StripReport` carries `StripReport.NotExamined`, a fixed list of areas no run looks at: free text in tags, comments and descriptions; unknown vendor atoms and boxes; trailers (data after the last structure). `onemedia strip` prints it as a `not examined:` line. An empty `NotRemoved` says nothing about these. Where the strip finds a place it cannot read (an unknown data track, a DJI `dbgi` track, a non-UTF-8 XMP packet) it lists that place in `NotRemoved` or the notes, as before.
+
 Found by the review (`docs/strip-review.md`) and left on purpose or for lack of a layout; none of these is reported unless said so:
 
 - Names the key rules do not know: a custom `mdta` key such as `com.example.position`, `unit_id` or `hardware.id`; ID3 `TXXX`/`GEOB`/`PRIV` frames

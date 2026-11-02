@@ -98,6 +98,18 @@ public sealed class StripReport
     /// <summary>Remarks that are neither entries nor leftovers (a layout that was kept, a tag system the format does not have).</summary>
     public IReadOnlyList<string> Notes { get; }
 
+    /// <summary>
+    /// Areas no strip run examines, the same on every report: free text in tags and comments (outside the listed fields and the text rules for subtitle tracks),
+    /// atoms and boxes from vendors the strip has no rule for, and data appended after the last structure (trailers). An empty <see cref="NotRemoved"/> does not
+    /// speak for these. docs/strip.md describes each.
+    /// </summary>
+    public static IReadOnlyList<string> NotExamined { get; } = new[]
+    {
+        "free text in tags, comments and descriptions",
+        "unknown vendor atoms and boxes",
+        "trailers: data after the last structure",
+    };
+
     /// <summary>True when <see cref="NotRemoved"/> is empty.</summary>
     public bool IsComplete => NotRemoved.Count == 0;
 
