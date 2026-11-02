@@ -28,18 +28,24 @@ internal enum PairStyle
 /// </summary>
 internal static class KeyValueOps
 {
-    public static string? PrimaryKey(CommonField field, string system)
+    // The first key of the first table row for a field in a system, found by one lookup instead of a walk over the whole table on every edit.
+    private static readonly Dictionary<(CommonField, string), string> PrimaryKeys = BuildPrimaryKeys();
+
+    private static Dictionary<(CommonField, string), string> BuildPrimaryKeys()
     {
+        Dictionary<(CommonField, string), string> keys = [];
         foreach (TagMappingRow r in TagMappingTable.Rows)
         {
-            if (r.Field == field && r.System == system)
+            if (r.Keys.Count > 0)
             {
-                return r.Keys[0];
+                keys.TryAdd((r.Field, r.System), r.Keys[0]);
             }
         }
 
-        return null;
+        return keys;
     }
+
+    public static string? PrimaryKey(CommonField field, string system) => PrimaryKeys.GetValueOrDefault((field, system));
 
     public static IReadOnlyList<string> RowKeys(CommonField field, string system)
     {

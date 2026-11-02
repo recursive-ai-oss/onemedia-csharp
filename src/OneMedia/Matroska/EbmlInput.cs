@@ -10,10 +10,21 @@ internal abstract class EbmlInput
 {
     private const int Window = 32 * 1024;
 
-    private readonly byte[] _buf = new byte[Window];
+    private readonly byte[] _buf;
     private long _bufStart;
     private int _bufPos;
     private int _bufLen;
+
+    /// <param name="window">A buffer of at least <see cref="MaxEnsure"/> bytes to use instead of a new one (a caller that rents it and knows the input is finished with before returning it); null for a new buffer.</param>
+    protected EbmlInput(byte[]? window = null)
+    {
+        if (window is not null && window.Length < Window)
+        {
+            throw new ArgumentException("The window is too small.", nameof(window));
+        }
+
+        _buf = window ?? new byte[Window];
+    }
 
     /// <summary>Absolute position of the next unread byte.</summary>
     public long Position => _bufStart + _bufPos;
@@ -241,7 +252,7 @@ internal abstract class EbmlInput
 }
 
 /// <summary>A random-access synchronous source: every call completes before it returns.</summary>
-internal sealed class SyncSourceInput(IMediaSource source) : EbmlInput
+internal sealed class SyncSourceInput(IMediaSource source, byte[]? window = null) : EbmlInput(window)
 {
     public override bool CanSeek => true;
 

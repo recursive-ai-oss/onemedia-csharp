@@ -124,11 +124,11 @@ Every operation copies compressed data unchanged and streams in constant memory;
 | AVI probe | MetadataExtractor, TagLib# | 0.52× / 0.67× | 0.57× / 0.69× |
 | MP4 mux (AAC track, in memory) | SharpMP4 | 0.15× / 0.35× | 0.09× / 0.18× |
 | MP4 remux (AAC track) | SharpMP4 | 0.12× / 0.20× | 0.09× / 0.17× |
-| ID3 tag write | TagLib#, ATL.NET | 0.42× / 0.45× | 0.42× / 0.46× |
-| FLAC tag write | TagLib#, ATL.NET | 0.37× / 0.45× | 0.41× / 0.41× |
-| MP4 `ilst` tag write | TagLib#, ATL.NET | 0.52× / 0.56× | 0.34× / 0.40× |
-| WAV tag write | TagLib#, ATL.NET | 0.51× / 0.59× | 0.36× / 0.37× |
-| Matroska tag write (one file; the comparators fail on the other) | TagLib# | 0.95× / 0.95× | **1.03×** / 1.03× (above 1.0× on this single file, inside the 1.25× per-row limit; the tag-write rows together are far below 1.0×) |
+| ID3 tag write | TagLib#, ATL.NET | 0.33× / 0.37× | 0.30× / 0.35× |
+| FLAC tag write | TagLib#, ATL.NET | 0.33× / 0.39× | 0.32× / 0.32× |
+| MP4 `ilst` tag write | TagLib#, ATL.NET | 0.50× / 0.57× | 0.34× / 0.37× |
+| WAV tag write | TagLib#, ATL.NET | 0.58× / 0.66× | 0.37× / 0.38× |
+| Matroska tag write (one file; the comparators fail on the other) | TagLib# | 0.90× / 0.90× | 0.76× / 0.76× |
 | Subtitle parse (SRT, WebVTT, ASS, TTML; 20,000 and 100,000 cues) | SubtitlesParser, Subtitle Edit core (bench only) | 0.53× / 1.16× | 0.51× / 1.07× |
 | Subtitle convert (SRT to WebVTT, ASS, TTML) | Subtitle Edit core | 0.40× / 1.14× | 0.42× / 0.90× |
 

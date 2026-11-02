@@ -15,8 +15,10 @@ namespace RecursiveAI.OneMedia;
 public static class MediaFormats
 {
     /// <summary>
-    /// The shared registry: ISO BMFF, Matroska/WebM, WAVE (RIFF, RF64, Wave64), AIFF and CAF can be opened; every other format OneMedia knows is recognised by content, so
-    /// opening one reports the format by name in an <see cref="UnsupportedMediaException"/>. Do not add to it; use <see cref="Create"/> for that.
+    /// The shared registry. It opens ISO BMFF (MP4, MOV, 3GP, fragmented MP4), Matroska/WebM, AVI, ASF, MPEG-TS and M2TS, MPEG program streams, FLV, Ogg, FLAC,
+    /// WAVE (RIFF, RF64, Wave64), AIFF, CAF, DV, the elementary streams (MP3 with ID3, ADTS, AMR, AC-3/E-AC-3, IVF, Annex B H.264/HEVC/VVC, MPEG video, AV1 OBU)
+    /// and HLS and DASH presentations. Data in none of these formats raises an <see cref="UnsupportedMediaException"/>.
+    /// Do not add to it; use <see cref="Create"/> for that.
     /// </summary>
     public static MediaFormatRegistry Default { get; } = Create();
 

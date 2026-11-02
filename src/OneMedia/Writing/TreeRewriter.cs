@@ -96,6 +96,49 @@ internal sealed class ShiftMap
         return false;
     }
 
+    /// <summary>True when both maps move every position by the same amount (changes that cancel, or sit at the same place, do not matter).</summary>
+    public bool IsEquivalentTo(ShiftMap other)
+    {
+        Prepare();
+        other.Prepare();
+        int i = 0;
+        int j = 0;
+        long before = 0;
+        long otherBefore = 0;
+        while (true)
+        {
+            i = NextStep(_positions, _cumulative, i, before);
+            j = NextStep(other._positions, other._cumulative, j, otherBefore);
+            if (i >= _positions.Length || j >= other._positions.Length)
+            {
+                return i >= _positions.Length && j >= other._positions.Length;
+            }
+
+            if (_positions[i] != other._positions[j] || _cumulative[i] != other._cumulative[j])
+            {
+                return false;
+            }
+
+            before = _cumulative[i];
+            otherBefore = other._cumulative[j];
+            i++;
+            j++;
+        }
+    }
+
+    // The next entry that changes the running total: an entry that is followed by another at the same position is overridden by it, and one that
+    // leaves the total where it was moves nothing.
+    private static int NextStep(long[] positions, long[] cumulative, int from, long before)
+    {
+        int k = from;
+        while (k < positions.Length && ((k + 1 < positions.Length && positions[k + 1] == positions[k]) || cumulative[k] == before))
+        {
+            k++;
+        }
+
+        return k;
+    }
+
     /// <summary>A text form of the recorded changes, to tell whether two maps are the same.</summary>
     public string Signature()
     {

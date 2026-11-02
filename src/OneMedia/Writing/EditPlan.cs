@@ -368,11 +368,26 @@ internal sealed class PieceList
     public void Add(PieceList other)
     {
         long shift = Length;
+        _pieces.EnsureCapacity(_pieces.Count + other._pieces.Count);
         foreach (OutputPiece p in other._pieces)
         {
-            if (p.Kind == OutputPieceKind.Copy)
+            if (p.Kind == OutputPieceKind.Copy && p.Length > 0)
             {
-                AddCopy(p.SourceRange.Offset, p.Length);
+                // A copied range that continues the one before it is merged into it; any other is shared as it is (pieces never change).
+                if (_pieces.Count > 0 && _pieces[^1] is { Kind: OutputPieceKind.Copy } last && last.SourceRange.End == p.SourceRange.Offset)
+                {
+                    _pieces[^1] = OutputPiece.Copy(last.SourceRange.Offset, last.Length + p.Length);
+                }
+                else
+                {
+                    _pieces.Add(p);
+                }
+
+                Length += p.Length;
+            }
+            else if (p.Kind == OutputPieceKind.Copy)
+            {
+                continue; // an empty copy adds nothing
             }
             else
             {
@@ -381,6 +396,7 @@ internal sealed class PieceList
             }
         }
 
+        _changes.EnsureCapacity(_changes.Count + other._changes.Count);
         foreach (WriteChange c in other._changes)
         {
             _changes.Add(c with { Output = new ByteRange(c.Output.Offset + shift, c.Output.Length) });
@@ -479,7 +495,12 @@ internal static class PieceWriter
                 switch (piece.Kind)
                 {
                     case OutputPieceKind.Copy:
-                        buffer ??= System.Buffers.ArrayPool<byte>.Shared.Rent(BufferSize);
+                        // A source held in memory needs no staging buffer, so none is rented for it (a 256 KiB rent per call showed up when a small CRC-32 was computed over a few pieces).
+                        if (source is not MemoryMediaSource)
+                        {
+                            buffer ??= System.Buffers.ArrayPool<byte>.Shared.Rent(BufferSize);
+                        }
+
                         CopyRange(source, piece.SourceRange, output, buffer, cancellationToken);
                         copied += piece.Length;
                         break;
@@ -525,13 +546,28 @@ internal static class PieceWriter
         }
     }
 
-    private static void CopyRange(IMediaSource source, ByteRange range, Stream output, byte[] buffer, CancellationToken cancellationToken)
+    private static void CopyRange(IMediaSource source, ByteRange range, Stream output, byte[]? buffer, CancellationToken cancellationToken)
     {
         // A source held in memory hands its bytes straight to the output: one copy instead of two.
         if (source is MemoryMediaSource memory && memory.TryGetRange(range.Offset, range.Length, out ReadOnlyMemory<byte> bytes))
         {
             cancellationToken.ThrowIfCancellationRequested();
             output.Write(bytes.Span);
+            return;
+        }
+
+        if (buffer is null)
+        {
+            buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(64 * 1024); // a memory source whose range was refused (past its end): take the ordinary path
+            try
+            {
+                CopyRange(source, range, output, buffer, cancellationToken);
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+            }
+
             return;
         }
 
