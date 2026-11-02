@@ -33,7 +33,7 @@ internal static class WriteImpls
     }
 
     // The same four common fields everywhere.
-    private static TagEdits Edits()
+    internal static TagEdits Edits()
     {
         TagEdits edits = new();
         edits.Set(CommonField.Title, "Bench title, edited");

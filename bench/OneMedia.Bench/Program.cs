@@ -51,6 +51,12 @@ if (args[0] == "subsdump")
     return SubtitleDump.Run([.. args.Skip(1)]);
 }
 
+if (args[0] == "memcheck")
+{
+    // memcheck AREA INPUT OUTPUT-DIR: one operation on one file, then the process's peak resident set. Areas: demux, remux, package, repair, tag.
+    return MemCheck.Run(args[1], args[2], args[3]);
+}
+
 if (args[0] == "tagwsplit")
 {
     // tagwsplit RELATIVE-PATH RUNS: plan, write and a bare copy timed apart, for tuning the tag-write rows.
