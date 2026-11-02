@@ -9,7 +9,7 @@ documentation); no real device data is involved. The fixtures:
   camm-all-types.mp4   camm track: one sample of each packet type 0-7 and an unknown type 9.
   mebx-synthetic.mp4   mebx track: location text, orientation, still-image-time and a nested detected-face style group.
 
-usage: gen-telemetry-fixtures.py <output dir> [--long <file> <payload count>]
+usage: gen-telemetry-fixtures.py <output dir> [--seeds <testdata/fuzz dir>] | --long <file> <payload count>
 """
 import math
 import struct
@@ -177,6 +177,23 @@ def mebx_file(path):
     open(path, 'wb').write(mp4(600, b'meta', entry, samples, [600, 600, 600, 600]))
 
 
+def write_seeds(root):
+    """Fuzz seeds: raw payloads for telemetry-gpmf, camm packets for telemetry-camm, key table + sample for telemetry-mebx."""
+    import os
+    for name in ('telemetry-gpmf', 'telemetry-camm', 'telemetry-mebx'):
+        os.makedirs(os.path.join(root, name), exist_ok=True)
+    open(os.path.join(root, 'telemetry-gpmf', 'payload0.bin'), 'wb').write(gpmf_payload(0))
+    open(os.path.join(root, 'telemetry-gpmf', 'payload-cut.bin'), 'wb').write(gpmf_payload(2, truncate=True))
+    for t, body in ((0, struct.pack('<3f', 0.0, 0.5, 0.25)), (6, struct.pack('<didd', 1_272_000_000.5, 3, 47.6, -122.3) + struct.pack('<7f', 1, 2, 3, 4, 5, 6, 7)), (1, struct.pack('<ii', 1, 2))):
+        open(os.path.join(root, 'telemetry-camm', 'type%d.bin' % t), 'wb').write(struct.pack('<HH', 0, t) + body)
+    keys = [(1, 'com.apple.quicktime.location.ISO6709', 1), (2, 'com.apple.quicktime.video-orientation', 66), (5, 'x.bounds', 72)]
+    table = b''.join(mebx_key(*k) for k in keys)
+    keys_box = box(b'keys', table)
+    sample = mebx_item(1, b'+47.6205-122.3493+184.500/') + mebx_item(2, struct.pack('>h', 90)) + mebx_item(5, struct.pack('>4f', 1, 2, 3, 4))
+    pad = (-len(keys_box)) % 8
+    open(os.path.join(root, 'telemetry-mebx', 'sample.bin'), 'wb').write(bytes([(len(keys_box) + pad) // 8]) + keys_box + b'\0' * pad + sample)
+
+
 def main():
     out = sys.argv[1]
     if len(sys.argv) > 2 and sys.argv[2] == '--long':
@@ -185,6 +202,8 @@ def main():
     gpmf_file(out + '/gpmf-synthetic.mp4')
     camm_file(out + '/camm-all-types.mp4')
     mebx_file(out + '/mebx-synthetic.mp4')
+    if len(sys.argv) > 2 and sys.argv[2] == '--seeds':
+        write_seeds(sys.argv[3])
 
 
 main()
