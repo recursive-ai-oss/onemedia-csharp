@@ -570,7 +570,15 @@ public sealed class EbmlEditor
                             patches.Add(new Patch(child, length, () =>
                             {
                                 PieceList l = new();
-                                l.AddGenerated(length, gen);
+                                if (gen.Element is { } held)
+                                {
+                                    l.AddData(held);
+                                }
+                                else
+                                {
+                                    l.AddGenerated(length, gen);
+                                }
+
                                 return l;
                             }));
                         }
