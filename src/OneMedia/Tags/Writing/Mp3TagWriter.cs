@@ -150,7 +150,22 @@ internal static class Mp3TagWriter
 
         byte[] old = new byte[x.Data.Length];
         src.ReadExactly(x.Offset, old);
-        return old.AsSpan().SequenceEqual(x.Data);
+        if (!old.AsSpan().SequenceEqual(x.Data))
+        {
+            return false;
+        }
+
+        // Frames removed from the end of a tag leave their bytes where the padding now starts, and a frame begins with a non-zero identifier: a few
+        // bytes show whether the old padding is really padding. Without this check the removed frames stayed in the file.
+        long tail = Math.Min(16, x.Length - x.Data.Length);
+        if (tail > 0)
+        {
+            byte[] next = new byte[tail];
+            src.ReadExactly(x.Offset + x.Data.Length, next);
+            return !next.AsSpan().ContainsAnyExcept((byte)0);
+        }
+
+        return true;
     }
 
     private static byte[] ReadRange(IMediaSource src, ByteRange r)
