@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml" xmlns:tts="http://www.w3.org/ns/ttml#styling" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xml:lang="en" ttp:timeBase="media">
+  <head>
+    <metadata><ttm:title>Sample</ttm:title><ttm:agent xml:id="a1" type="person"><ttm:name type="alias">Alice</ttm:name></ttm:agent></metadata>
+    <styling>
+      <style xml:id="s1" tts:color="yellow" tts:fontWeight="bold"/>
+      <style xml:id="s2" style="s1" tts:fontStyle="italic" tts:textAlign="center"/>
+    </styling>
+    <layout>
+      <region xml:id="top" tts:origin="10% 5%" tts:extent="80% 20%" tts:displayAlign="before"/>
+      <region xml:id="bottom" tts:origin="10% 75%" tts:extent="80% 20%" tts:displayAlign="after"/>
+    </layout>
+  </head>
+  <body>
+    <div>
+      <p xml:id="c1" begin="00:00:01.000" end="00:00:03.500" region="bottom" ttm:agent="a1">Hello, <span tts:fontWeight="bold">world</span>!</p>
+      <p begin="4s" dur="2.25s" region="top" style="s2">Second<br/>line <span tts:color="#ff0000" tts:textDecoration="underline">red</span></p>
+      <p begin="7000ms" end="9s"><span begin="0s" end="0.5s">one </span><span begin="0.5s" end="1s">two </span><span begin="1s" end="2s">three</span></p>
+      <p begin="00:00:10:15" end="00:00:12:00" region="bottom">frames</p>
+    </div>
+  </body>
+</tt>

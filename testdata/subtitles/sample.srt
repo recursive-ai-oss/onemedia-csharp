@@ -1,0 +1,17 @@
+1
+00:00:01,000 --> 00:00:03,500
+Hello, <b>world</b>!
+
+2
+00:00:04,000 --> 00:00:06,250
+<i>Second</i> cue
+with two lines
+
+3
+00:01:02,003 --> 00:01:05,999
+<font color="#ff0000">Red</font> and <u>underlined</u> <s>struck</s>
+
+4
+01:00:00,000 --> 01:00:01,000
+{\an8}Top centre Ünïcödé — 日本語
+
