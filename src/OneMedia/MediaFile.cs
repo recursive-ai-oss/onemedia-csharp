@@ -169,17 +169,124 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <summary>The common tag view over the movie-level tags: title, artist, comment, pictures and the rest. Read-only.</summary>
     public CommonTags Tags => Metadata.Tags;
 
-    /// <summary>When the recording was made, with every candidate the file offers (<see cref="Fact{T}.Candidates"/>), best first.</summary>
-    public Fact<MediaDateTime> CaptureTime => Metadata.Facts.CaptureTime;
+    private readonly List<EvidenceSet> _extraEvidence = [];
+    private readonly List<TelemetryChannel> _telemetry = [];
+    private IFactResolver _resolver = DefaultFactResolver.Instance;
+    private MediaFacts? _resolved;
+    private bool _useFileEvidence;
+
+    /// <summary>
+    /// The facts resolver. Defaults to <see cref="DefaultFactResolver.Instance"/> (docs/facts.md); assign another <see cref="IFactResolver"/> to change how
+    /// <see cref="CaptureTime"/>, <see cref="Location"/>, <see cref="Device"/> and the other facts are decided. Assigning discards the resolved facts so the next read uses the new resolver.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">The value is null.</exception>
+    public IFactResolver Resolver
+    {
+        get => _resolver;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _resolver = value;
+            _resolved = null;
+        }
+    }
+
+    /// <summary>
+    /// Adds a sidecar as evidence (XMP, Sony XML or DJI SRT; detected from its content). Its readings join the candidate lists of <see cref="CaptureTime"/> and the other
+    /// facts; where they rank is the resolver's decision.
+    /// </summary>
+    /// <param name="path">The sidecar file; at most <see cref="MediaLimits.MaxTagBytes"/> bytes are read.</param>
+    /// <returns>The evidence that was read, with its defects, or <c>null</c> when the file is not a recognised sidecar (nothing is added).</returns>
+    public EvidenceSet? AddSidecar(string path)
+    {
+        using FileStream fs = File.OpenRead(path);
+        EvidenceSet? set = Sidecars.Read(fs);
+        if (set is not null)
+        {
+            AddEvidence(set);
+        }
+
+        return set;
+    }
+
+    /// <summary>Adds already-read evidence (a sidecar parsed elsewhere, an <see cref="Exif.ExifBlock"/>'s <c>ToEvidence()</c>).</summary>
+    /// <param name="evidence">The evidence.</param>
+    public void AddEvidence(EvidenceSet evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        _extraEvidence.Add(evidence);
+        _resolved = null;
+    }
+
+    /// <summary>
+    /// Adds the sidecars found beside the file by the documented lookup rule (<see cref="SidecarLookup"/>): <c>name.xmp</c>, Sony <c>nameM01.XML</c> and DJI <c>name.SRT</c>
+    /// in the file's own directory. Also turns on the file-name and file-system times as last-resort capture-time candidates. Only this call looks beside the file.
+    /// </summary>
+    /// <returns>The paths added; empty when nothing was found or the file was not opened from a path.</returns>
+    public IReadOnlyList<string> AddSidecarsBesideFile()
+    {
+        _useFileEvidence = true;
+        _resolved = null;
+        List<string> added = [];
+        if (SourcePath is { } path)
+        {
+            foreach (string sidecar in SidecarLookup.Find(path))
+            {
+                if (AddSidecar(sidecar) is not null)
+                {
+                    added.Add(sidecar);
+                }
+            }
+        }
+
+        return added;
+    }
+
+    /// <summary>Attaches decoded telemetry (a GoPro GPMF stream, a CAMM track…) as evidence: the first valid GPS fix and its UTC time become candidates.</summary>
+    /// <param name="streams">The streams.</param>
+    public void AttachTelemetry(IEnumerable<TelemetryChannel> streams)
+    {
+        ArgumentNullException.ThrowIfNull(streams);
+        _telemetry.AddRange(streams);
+        _resolved = null;
+    }
+
+    /// <summary>The telemetry attached with <see cref="AttachTelemetry"/>.</summary>
+    public IReadOnlyList<TelemetryChannel> Telemetry => _telemetry;
+
+    /// <summary>
+    /// Every fact resolved by <see cref="Resolver"/> from the container, the added sidecars and the attached telemetry. Each fact lists all its candidates,
+    /// best first, and says which won and why (<see cref="Fact{T}.Resolution"/>). Computed on first use and after evidence or the resolver changes.
+    /// </summary>
+    public MediaFacts Facts => _resolved ??= _resolver.Resolve(BuildEvidence());
+
+    private FactEvidence BuildEvidence()
+    {
+        FactEvidence e = FactEvidence.FromContainer(Metadata.Facts) with { Telemetry = [.. _telemetry] };
+        foreach (EvidenceSet set in _extraEvidence)
+        {
+            e = e.With(set);
+        }
+
+        if (_useFileEvidence && SourcePath is { } path)
+        {
+            e = e with { FileName = Path.GetFileName(path), FileSystemTimeUtc = File.GetLastWriteTimeUtc(path) };
+        }
+
+        return e;
+    }
+
+    /// <summary>When the recording was made, with every candidate (<see cref="Fact{T}.Candidates"/>), best first, and the winner's reason (<see cref="Fact{T}.Resolution"/>).</summary>
+    public Fact<MediaDateTime> CaptureTime => Facts.CaptureTime;
 
     /// <summary>Where the recording was made, with its candidates.</summary>
-    public Fact<GeoLocation> Location => Metadata.Facts.Location;
+    public Fact<GeoLocation> Location => Facts.Location;
 
-    /// <summary>The recording device: make, model and software, each with its candidates.</summary>
-    public DeviceFacts Device => Metadata.Facts.Device;
+    /// <summary>The recording device: make, model, software and serial number, each with its candidates.</summary>
+    public DeviceFacts Device => Facts.Device;
 
     /// <summary>The display rotation of the first video track, with its candidates.</summary>
-    public Fact<VideoOrientation> Rotation => Metadata.Facts.Orientation;
+    public Fact<VideoOrientation> Rotation => Facts.Orientation;
 
     /// <summary>Raw access to the native tags: <c>media.Native["udta", "©day"]</c>, and <see cref="MediaNative.Reader"/> for the demuxer itself.</summary>
     public MediaNative Native => new(this);

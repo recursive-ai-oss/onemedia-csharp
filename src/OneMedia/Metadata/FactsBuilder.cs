@@ -31,11 +31,13 @@ internal sealed class FactsBuilder(DefectLog defects)
 
     public CandidateList<string> Software { get; } = new();
 
+    public CandidateList<string> Serial { get; } = new();
+
     public CandidateList<VideoOrientation> Orientation { get; } = new();
 
     public CandidateList<FrameSize> FrameSize { get; } = new();
 
-    public MediaFacts Build() => new(Duration.ToFact(), CaptureTime.ToFact(), Location.ToFact(), Make.ToFact(), Model.ToFact(), Software.ToFact(), Orientation.ToFact(), FrameSize.ToFact());
+    public MediaFacts Build() => new(Duration.ToFact(), CaptureTime.ToFact(), Location.ToFact(), Make.ToFact(), Model.ToFact(), Software.ToFact(), Orientation.ToFact(), FrameSize.ToFact(), Serial.ToFact());
 
     public void AddNative(NativeTag t)
     {
@@ -190,6 +192,40 @@ internal sealed class FactsBuilder(DefectLog defects)
             string.Create(CultureInfo.InvariantCulture, $"{loc.Latitude} {loc.Longitude} {loc.Altitude}"), "16.16 fixed-point degrees and metres of the location box (role " + loc.Role + ")", Range: loc.Range));
     }
 
+    /// <summary>Adds the readings of an embedded Exif block. Zone-bearing times rank with XMP times that carry a zone; the rest with those that do not.</summary>
+    public void AddEvidence(EvidenceSet e)
+    {
+        foreach (FactCandidate<MediaDateTime> c in e.CaptureTime)
+        {
+            CaptureTime.Add(c.Certainty is TimeZoneCertainty.Offset or TimeZoneCertainty.Utc ? RankXmpWithZone + 1 : RankXmpWithoutZone, c);
+        }
+
+        foreach (FactCandidate<GeoLocation> c in e.Location)
+        {
+            Location.Add(35, c);
+        }
+
+        foreach (FactCandidate<string> c in e.Make)
+        {
+            Make.Add(25, c);
+        }
+
+        foreach (FactCandidate<string> c in e.Model)
+        {
+            Model.Add(25, c);
+        }
+
+        foreach (FactCandidate<string> c in e.Software)
+        {
+            Software.Add(25, c);
+        }
+
+        foreach (FactCandidate<string> c in e.Serial)
+        {
+            Serial.Add(25, c);
+        }
+    }
+
     public void AddXmp(XmpPacket x)
     {
         foreach ((string ns, string name) in new[] { (XmpNamespaces.Exif, "DateTimeOriginal"), (XmpNamespaces.Xmp, "CreateDate"), (XmpNamespaces.Photoshop, "DateCreated") })
@@ -217,6 +253,8 @@ internal sealed class FactsBuilder(DefectLog defects)
         AddXmpString(Make, x, XmpNamespaces.Tiff, "Make");
         AddXmpString(Model, x, XmpNamespaces.Tiff, "Model");
         AddXmpString(Software, x, XmpNamespaces.Xmp, "CreatorTool");
+        AddXmpString(Serial, x, "http://ns.adobe.com/exif/1.0/aux/", "SerialNumber");
+        AddXmpString(Serial, x, "http://cipa.jp/exif/1.0/", "BodySerialNumber");
     }
 
     private static void AddXmpString(CandidateList<string> list, XmpPacket x, string ns, string name)
