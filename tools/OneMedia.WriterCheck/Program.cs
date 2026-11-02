@@ -5,6 +5,7 @@ using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Riff;
+using RecursiveAI.OneMedia.Writing;
 
 // Commands (one result line per file, tab separated):
 //   roundtrip [--no-strict] <file|@list>...   untouched files through SaveAs, plain and with every header re-emitted

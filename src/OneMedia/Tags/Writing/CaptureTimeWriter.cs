@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Linq;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags.Xmp;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tags;
 

@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Buffers.Binary;
 using RecursiveAI.OneMedia.Riff;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tags;
 

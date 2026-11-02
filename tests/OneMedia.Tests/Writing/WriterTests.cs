@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Riff;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tests;
 

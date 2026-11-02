@@ -125,8 +125,8 @@ public sealed record PackagingOptions
 /// <param name="Codecs">The RFC 6381 codec string, or null.</param>
 /// <param name="Segments">Number of media segments written.</param>
 /// <param name="Bytes">Bytes of media segments written.</param>
-/// <param name="DurationSeconds">The track's length in seconds as the sum of its segment durations (for display).</param>
-public sealed record PackagedTrack(string Name, TrackKind Kind, string? Codecs, long Segments, long Bytes, double DurationSeconds);
+/// <param name="Duration">The track's length as the sum of its segment durations, in the track's own timescale; <see cref="MediaTime.Zero"/> when nothing was written.</param>
+public sealed record PackagedTrack(string Name, TrackKind Kind, string? Codecs, long Segments, long Bytes, MediaTime Duration);
 
 /// <summary>What a <see cref="Packager"/> run produced.</summary>
 /// <param name="Directory">The output directory.</param>
@@ -191,7 +191,7 @@ public static class Packager
         using PackagingRun run = new(directory, options ?? new PackagingOptions(), inputs.Count);
         foreach (string path in inputs)
         {
-            using MediaFile file = Media.Open(path);
+            using MediaFile file = Media.Open(path, cancellationToken);
             run.AddInput(file, cancellationToken);
         }
 

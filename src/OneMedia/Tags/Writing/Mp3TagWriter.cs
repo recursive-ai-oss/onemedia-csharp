@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using RecursiveAI.OneMedia.Tags.Ape;
 using RecursiveAI.OneMedia.Tags.Id3;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tags;
 

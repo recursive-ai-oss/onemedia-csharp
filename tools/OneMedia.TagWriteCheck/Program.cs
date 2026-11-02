@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 // Commands (one result line per file, tab separated):
 //   edit <in> <out>        the fixed edit set (title, artist, comment, cover art, one field removed), SaveAs, then checks

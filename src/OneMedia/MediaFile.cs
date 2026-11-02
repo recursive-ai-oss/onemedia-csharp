@@ -7,12 +7,13 @@ using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Metadata.Telemetry;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia;
 
 /// <summary>
 /// An opened media file: what the container says about itself (format, tracks, duration, defects) and its packets. Created by
-/// <see cref="Media.Open(string)"/> and its overloads. The tracks are immutable neutral descriptions; the packets come from the
+/// <see cref="Media.Open(string, CancellationToken)"/> and its overloads. The tracks are immutable neutral descriptions; the packets come from the
 /// demuxer, which is reachable as <see cref="Demuxer"/> or <see cref="AsyncDemuxer"/> for everything the happy path does not offer.
 /// Not thread-safe.
 /// </summary>

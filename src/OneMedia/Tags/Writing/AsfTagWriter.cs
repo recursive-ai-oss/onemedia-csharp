@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using RecursiveAI.OneMedia.Asf;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tags;
 

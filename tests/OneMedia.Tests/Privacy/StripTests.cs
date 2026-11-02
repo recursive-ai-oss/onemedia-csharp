@@ -4,6 +4,7 @@ using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Metadata.Telemetry;
 using RecursiveAI.OneMedia.Privacy;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tests.Privacy;
 

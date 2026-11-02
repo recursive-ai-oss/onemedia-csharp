@@ -1,6 +1,6 @@
 # Structure writers and the safe writer
 
-Normative description of how OneMedia edits files without disturbing what it was not asked to change. Code: `RecursiveAI.OneMedia` (`EditPlan`, `SafeWriter`, `WriteReport`),
+Normative description of how OneMedia edits files without disturbing what it was not asked to change. Code: `RecursiveAI.OneMedia.Writing` (`EditPlan`, `SafeWriter`, `WriteReport`),
 `.IsoBmff` (`BoxBuilder`, `BoxEditor`), `.Matroska` (`EbmlWriter`, `EbmlEditor`), `.Riff` (`ChunkBuilder`, `ChunkEditor`).
 
 ## Model

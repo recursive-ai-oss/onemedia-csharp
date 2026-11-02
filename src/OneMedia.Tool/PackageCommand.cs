@@ -95,7 +95,7 @@ internal static class PackageCommand
 
             foreach (PackagedTrack t in report.Tracks)
             {
-                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{t.Name,-8} {t.Kind,-8} {t.Codecs ?? "-",-14} {t.Segments} segments, {t.Bytes} bytes, {t.DurationSeconds:F3} s"));
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{t.Name,-8} {t.Kind,-8} {t.Codecs ?? "-",-14} {t.Segments} segments, {t.Bytes} bytes, {t.Duration.ToTimeSpan(MediaRounding.Floor).TotalSeconds:F3} s"));
             }
 
             foreach (string m in report.Manifests)

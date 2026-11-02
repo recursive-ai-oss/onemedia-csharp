@@ -160,7 +160,7 @@ public static class PlayableMaker
         PlaybackVerdict before;
         PlaybackDescription description;
         bool fragmented;
-        using (MediaFile input = Media.Open(inputPath))
+        using (MediaFile input = Media.Open(inputPath, cancellationToken))
         {
             before = input.CanPlay(profile);
             description = before.Description;
@@ -395,7 +395,7 @@ public static class PlayableMaker
             try
             {
                 FaststartReport fs = Remuxer.Faststart(inputPath, outputPath, options.Overwrite, ct);
-                using MediaFile result = Media.Open(outputPath);
+                using MediaFile result = Media.Open(outputPath, ct);
                 return new MakePlayableReport
                 {
                     ProfileId = profile.Id,
@@ -436,7 +436,7 @@ public static class PlayableMaker
         {
             if (plan.Transcodes.Count > 0)
             {
-                using MediaFile probe = Media.Open(inputPath);
+                using MediaFile probe = Media.Open(inputPath, ct);
                 IAudioTranscoder transcoder = options.AudioTranscoder!;
                 foreach (PlannedTranscode p in plan.Transcodes)
                 {
@@ -511,7 +511,7 @@ public static class PlayableMaker
             }
 
             PlaybackVerdict after;
-            using (MediaFile result = Media.Open(outputPath))
+            using (MediaFile result = Media.Open(outputPath, ct))
             {
                 after = result.CanPlay(profile);
             }

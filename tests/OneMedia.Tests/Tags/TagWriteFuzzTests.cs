@@ -1,5 +1,6 @@
 using RecursiveAI.OneMedia.Tags;
 using Xunit;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tests;
 

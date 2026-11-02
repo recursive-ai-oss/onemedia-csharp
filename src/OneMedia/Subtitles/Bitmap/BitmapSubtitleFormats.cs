@@ -83,7 +83,7 @@ public sealed class VobSubSubtitleFormat : SubtitleFormat
     /// <param name="defects">Receives deviations; null to discard.</param>
     /// <param name="limits">Resource limits; null for the defaults.</param>
     /// <param name="options">Ignored.</param>
-    /// <exception cref="UnsupportedMediaException">The bytes are an index: use <see cref="Subtitles.Read(string)"/> or <see cref="BitmapSubtitles.ReadVobSub"/> with both files.</exception>
+    /// <exception cref="UnsupportedMediaException">The bytes are an index: use <see cref="Subtitles.Read(string, CancellationToken)"/> or <see cref="BitmapSubtitles.ReadVobSub"/> with both files.</exception>
     public override SubtitleDocument Read(ReadOnlySpan<byte> data, DefectLog? defects = null, MediaLimits? limits = null, SubtitleReadOptions? options = null)
     {
         if (BitmapSubtitles.LooksLikeProgramStream(data))

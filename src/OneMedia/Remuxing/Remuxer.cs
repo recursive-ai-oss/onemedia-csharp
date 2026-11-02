@@ -2,6 +2,7 @@ using System.Linq;
 using RecursiveAI.OneMedia.Codecs.Pcm;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Remuxing;
 
@@ -201,7 +202,7 @@ public static class Remuxer
     {
         ArgumentNullException.ThrowIfNull(inputPath);
         ArgumentNullException.ThrowIfNull(outputPath);
-        using MediaFile input = Media.Open(inputPath);
+        using MediaFile input = Media.Open(inputPath, cancellationToken);
         if (format is RemuxFormat.Wav or RemuxFormat.Rf64)
         {
             // WAVE output is built under a temporary name and renamed when complete; see WavRemux.

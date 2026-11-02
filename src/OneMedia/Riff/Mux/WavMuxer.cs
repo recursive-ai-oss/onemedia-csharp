@@ -3,6 +3,7 @@ using System.Text;
 using System.Xml;
 using RecursiveAI.OneMedia.Codecs.Pcm;
 using RecursiveAI.OneMedia.IsoBmff;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Riff;
 

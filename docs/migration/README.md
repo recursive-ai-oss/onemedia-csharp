@@ -23,4 +23,4 @@ What is the same everywhere:
 - **Evidence, not one guess.** Capture time, location and device are lists of candidates (source, raw value, interpretation, time-zone
   certainty) with a resolved value: `media.CaptureTime.Candidates`, `media.CaptureTime.Value`.
 - **Writes never touch media bytes.** Tag edits go to a new file (`SaveAs`), an atomic replace (`Save`) or existing padding (`SaveInPlace`,
-  which throws `PaddingRequiredException` rather than rewriting the file). The result is a report of what was written and what was refused.
+  which throws `PaddingRequiredException` from `RecursiveAI.OneMedia.Writing` rather than rewriting the file). The result is a report of what was written and what was refused.

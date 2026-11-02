@@ -94,7 +94,7 @@ public sealed class GrowthPolicy
 /// </summary>
 /// <remarks>
 /// A progressive MP4 or MOV whose movie box is written after the media data cannot be read before it is finished: opening one
-/// (<see cref="Media.OpenGrowing(string, GrowthPolicy)"/>) reports it with a <see cref="MediaFormatException"/> whose code is <c>isobmff.moov-not-written</c>.
+/// (<see cref="Media.OpenGrowing(string, GrowthPolicy, CancellationToken)"/>) reports it with a <see cref="MediaFormatException"/> whose code is <c>isobmff.moov-not-written</c>.
 /// The file is read from its first byte; a file that is replaced or truncated underneath the reader ends the data.
 /// </remarks>
 public sealed class GrowingFileSource : IForwardMediaSource

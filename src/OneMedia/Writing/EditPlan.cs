@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using RecursiveAI.OneMedia.Matroska;
 
-namespace RecursiveAI.OneMedia;
+namespace RecursiveAI.OneMedia.Writing;
 
 /// <summary>How a piece of an output file is produced.</summary>
 public enum OutputPieceKind

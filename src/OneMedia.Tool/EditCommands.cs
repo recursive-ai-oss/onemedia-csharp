@@ -7,7 +7,7 @@ using RecursiveAI.OneMedia.Editing;
 
 namespace RecursiveAI.OneMedia.Tool;
 
-/// <summary>The <c>trim</c>, <c>split</c> and <c>concat</c> commands: thin wrappers over <see cref="Media.Trim"/>, <see cref="Media.Split"/> and <see cref="Media.Concat"/>.</summary>
+/// <summary>The <c>trim</c>, <c>split</c> and <c>concat</c> commands: thin wrappers over <see cref="Media.Trim"/>, <see cref="Media.Split"/> and <see cref="Media.Concat(string, string[])"/>.</summary>
 internal static class EditCommands
 {
     public const string Usage =

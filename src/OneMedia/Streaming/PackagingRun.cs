@@ -470,13 +470,13 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
         List<PackagedTrack> tracks = [];
         foreach (TrackOut t in _tracks)
         {
-            double seconds = t.Track.Timescale > 0 ? t.Track.DurationTicks / (double)t.Track.Timescale : 0;
-            tracks.Add(new PackagedTrack(t.Name, t.Track.Kind, t.Track.Codecs, t.Track.SegmentCount, t.Track.MediaBytes, seconds));
+            MediaTime length = t.Track.Timescale > 0 ? new MediaTime(t.Track.DurationTicks, t.Track.Timescale) : MediaTime.Zero;
+            tracks.Add(new PackagedTrack(t.Name, t.Track.Kind, t.Track.Codecs, t.Track.SegmentCount, t.Track.MediaBytes, length));
         }
 
         foreach (TextOut x in _text)
         {
-            tracks.Add(new PackagedTrack(x.Name, TrackKind.Subtitle, "wvtt", x.Segments, 0, 0));
+            tracks.Add(new PackagedTrack(x.Name, TrackKind.Subtitle, "wvtt", x.Segments, 0, MediaTime.Zero));
         }
 
         return new PackagingReport(_dir, tracks, _manifests, _losses, _notes);

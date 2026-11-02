@@ -4,7 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- The audio adapter's only dependency besides the core package. -->
-    <PackageVersion Include="RecursiveAI.OneAudio" Version="1.7.0" />
+    <PackageVersion Include="RecursiveAI.OneAudio" Version="1.7.2" />
     <!-- Test, bench and fuzz projects only. -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.2" />

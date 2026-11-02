@@ -30,7 +30,7 @@ string summary = $"{media.Tags.Title} / {media.Tags.Album} / {audio.Audio!.Value
 using MediaFile media = Media.Open("atl.m4a");
 media.Tags.Title = "Edited";
 try { media.SaveInPlace(); }
-catch (PaddingRequiredException) { media.Save(); }   // no room in the file's padding: atomic replace
+catch (PaddingRequiredException) { media.Save(); }   // no room in the file's padding: atomic replace  (using RecursiveAI.OneMedia.Writing;)
 ```
 
 ## Differences that matter

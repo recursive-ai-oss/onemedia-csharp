@@ -6,6 +6,29 @@ namespace RecursiveAI.OneMedia.Editing;
 
 internal static class EditFiles
 {
+    // The happy path's cutting calls: the container decides which cutter runs, so Media.* stays one expression.
+    public static ClipReport Trim(string input, string output, TimeSpan from, TimeSpan to, TrimMode mode, CancellationToken ct)
+    {
+        MediaTime start = MediaTime.FromTimeSpan(from);
+        MediaTime end = MediaTime.FromTimeSpan(to);
+        return Write(input, [output], (d, streams) => [IsoCutter.Trim(d, streams[0], start, end, mode, null, ct)],
+            (d, streams) => [MatroskaCutter.Trim(d, streams[0], start, end, mode, null, ct)])[0];
+    }
+
+    public static IReadOnlyList<ClipReport> Split(string input, string pattern, IReadOnlyList<TimeSpan> at, CancellationToken ct)
+    {
+        List<MediaTime> times = new(at.Count);
+        foreach (TimeSpan t in at)
+        {
+            times.Add(MediaTime.FromTimeSpan(t));
+        }
+
+        return WriteParts(input, pattern, (d, open) => IsoCutter.Split(d, open, times, ct), (d, open) => MatroskaCutter.Split(d, open, times, ct));
+    }
+
+    public static IReadOnlyList<ClipReport> SplitBySize(string input, string pattern, long maxPartBytes, CancellationToken ct) =>
+        WriteParts(input, pattern, (d, open) => IsoCutter.SplitBySize(d, open, maxPartBytes, ct), (d, open) => MatroskaCutter.SplitBySize(d, open, maxPartBytes, ct));
+
     public static IReadOnlyList<ClipReport> Write(string input, IReadOnlyList<string> outputs, Func<IsoBmffDemuxer, Stream[], IReadOnlyList<ClipReport>> run,
         Func<MatroskaDemuxer, Stream[], IReadOnlyList<ClipReport>> runMatroska)
     {
@@ -89,7 +112,7 @@ internal static class EditFiles
         }
     }
 
-    public static ClipReport Join(string[] inputs, string output, CancellationToken ct)
+    public static ClipReport Join(IReadOnlyList<string> inputs, string output, CancellationToken ct)
     {
         List<IDisposable> sources = [];
         string partial = output + ".partial";

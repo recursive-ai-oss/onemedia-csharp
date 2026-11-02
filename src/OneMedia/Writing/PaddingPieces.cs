@@ -3,7 +3,7 @@ using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Riff;
 
-namespace RecursiveAI.OneMedia;
+namespace RecursiveAI.OneMedia.Writing;
 
 /// <summary>
 /// Padding elements for a plan, built as a small header piece and a generated run of zeros. The builders in the format namespaces return

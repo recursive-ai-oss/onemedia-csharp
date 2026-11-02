@@ -46,7 +46,7 @@ media.SaveAs("cover.mp4");
   `SaveInPlace`. Reading the property afterwards returns the staged value.
 - **Reports.** Each save returns a `TagWriteReport`: which systems were written, what could not be represented, warnings. TagLib#'s
   `Save()` returns nothing.
-- **Padding.** `SaveInPlace()` writes only into padding that already exists and throws `PaddingRequiredException` (with the bytes
+- **Padding.** `SaveInPlace()` writes only into padding that already exists and throws `PaddingRequiredException` (namespace `RecursiveAI.OneMedia.Writing`, with the bytes
   needed) otherwise. `Save()` rewrites through a temp file and an atomic rename; media payload bytes are copied unchanged, and the
   per-track payload hash is the same before and after.
 - **Every system present is written** (or the one you choose), not just the primary tag.

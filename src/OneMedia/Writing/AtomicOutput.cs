@@ -1,4 +1,4 @@
-namespace RecursiveAI.OneMedia;
+namespace RecursiveAI.OneMedia.Writing;
 
 /// <summary>
 /// A new file written under a temporary name next to its target and renamed over it when complete, so the target name never shows a partly written

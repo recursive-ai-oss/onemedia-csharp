@@ -19,6 +19,8 @@ checked on every change rather than assumed.
 
 Last full run: Chromium 140.0.7339.16 through Playwright 1.55.0, x64 Linux, Release, about 9 minutes: **1,713 passed, 0 failed, 1 skipped, 13 excluded** test cases. The normal run of the same sources reports 1,729 cases and the same 1 skip; the 15 cases the browser run does not execute are the 13 excluded methods (two are theories with 3 and 2 rows).
 
+Since that run the `md5` exclusion is gone (OneAudio 1.7.2 hashes with a managed MD5): the FLAC `MakePlayable` test now runs in the browser suite, and a filtered run (`--filter FlacInMp4`) passes in the same Chromium, so a full run now has 12 excluded methods.
+
 ## Excluded tests
 
 A test that cannot run in a browser carries one trait, `[Trait("Browser", "<category>")]`. The normal test run ignores it; the browser runner counts
@@ -31,7 +33,6 @@ the test as excluded, per category, and prints the counts. A test is excluded on
 | `timing` | Asserts a wall-clock bound on a seek (30 s allowed for work that takes milliseconds natively); the interpreter is 10 to 100 times slower. | 1 |
 | `process` | Reads the id of the running process or starts one, or watches the directory: the browser has no processes and no `FileSystemWatcher`. | 2 |
 | `filesystem` | Asserts Unix file permissions (read-only directory, mode bits kept by `Save`); the virtual file system has no permission model. | 1 |
-| `md5` | Needs MD5 from `System.Security.Cryptography`, which the browser runtime does not provide. The FLAC packet encoder of OneAudio hashes with it for the STREAMINFO signature, so transcoding to FLAC fails in the browser (reported to OneAudio). | 1 |
 
 Counts are test methods; a theory counts once however many rows it has. Nothing is excluded for needing an oracle, a large file or the network:
 the suite has no such tests (oracle differentials, corpus runs and multi-gigabyte checks live in `tools/` and `bench/`, not in the suite).
@@ -58,7 +59,6 @@ fine for files that fit in memory.
 
 ## Known limits in the browser runtime
 
-- **`MakePlayable` with a FLAC audio target throws in the browser.** OneAudio's FLAC encoder needs MD5, which the browser runtime does not provide. This holds until OneAudio ships a fix; other audio targets are not affected.
 - **Most synchronous readers need a source that answers at once.** MPEG-TS and MPEG-PS, elementary streams, AVI, DV, FLAC, FLV, WAV/RF64/W64, AIFF and CAF work over memory and virtual-file-system sources. Over a source that answers later, such as a `Blob` slice, they refuse with `NotSupportedException`. ISO BMFF, Matroska, ASF and Ogg read such sources. Asynchronous engines for the other formats are planned, one format at a time, after 1.0.
 
 ## Not covered by the suite

@@ -8,10 +8,11 @@ public static partial class Media
 {
     /// <summary>Opens a media file by path. Formats are recognised by content, never by extension.</summary>
     /// <param name="path">The file.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>The opened file; dispose it to close the file.</returns>
     /// <exception cref="UnsupportedMediaException">The format is not recognised or cannot be opened.</exception>
     /// <exception cref="MediaFormatException">The data is not valid for its format.</exception>
-    public static MediaFile Open(string path) => MediaFile.Open(FileMediaSource.Open(path));
+    public static MediaFile Open(string path, CancellationToken cancellationToken = default) => MediaFile.Open(FileMediaSource.Open(path), cancellationToken: cancellationToken);
 
     /// <summary>Opens media from a stream, seekable or not.</summary>
     /// <remarks>
@@ -21,15 +22,17 @@ public static partial class Media
     /// </remarks>
     /// <param name="stream">A readable stream positioned at the start of the media. It is closed with the file unless <paramref name="leaveOpen"/> is true.</param>
     /// <param name="leaveOpen">Keep the stream open when the file is disposed.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>The opened file.</returns>
     /// <exception cref="UnsupportedMediaException">The format is not recognised, or needs a seekable stream.</exception>
-    public static MediaFile Open(Stream stream, bool leaveOpen = false) =>
-        stream is { CanSeek: false } ? MediaFile.Open(new StreamForwardSource(stream, leaveOpen)) : MediaFile.Open(new StreamMediaSource(stream, leaveOpen));
+    public static MediaFile Open(Stream stream, bool leaveOpen = false, CancellationToken cancellationToken = default) =>
+        stream is { CanSeek: false } ? MediaFile.Open(new StreamForwardSource(stream, leaveOpen), cancellationToken: cancellationToken) : MediaFile.Open(new StreamMediaSource(stream, leaveOpen), cancellationToken: cancellationToken);
 
     /// <summary>Opens media held in memory.</summary>
     /// <param name="data">The whole file.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>The opened file.</returns>
-    public static MediaFile Open(ReadOnlyMemory<byte> data) => MediaFile.Open(new MemoryMediaSource(data));
+    public static MediaFile Open(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) => MediaFile.Open(new MemoryMediaSource(data), cancellationToken: cancellationToken);
 
     /// <summary>Opens a media file by path for asynchronous reading.</summary>
     /// <param name="path">The file.</param>
@@ -48,9 +51,10 @@ public static partial class Media
     /// <summary>Opens a file that is still being written (fragmented MP4, live Matroska, MPEG-TS, FLV) and reads it as it grows, waiting at the current end under the policy.</summary>
     /// <param name="path">The file.</param>
     /// <param name="policy">When to wait for more and when to stop.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>The opened file; its packets can be read once, front to back.</returns>
     /// <exception cref="MediaFormatException">A progressive MP4 whose movie box has not been written yet needs the finished file.</exception>
-    public static MediaFile OpenGrowing(string path, Streaming.Sources.GrowthPolicy policy) => MediaFile.OpenGrowing(path, policy);
+    public static MediaFile OpenGrowing(string path, Streaming.Sources.GrowthPolicy policy, CancellationToken cancellationToken = default) => MediaFile.OpenGrowing(path, policy, cancellationToken: cancellationToken);
 
     /// <summary>Opens an HLS or DASH presentation through a resolver that fetches its playlist and segments (HTTP range requests, blob storage) for asynchronous reading.</summary>
     /// <param name="location">The absolute location of the playlist or manifest.</param>
@@ -62,67 +66,75 @@ public static partial class Media
     /// <summary>Judges whether a file plays in a browser profile.</summary>
     /// <param name="path">The file.</param>
     /// <param name="profile">The browser profile, for example <see cref="Playback.BrowserProfiles.Chrome"/>.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>The verdict, with reasons.</returns>
-    public static Playback.PlaybackVerdict CanPlay(string path, Playback.BrowserProfile profile)
+    public static Playback.PlaybackVerdict CanPlay(string path, Playback.BrowserProfile profile, CancellationToken cancellationToken = default)
     {
-        using MediaFile file = Open(path);
+        using MediaFile file = Open(path, cancellationToken);
         return file.CanPlay(profile);
     }
 
     /// <summary>Copies the tracks of a file into another container without touching the compressed data. The container comes from the output's extension.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file (<c>.mp4</c>, <c>.m4a</c>, <c>.mov</c>, <c>.3gp</c>, and so on); refused if it exists.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>What was written and everything that did not carry over.</returns>
     /// <exception cref="ArgumentException">The extension names no container.</exception>
     /// <exception cref="UnsupportedMediaException">The input is not recognised, or the container cannot be written.</exception>
     /// <exception cref="MuxRefusedException">No track of the input can be written.</exception>
-    public static Remuxing.RemuxReport Remux(string input, string output) => Remuxing.Remuxer.Remux(input, output);
+    public static Remuxing.RemuxReport Remux(string input, string output, CancellationToken cancellationToken = default) => Remuxing.Remuxer.Remux(input, output, cancellationToken: cancellationToken);
 
     /// <summary>Copies the tracks of a file into a chosen container without touching the compressed data.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file; refused if it exists.</param>
     /// <param name="format">The container to write.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>What was written and everything that did not carry over.</returns>
     /// <exception cref="UnsupportedMediaException">The input is not recognised, or the container cannot be written.</exception>
     /// <exception cref="MuxRefusedException">No track of the input can be written.</exception>
-    public static Remuxing.RemuxReport Remux(string input, string output, Remuxing.RemuxFormat format) => Remuxing.Remuxer.Remux(input, output, format);
+    public static Remuxing.RemuxReport Remux(string input, string output, Remuxing.RemuxFormat format, CancellationToken cancellationToken = default) => Remuxing.Remuxer.Remux(input, output, format, cancellationToken: cancellationToken);
 
     /// <summary>Moves the movie box of a progressive MP4/MOV/3GP file to the front, copying all other bytes unchanged, so playback can start while the file is still downloading.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file; refused if it exists.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>What was moved.</returns>
     /// <exception cref="UnsupportedMediaException">The input is not a progressive ISO base media file.</exception>
-    public static Remuxing.FaststartReport Faststart(string input, string output) => Remuxing.Remuxer.Faststart(input, output);
+    public static Remuxing.FaststartReport Faststart(string input, string output, CancellationToken cancellationToken = default) => Remuxing.Remuxer.Faststart(input, output, cancellationToken: cancellationToken);
 
     /// <summary>Makes a file play in a browser profile without decoding video: moves the movie box first or remuxes into a container the profile accepts.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file; refused if it exists. Written only when the result is <see cref="Playback.MakePlayableStatus.Made"/> or <see cref="Playback.MakePlayableStatus.AlreadyPlayable"/>.</param>
     /// <param name="profile">The browser profile, for example <see cref="Playback.BrowserProfiles.Chromium"/>.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>What was decided and done. A file whose audio needs re-encoding is reported as <see cref="Playback.MakePlayableStatus.NeedsAudioTranscode"/> and nothing is written: the core decodes nothing. Add <c>RecursiveAI.OneMedia.Audio</c> and call its <c>MakePlayable</c> for that case. Video blockers are reported as <see cref="Playback.MakePlayableStatus.Refused"/> with their codes.</returns>
     /// <exception cref="IOException">The output exists, or a file cannot be read or written.</exception>
     /// <exception cref="UnsupportedMediaException">The input is not recognised.</exception>
-    public static Playback.MakePlayableReport MakePlayable(string input, string output, Playback.BrowserProfile profile) => Playback.PlayableMaker.MakePlayable(input, output, profile);
+    public static Playback.MakePlayableReport MakePlayable(string input, string output, Playback.BrowserProfile profile, CancellationToken cancellationToken = default) => Playback.PlayableMaker.MakePlayable(input, output, profile, cancellationToken: cancellationToken);
 
     /// <summary>Sets the capture time of a recording in every date field the file carries, each in its own notation and zone semantics, and writes a new file. Payload bytes are copied unchanged.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file; refused if it exists.</param>
     /// <param name="when">The capture time with the offset the recorder was in.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>Every field written with its old and new text, the fields left and why, and the dates that still disagree.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="when"/> is outside 1904 to 2262.</exception>
     /// <exception cref="UnsupportedMediaException">The format has no capture-date writer.</exception>
-    public static Tags.CaptureTimeReport SetCaptureTime(string input, string output, DateTimeOffset when) => Tags.CaptureTimeWriter.SaveAs(input, output, when);
+    public static Tags.CaptureTimeReport SetCaptureTime(string input, string output, DateTimeOffset when, CancellationToken cancellationToken = default) => Tags.CaptureTimeWriter.SaveAs(input, output, when, cancellationToken: cancellationToken);
 
     /// <summary>Packages a file as HLS: CMAF segments, a playlist per track and a multivariant playlist (<c>master.m3u8</c>) in the directory.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="directory">The output directory; created if needed.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>What was written. Segment length, single-file mode, subtitles and live output are options of <see cref="Streaming.Packager"/>.</returns>
-    public static Streaming.PackagingReport PackageHls(string input, string directory) =>
-        Streaming.Packager.Package(input, directory, new Streaming.PackagingOptions { Formats = Streaming.PackagingFormats.Hls });
+    public static Streaming.PackagingReport PackageHls(string input, string directory, CancellationToken cancellationToken = default) =>
+        Streaming.Packager.Package(input, directory, new Streaming.PackagingOptions { Formats = Streaming.PackagingFormats.Hls }, cancellationToken);
 
     /// <summary>Packages a file as MPEG-DASH: CMAF segments and a manifest (<c>manifest.mpd</c>) in the directory.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="directory">The output directory; created if needed.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
     /// <returns>What was written. Options live on <see cref="Streaming.Packager"/>.</returns>
-    public static Streaming.PackagingReport PackageDash(string input, string directory) =>
-        Streaming.Packager.Package(input, directory, new Streaming.PackagingOptions { Formats = Streaming.PackagingFormats.Dash });
+    public static Streaming.PackagingReport PackageDash(string input, string directory, CancellationToken cancellationToken = default) =>
+        Streaming.Packager.Package(input, directory, new Streaming.PackagingOptions { Formats = Streaming.PackagingFormats.Dash }, cancellationToken);
 }
