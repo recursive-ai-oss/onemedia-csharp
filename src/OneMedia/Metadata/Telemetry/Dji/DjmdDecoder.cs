@@ -24,20 +24,20 @@ internal sealed class DjmdDecoder
     public DjmdDecoder(TelemetryCollector collector) => _collector = collector;
 
     // Paths are packed one byte per field number (the numbers DJI uses are below 256), first level in the highest byte used.
-    private static ulong P(int a, int b = 0, int c = 0, int d = 0, int e = 0) => Append(Append(Append(Append(Append(0, a), b), c), d), e);
+    internal static ulong P(int a, int b = 0, int c = 0, int d = 0, int e = 0) => Append(Append(Append(Append(Append(0, a), b), c), d), e);
 
-    private static ulong Append(ulong path, int number) => number == 0 ? path : (path << 8) | (uint)number;
+    internal static ulong Append(ulong path, int number) => number == 0 ? path : (path << 8) | (uint)number;
 
-    private readonly record struct Layout(ulong Gps, ulong Alt, ulong Rel, ulong Drone, ulong Gimbal, ulong Iso, ulong Ct, ulong Quat);
+    internal readonly record struct Layout(ulong Gps, ulong Alt, ulong Rel, ulong Drone, ulong Gimbal, ulong Iso, ulong Ct, ulong Quat);
 
-    private static readonly ulong Protocol = P(1, 1, 1);
-    private static readonly ulong Serial = P(1, 1, 5);
-    private static readonly ulong Model = P(1, 1, 10);
+    internal static readonly ulong Protocol = P(1, 1, 1);
+    internal static readonly ulong Serial = P(1, 1, 5);
+    internal static readonly ulong Model = P(1, 1, 10);
     private static readonly ulong Frame = P(3, 1, 1);
 
     // The paths the tag documentation lists per protocol, grouped by family. Mavic 3, Air 3, Mini 4 Pro, Mavic 4, Matrice 30/4E share one
     // arrangement of the GPS, altitude, drone and gimbal messages; they differ in where ISO and colour temperature sit.
-    private static bool TryLayout(ReadOnlySpan<byte> name, out Layout layout)
+    internal static bool TryLayout(ReadOnlySpan<byte> name, out Layout layout)
     {
         ulong gps = P(3, 3, 4, 1), alt = P(3, 3, 4, 2), rel = P(3, 3, 5, 1), drone = P(3, 3, 3), gimbal = P(3, 4, 3);
         if (name.SequenceEqual("wm265e"u8) || name.SequenceEqual("pm320"u8))
@@ -168,7 +168,7 @@ internal sealed class DjmdDecoder
             || IsPrefixOf(key, _layout.Iso) || IsPrefixOf(key, _layout.Ct) || IsPrefixOf(key, _layout.Quat) || IsPrefixOf(key, Frame) || key == 1 || key == 0x0101;
     }
 
-    private static bool IsPrefixOf(ulong prefix, ulong full)
+    internal static bool IsPrefixOf(ulong prefix, ulong full)
     {
         if (full == 0)
         {

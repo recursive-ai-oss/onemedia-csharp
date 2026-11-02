@@ -144,7 +144,7 @@ public sealed class TelemetryTrackReader : IDisposable
     }
 
     // One table per sample description of the track, in description order.
-    private static MebxKeyTable[] KeyTables(IDemuxer demuxer, MediaTrack track)
+    internal static MebxKeyTable[] KeyTables(IDemuxer demuxer, MediaTrack track)
     {
         List<MebxKeyTable> tables = [];
         if (demuxer is IsoBmffDemuxer iso)
