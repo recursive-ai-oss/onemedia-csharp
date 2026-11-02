@@ -1024,7 +1024,7 @@ public sealed class WriterReviewTests
     [Fact]
     public void AnEbmlSegmentThatStatesAnAlmostMaximalSizeIsRefusedNotCrashed()
     {
-        byte[] file = File.ReadAllBytes(WriterTestSupport.Fixture("fuzz", "writer-ebml", "u35-ebml-size-overflow.bin"));
+        byte[] file = File.ReadAllBytes(WriterTestSupport.Fixture("fuzz", "writer-ebml", "ebml-size-overflow.bin"));
         using MemoryMediaSource src = new(file);
         TagEdits edits = new();
         edits.Set(CommonField.Title, "A title");
