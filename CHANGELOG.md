@@ -4,6 +4,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+- Subtitle parse and convert speed is published against SubtitlesParser 1.5.1 and the Subtitle Edit core library 5.3.0: on 14 rows (20,000 and 100,000 cues) the geometric mean of our median over the fastest comparator is 0.47× on x64 and 0.52× on arm64, the worst row 1.21× on both ([docs/bench-results/0.5-x64.md](docs/bench-results/0.5-x64.md), [0.5-arm64.md](docs/bench-results/0.5-arm64.md)); SRT parsing and 100,000-cue ASS parsing are near Subtitle Edit's speed, not ahead of it.
+
 ### Added
 
 - Preview: repair (`Media.Repair`, `Repairer`, `RepairReport`, `onemedia repair <in> <out> [--reference <file>]`, `docs/reconstruction.md`). `onemedia repair` rebuilds the indexes of damaged MKV/WebM, AVI/OpenDML, MP4/MOV, fMP4 and MPEG-TS into a new file with a report; a progressive MP4 whose recording was cut off loses only the samples that are not there. The input is never modified and payload bytes are copied unchanged.

@@ -871,6 +871,16 @@ internal static class AssText
             kPos = -1;
         }
 
+        // One tag buffer and one pair of delegates per cue, not per override block.
+        StringBuilder? rawTags = null;
+        Action flushRun = FlushRun;
+        Action<string, long> startWord = (variant, cs) =>
+        {
+            FlushWord();
+            kPos = sb.Length;
+            kDuration = cs;
+            kVariant = variant;
+        };
         while (i < raw.Length)
         {
             char c = raw[i];
@@ -879,14 +889,9 @@ internal static class AssText
                 int close = raw.IndexOf('}', i + 1);
                 if (close > 0)
                 {
-                    var rawTags = new StringBuilder();
-                    ParseBlock(raw.AsSpan(i + 1, close - i - 1), src, index + i, rawTags, ref place, pos, state, FlushRun, (variant, cs) =>
-                    {
-                        FlushWord();
-                        kPos = sb.Length;
-                        kDuration = cs;
-                        kVariant = variant;
-                    });
+                    rawTags ??= new StringBuilder();
+                    rawTags.Clear();
+                    ParseBlock(raw.AsSpan(i + 1, close - i - 1), src, index + i, rawTags, ref place, pos, state, flushRun, startWord);
                     if (rawTags.Length > 0)
                     {
                         found.Add(new SubtitleSpan(sb.Length, 0) { Raw = new SubtitleExtra("ass", "override", rawTags.ToString()) });
