@@ -75,6 +75,24 @@ public class MpegTests
         }
     }
 
+    [Fact]
+    public void FrameDoublingPictureTimingSetsDurationsToTwoFramePeriods()
+    {
+        // The VUI declares 25 frames per second (3600 ticks) but every picture carries pic_struct 7 (frame doubling, H.264 Table D-1)
+        // and the pictures are 7200 ticks apart; ffprobe 7.0.2 reports 7200 for each.
+        using IDemuxer d = OpenFile("h264-pic-struct-doubling.ts");
+        List<Got> ours = Drain(d);
+        string[][] theirs = File.ReadAllLines(Path("h264-pic-struct-doubling.ts.packets.csv")).Select(l => l.Split(',')).ToArray();
+        Assert.Equal(theirs.Length, ours.Count);
+        for (int i = 0; i < ours.Count; i++)
+        {
+            Assert.Equal(long.Parse(theirs[i][3], CultureInfo.InvariantCulture), ours[i].Duration);
+        }
+
+        VideoTrackInfo v = d.Tracks.First(t => t.Kind == TrackKind.Video).Video!.Value;
+        Assert.Equal(25, v.FrameRateNumerator / v.FrameRateDenominator); // the declared rate stays visible
+    }
+
     private static IMediaFormat FormatFor(MediaFormatId id) => id.ToString() switch
     {
         "mpegts" => new MpegTsFormat(),

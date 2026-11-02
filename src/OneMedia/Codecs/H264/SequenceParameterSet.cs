@@ -112,6 +112,12 @@ public readonly record struct SequenceParameterSet
     /// <summary>fixed_frame_rate_flag.</summary>
     public bool FixedFrameRate { get; init; }
 
+    /// <summary>
+    /// Bits that precede pic_struct in a picture timing SEI message: cpb_removal_delay plus dpb_output_delay (H.264 §D.1.3), or 0 when the
+    /// VUI carries no HRD parameters.
+    /// </summary>
+    public int PicTimingDelayBits { get; init; }
+
     /// <summary>pic_struct_present_flag.</summary>
     public bool PicStructPresent { get; init; }
 
@@ -350,17 +356,20 @@ public readonly record struct SequenceParameterSet
             s = s with { HasTimingInfo = true, NumUnitsInTick = units, TimeScale = scale, FixedFrameRate = fixedRate };
         }
 
+        int delayBits = 0;
         bool nalHrd = r.ReadFlag();
-        if (nalHrd && !SkipHrd(ref r))
+        if (nalHrd && !SkipHrd(ref r, out delayBits))
         {
             return s;
         }
 
         bool vclHrd = r.ReadFlag();
-        if (vclHrd && !SkipHrd(ref r))
+        if (vclHrd && !SkipHrd(ref r, out delayBits))
         {
             return s;
         }
+
+        s = s with { PicTimingDelayBits = delayBits };
 
         if (nalHrd || vclHrd)
         {
@@ -387,8 +396,9 @@ public readonly record struct SequenceParameterSet
     }
 
     // ITU-T H.264 §E.1.2
-    private static bool SkipHrd(ref BitReader r)
+    private static bool SkipHrd(ref BitReader r, out int delayBits)
     {
+        delayBits = 0;
         uint cpbCountMinus1 = r.ReadUe();
         if (cpbCountMinus1 > 31)
         {
@@ -403,7 +413,11 @@ public readonly record struct SequenceParameterSet
             r.ReadBit();
         }
 
-        r.SkipBits(20); // four 5-bit length fields
+        r.SkipBits(5); // initial_cpb_removal_delay_length_minus1
+        int cpbRemovalDelay = (int)r.ReadBits(5) + 1;
+        int dpbOutputDelay = (int)r.ReadBits(5) + 1;
+        r.SkipBits(5); // time_offset_length
+        delayBits = cpbRemovalDelay + dpbOutputDelay;
         return !r.Overrun;
     }
 

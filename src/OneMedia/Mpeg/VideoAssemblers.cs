@@ -268,7 +268,7 @@ internal abstract class VideoAssembler : TrackAssembler
         }
         else if (_hasPending && _pendingExtra > 0 && nominal > 0)
         {
-            duration = nominal * (2 + _pendingExtra) / 2; // repeated fields lengthen the picture (ISO/IEC 13818-2 §6.3.10)
+            duration = RepeatedDuration(nominal, _pendingExtra); // repeated fields lengthen the picture (ISO/IEC 13818-2 §6.3.10)
         }
         else if (_hasPending && _pendingDts >= 0 && dts >= 0 && dts > _pendingDts && nominal == 0)
         {
@@ -302,6 +302,23 @@ internal abstract class VideoAssembler : TrackAssembler
         _lastDuration = nominal > 0 ? nominal : _lastDuration;
     }
 
+    /// <summary>
+    /// Length of a frame shown for <c>2 + extraHalves</c> field periods. H.264 states the rate as a ratio, so a doubled picture at
+    /// 120000/2002 lasts exactly 3003 ticks, not twice the rounded-down frame (1501); the other codecs scale the rounded frame.
+    /// </summary>
+    private long RepeatedDuration(long nominal, int extraHalves)
+    {
+        if (ExactRepeat && extraHalves > 0 && Parameters is { FrameRateNumerator: > 0, FrameRateDenominator: > 0 } p)
+        {
+            return Clock * p.FrameRateDenominator * (2 + extraHalves) / (2L * p.FrameRateNumerator);
+        }
+
+        return nominal * (2 + extraHalves) / 2;
+    }
+
+    /// <summary>Repeated pictures last an exact multiple of the declared frame period (H.264 pic_struct), not of its rounded-down tick count.</summary>
+    protected bool ExactRepeat { get; init; }
+
     private void Release(long duration)
     {
         if (!_hasPending)
@@ -312,7 +329,7 @@ internal abstract class VideoAssembler : TrackAssembler
         _hasPending = false;
         if (duration == 0)
         {
-            duration = NominalDuration > 0 ? (_pendingField ? NominalDuration / 2 : NominalDuration * (2 + _pendingExtra) / 2) : _lastDuration;
+            duration = NominalDuration > 0 ? (_pendingField ? NominalDuration / 2 : RepeatedDuration(NominalDuration, _pendingExtra)) : _lastDuration;
         }
 
         if (duration > 0)
@@ -353,6 +370,9 @@ internal sealed class NalVideoAssembler : VideoAssembler
     private bool _frameMbsOnly = true;
     private int _log2FrameNum;
     private bool _separatePlanes;
+    private bool _picStructPresent;
+    private int _picTimingDelayBits;
+    private int _unitExtraHalves;
 
     /// <summary>Called with the payload of each SEI NAL unit (after its header) until it returns true; AVCHD metadata is found this way.</summary>
     public SeiHandlerDelegate? SeiHandler { get; set; }
@@ -361,6 +381,7 @@ internal sealed class NalVideoAssembler : VideoAssembler
         : base(index, queue, limits, defects)
     {
         _codec = codec;
+        ExactRepeat = codec == NalCodec.H264;
     }
 
     public override void Reset()
@@ -370,6 +391,7 @@ internal sealed class NalVideoAssembler : VideoAssembler
         _open = _seenVcl = _key = _paramSets = false;
         _unitHasSps = _unitIntra = false;
         _unitParity = -1;
+        _unitExtraHalves = 0;
     }
 
     protected override void Scan(bool final)
@@ -459,11 +481,12 @@ internal sealed class NalVideoAssembler : VideoAssembler
 
         // A unit that opens with a sequence parameter set and codes an intra picture is where a decoder can start, as encoders
         // that write no recovery point SEI intend (observed in AVCHD camera streams).
-        CutUnit(length, _key, -1, _unitParity, 0, _unitHasSps && _unitIntra);
+        CutUnit(length, _key, -1, _unitParity, _unitExtraHalves, _unitHasSps && _unitIntra);
         _seenVcl = false;
         _key = false;
         _unitHasSps = _unitIntra = false;
         _unitParity = -1;
+        _unitExtraHalves = 0;
         _scan = 0;
     }
 
@@ -546,6 +569,16 @@ internal sealed class NalVideoAssembler : VideoAssembler
                 _frameMbsOnly = sps.FrameMbsOnly;
                 _log2FrameNum = sps.Log2MaxFrameNum;
                 _separatePlanes = sps.SeparateColourPlane;
+                _picStructPresent = sps.PicStructPresent;
+                _picTimingDelayBits = sps.PicTimingDelayBits;
+            }
+            else if (_codec == NalCodec.H264 && type == 6 && _picStructPresent && ReadPicStruct(nal[1..]) is int extra and > 0)
+            {
+                _unitExtraHalves = extra;
+                if (HasRecoveryPoint(nal[1..]))
+                {
+                    _key = true;
+                }
             }
             else if (((_codec == NalCodec.H264 && type == 6) || (_codec == NalCodec.Hevc && type == 39)) && HasRecoveryPoint(nal[Math.Min(NalUnit.HeaderSize(_codec), nal.Length)..]))
             {
@@ -557,6 +590,85 @@ internal sealed class NalVideoAssembler : VideoAssembler
                 ReadSliceHeader(nal[1..]);
             }
         }
+    }
+
+    // H.264 §D.1.3 picture timing SEI (payloadType 1): after the HRD delays comes pic_struct (Table D-1). Frame doubling (7) and
+    // tripling (8) show a frame for two or three frame periods and 3-field values (5, 6) for one and a half. Returns the number of
+    // extra half-frame periods the picture lasts, or 0 when it is an ordinary frame or the message is absent.
+    private int ReadPicStruct(ReadOnlySpan<byte> escaped)
+    {
+        Span<byte> clean = stackalloc byte[Math.Min(escaped.Length, 256)]; // bounded: the message sits at the start of the unit
+        int n = 0;
+        int zeros = 0;
+        for (int i = 0; i < escaped.Length && n < clean.Length; i++)
+        {
+            if (zeros >= 2 && escaped[i] == 3)
+            {
+                zeros = 0;
+                continue;
+            }
+
+            zeros = escaped[i] == 0 ? zeros + 1 : 0;
+            clean[n++] = escaped[i];
+        }
+
+        ReadOnlySpan<byte> rbsp = clean[..n];
+        int p = 0;
+        while (p < rbsp.Length)
+        {
+            int type = 0;
+            while (p < rbsp.Length && rbsp[p] == 0xFF)
+            {
+                type += 255;
+                p++;
+            }
+
+            int size = 0;
+            if (p >= rbsp.Length)
+            {
+                return 0;
+            }
+
+            type += rbsp[p++];
+            while (p < rbsp.Length && rbsp[p] == 0xFF)
+            {
+                size += 255;
+                p++;
+            }
+
+            if (p >= rbsp.Length)
+            {
+                return 0;
+            }
+
+            size += rbsp[p++];
+            if (type == 1)
+            {
+                int bit = _picTimingDelayBits;
+                int at = p + (bit / 8);
+                if (at >= rbsp.Length || bit / 8 >= size)
+                {
+                    return 0;
+                }
+
+                int picStruct = (rbsp[at] >> (4 - (bit % 8))) & 0xF;
+                if (bit % 8 > 4)
+                {
+                    if (at + 1 >= rbsp.Length)
+                    {
+                        return 0;
+                    }
+
+                    picStruct = ((rbsp[at] << 8 | rbsp[at + 1]) >> (12 - (bit % 8))) & 0xF;
+                }
+
+                return picStruct switch { 5 or 6 => 1, 7 => 2, 8 => 4, _ => 0 };
+            }
+
+            p += size;
+        }
+
+        return 0;
     }
 
     // H.264 §7.3.3 slice_header: first_mb_in_slice, slice_type, pic_parameter_set_id, [colour_plane_id], frame_num, then
