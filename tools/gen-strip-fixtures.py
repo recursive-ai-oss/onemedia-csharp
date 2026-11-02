@@ -13,7 +13,7 @@ carries every place the strip looks at in an ISO base media file:
   trak 3      mebx: location text and an orientation value that stays
   trak 4      fdsc: an unlabelled blob that repeats the lens serial, the camera serial, its hash and the position
 
-usage: gen-strip-fixtures.py <output dir>
+usage: gen-strip-fixtures.py <output dir> | --big <file> <gibibytes>
 """
 import struct
 import sys
@@ -150,7 +150,8 @@ def entry_box(kind, body=b''):
     return box(kind, b'\0' * 6 + struct.pack('>H', 1) + body)
 
 
-def build():
+def build(hole=0, big_path=None):
+    """The fixture bytes; with hole > 0 the media data box is a 64-bit-size box that is `hole` bytes longer (zeros), written sparsely to big_path."""
     ftyp = box(b'ftyp', b'isom' + struct.pack('>I', 512) + b'isomiso2mp41')
     keys = [(1, 'com.apple.quicktime.location.ISO6709', 1), (2, 'com.apple.quicktime.video-orientation', 66)]
     mebx_entry = entry_box(b'mebx', box(b'keys', b''.join(mebx_key(*k) for k in keys)))
@@ -163,7 +164,8 @@ def build():
         track(4, b'meta', entry_box(b'fdsc'), [fdsc_blob]),
     ]
     mdat_payload = b''
-    first = len(ftyp) + 8
+    mdat_header = 16 if hole else 8
+    first = len(ftyp) + mdat_header
     trak_boxes = b''
     pos = first
     for t in tracks:
@@ -177,6 +179,8 @@ def build():
         stbl = box(b'stbl', stsd + stts + stsc + stsz + stco)
         trak_boxes += box(b'trak', tkhd + box(b'mdia', mdhd + hdlr + box(b'minf', full(b'nmhd', 0, 0) + dinf + stbl)))
     mdat = box(b'mdat', mdat_payload)
+    if hole:
+        mdat = struct.pack('>I', 1) + b'mdat' + struct.pack('>Q', 16 + len(mdat_payload) + hole) + mdat_payload
     mvhd = full(b'mvhd', 0, 0, struct.pack('>IIII', 0, 0, 1000, 4000) + struct.pack('>IH', 0x00010000, 0x0100) + b'\0' * 10
                 + struct.pack('>9I', 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000) + b'\0' * 24 + struct.pack('>I', 5))
     udta = box(b'udta', udta_text(b'\xa9xyz', LAT_LON) + udta_text(b'\xa9mak', b'Synthetic') + udta_text(b'\xa9mod', b'ONE') + loci()
@@ -188,10 +192,20 @@ def build():
                + box(b'ilst', data_item(1, LAT_LON) + data_item(2, b'AAAA-BBBB-CCCC-0042') + data_item(3, b'Synthetic Model')))
     moov = box(b'moov', mvhd + trak_boxes + udta + meta)
     xmp = box(b'uuid', bytes.fromhex('BE7ACFCB97A942E89C71999491E3AFAC') + xmp_packet())
+    if hole:
+        with open(big_path, 'wb') as f:
+            f.write(ftyp + mdat)
+            f.seek(hole, 1)
+            f.write(moov + xmp)
+        return None
     return ftyp + mdat + moov + xmp
 
 
 if __name__ == '__main__':
     import os
-    os.makedirs(sys.argv[1], exist_ok=True)
-    open(os.path.join(sys.argv[1], 'strip-mixed.mp4'), 'wb').write(build())
+    if len(sys.argv) > 3 and sys.argv[1] == '--big':
+        # --big <file> <gibibytes>: a sparse file with the same content and a media data box that many GiB long
+        build(int(float(sys.argv[3]) * (1 << 30)), sys.argv[2])
+    else:
+        os.makedirs(sys.argv[1], exist_ok=True)
+        open(os.path.join(sys.argv[1], 'strip-mixed.mp4'), 'wb').write(build())
