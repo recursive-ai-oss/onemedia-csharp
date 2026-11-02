@@ -287,6 +287,33 @@ internal static class Impls
         return (measured, GC.GetAllocatedBytesForCurrentThread() - before);
     }
 
+    /// <summary>
+    /// Bytes allocated per packet on the owned path: each packet is copied into a buffer from the shared memory pool and disposed. A warm-up
+    /// of the first half of the packets fills the pool; the second half is measured.
+    /// </summary>
+    public static (long Packets, long Bytes) OwnedAllocation(string path)
+    {
+        long total = OursDemux(path).Packets;
+        using IDemuxer d = OpenOurs(path);
+        long half = total / 2;
+        long n = 0;
+        while (n < half && d.TryReadOwnedPacket(null, out OwnedPacket warm))
+        {
+            warm.Dispose();
+            n++;
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        long measured = 0;
+        while (d.TryReadOwnedPacket(null, out OwnedPacket p))
+        {
+            p.Dispose();
+            measured++;
+        }
+
+        return (measured, GC.GetAllocatedBytesForCurrentThread() - before);
+    }
+
     public static Work OursProbe(string path)
     {
         using IDemuxer d = OpenOurs(path);

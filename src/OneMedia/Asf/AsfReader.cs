@@ -17,7 +17,7 @@ internal sealed class AsfReader
     private AsfAudioSpread?[] _spread = [];
     private readonly List<AsfPayload> _payloads = [];
     private readonly Queue<Entry> _queue = new();
-    private readonly Stack<byte[]> _pool = new();
+    private readonly List<byte[]> _pool = [];
     private AsfHeader _header = null!;
     private StreamState[] _streams = [];
     private bool[] _enabled = [];
@@ -449,24 +449,62 @@ internal sealed class AsfReader
         }
     }
 
+    // Reassembly buffers are reused. A request takes the smallest pooled buffer that fits (smaller ones stay for the small objects), and a new
+    // one is rounded up so the next object of about the same size fits it; when the pool is full a larger buffer replaces the smallest. Objects
+    // of very different sizes (key frames next to delta frames) therefore stop allocating once the pool has seen each size.
     private byte[] Rent(int size)
     {
-        while (_pool.TryPop(out byte[]? b))
+        int best = -1;
+        for (int i = 0; i < _pool.Count; i++)
         {
-            if (b.Length >= size)
+            if (_pool[i].Length >= size && (best < 0 || _pool[i].Length < _pool[best].Length))
             {
-                return b;
+                best = i;
             }
         }
 
-        return new byte[Math.Max(size, 256)];
+        if (best >= 0)
+        {
+            byte[] b = _pool[best];
+            _pool[best] = _pool[^1];
+            _pool.RemoveAt(_pool.Count - 1);
+            return b;
+        }
+
+        int length = Math.Max(size, 256);
+        if (length <= 1 << 20)
+        {
+            length = (int)System.Numerics.BitOperations.RoundUpToPowerOf2((uint)length);
+        }
+
+        return new byte[length];
     }
 
     private void Recycle(byte[]? buffer)
     {
-        if (buffer is { Length: > 0 } && _pool.Count < 16)
+        if (buffer is not { Length: > 0 })
         {
-            _pool.Push(buffer);
+            return;
+        }
+
+        if (_pool.Count < 16)
+        {
+            _pool.Add(buffer);
+            return;
+        }
+
+        int smallest = 0;
+        for (int i = 1; i < _pool.Count; i++)
+        {
+            if (_pool[i].Length < _pool[smallest].Length)
+            {
+                smallest = i;
+            }
+        }
+
+        if (_pool[smallest].Length < buffer.Length)
+        {
+            _pool[smallest] = buffer;
         }
     }
 

@@ -76,8 +76,19 @@ if (args[0] == "pullalloc")
     foreach (string rel in args.Skip(1))
     {
         string path = Path.IsPathRooted(rel) ? rel : Path.Combine(home, "corpus", rel);
-        (long packets, long bytes) = Impls.PullAllocation(path);
-        Console.WriteLine($"{rel}: {packets} packets, {bytes} bytes allocated, {(packets == 0 ? 0 : (double)bytes / packets):0.000} B per packet");
+        long packets, bytes, ownedPackets, ownedBytes;
+        try
+        {
+            (packets, bytes) = Impls.PullAllocation(path);
+            (ownedPackets, ownedBytes) = Impls.OwnedAllocation(path);
+        }
+        catch (RecursiveAI.OneMedia.MediaException e)
+        {
+            Console.WriteLine($"{rel}: not measured, {e.GetType().Name}: {e.Message}");
+            continue;
+        }
+
+        Console.WriteLine($"{rel}: {packets} packets, {bytes} bytes allocated, {(packets == 0 ? 0 : (double)bytes / packets):0.000} B per packet; owned path {ownedPackets} packets, {(ownedPackets == 0 ? 0 : (double)ownedBytes / ownedPackets):0.0} B per packet");
     }
 
     return 0;
