@@ -37,19 +37,14 @@ internal sealed class WebVttFormat : SubtitleFormat
     internal override SubtitleDocument ReadCore(SubtitleSource src)
     {
         string text = src.Text;
-        var lines = new List<(int Start, int Length)>();
-        int pos = 0;
-        while (src.NextLine(ref pos, out int s, out int l))
-        {
-            lines.Add((s, l));
-        }
+        LineTable lines = src.ReadLines();
 
         if (lines.Count > 0 && lines[0].Length > 0 && text[lines[0].Start] == '\uFEFF')
         {
             lines[0] = (lines[0].Start + 1, lines[0].Length - 1);
         }
 
-        var cues = new List<SubtitleCue>();
+        var cues = new List<SubtitleCue>(Math.Min(Math.Max(4, lines.Count / 4), 1 << 20));
         var regions = new List<SubtitleRegion>();
         var docExtras = new List<SubtitleExtra>();
         var pendingNotes = new List<SubtitleExtra>();
@@ -121,7 +116,7 @@ internal sealed class WebVttFormat : SubtitleFormat
 
     private static void ReadBlock(
         SubtitleSource src,
-        List<(int Start, int Length)> lines,
+        LineTable lines,
         int first,
         int end,
         List<SubtitleCue> cues,
@@ -219,38 +214,44 @@ internal sealed class WebVttFormat : SubtitleFormat
         }
 
         lastStart = start;
-        var extras = new List<SubtitleExtra>(pendingNotes);
+        List<SubtitleExtra>? extras = pendingNotes.Count > 0 ? new List<SubtitleExtra>(pendingNotes) : null;
         pendingNotes.Clear();
-        CuePlacement? placement = ParseSettings(src, after[sp..], lines[timing].Start + arrow + 3 + (tl[(arrow + 3)..].Length - after.Length) + sp, extras);
+        CuePlacement? placement = ParseSettings(src, after[sp..], lines[timing].Start + arrow + 3 + (tl[(arrow + 3)..].Length - after.Length) + sp, ref extras);
 
-        var payload = new StringBuilder();
-        for (int k = timing + 1; k < end; k++)
+        string payload = SubtitleSource.JoinLines(text, lines, timing + 1, end);
+        string plain;
+        SubtitleList<SubtitleSpan> spanList;
+        string? speaker = null;
+        if (payload.AsSpan().IndexOfAny('&', '<') < 0)
         {
-            if (k > timing + 1)
-            {
-                payload.Append('\n');
-            }
-
-            payload.Append(text, lines[k].Start, lines[k].Length);
+            // No tag and no character reference: the payload is the text.
+            plain = payload;
+            spanList = SubtitleList.Empty<SubtitleSpan>();
+        }
+        else
+        {
+            VttCueText.Parse(payload, src, timing + 1 < end ? lines[timing + 1].Start : text.Length, endTime, out plain, out List<SubtitleSpan> spans, out speaker);
+            spanList = SubtitleList.From(spans);
         }
 
-        VttCueText.Parse(payload.ToString(), src, timing + 1 < end ? lines[timing + 1].Start : text.Length, endTime, out string plain, out List<SubtitleSpan> spans, out string? speaker);
         cues.Add(new SubtitleCue
         {
             Id = id,
             Start = start,
             End = endTime,
             Text = plain,
-            Spans = SubtitleList.From(spans),
+            Spans = spanList,
             Speaker = speaker,
             Placement = placement,
-            Extras = SubtitleList.From(extras),
+            Extras = extras is null ? SubtitleList.Empty<SubtitleExtra>() : SubtitleList.From(extras),
         });
     }
 
-    private static CuePlacement? ParseSettings(SubtitleSource src, ReadOnlySpan<char> settings, int baseIndex, List<SubtitleExtra> extras)
+    private static readonly CuePlacement NoPlacement = new();
+
+    private static CuePlacement? ParseSettings(SubtitleSource src, ReadOnlySpan<char> settings, int baseIndex, ref List<SubtitleExtra>? extras)
     {
-        CuePlacement p = new();
+        CuePlacement p = NoPlacement;
         bool any = false;
         int i = 0;
         while (i < settings.Length)
@@ -393,14 +394,14 @@ internal sealed class WebVttFormat : SubtitleFormat
             else
             {
                 src.Report(DefectKind.InvalidValue, DefectSeverity.Warning, baseIndex + s, $"Cue setting '{token}' is not valid; kept as an extra.", "subtitles.webvtt.setting");
-                extras.Add(new SubtitleExtra("webvtt", "setting", token.ToString()));
+                (extras ??= []).Add(new SubtitleExtra("webvtt", "setting", token.ToString()));
             }
         }
 
         return any ? p : null;
     }
 
-    private static SubtitleRegion ParseRegion(SubtitleSource src, List<(int Start, int Length)> lines, int first, int end)
+    private static SubtitleRegion ParseRegion(SubtitleSource src, LineTable lines, int first, int end)
     {
         string text = src.Text;
         string id = "";
@@ -541,7 +542,7 @@ internal sealed class WebVttFormat : SubtitleFormat
     internal override string WriteCore(SubtitleDocument doc, ConversionReport report)
     {
         string nl = doc.NewLine;
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(MarkupWriter.EstimateCapacity(doc.Cues.Count, 84));
         string header = "WEBVTT";
         foreach (SubtitleExtra e in doc.Extras)
         {
@@ -568,8 +569,9 @@ internal sealed class WebVttFormat : SubtitleFormat
         for (int c = 0; c < doc.Cues.Count; c++)
         {
             SubtitleCue cue = doc.Cues[c];
-            foreach (SubtitleExtra e in cue.Extras)
+            for (int x = 0; x < cue.Extras.Count; x++)
             {
+                SubtitleExtra e = cue.Extras[x];
                 if (e.Format == Name && e.Key == "note")
                 {
                     sb.Append(e.Value.Replace("\n", nl, StringComparison.Ordinal)).Append(nl).Append(nl);
@@ -581,7 +583,9 @@ internal sealed class WebVttFormat : SubtitleFormat
                 sb.Append(id.Replace("-->", "--&gt;", StringComparison.Ordinal).Replace('\n', ' ').Replace('\r', ' ')).Append(nl);
             }
 
-            sb.Append(SrtTime.Format(cue.Start, c, report, '.')).Append(" --> ").Append(SrtTime.Format(cue.End, c, report, '.'));
+            SrtTime.Append(sb, cue.Start, c, report, '.');
+            sb.Append(" --> ");
+            SrtTime.Append(sb, cue.End, c, report, '.');
             AppendSettings(sb, cue, c, report);
             sb.Append(nl);
             VttCueText.Write(sb, cue, c, nl, report);
@@ -657,8 +661,9 @@ internal sealed class WebVttFormat : SubtitleFormat
 
     private static void AppendSettings(StringBuilder sb, SubtitleCue cue, int cueIndex, ConversionReport report)
     {
-        foreach (SubtitleExtra e in cue.Extras)
+        for (int x = 0; x < cue.Extras.Count; x++)
         {
+            SubtitleExtra e = cue.Extras[x];
             if (e.Format == "webvtt" && e.Key == "setting")
             {
                 sb.Append(' ').Append(e.Value);
@@ -1062,6 +1067,13 @@ internal static class VttCueText
 
     internal static void Write(StringBuilder sb, SubtitleCue cue, int cueIndex, string nl, ConversionReport report)
     {
+        if (cue.Spans.Count == 0 && (cue.Speaker is null || cue.Text.Length == 0) && !MarkupWriter.HasBlankLines(cue.Text))
+        {
+            // Nothing to wrap: the cue is its text.
+            MarkupWriter.AppendEscaped(sb, cue.Text, true, nl);
+            return;
+        }
+
         var intervals = new List<MarkupInterval>();
         var points = new List<MarkupPoint>();
         if (cue.Speaker is { } speaker && cue.Text.Length > 0)
@@ -1161,30 +1173,7 @@ internal static class VttCueText
             plain = MarkupWriter.FillBlankLines(plain, intervals, points, '\u00A0');
         }
 
-        MarkupWriter.Write(sb, plain, intervals, points, (o, s) =>
-        {
-            foreach (char ch in s)
-            {
-                switch (ch)
-                {
-                    case '&':
-                        o.Append("&amp;");
-                        break;
-                    case '<':
-                        o.Append("&lt;");
-                        break;
-                    case '>':
-                        o.Append("&gt;");
-                        break;
-                    case '\n':
-                        o.Append(nl);
-                        break;
-                    default:
-                        o.Append(ch);
-                        break;
-                }
-            }
-        });
+        MarkupWriter.Write(sb, plain, intervals, points, true, nl);
     }
 
     private static string Escape(string s)

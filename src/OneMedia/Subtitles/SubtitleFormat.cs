@@ -116,7 +116,11 @@ public sealed class ConversionReport
     public const int MaxEntries = 10_000;
 
     private readonly List<ConversionLoss> _losses = [];
-    private readonly Dictionary<(SubtitleFeatures, LossKind), int> _counts = [];
+
+    // Counts per single-flag feature and kind in a flat array (the usual case, and cheap enough to do per cue); combined flags,
+    // which no writer uses, go to the dictionary.
+    private readonly int[] _flagCounts = new int[2 * 24];
+    private Dictionary<(SubtitleFeatures, LossKind), int>? _otherCounts;
 
     /// <summary>The source format name, or null when the document was built in memory.</summary>
     public string? Source { get; init; }
@@ -136,27 +140,67 @@ public sealed class ConversionReport
     /// <summary>How many entries (listed or not) there are for a feature and kind.</summary>
     /// <param name="feature">The feature.</param>
     /// <param name="kind">Dropped or approximated.</param>
-    public int Count(SubtitleFeatures feature, LossKind kind) => _counts.TryGetValue((feature, kind), out int n) ? n : 0;
+    public int Count(SubtitleFeatures feature, LossKind kind)
+    {
+        if (FlagSlot(feature, kind) is int slot and >= 0)
+        {
+            return _flagCounts[slot];
+        }
+
+        return _otherCounts is not null && _otherCounts.TryGetValue((feature, kind), out int n) ? n : 0;
+    }
 
     /// <summary>The features with at least one entry of the given kind.</summary>
     /// <param name="kind">Dropped or approximated.</param>
     public SubtitleFeatures Affected(LossKind kind)
     {
         SubtitleFeatures all = SubtitleFeatures.None;
-        foreach (((SubtitleFeatures feature, LossKind k), int n) in _counts)
+        for (int bit = 0; bit < 24; bit++)
         {
-            if (k == kind && n > 0)
+            if (_flagCounts[(bit * 2) + (kind == LossKind.Dropped ? 0 : 1)] > 0)
             {
-                all |= feature;
+                all |= (SubtitleFeatures)(1L << bit);
+            }
+        }
+
+        if (_otherCounts is not null)
+        {
+            foreach (((SubtitleFeatures feature, LossKind k), int n) in _otherCounts)
+            {
+                if (k == kind && n > 0)
+                {
+                    all |= feature;
+                }
             }
         }
 
         return all;
     }
 
+    // The array slot of a single-flag feature, or -1.
+    private static int FlagSlot(SubtitleFeatures feature, LossKind kind)
+    {
+        long f = (long)feature;
+        if (f <= 0 || (f & (f - 1)) != 0 || f >= (1L << 24) || kind is not (LossKind.Dropped or LossKind.Approximated))
+        {
+            return -1;
+        }
+
+        return (System.Numerics.BitOperations.TrailingZeroCount(f) * 2) + (kind == LossKind.Dropped ? 0 : 1);
+    }
+
     internal void Add(int cue, SubtitleFeatures feature, LossKind kind, string message)
     {
-        _counts[(feature, kind)] = Count(feature, kind) + 1;
+        if (FlagSlot(feature, kind) is int slot and >= 0)
+        {
+            _flagCounts[slot]++;
+        }
+        else
+        {
+            _otherCounts ??= [];
+            _otherCounts[(feature, kind)] = Count(feature, kind) + 1;
+        }
+
         if (_losses.Count < MaxEntries)
         {
             _losses.Add(new ConversionLoss(cue, feature, kind, message));
@@ -542,7 +586,7 @@ internal static class SubtitleLoss
             SubtitleCue cue = doc.Cues[i];
             SubtitleFeatures used = Used(cue);
             SubtitleFeatures missing = used & ~can;
-            for (long bit = 1; bit != 0 && bit <= (long)SubtitleFeatures.Images; bit <<= 1)
+            for (long bit = 1; missing != 0 && bit != 0 && bit <= (long)SubtitleFeatures.Images; bit <<= 1)
             {
                 if ((missing & (SubtitleFeatures)bit) != 0)
                 {
@@ -551,9 +595,9 @@ internal static class SubtitleLoss
             }
 
             int cueForeign = CountForeign(cue.Extras, format);
-            foreach (SubtitleSpan span in cue.Spans)
+            for (int k = 0; k < cue.Spans.Count; k++)
             {
-                if (span.Raw is { } raw && raw.Format != format)
+                if (cue.Spans[k].Raw is { } raw && raw.Format != format)
                 {
                     cueForeign++;
                 }
@@ -582,9 +626,9 @@ internal static class SubtitleLoss
     private static int CountForeign(SubtitleList<SubtitleExtra> extras, string format)
     {
         int n = 0;
-        foreach (SubtitleExtra e in extras)
+        for (int k = 0; k < extras.Count; k++)
         {
-            if (e.Format != format)
+            if (extras[k].Format != format)
             {
                 n++;
             }
@@ -649,8 +693,9 @@ internal static class SubtitleLoss
             }
         }
 
-        foreach (SubtitleSpan span in cue.Spans)
+        for (int k = 0; k < cue.Spans.Count; k++)
         {
+            SubtitleSpan span = cue.Spans[k];
             if (span.Style is { } s)
             {
                 if (s.Bold == true)
@@ -746,6 +791,30 @@ internal static class SubtitleLoss
     // Records an Approximated entry when a time did not survive the target's precision.
     internal static long Quantize(MediaTime time, long timescale, int cue, SubtitleFeatures feature, ConversionReport report, string what)
     {
+        // The usual sidecar cases without the general rescale: the same scale, and milliseconds to centiseconds (ties away from zero).
+        if (time.Timescale == timescale)
+        {
+            return time.Ticks;
+        }
+
+        if (time.Timescale == 1000 && timescale == 100)
+        {
+            long ticks = time.Ticks;
+            long q = ticks / 10;
+            long rem = ticks % 10;
+            if (rem != 0)
+            {
+                if (rem >= 5 || rem <= -5)
+                {
+                    q += ticks < 0 ? -1 : 1;
+                }
+
+                report.Add(cue, feature, LossKind.Approximated, what == "Time" ? "Time rounded to 1/100 s." : $"{what} rounded to 1/100 s.");
+            }
+
+            return q;
+        }
+
         MediaTime r = time.Rescale(timescale, MediaRounding.NearestAwayFromZero);
         if (r != time)
         {

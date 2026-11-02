@@ -39,6 +39,12 @@ if (args[0] == "subsbench")
     return SubtitleBench.Run([.. args.Skip(1)]);
 }
 
+if (args[0] == "subsdump")
+{
+    // subsdump [-v INDEX FORMAT] [-m MUTATIONS] FILE...: hashes of what the subtitle readers and writers produce, to diff two builds.
+    return SubtitleDump.Run([.. args.Skip(1)]);
+}
+
 if (args[0] == "crossread")
 {
     // crossread FILE: what ATL.NET and TagLib# read back from a file the tag-write check wrote.
