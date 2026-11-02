@@ -1,8 +1,8 @@
 using RecursiveAI.OneMedia.Codecs.Captions;
-using RecursiveAI.OneMedia.Subtitles.Cea608;
-using RecursiveAI.OneMedia.Subtitles.Cea708;
+using RecursiveAI.OneMedia.Captions.Cea608;
+using RecursiveAI.OneMedia.Captions.Cea708;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 /// <summary>Everything the embedded caption data of one video track decodes to.</summary>
 /// <param name="Cea608">Caption and text screens of CC1–CC4 and Text1–Text4.</param>

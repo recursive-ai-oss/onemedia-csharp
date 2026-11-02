@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Text;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Codecs.Captions;
-using RecursiveAI.OneMedia.Subtitles.Cea608;
-using RecursiveAI.OneMedia.Subtitles.Cea708;
-using RecursiveAI.OneMedia.Subtitles.Scc;
+using RecursiveAI.OneMedia.Captions.Cea608;
+using RecursiveAI.OneMedia.Captions.Cea708;
+using RecursiveAI.OneMedia.Captions.Scc;
 
 namespace RecursiveAI.OneMedia.Fuzz;
 

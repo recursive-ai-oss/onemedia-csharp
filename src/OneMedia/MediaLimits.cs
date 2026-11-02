@@ -22,6 +22,7 @@ public sealed record MediaLimits
     private long _maxPacketBytes = 256L << 20;
     private int _maxLacedFrames = 4096;
     private int _maxDefects = 1000;
+    private int _maxCues = 1_000_000;
 
     /// <summary>The default limits.</summary>
     public static MediaLimits Default { get; } = new();
@@ -112,6 +113,15 @@ public sealed record MediaLimits
     /// <param name="offset">File offset of the block.</param>
     /// <exception cref="MediaLimitExceededException"><paramref name="frames"/> is above <see cref="MaxLacedFrames"/>.</exception>
     public void CheckLacedFrames(int frames, long offset) => Check(nameof(MaxLacedFrames), MaxLacedFrames, frames, offset);
+
+    /// <summary>Most cues one subtitle document may hold. Default 1 million.</summary>
+    public int MaxCues { get => _maxCues; init => _maxCues = Positive(value); }
+
+    /// <summary>Throws unless a subtitle document may hold <paramref name="count"/> cues.</summary>
+    /// <param name="count">Cues read so far, including the one about to be added.</param>
+    /// <param name="offset">Byte offset of that cue.</param>
+    /// <exception cref="MediaLimitExceededException"><paramref name="count"/> is above <see cref="MaxCues"/>.</exception>
+    public void CheckCues(long count, long offset) => Check(nameof(MaxCues), MaxCues, count, offset);
 
     private static void Check(string name, long limit, long requested, long offset)
     {

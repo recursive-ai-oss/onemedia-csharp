@@ -1,7 +1,8 @@
 using RecursiveAI.OneMedia.Codecs.Captions;
-using RecursiveAI.OneMedia.Subtitles.Cea608;
-using RecursiveAI.OneMedia.Subtitles.Cea708;
-using RecursiveAI.OneMedia.Subtitles.Scc;
+using RecursiveAI.OneMedia.Captions;
+using RecursiveAI.OneMedia.Captions.Cea608;
+using RecursiveAI.OneMedia.Captions.Cea708;
+using RecursiveAI.OneMedia.Captions.Scc;
 
 namespace RecursiveAI.OneMedia.Tests.Captions;
 
@@ -198,5 +199,36 @@ public sealed class CaptionTests
         Assert.Equal("Hi\nthere", c.Text);
         Cea708Window w = Assert.Single(c.Windows);
         Assert.Equal((0, 70, 20), (w.Id, w.AnchorVertical, w.AnchorHorizontal));
+    }
+
+    [Fact]
+    public void SccReadsAndWritesThroughTheCueModel()
+    {
+        var doc = new SubtitleDocument
+        {
+            Cues = new SubtitleList<SubtitleCue>(
+            [
+                new SubtitleCue
+                {
+                    Start = new MediaTime(5005, 1000),
+                    End = new MediaTime(7007, 1000),
+                    Text = "Hello there\nthis is a very long second line that must be wrapped at the grid width",
+                    Spans = new SubtitleList<SubtitleSpan>([new SubtitleSpan(0, 5) { Style = new TextStyle { Italic = true } }, new SubtitleSpan(6, 5) { Style = new TextStyle { Color = new SubtitleColor(255, 255, 0) } }]),
+                },
+            ]),
+        };
+        SubtitleFormats.Register(SccSubtitleFormat.Instance);
+        Assert.Same(SccSubtitleFormat.Instance, SubtitleFormats.Find(".scc"));
+        SubtitleOutput written = SccSubtitleFormat.Instance.Write(doc);
+        Assert.Contains(written.Report.Losses, l => l.Message.Contains("wrapped", StringComparison.Ordinal));
+        Assert.Same(SccSubtitleFormat.Instance, SubtitleFormats.Sniff(written.Text.AsSpan()));
+        SubtitleDocument back = SccSubtitleFormat.Instance.ReadText(written.Text);
+        SubtitleCue cue = Assert.Single(back.Cues);
+        Assert.Equal(CaptionMode.PopOn, cue.Mode);
+        Assert.Equal(new MediaTime(5005, 1000), cue.Start);
+        Assert.StartsWith("Hello there\nthis is a very long second line", cue.Text, StringComparison.Ordinal);
+        Assert.Contains(cue.Spans, sp => sp.Style?.Italic == true);
+        Assert.Contains(cue.Spans, sp => sp.Style?.Color == new SubtitleColor(255, 255, 0));
+        Assert.Equal(15 - 4 + 1, cue.Placement!.Row); // four rows (the long line wraps twice) sit at the bottom of the grid
     }
 }

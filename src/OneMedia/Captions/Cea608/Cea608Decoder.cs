@@ -1,7 +1,7 @@
 using System.Linq;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles.Cea608;
+namespace RecursiveAI.OneMedia.Captions.Cea608;
 
 /// <summary>
 /// Decodes CEA-608 byte pairs into caption screens: pop-on, roll-up (2–4 rows) and paint-on captions on CC1–CC4, text services Text1–Text4
@@ -37,6 +37,7 @@ public sealed class Cea608Decoder
         public int Col;
         public byte Attr;
         public bool Open;
+        public CaptionMode OpenMode;
         public MediaTime OpenStart;
         public List<Cea608Row> OpenRows = [];
         public MediaTime TextStart = MediaTime.Unknown;
@@ -527,6 +528,7 @@ public sealed class Cea608Decoder
         }
 
         ch.Open = true;
+        ch.OpenMode = ch.Mode switch { Mode.PopOn => CaptionMode.PopOn, Mode.RollUp => CaptionMode.RollUp, Mode.PaintOn => CaptionMode.PaintOn, _ => CaptionMode.None };
         ch.OpenStart = time;
         ch.OpenRows = rows;
     }
@@ -543,7 +545,7 @@ public sealed class Cea608Decoder
             return;
         }
 
-        _captions.Add(new Cea608Caption(id, ch.OpenStart, end, ch.OpenRows));
+        _captions.Add(new Cea608Caption(id, ch.OpenStart, end, ch.OpenRows) { Mode = ch.OpenMode });
         ch.Open = false;
         ch.OpenRows = [];
     }

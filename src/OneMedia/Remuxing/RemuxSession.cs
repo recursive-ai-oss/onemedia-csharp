@@ -31,6 +31,13 @@ public sealed class RemuxSession : IDisposable
 
     private sealed class TrackState(MediaTrack input)
     {
+        /// <summary>Looks for caption data in the packets written, until it finds some.</summary>
+        public Codecs.Captions.CaptionExtractor? CaptionProbe { get; set; }
+
+        public bool CaptionsChecked { get; set; }
+
+        public long CaptionProbed { get; set; }
+
         public MediaTrack Input { get; } = input;
 
         public bool Wanted { get; set; }
@@ -98,6 +105,7 @@ public sealed class RemuxSession : IDisposable
     private readonly List<TrackState> _tracks = [];
     private readonly List<RemuxLoss> _losses = [];
     private readonly List<string> _changes = [];
+    private readonly List<string> _carried = [];
     private readonly HashSet<int> _unlisted = [];
     private readonly List<Held> _held = [];
     private long _heldBytes;
@@ -832,6 +840,40 @@ public sealed class RemuxSession : IDisposable
         _options.Observer?.Invoke(p, payload);
         _muxer!.WritePacket(p, payload, cancellationToken);
         s.Packets++;
+        NoteCaptions(s, payload);
+    }
+
+    // Embedded captions (ATSC A/53 cc_data in H.264/HEVC SEI or MPEG-2 user data) live in the video samples, which are copied unchanged, so they
+    // are carried. The report says so once per track, from the first sample that holds some.
+    private void NoteCaptions(TrackState s, ReadOnlySpan<byte> payload)
+    {
+        if (s.CaptionsChecked || s.Input.Kind != TrackKind.Video)
+        {
+            return;
+        }
+
+        if (s.CaptionProbe is null)
+        {
+            s.CaptionProbe = s.Mode == Repack.AnnexB
+                ? new Codecs.Captions.CaptionExtractor(s.Nal == NalCodec.H264 ? Codecs.Captions.CaptionCarriage.H264Sei : Codecs.Captions.CaptionCarriage.HevcSei, 4)
+                : Codecs.Captions.CaptionExtractor.ForTrack(s.Input);
+            if (s.CaptionProbe is null)
+            {
+                s.CaptionsChecked = true;
+                return;
+            }
+        }
+
+        var found = new List<Codecs.Captions.CcTriplet>();
+        if (s.CaptionProbe.Extract(payload, found) > 0)
+        {
+            s.CaptionsChecked = true;
+            _carried.Add($"Input track {s.Input.Index}: closed-caption data (ATSC A/53 cc_data: CEA-608/708) in the video samples was carried unchanged; first seen in packet {s.CaptionProbed + 1}.");
+        }
+        else if (++s.CaptionProbed >= 200_000)
+        {
+            s.CaptionsChecked = true;
+        }
     }
 
     // Matroska stores one timestamp per block, and a laced block of audio frames without a DefaultDuration leaves its frames with the
@@ -983,7 +1025,7 @@ public sealed class RemuxSession : IDisposable
             }
         }
 
-        return new RemuxReport(mux, tracks, _losses, _changes, 0) { LostMediaTracks = lost };
+        return new RemuxReport(mux, tracks, _losses, _changes, 0) { LostMediaTracks = lost, CarriedCaptions = _carried };
     }
 
     /// <summary>Releases the muxer. Without <see cref="Finish"/> the output stays incomplete.</summary>

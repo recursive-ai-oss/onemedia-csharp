@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles.Scc;
+namespace RecursiveAI.OneMedia.Captions.Scc;
 
 /// <summary>One timecoded line of an SCC file: where it starts and the CEA-608 byte pairs it carries.</summary>
 /// <param name="Frame">The line's first frame as a count of frames since 00:00:00:00 at 29.97 fps (drop-frame numbering resolved), i.e. real time is <c>Frame × 1001 / 30000</c> seconds.</param>
@@ -234,6 +234,12 @@ public sealed class SccDocument
 
             // Load pairs end with the EOC pair at `show` (the last two pairs are the doubled EOC).
             long first = show - (load.Count - 2);
+            if (first < 0)
+            {
+                // Not enough lead-in before the start of the file to load the caption: it appears late rather than not at all.
+                first = 0;
+            }
+
             for (int i = 0; i < load.Count; i++)
             {
                 slots[first + i] = load[i];

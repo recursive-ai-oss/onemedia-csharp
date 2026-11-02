@@ -27,4 +27,12 @@ for f in "$@"; do
     n=$(basename "$o" .srt); case $n in cc1) c=cc1;; cc2) c=cc2;; svc*) c=$n;; *) c=;; esac
     [ -n "$c" ] && ls "$d"/ccx/$c*.srt >/dev/null 2>&1 && echo "  $n vs ccextractor: $(python3 "$HERE/caption-compare.py" "$o" "$(ls "$d"/ccx/$c*.srt | head -1)" | head -1)"
   done
+  # pass-through: remux to Matroska (the ISO muxer does not take MPEG-2 video); the caption triplets must equal the source's, byte for byte.
+  src=$(dotnet "$OUT/_bin/OneMedia.CaptionCheck.dll" triplets "$f" | grep -o 'sha256=.*')
+  dotnet "$OUT/_bin/OneMedia.CaptionCheck.dll" remux "$f" "$d/pt.mkv" 2>&1 | sed 's/^/  /' | head -3
+  dst=$(dotnet "$OUT/_bin/OneMedia.CaptionCheck.dll" triplets "$d/pt.mkv" | grep -o 'sha256=.*')
+  echo "  remux->mkv triplets equal: $([ "$src" = "$dst" ] && echo yes || echo "NO ($src vs $dst)")"
+  ffmpeg -v error -y -f lavfi -i "movie=$f[out0+subcc]" -map 0:s:0 "$d/src-ffm.srt" 2>/dev/null
+  ffmpeg -v error -y -f lavfi -i "movie=$d/pt.mkv[out0+subcc]" -map 0:s:0 "$d/pt-ffm.srt" 2>/dev/null
+  echo "  ffmpeg(remuxed mkv) vs ffmpeg(source): $(python3 "$HERE/caption-compare.py" "$d/pt-ffm.srt" "$d/src-ffm.srt" 1000 | head -1)"
 done

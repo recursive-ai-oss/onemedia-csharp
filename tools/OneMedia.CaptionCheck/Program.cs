@@ -6,10 +6,10 @@ using System.Linq;
 using System.Text;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Codecs.Captions;
-using RecursiveAI.OneMedia.Subtitles;
-using RecursiveAI.OneMedia.Subtitles.Cea608;
-using RecursiveAI.OneMedia.Subtitles.Cea708;
-using RecursiveAI.OneMedia.Subtitles.Scc;
+using RecursiveAI.OneMedia.Captions;
+using RecursiveAI.OneMedia.Captions.Cea608;
+using RecursiveAI.OneMedia.Captions.Cea708;
+using RecursiveAI.OneMedia.Captions.Scc;
 using RecursiveAI.OneMedia.Remuxing;
 
 // Usage:
@@ -32,7 +32,7 @@ if (args[0] == "mkscc" && args.Length >= 2)
 if (args[0] == "remux" && args.Length >= 3)
 {
     RemuxReport rr = Remuxer.Remux(args[1], args[2], new RemuxOptions { Overwrite = true });
-    Console.WriteLine($"remuxed; losses={rr.Losses.Count}");
+    Console.WriteLine($"remuxed; losses={rr.Losses.Count} carried-captions-notes={rr.CarriedCaptions.Count}");
     return 0;
 }
 

@@ -1,7 +1,7 @@
 using System.Linq;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles.Cea708;
+namespace RecursiveAI.OneMedia.Captions.Cea708;
 
 /// <summary>Where a window is anchored (CTA-708 §8.4.2 anchor point).</summary>
 public enum Cea708AnchorPoint

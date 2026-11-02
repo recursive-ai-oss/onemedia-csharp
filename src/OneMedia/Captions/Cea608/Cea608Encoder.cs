@@ -1,6 +1,6 @@
 using System.Linq;
 
-namespace RecursiveAI.OneMedia.Subtitles.Cea608;
+namespace RecursiveAI.OneMedia.Captions.Cea608;
 
 /// <summary>Turns caption rows into CEA-608 byte pairs (the inverse of <see cref="Cea608Decoder"/> for pop-on captions).</summary>
 public static class Cea608Encoder
@@ -196,6 +196,11 @@ public static class Cea608Encoder
 
         Flush();
     }
+
+    /// <summary>True when the character is in the CEA-608 basic, special or extended sets.</summary>
+    /// <param name="c">The character.</param>
+    /// <returns>Whether <see cref="PopOn"/> can write it (otherwise it writes '?').</returns>
+    public static bool CanEncode(char c) => BasicCode(c) >= 0 || Special.Contains(c, StringComparison.Ordinal) || Extended1.Contains(c, StringComparison.Ordinal) || Extended2.Contains(c, StringComparison.Ordinal);
 
     private static int BasicCode(char c)
     {

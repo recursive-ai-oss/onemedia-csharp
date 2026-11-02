@@ -1,5 +1,5 @@
 using System.Linq;
-namespace RecursiveAI.OneMedia.Subtitles.Cea608;
+namespace RecursiveAI.OneMedia.Captions.Cea608;
 
 /// <summary>A CEA-608 data channel: caption channels CC1–CC4 and text channels Text1–Text4.</summary>
 public enum Cea608Channel
@@ -77,6 +77,9 @@ public sealed record Cea608Row(int Row, int Column, string Text, IReadOnlyList<C
 /// <param name="Rows">Rows from top to bottom.</param>
 public sealed record Cea608Caption(Cea608Channel Channel, MediaTime Start, MediaTime End, IReadOnlyList<Cea608Row> Rows)
 {
+    /// <summary>How the screen was revealed: pop-on, roll-up or paint-on (<see cref="CaptionMode.None"/> for text channels).</summary>
+    public CaptionMode Mode { get; init; }
+
     /// <summary>The rows' text joined with line feeds.</summary>
     public string Text => string.Join('\n', Rows.Select(r => r.Text));
 }
