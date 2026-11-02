@@ -36,10 +36,11 @@ static int Run(string[] args)
     {
         bool json = args.Contains("--json");
         bool sidecars = !args.Contains("--no-sidecars");
-        string? path = args.Skip(1).FirstOrDefault(a => a is not ("--json" or "--no-sidecars"));
+        bool telemetry = args.Contains("--telemetry");
+        string? path = args.Skip(1).FirstOrDefault(a => a is not ("--json" or "--no-sidecars" or "--telemetry"));
         if (path is not null)
         {
-            return Info(path, json, sidecars);
+            return Info(path, json, sidecars, telemetry);
         }
     }
 
@@ -54,7 +55,7 @@ static int Run(string[] args)
     }
 
     Console.Error.WriteLine("usage: onemedia --version");
-    Console.Error.WriteLine("       onemedia info <file> [--json] [--no-sidecars]   format, duration, tracks, facts with every candidate, and defects (sidecars beside the file count as evidence)");
+    Console.Error.WriteLine("       onemedia info <file> [--json] [--no-sidecars] [--telemetry]   format, duration, tracks, facts with every candidate, and defects (sidecars beside the file count as evidence; --telemetry also decodes GPS telemetry into the facts)");
     Console.Error.WriteLine(RemuxCommand.Usage);
     Console.Error.WriteLine(PlayableCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
@@ -63,7 +64,7 @@ static int Run(string[] args)
     return 2;
 }
 
-static int Info(string path, bool json, bool sidecars)
+static int Info(string path, bool json, bool sidecars, bool telemetry)
 {
     try
     {
@@ -71,6 +72,12 @@ static int Info(string path, bool json, bool sidecars)
         if (sidecars)
         {
             media.AddSidecarsBesideFile();
+        }
+
+        if (telemetry)
+        {
+            // Decodes every telemetry sample into memory, so only on request; the GPS time and first fix become capture-time and location candidates.
+            _ = media.Telemetry;
         }
 
         if (json)

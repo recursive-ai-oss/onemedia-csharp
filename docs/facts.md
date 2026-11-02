@@ -107,6 +107,8 @@ order and the `FactResolution` that explains it. Keep it deterministic: the same
 
 ## Telemetry as evidence
 
-`MediaFile.AttachTelemetry(channels)` takes decoded `TelemetryChannel`s (model in `Metadata/Telemetry.cs`). Only `Gps` channels matter to the resolver today:
-`GpsSample.GpsTime` + `Fix` give the tier-2 time and the position candidate. Decoders must set `Fix` to 2D/3D for formats that carry no quality indicator,
-or their fixes are ignored.
+Decoded `TelemetryChannel`s (model in `Metadata/Telemetry.cs`, decoders in `Metadata/Telemetry/`) are evidence once they have been read: `media.Telemetry`
+(which decodes the file's GPMF, CAMM and `mebx` tracks into memory) or `media.AttachTelemetry(channels)` for channels decoded or filtered elsewhere. Reading
+the facts never decodes telemetry on its own, so a facts-only open stays structural; read `media.Telemetry` first (CLI: `info --telemetry`) when GPS evidence is wanted.
+Only `Gps` channels matter to the resolver: `GpsSample.GpsTime` + `Fix` give the tier-2 time and the position candidate. Decoders must set `Fix` to 2D/3D for
+formats that carry no quality indicator, or their fixes are ignored.

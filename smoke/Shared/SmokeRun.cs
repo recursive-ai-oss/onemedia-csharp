@@ -128,6 +128,7 @@ internal static class SmokeRun
         await XiphFlvSmoke.RunAsync(Check);
         await AviSmoke.RunAsync(Check);
         PlaybackSmoke.Run(Check);
+        TelemetrySmoke.Run(Check);
         WriterSmoke.Run(Check);
         TagWriteSmoke.Run(Check);
         MatroskaMuxSmoke.Run(Check);

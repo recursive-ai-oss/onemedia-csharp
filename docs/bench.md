@@ -12,6 +12,12 @@ row. It is a console app, not packed, and the only project that references the c
 | `mp4-probe` | open, track list, duration | MetadataExtractor, TagLib#, ATL.NET (fastest of the three counts) | ffprobe, MediaInfo, ExifTool, `MP4Box -info` |
 | `mkv-demux` | read every packet | the Matroska package (full deserialise, then walk the blocks) | `ffmpeg -c copy -f null`, `mkvextract tracks` (first track) |
 | `mkv-probe` | open, track list, duration | the package's element reader: Info and Tracks read, clusters skipped | ffprobe, MediaInfo, ExifTool, `mkvmerge -J`, `mkvinfo` |
+| `mp4-mux` | write the frames of an AAC track held in memory as an MP4 in memory (moov-first; moov-last beside it) | SharpMP4 | – |
+| `mp4-remux` | read the AAC track of a file and write it as an MP4 in memory | SharpMP4 (its reader and builder) | `ffmpeg -c copy -map 0:a:0 -f mp4` |
+| `mkv-mux` | read every packet and write a Matroska/WebM file to a counting sink | none (no managed Matroska writer) | `ffmpeg -c copy -f matroska`, `mkvmerge` |
+| `tagw-id3`, `tagw-flac`, `tagw-ilst`, `tagw-riff`, `tagw-mkv` | change title, artist, album and comment of a tagged file held in memory; the edited file ends up in memory | TagLib#, ATL.NET (a library that cannot write the format shows `fail` or no row) | – |
+| `remux-mem` | remux each file over 4 GiB into Matroska and MP4 on disk; peak resident memory is the figure | none | `ffmpeg -c copy -f matroska` |
+| `playable` | `MakePlayable` for the generic MP4 profile on one H.264+AAC Matroska file | none (information) | `ffmpeg -c copy -f mp4` |
 
 The Matroska package counts a laced block as one packet, where OneMedia delivers each frame of a lace; the table flags the
 different counts. The comparator therefore does less work per file than OneMedia on laced audio, which favours the comparator.
@@ -19,6 +25,8 @@ different counts. The comparator therefore does less work per file than OneMedia
 Files per row are listed by `list`: a small generated file, open-movie files of different shapes (1080p, fragmented,
 Matroska/WebM), the published Matroska test files, and the over-4 GiB files with the index at the end (MP4) and a plain
 over-4 GiB Matroska. A file missing from the corpus is skipped and said so.
+
+**Tag-write rows.** Each implementation starts from the same bytes in memory and ends with the edited file in memory: OneMedia plans the edit and writes a new copy (`SaveAs` without the disk); TagLib# and ATL.NET edit the memory stream they were opened on (`File.Create` with a stream abstraction; `new Track(stream, mimeType)` then `Save()`), so they copy the input into a fresh stream first, which is counted. The three do different amounts of work for padding: OneMedia keeps and rewrites padding as stored.
 
 **The work is the same for everyone.** A packet read counts the packet, adds its size and XORs its first and last byte, so
 every payload is delivered to the caller and not skipped. The counts are printed next to the times; a comparator whose

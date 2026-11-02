@@ -137,7 +137,7 @@ internal static class Report
             }
             else
             {
-                summary.Add($"| {row.Id} | 0/{files} | - | - | comparator side only (no OneMedia reader in this build) |");
+                summary.Add($"| {row.Id} | 0/{files} | - | - | no managed comparator, so the row passes (times are information) |");
             }
         }
 

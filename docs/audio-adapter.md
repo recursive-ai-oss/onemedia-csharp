@@ -110,7 +110,7 @@ corpus (TS, MP4/MOV/3GP, Matroska):
 - **Priming declared by an edit list** (MP4, MOV, 3GP written by ffmpeg, Apple and others): both sides drop the first edit's `media_time`
   at the start. The adapter also stops at the edit's `segment_duration`, as OneAudio's own MP4 reader does; ffmpeg ignores the end of
   the edit and decodes every frame, so it is longer by the end padding (512 frames in the 48 kHz test files, 44 on the music clip). The
-  samples agree at the start. (`audio-aac-stereo-noise.mp4`, white noise, differs by up to 0.36 at the same frames; that is a decoder difference on noise, not a timing one, and is not investigated here.)
+  samples agree at the start. (`audio-aac-stereo-noise.mp4`, white noise, differs by up to 0.36 at the same frames: these are perceptual noise substitution (PNS) bands, see below.)
 - **Matroska `CodecDelay`**: see above; ffmpeg keeps the delay, the adapter removes it.
 - **Fragmented files** (ISO/IEC 14496-12 §8.8): the movie box's durations describe only the samples the movie box holds, so for a file with
   `mvex` the adapter takes no length from `mdhd`/`tkhd` (`MediaTrack.DurationIsPartial`) and decodes every fragment; the priming of an edit
@@ -120,7 +120,10 @@ corpus (TS, MP4/MOV/3GP, Matroska):
   table: the edit has `segment_duration` 0, which means the whole track here), so ffprobe lists 1,361 packets and ffmpeg's timed decode
   1,360; decoding the same 1,361 packets without timing (stream copy to ADTS) gives 1,393,664, and ours is that plus the 47 table samples
   (48,128 frames). The samples of the two decodes differ by up to 0.11 on both routes (the adapter against the same packets as ADTS through
-  OneAudio's own reader, too), so the remaining difference is between the two AAC decoders, not in the container.
+  OneAudio's own reader, too). Those differences are in perceptual noise substitution bands (ISO/IEC 14496-3 §4.6.13): the bitstream fixes
+  only each band's energy and every decoder fills it with its own noise, so samples differ while the band energies agree (to about
+  ±0.002 dB across 3,385 PNS band-frames); frames without PNS agree to about 1e-7. Sample comparisons of AAC decodes therefore compare band
+  energies on PNS frames, or leave those frames out.
 - **Edit list end** (`aacaudio.mov`, `cat-two-parts.mp4`): both sides drop the first edit's `media_time`; the adapter ends at the edit's
   end and ffmpeg decodes every packet. `aacaudio.mov` has an edit of 495,890 ticks at 600 per second = 18,223,957.5 frames at 22,050 Hz,
   so the adapter gives 18,223,957 and ffmpeg 18,224,128 (= its 17,797 packets × 1,024): −171, the half packet of padding. `cat-two-parts.mp4`

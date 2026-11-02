@@ -143,6 +143,12 @@ seed() {
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-strict.seed"
                { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f")-append.seed"
              done ;;
+    telemetry-file) # The first byte picks the path (bit 0: forward-only; bit 1: materialise every channel); the rest is an ISO file.
+          for f in "$here"/testdata/telemetry/*.mp4; do
+            [ -f "$f" ] || continue
+            { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
+          done ;;
     mdpm) # The SEI payload as the reader gets it (after the NAL header): one message of type 5 holding the MDPM block.
           printf '\005\044\027\356\214\140\370\115\021\331\214\326\010\000\040\014\232\146MDPM\003\030\000\040\022\001\031\046\011\030\065\340\001\003\005\221\200' > "$corpus/mdpm.seed" ;;
     id3|ape) # The first byte picks the path (id3: bit 0 reads a tag at the start rather than a tail; ape: bit 0 reads from the footer); the rest is the file.

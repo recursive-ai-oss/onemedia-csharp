@@ -1,5 +1,6 @@
 using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
+using RecursiveAI.OneMedia.Metadata.Telemetry;
 using RecursiveAI.OneMedia.Tags;
 
 namespace RecursiveAI.OneMedia;
@@ -170,7 +171,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     public CommonTags Tags => Metadata.Tags;
 
     private readonly List<EvidenceSet> _extraEvidence = [];
-    private readonly List<TelemetryChannel> _telemetry = [];
+    private readonly List<TelemetryChannel> _attachedTelemetry = [];
     private IFactResolver _resolver = DefaultFactResolver.Instance;
     private MediaFacts? _resolved;
     private bool _useFileEvidence;
@@ -242,17 +243,17 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         return added;
     }
 
-    /// <summary>Attaches decoded telemetry (a GoPro GPMF stream, a CAMM track…) as evidence: the first valid GPS fix and its UTC time become candidates.</summary>
-    /// <param name="streams">The streams.</param>
+    /// <summary>
+    /// Attaches telemetry channels decoded elsewhere (or filtered) as evidence: the first valid GPS fix and its UTC time become candidates. Telemetry read through
+    /// <see cref="Telemetry"/> is evidence too, once it has been read; the facts never trigger that read themselves, so a facts-only open stays structural.
+    /// </summary>
+    /// <param name="streams">The channels.</param>
     public void AttachTelemetry(IEnumerable<TelemetryChannel> streams)
     {
         ArgumentNullException.ThrowIfNull(streams);
-        _telemetry.AddRange(streams);
+        _attachedTelemetry.AddRange(streams);
         _resolved = null;
     }
-
-    /// <summary>The telemetry attached with <see cref="AttachTelemetry"/>.</summary>
-    public IReadOnlyList<TelemetryChannel> Telemetry => _telemetry;
 
     /// <summary>
     /// Every fact resolved by <see cref="Resolver"/> from the container, the added sidecars and the attached telemetry. Each fact lists all its candidates,
@@ -262,7 +263,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
     private FactEvidence BuildEvidence()
     {
-        FactEvidence e = FactEvidence.FromContainer(Metadata.Facts) with { Telemetry = [.. _telemetry] };
+        FactEvidence e = FactEvidence.FromContainer(Metadata.Facts) with { Telemetry = [.. _attachedTelemetry, .. _telemetry ?? []] };
         foreach (EvidenceSet set in _extraEvidence)
         {
             e = e.With(set);
@@ -434,6 +435,34 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     // call instead of returning packets from a position someone else moved. Silent empty output is never the result.
     private bool _readStarted;
     private int _generation;
+
+    private IReadOnlyList<TelemetryChannel>? _telemetry;
+
+    /// <summary>
+    /// The decoded telemetry of the file (GoPro GPMF, Google CAMM, Apple <c>mebx</c> tracks), one channel per sensor or key, read on first use and kept.
+    /// Reads every telemetry sample into memory; stream a long recording with <see cref="TelemetryTrackReader"/> instead.
+    /// Empty when the file has no telemetry track.
+    /// </summary>
+    /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source, or its source cannot seek after an earlier read.</exception>
+    public IReadOnlyList<TelemetryChannel> Telemetry
+    {
+        get
+        {
+            if (_telemetry is null)
+            {
+                _telemetry = TelemetryChannels.Read(this);
+                _resolved = null; // the GPS time and first fix in the channels are evidence for the facts
+            }
+
+            return _telemetry;
+        }
+    }
+
+    /// <summary>Opens a track's telemetry for one-at-a-time reading in constant memory (see <see cref="TelemetryTrackReader"/>).</summary>
+    /// <param name="track">A telemetry track: <see cref="TelemetryTrackReader.FormatOf"/> is not <c>None</c>.</param>
+    /// <returns>The reader; dispose it before reading the file another way.</returns>
+    /// <exception cref="ArgumentException">The track is not a telemetry track.</exception>
+    public TelemetryTrackReader OpenTelemetry(MediaTrack track) => TelemetryTrackReader.Open(this, track);
 
     /// <summary>Starts a read: returns the file to its beginning if it was read before, and returns the read's generation. Other tracks must already be switched off.</summary>
     internal int BeginRead()

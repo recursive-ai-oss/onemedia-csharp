@@ -322,6 +322,13 @@ internal static class ChunkWalker
         {
             next = end;
         }
+        else if (next > end && end < c.Length)
+        {
+            // The pad byte that follows an odd-sized chunk belongs to the parent, so a parent that stops before it is too small by one byte.
+            // (The last chunk of the file may lack its pad byte; that is not reported.)
+            c.Defects.Add(DefectKind.SizeExceedsParent, DefectSeverity.Warning, pos,
+                $"The chunk '{ChunkNode.FourCc(key)}' ends inside its parent but its pad byte lies after the parent's end.", "riff.pad-outside-parent");
+        }
 
         bool container = IsContainer(c.Layout, key, guid);
         string? formType = null;

@@ -29,6 +29,7 @@ WriterTarget.Register(targets);
 RemuxTarget.Register(targets);
 TagWriteTarget.Register(targets);
 FactsTargets.Register(targets);
+TelemetryTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;
