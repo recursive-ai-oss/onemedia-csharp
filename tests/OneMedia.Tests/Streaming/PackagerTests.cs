@@ -54,6 +54,18 @@ public sealed class PackagerTests : IDisposable
         return joined;
     }
 
+    // Found by the package fuzz target: a transport-stream segment whose timestamps do not fit the 90 kHz clock in 64 bits ended in an OverflowException.
+    [Fact]
+    public void ATimestampTooLargeForTheTransportClockIsRefusedWithATypedError()
+    {
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "package", "package-ts-timestamp-overflow.bin"));
+        string file = Out("overflow.mp4");
+        File.WriteAllBytes(file, input[1..]);
+        PackagingOptions options = new() { SegmentFormat = SegmentFormat.MpegTs, SegmentDuration = new MediaTime(1, 2), Overwrite = true };
+        Exception? thrown = Record.Exception(() => Packager.Package(file, Out("overflow-out"), options));
+        Assert.True(thrown is null or MediaException, thrown?.ToString());
+    }
+
     // A segment is held in memory while it is built, so it is bounded by MaxSegmentBytes rather than growing with the bit rate.
     [Theory]
     [InlineData(SegmentFormat.Cmaf)]

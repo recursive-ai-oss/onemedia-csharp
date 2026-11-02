@@ -103,4 +103,11 @@ One 10-minute 640×360 H.264/AAC MP4 (37.8 MB), CMAF with 6 s segments, median o
 - A ladder switches cleanly only on coinciding keyframes (reported, not forced).
 - TS segments are HLS only and need a codec the transport-stream muxer carries.
 - Live mode takes one input and holds the whole current segment in memory.
+- **Memory follows the segment, not the input.** A segment is handed to the sink as one span, and a CMAF fragment's moof has to precede its sample data, so the segmenter holds one segment per
+  track: the muxer's open fragment (fixed 256 KiB chunks, reused from segment to segment) and the finished segment (one buffer, sized once from the muxer's byte count with a quarter of slack and
+  kept for the next segment). Peak resident memory is about 29 MiB plus 2.5 times the largest segment of the busiest track. A segment past `MediaLimits.MaxSegmentBytes` (default 256 MiB)
+  raises `MediaLimitExceededException` instead of growing; the other tracks' packets that wait for the reference track are bounded by `SegmenterOptions.MaxQueuedBytes` (32 MiB). Measured
+  on the 4.2 GB MKV (43 Mbit/s, so a 6 s segment is 32 MiB): 2 s segments peak at 92 MiB, 6 s at 130, 12 s at 192; a 27 MB MP4 at 6 s peaks at 47 MiB. Before the change the 6 s figure
+  was 189 MiB: the muxer kept the fragment in one array that doubled through the shared pool, and the segment buffer doubled beside it. A stream whose segments exceed `MaxSegmentBytes`
+  needs a shorter `SegmentDuration` or a larger limit. Live mode is unchanged by this: a 600 s paced run (`live-paced.sh`, 4 s segments, window 6) read 150 playlist versions per rendition with 0 failures and stayed at or below 73 MiB resident, as before.
 - DASH-IF conformance and `mediastreamvalidator` runs are missing (above).

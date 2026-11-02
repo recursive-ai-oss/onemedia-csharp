@@ -140,8 +140,14 @@ internal sealed class TsSegmenter : IDisposable
             return;
         }
 
-        long start = _segmentStart.ToTicks(Clock, MediaRounding.NearestAwayFromZero);
-        long duration = Math.Max(0, end.ToTicks(Clock, MediaRounding.NearestAwayFromZero) - start);
+        // A damaged input can carry a timestamp whose 90 kHz value does not fit in 64 bits.
+        if (!_segmentStart.TryRescale(Clock, MediaRounding.NearestAwayFromZero, out MediaTime startTime) || !end.TryRescale(Clock, MediaRounding.NearestAwayFromZero, out MediaTime endTime))
+        {
+            throw new MuxRefusedException(MuxRefusalReason.InvalidTrack, "A timestamp is outside the range a 90 kHz transport stream clock can hold.");
+        }
+
+        long start = startTime.Ticks;
+        long duration = (long)Int128.Clamp((Int128)endTime.Ticks - start, 0, long.MaxValue);
         if (_track.Declared is null)
         {
             Describe(bytes);
