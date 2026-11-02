@@ -209,4 +209,84 @@ public sealed class ManifestTests
         Assert.Throws<ManifestFormatException>(() => DashMpd.Parse(xml));
         Assert.False(DashMpd.TryParse(xml, out _));
     }
+
+    private const string Encrypted = """
+        #EXTM3U
+        #EXT-X-VERSION:5
+        #EXT-X-TARGETDURATION:6
+        #EXT-X-MEDIA-SEQUENCE:0
+        #EXT-X-KEY:METHOD=AES-128,URI="k1.bin",IV=0x0123456789ABCDEF0123456789ABCDEF
+        #EXTINF:6.000,
+        a.ts
+        #EXTINF:6.000,
+        b.ts
+        #EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://x",KEYFORMAT="com.apple.streamingkeydelivery",KEYFORMATVERSIONS="1"
+        #EXTINF:6.000,
+        c.ts
+        #EXT-X-KEY:METHOD=NONE
+        #EXTINF:6.000,
+        d.ts
+        #EXT-X-ENDLIST
+        """;
+
+    [Fact]
+    public void KeysApplyFromWhereTheyAreDeclaredAndRewrite()
+    {
+        HlsMediaPlaylist p = Assert.IsType<HlsMediaPlaylist>(HlsPlaylist.Parse(Encrypted));
+        Assert.Empty(p.OtherTags);
+        Assert.True(p.Segments[0].KeysChanged);
+        HlsKey first = Assert.Single(p.Segments[0].Keys);
+        Assert.Equal(HlsKeyMethod.Aes128, first.Method);
+        Assert.Equal("k1.bin", first.Uri);
+        Assert.Equal("0x0123456789ABCDEF0123456789ABCDEF", first.Iv);
+        Assert.False(p.Segments[1].KeysChanged);
+        Assert.Equal(first, Assert.Single(p.Segments[1].Keys));
+        Assert.True(p.Segments[2].KeysChanged);
+        // a different KEYFORMAT does not replace the identity key, but SAMPLE-AES with the default format would; here both apply.
+        Assert.Equal(2, p.Segments[2].Keys.Count);
+        Assert.Equal("com.apple.streamingkeydelivery", p.Segments[2].Keys[1].KeyFormat);
+        Assert.True(p.Segments[3].KeysChanged);
+        Assert.Empty(p.Segments[3].Keys);
+        // A rewrite lists every key in effect where the keys change, so the text may differ; the meaning does not.
+        HlsMediaPlaylist again = Assert.IsType<HlsMediaPlaylist>(HlsPlaylist.Parse(p.ToString()));
+        for (int i = 0; i < p.Segments.Count; i++)
+        {
+            Assert.True(p.Segments[i].Keys.SequenceEqual(again.Segments[i].Keys));
+        }
+    }
+
+    [Fact]
+    public void LenientReadReportsDefectsWithLinesAndOffsets()
+    {
+        const string text = "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:oops\nsegment0.ts\n#EXTINF:6,\nsegment1.ts\n";
+        Assert.Throws<ManifestFormatException>(() => HlsPlaylist.Parse(text));
+        HlsParseResult r = HlsPlaylist.ParseLenient(text);
+        HlsMediaPlaylist p = Assert.IsType<HlsMediaPlaylist>(r.Playlist);
+        Assert.Equal(2, p.Segments.Count);
+        Assert.Equal(2, r.Defects.Count);
+        Assert.Equal(ManifestDefectKind.MalformedTag, r.Defects[0].Kind);
+        Assert.Equal(3, r.Defects[0].Line);
+        Assert.Equal(text.IndexOf("#EXT-X-MEDIA-SEQUENCE", StringComparison.Ordinal), r.Defects[0].Offset);
+        Assert.Equal(ManifestDefectKind.SegmentWithoutDuration, r.Defects[1].Kind);
+        Assert.Equal(4, r.Defects[1].Line);
+        Assert.Equal(text.IndexOf("segment0.ts", StringComparison.Ordinal), r.Defects[1].Offset);
+        Assert.Empty(HlsPlaylist.ParseLenient(Vod).Defects);
+        Assert.Contains(HlsPlaylist.ParseLenient("segment0.ts\n").Defects, d => d.Kind == ManifestDefectKind.MissingPlaylistHeader);
+    }
+
+    [Fact]
+    public void PresentationTimeOffsetIsAppliedToSegmentTimes()
+    {
+        DashSegmentTemplate t = new() { Timescale = 1000, Duration = 2000, StartNumber = 1, PresentationTimeOffset = 90_000, Media = "s-$Time$.m4s" };
+        IReadOnlyList<DashSegmentRef> list = t.Segments("v", 1, new MediaTime(6, 1));
+        Assert.Equal(3, list.Count);
+        Assert.Equal(90_000, list[0].Time);
+        Assert.Equal(0, list[0].PresentationStart);
+        Assert.Equal(92_000, list[1].Time);
+        Assert.Equal("s-92000.m4s", list[1].Uri);
+        DashSegmentTemplate tl = t with { Duration = 0, Timeline = [new DashTimelineEntry(90_000, 2000, 1)] };
+        IReadOnlyList<DashSegmentRef> byTimeline = tl.Segments("v", 1, MediaTime.Unknown);
+        Assert.Equal([90_000L, 92_000L], byTimeline.Select(x => x.Time));
+        Assert.Equal([0L, 2000L], byTimeline.Select(x => x.PresentationStart));
+    }
 }
