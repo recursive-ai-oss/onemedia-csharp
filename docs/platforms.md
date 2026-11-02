@@ -56,6 +56,11 @@ The second row needs a true asynchronous engine per format (the readers parse wi
 rolled back and retried without rewriting each reader's state handling). Until then, a browser page opening one of those formats from a `Blob` reads the bytes into memory first (`Media.Open(byte[])`), which is
 fine for files that fit in memory.
 
+## Known limits in the browser runtime
+
+- **`MakePlayable` with a FLAC audio target throws in the browser.** OneAudio's FLAC encoder needs MD5, which the browser runtime does not provide. This holds until OneAudio ships a fix; other audio targets are not affected.
+- **Most synchronous readers need a source that answers at once.** MPEG-TS and MPEG-PS, elementary streams, AVI, DV, FLAC, FLV, WAV/RF64/W64, AIFF and CAF work over memory and virtual-file-system sources. Over a source that answers later, such as a `Blob` slice, they refuse with `NotSupportedException`. ISO BMFF, Matroska, ASF and Ogg read such sources. Asynchronous engines for the other formats are planned, one format at a time, after 1.0.
+
 ## Not covered by the suite
 
 - Allocation behaviour of the pull path in the browser runtime (excluded above; the NativeAOT smoke app covers the optimised build).

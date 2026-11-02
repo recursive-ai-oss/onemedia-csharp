@@ -74,7 +74,11 @@ public readonly record struct TrackMuxReport(int TrackIndex, long Packets, long 
 /// <param name="Tracks">One entry per track, in output order.</param>
 /// <param name="Notes">Every normalisation the muxer applied, in plain words (a timestamp rescaled with rounding, a duration replaced by
 /// the decode-time delta, a default filled in). Empty when the output carries the input's values exactly.</param>
-public sealed record MuxReport(long BytesWritten, IReadOnlyList<TrackMuxReport> Tracks, IReadOnlyList<string> Notes);
+public sealed record MuxReport(long BytesWritten, IReadOnlyList<TrackMuxReport> Tracks, IReadOnlyList<string> Notes)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => $"Muxed {BytesWritten} bytes, {Tracks.Count} track{(Tracks.Count == 1 ? "" : "s")}";
+}
 
 /// <summary>
 /// Writes a container from tracks and packets. Declare every track with <see cref="AddTrack"/>, then give packets in decode order

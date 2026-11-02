@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <!-- Reason (both entries): the save methods fill in a report's Write property; a caller assigning it had no meaning. The setter is now internal, a preview-to-1.0 change. docs/api-review.md lists it. -->
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:RecursiveAI.OneMedia.Tags.CaptureTimeReport.set_Write(RecursiveAI.OneMedia.WriteReport)</Target>
+    <Left>lib/net10.0/RecursiveAI.OneMedia.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OneMedia.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:RecursiveAI.OneMedia.Tags.TagWriteReport.set_Write(RecursiveAI.OneMedia.WriteReport)</Target>
+    <Left>lib/net10.0/RecursiveAI.OneMedia.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OneMedia.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

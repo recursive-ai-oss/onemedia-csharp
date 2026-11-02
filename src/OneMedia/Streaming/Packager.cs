@@ -134,7 +134,11 @@ public sealed record PackagedTrack(string Name, TrackKind Kind, string? Codecs, 
 /// <param name="Manifests">The manifests written, relative to the directory.</param>
 /// <param name="Losses">What did not carry over from the inputs.</param>
 /// <param name="Notes">Things worth knowing: tracks left out and why, ladder renditions whose segment boundaries differ, subtitles that could not be read.</param>
-public sealed record PackagingReport(string Directory, IReadOnlyList<PackagedTrack> Tracks, IReadOnlyList<string> Manifests, IReadOnlyList<Remuxing.RemuxLoss> Losses, IReadOnlyList<string> Notes);
+public sealed record PackagingReport(string Directory, IReadOnlyList<PackagedTrack> Tracks, IReadOnlyList<string> Manifests, IReadOnlyList<Remuxing.RemuxLoss> Losses, IReadOnlyList<string> Notes)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => $"Packaged: {Tracks.Count} track{(Tracks.Count == 1 ? "" : "s")}, {Manifests.Count} manifest{(Manifests.Count == 1 ? "" : "s")}, {Losses.Count} loss{(Losses.Count == 1 ? "" : "es")} (see Losses)";
+}
 
 /// <summary>
 /// Packages media for adaptive streaming: cuts CMAF segments with a <see cref="CmafSegmenter"/> and writes HLS playlists (RFC 8216) and a DASH MPD

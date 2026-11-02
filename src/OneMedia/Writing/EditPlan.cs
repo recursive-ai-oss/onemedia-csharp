@@ -241,6 +241,9 @@ public sealed class WriteReport
 
     /// <summary>True when everything outside the changed ranges kept its position (no media moved).</summary>
     public bool LayoutPreserved { get; }
+
+    /// <summary>A one-line summary. The data is in the properties.</summary>
+    public override string ToString() => $"Write ({Mode}): {BytesWritten} bytes written, {BytesCopied} copied, {Changes.Count} change{(Changes.Count == 1 ? "" : "s")} (see Changes)";
 }
 
 /// <summary>

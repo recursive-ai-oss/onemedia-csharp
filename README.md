@@ -19,7 +19,7 @@ if (media.Location.TryGetValue(out var place))                      // absent fa
     Console.WriteLine($"{place.Latitude}, {place.Longitude}");
 foreach (var candidate in media.CaptureTime.Candidates) Console.WriteLine(candidate);
 
-using var pcm = media.Decode();   // the audio track, decoded by OneAudio
+using var pcm = media.Audio!.Decode();   // the audio track, decoded by OneAudio
 ```
 
 `onemedia info <file>` (or `--json`) prints tracks, codecs (RFC 6381 strings), tags and facts with their candidate sources.

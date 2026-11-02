@@ -4,6 +4,17 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- `track.Decode()` in `RecursiveAI.OneMedia.Audio`: decodes an audio track, so `media.Audio!.Decode()` works as the README sketch shows.
+- `docs/api-review.md`: the public-surface review before 1.0, and `tools/OneMedia.ApiList`, which lists the public surface of built assemblies.
+- `docs/platforms.md`: the known limits in the browser runtime (FLAC `MakePlayable` target, synchronous readers over late-answering sources).
+
+### Changed
+
+- The report types (`RemuxReport`, `RepairReport`, `MakePlayableReport`, `ClipReport`, `MuxReport`, `PackagingReport`, `StripReport`, `ConversionReport` and the others) print a one-line summary from `ToString()`; the data stays in the properties.
+- `TagWriteReport.Write` and `CaptureTimeReport.Write` can no longer be assigned by callers; the save methods fill them in.
+
 ## [0.8.0-preview.1] - 2026-11-02
 
 Hardening: every parser fuzzed, the speed, allocation, memory and I/O tables for every area on x64 and arm64, the test suite in headless Chromium, phone smoke runs, and migration pages. Everything in 0.7.0-preview.1 stays; packaging, sources, repair, subtitles, captions, capture facts, telemetry and timed events are still previews.

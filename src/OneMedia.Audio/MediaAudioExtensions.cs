@@ -48,6 +48,19 @@ public static class MediaAudioExtensions
         return CreateDecoder(source, registry, limits);
     }
 
+    /// <summary>Decodes this audio track; the same as <see cref="Decode(MediaFile, MediaTrack?, global::OneAudio.AudioCodecRegistry?, global::OneAudio.AudioLimits?)"/> on the file that handed the track out, with the default registry and limits.</summary>
+    /// <param name="track">A track obtained from <see cref="MediaFile.Audio"/> or <see cref="MediaFile.Tracks"/>.</param>
+    /// <returns>A OneAudio decoder at frame 0 that yields PCM floats.</returns>
+    /// <exception cref="ArgumentException">The track did not come from an open <see cref="MediaFile"/>.</exception>
+    /// <exception cref="global::OneAudio.UnsupportedAudioFormatException">As for the file-level overload.</exception>
+    /// <exception cref="MediaReadStateException">As for the file-level overload.</exception>
+    public static global::OneAudio.IAudioDecoder Decode(this MediaTrack track)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        MediaFile file = MediaFile.OwnerOf(track) ?? throw new ArgumentException("The track was not obtained from a MediaFile.", nameof(track));
+        return file.Decode(track);
+    }
+
     /// <summary>
     /// True when a decoder returned by <c>Decode</c> has skipped spectral-band-replication data: SBR first appeared after the decoder's first 256
     /// access units, so it was opened as plain AAC-LC, and the PCM is the core coder's audio at the core rate. Unlike <see cref="AudioDecodeReport"/> this cannot be known

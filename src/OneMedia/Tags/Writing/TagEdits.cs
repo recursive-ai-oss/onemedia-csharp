@@ -240,7 +240,11 @@ public sealed class TagEdits
 /// <param name="NotRepresentable">Fields the system cannot hold, with the reason; they were not written to it.</param>
 /// <param name="Conversions">Conversions applied (for example a date shortened to a year, or text cut to 30 bytes).</param>
 /// <param name="Created">True when the system was not in the file and was created.</param>
-public sealed record SystemWriteReport(string System, IReadOnlyList<CommonField> Written, IReadOnlyList<CommonField> Removed, IReadOnlyList<(CommonField Field, string Reason)> NotRepresentable, IReadOnlyList<string> Conversions, bool Created);
+public sealed record SystemWriteReport(string System, IReadOnlyList<CommonField> Written, IReadOnlyList<CommonField> Removed, IReadOnlyList<(CommonField Field, string Reason)> NotRepresentable, IReadOnlyList<string> Conversions, bool Created)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => $"{System}: {Written.Count} written, {Removed.Count} removed, {NotRepresentable.Count} not representable{(Created ? ", created" : "")}";
+}
 
 /// <summary>The write-back report of a tag write: per system, what was written, removed and not representable, plus the plan's own report once applied.</summary>
 public sealed class TagWriteReport
@@ -265,12 +269,15 @@ public sealed class TagWriteReport
     public IReadOnlyList<string> Warnings { get; internal set; } = [];
 
     /// <summary>The byte-level report of the save; null until the plan was saved.</summary>
-    public WriteReport? Write { get; set; }
+    public WriteReport? Write { get; internal set; }
 
     /// <summary>The system's entry, or null when it was not written.</summary>
     /// <param name="system">One of <see cref="TagSystems"/>.</param>
     /// <returns>The entry.</returns>
     public SystemWriteReport? For(string system) => Systems.FirstOrDefault(s => s.System == system);
+
+    /// <summary>A one-line summary. The data is in the properties.</summary>
+    public override string ToString() => $"Tag write: {Systems.Count} system{(Systems.Count == 1 ? "" : "s")}, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Systems)";
 }
 
 /// <summary>A planned tag write: the byte-level <see cref="EditPlan"/> and the write-back report.</summary>

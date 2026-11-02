@@ -93,7 +93,7 @@ internal static class Tasks
         ("audio decode", dir =>
         {
             using var media = Media.Open(Path.Combine(dir, "aac.m4a"));
-            using var pcm = media.Decode();
+            using var pcm = media.Audio!.Decode();
             Span<float> buffer = new float[4096];
             return $"{pcm.Format.SampleRate} Hz, first read {pcm.Read(buffer)} samples";
         }),

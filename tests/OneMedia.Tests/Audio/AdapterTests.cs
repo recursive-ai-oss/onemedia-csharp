@@ -262,6 +262,34 @@ public class AdapterTests
         Assert.Contains(samples, v => v != 0f);
     }
 
+    // track.Decode() is the file-level Decode for that track: the same samples.
+    [Fact]
+    public void TrackDecodeEqualsFileDecode()
+    {
+        string path = System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "mpeg", "h264-aac.ts");
+        using MediaFile a = Media.Open(path);
+        (float[] viaTrack, _) = ReadAll(a.Audio!.Decode());
+        using MediaFile b = Media.Open(path);
+        (float[] viaFile, _) = ReadAll(b.Decode());
+        Assert.Equal(viaFile, viaTrack);
+    }
+
+    [Fact]
+    public void TrackDecodeRefusesATrackFromNoFile()
+    {
+        var orphan = new MediaTrack { Index = 0, Kind = TrackKind.Audio, Timescale = 48000 };
+        Assert.Throws<ArgumentException>(() => orphan.Decode());
+    }
+
+    // Report ToString is one short line.
+    [Fact]
+    public void ReportsPrintOneLine()
+    {
+        var report = new RecursiveAI.OneMedia.Remuxing.RemuxReport(new MuxReport(10, [], []), [new(0, 0, 3, "none")], [], [], 0);
+        Assert.Equal("Remuxed: 1 track, 0 losses (see Losses)", report.ToString());
+        Assert.DoesNotContain('\n', new RecursiveAI.OneMedia.Repair.RepairReport(RecursiveAI.OneMedia.Repair.RepairStatus.Repaired, "isobmff", 1, 1, [], [], RecursiveAI.OneMedia.Repair.RepairConfidence.High, ["w"]).ToString());
+    }
+
     // DescribeDecode asks the decoder, so it can not disagree with Decode: a container's doubled-rate hint with no SBR in the stream decodes at
     // the core rate (test5.mkv's Commentary track: 22,050 Hz under a declared 44,100 Hz), and the description says so too.
     [Theory]

@@ -95,7 +95,11 @@ public sealed record SegmenterOptions
 /// <summary>What a finished segmenter produced.</summary>
 /// <param name="Tracks">One entry per segmented track, with its totals.</param>
 /// <param name="Losses">What did not carry over, per input track (tracks left out, fields not written), as the remux layer reports it.</param>
-public sealed record SegmenterReport(IReadOnlyList<SegmentedTrack> Tracks, IReadOnlyList<Remuxing.RemuxLoss> Losses);
+public sealed record SegmenterReport(IReadOnlyList<SegmentedTrack> Tracks, IReadOnlyList<Remuxing.RemuxLoss> Losses)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => $"Segmented: {Tracks.Count} track{(Tracks.Count == 1 ? "" : "s")}, {Losses.Count} loss{(Losses.Count == 1 ? "" : "es")} (see Losses)";
+}
 
 /// <summary>
 /// Cuts packets into CMAF segments: one init segment and a series of media segments per track (ISO/IEC 23000-19), each track in its own

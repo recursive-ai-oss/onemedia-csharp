@@ -67,7 +67,11 @@ public sealed record RepairItem(RepairAction Action, string Structure, int Track
 /// <param name="DroppedPackets">Packets left out because they were cut off or broken.</param>
 /// <param name="Confidence">How far the track's rebuilt structures can be trusted.</param>
 /// <param name="Ranges">Input byte ranges the track's recovered packets were read from, merged where adjacent. May be empty when the repair does not track them.</param>
-public sealed record RepairTrackReport(int Track, string Codec, long Packets, long DroppedPackets, RepairConfidence Confidence, IReadOnlyList<ByteRange> Ranges);
+public sealed record RepairTrackReport(int Track, string Codec, long Packets, long DroppedPackets, RepairConfidence Confidence, IReadOnlyList<ByteRange> Ranges)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => $"Track {Track} ({Codec}): {Packets} packets, {DroppedPackets} dropped, confidence {Confidence}";
+}
 
 /// <summary>The outcome of a repair: what was rebuilt, dropped and kept, per track and per structure.</summary>
 /// <param name="Status">The overall outcome.</param>
@@ -94,6 +98,9 @@ public sealed record RepairReport(
     /// confidence and per-track ranges in the common shape.
     /// </summary>
     public Reconstruction.ReconstructionReport? Reconstruction { get; init; }
+
+    /// <summary>A one-line summary: status, format and counts. The data is in the properties.</summary>
+    public override string ToString() => $"Repair {Status}: {Format}, {Items.Count} action{(Items.Count == 1 ? "" : "s")}, confidence {Confidence}, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Items)";
 
     /// <summary>True when an output file was written (every status but <see cref="RepairStatus.Unrepairable"/>).</summary>
     public bool OutputWritten => Status != RepairStatus.Unrepairable;
