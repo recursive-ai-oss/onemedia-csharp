@@ -39,7 +39,7 @@
 
   <PropertyGroup Label="Package metadata">
     <!-- The one place the package version lives; the core package, the audio adapter and the tool share it. -->
-    <Version>0.3.0-preview.3</Version>
+    <Version>0.4.0-preview.1</Version>
     <Authors>Recursive AI, LLC</Authors>
     <Company>Recursive AI, LLC</Company>
     <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
