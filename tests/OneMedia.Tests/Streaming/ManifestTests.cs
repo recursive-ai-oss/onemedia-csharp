@@ -251,7 +251,7 @@ public sealed class ManifestTests
         HlsMediaPlaylist again = Assert.IsType<HlsMediaPlaylist>(HlsPlaylist.Parse(p.ToString()));
         for (int i = 0; i < p.Segments.Count; i++)
         {
-            Assert.True(p.Segments[i].Keys.SequenceEqual(again.Segments[i].Keys));
+            Assert.Equal(p.Segments[i].Keys.Select(k => k.ToString()), again.Segments[i].Keys.Select(k => k.ToString()));
         }
     }
 
