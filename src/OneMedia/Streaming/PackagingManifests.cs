@@ -33,15 +33,23 @@ internal static class PackagingManifests
         long ts = Math.Max(t.Track.Timescale, 1);
         HlsMap map = new(single ? "media.mp4" : "init.mp4", single ? new HlsByteRange(t.InitLength, 0) : null);
         List<HlsSegment> segments = new(t.Segments.Count);
+        // RFC 8216 §4.4.5.1: a playlist with DATERANGE tags needs a program date time; without a live clock the dates count from the Unix epoch.
+        DateTimeOffset origin = options.Live?.StartTime ?? DateTimeOffset.UnixEpoch;
+        List<string>?[] ranges = DateRanges(t, options.Events, origin);
+        bool first = true;
         foreach (SegmentRecord r in t.Segments)
         {
+            DateTimeOffset? pdt = options.Live is { ProgramDateTime: true } live ? At(live.StartTime, r.Info.StartTicks, ts) : first && options.Events.Count > 0 ? At(origin, r.Info.StartTicks, ts) : null;
+            List<string>? tags = ranges[segments.Count];
+            first = false;
             segments.Add(new HlsSegment
             {
+                OtherTags = tags ?? [],
                 Uri = single ? "media.mp4" : FileName(r.File),
                 Duration = new MediaTime(r.Info.DurationTicks, ts),
                 ByteRange = single ? new HlsByteRange(r.Bytes, r.Offset) : null,
                 Map = map,
-                ProgramDateTime = options.Live is { ProgramDateTime: true } live ? At(live.StartTime, r.Info.StartTicks, ts) : null,
+                ProgramDateTime = pdt,
             });
         }
 
@@ -55,6 +63,41 @@ internal static class PackagingManifests
             EndList = ended,
             Segments = segments,
         };
+    }
+
+    // Each event goes on the segment that contains its time; an event before the first listed segment goes on the first, one after the last is left for a later playlist.
+    private static List<string>?[] DateRanges(TrackOut t, IReadOnlyList<PackagingEvent> events, DateTimeOffset origin)
+    {
+        List<string>?[] result = new List<string>?[t.Segments.Count];
+        if (events.Count == 0 || t.Segments.Count == 0)
+        {
+            return result;
+        }
+
+        long ts = Math.Max(t.Track.Timescale, 1);
+        foreach (PackagingEvent e in events.OrderBy(e => e.Time))
+        {
+            long ticks = e.Time.ToTicks(ts, MediaRounding.Floor);
+            int index = -1;
+            for (int i = 0; i < t.Segments.Count; i++)
+            {
+                SegmentInfo s = t.Segments[i].Info;
+                if (ticks < s.StartTicks + s.DurationTicks)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index < 0)
+            {
+                continue;
+            }
+
+            (result[index] ??= []).Add(PackagingEvents.HlsDateRange(e, origin));
+        }
+
+        return result;
     }
 
     public static HlsMediaPlaylist HlsText(TextOut x, TrackOut reference)
@@ -307,7 +350,7 @@ internal static class PackagingManifests
             MinBufferTime = options.MinBufferTime,
             MediaPresentationDuration = live ? null : end,
             MaxSegmentDuration = longest,
-            Periods = [new DashPeriod { Id = "0", Start = MediaTime.Zero, AdaptationSets = sets }],
+            Periods = [new DashPeriod { Id = "0", Start = MediaTime.Zero, AdaptationSets = sets, OtherElements = PackagingEvents.DashEventStreams(options.Events) }],
         };
         if (live && options.Live is { } l)
         {

@@ -55,6 +55,26 @@ public sealed class PackagerTests : IDisposable
     }
 
     [Fact]
+    public void EventsBecomeAnEventStreamAndDateRanges()
+    {
+        string output = Out("events");
+        PackagingEvent cue = new(new MediaTime(2500, 1000), new MediaTime(1, 1), "urn:scte:scte35:2013:bin", string.Empty, 7, new byte[] { 0xFC, 0x30, 0x11 });
+        Packager.Package(Fixture("gop1s-bframes-aac.mp4"), output, new PackagingOptions { SegmentDuration = new MediaTime(1, 1), Events = [cue] });
+        DashMpd mpd = DashMpd.Parse(File.ReadAllText(Path.Combine(output, "manifest.mpd")));
+        string stream = Assert.Single(mpd.Periods[0].OtherElements);
+        Assert.Contains("schemeIdUri=\"urn:scte:scte35:2013:bin\"", stream);
+        Assert.Contains("presentationTime=\"2500\"", stream);
+        Assert.Contains("messageData=\"/DAR\"", stream);
+        foreach (string track in new[] { "video0", "audio0" })
+        {
+            string text = File.ReadAllText(Path.Combine(output, track, "index.m3u8"));
+            Assert.Contains("#EXT-X-DATERANGE:ID=\"urn:scte:scte35:2013:bin-7\",CLASS=\"urn:scte:scte35:2013:bin\",START-DATE=\"1970-01-01T00:00:02.500Z\",DURATION=1.000,SCTE35-CMD=0xFC3011", text);
+            Assert.Contains("#EXT-X-PROGRAM-DATE-TIME:1970-01-01T00:00:0", text);
+            Assert.IsType<HlsMediaPlaylist>(HlsPlaylist.Parse(text));
+        }
+    }
+
+    [Fact]
     public void SegmentsHoldTheSourcePacketsUnchanged()
     {
         string output = Out("vod");

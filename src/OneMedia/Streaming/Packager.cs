@@ -84,6 +84,12 @@ public sealed record PackagingOptions
     /// <summary>Also package the input's own text tracks (tx3g, WebVTT, SRT in Matroska, and the like) as subtitle renditions. Default true; a source that cannot be read twice skips them with a note.</summary>
     public bool IncludeContainerSubtitles { get; init; } = true;
 
+    /// <summary>Timed events to announce: DASH gets an <c>EventStream</c> in the period, HLS an <c>EXT-X-DATERANGE</c> on the segment the event falls in (in every media playlist, as RFC 8216 §4.4.5.1 asks). Default none.</summary>
+    public IReadOnlyList<PackagingEvent> Events { get; init; } = [];
+
+    /// <summary>Also announce the <c>emsg</c> events found in the first input (video on demand only). Default true.</summary>
+    public bool IncludeSourceEvents { get; init; } = true;
+
     /// <summary>Replace an existing manifest in the directory. Default false: a directory that already holds the manifest is refused.</summary>
     public bool Overwrite { get; init; }
 

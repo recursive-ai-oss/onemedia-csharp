@@ -55,7 +55,7 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
     }
 
     private readonly string _dir;
-    private readonly PackagingOptions _options;
+    private PackagingOptions _options;
     private readonly int _inputCount;
     private readonly List<TrackOut> _tracks = [];
     private readonly List<TextOut> _text = [];
@@ -178,6 +178,22 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
                 {
                     _notes.Add($"Input track {t.Input.Index} ({t.Kind} {t.Input.Codec.Name}) produced no segments and was left out.");
                 }
+            }
+        }
+
+        if (first && _options.Live is null && _options.IncludeSourceEvents)
+        {
+            try
+            {
+                IReadOnlyList<PackagingEvent> found = PackagingEvent.FromFile(file, _options.Limits, cancellationToken);
+                if (found.Count > 0)
+                {
+                    _options = _options with { Events = [.. _options.Events, .. found] };
+                }
+            }
+            catch (MediaReadStateException e)
+            {
+                _notes.Add("The input's timed events were not read: " + e.Message);
             }
         }
 
