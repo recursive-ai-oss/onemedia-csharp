@@ -273,7 +273,8 @@ internal static class HlsParser
                     gap = true;
                     break;
                 default:
-                    if (segments.Count == 0 && pending.Count == 0 && !haveDuration)
+                    // Once a key line has been seen, later tags stay in file order after it instead of moving to the head.
+                    if (segments.Count == 0 && pending.Count == 0 && pendingAll.Count == 0 && !haveDuration)
                     {
                         headTags.Add(line);
                     }
