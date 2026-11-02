@@ -56,8 +56,11 @@ public static class Remuxer
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
         IDemuxer demuxer = input.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "This file was opened from an asynchronous source; use RemuxAsync.");
+        using TextTrackRemux text = TextTrackRemux.Plan(input, format, options);
+        options = text.Options;
         PacketFeeds feeds = PacketFeeds.Of(options);
         using RemuxSession session = Begin(input, output, format, options, feeds);
+        text.Report(session);
         ApplySelection(demuxer, session, feeds);
         int generation = input.BeginRead();
         try
@@ -70,7 +73,7 @@ public static class Remuxer
                     feeds.Drain(session, view.Info.Dts.IsKnown ? view.Info.Dts : view.Info.Pts, false, cancellationToken);
                 }
 
-                session.WritePacket(view.Info, view.Data, cancellationToken);
+                session.WritePacket(view.Info, view.Data, demuxer is Matroska.MatroskaDemuxer matroska ? matroska.LastBlockAdditional : default, cancellationToken);
                 if (session.TakeWantedChange())
                 {
                     ApplySelection(demuxer, session, feeds);
@@ -110,8 +113,11 @@ public static class Remuxer
             return Remux(input, output, format, options, cancellationToken);
         }
 
+        using TextTrackRemux text = await TextTrackRemux.PlanAsync(input, format, options, cancellationToken).ConfigureAwait(false);
+        options = text.Options;
         PacketFeeds feeds = PacketFeeds.Of(options);
         using RemuxSession session = Begin(input, output, format, options, feeds);
+        text.Report(session);
         ApplySelection(demuxer, session, feeds);
         int generation = await input.BeginReadAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -125,7 +131,7 @@ public static class Remuxer
                     feeds.Drain(session, view.Info.Dts.IsKnown ? view.Info.Dts : view.Info.Pts, false, cancellationToken);
                 }
 
-                session.WritePacket(view.Info, view.Data, cancellationToken);
+                session.WritePacket(view.Info, view.Data, demuxer is Matroska.MatroskaAsyncDemuxer matroska ? matroska.LastBlockAdditional : default, cancellationToken);
                 if (session.TakeWantedChange())
                 {
                     ApplySelection(demuxer, session, feeds);

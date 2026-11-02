@@ -94,9 +94,10 @@ internal static class MatroskaTrackWriter
 
     private static void CheckProfile(MatroskaProfile profile, string id, string name, int index, CodecId codec)
     {
-        if (profile == MatroskaProfile.WebM && Array.IndexOf(WebMIds, id) < 0)
+        // The WebM container guidelines name WebVTT as the one subtitle form (CodecIDs D_WEBVTT/SUBTITLES, /CAPTIONS, /DESCRIPTIONS, /METADATA).
+        if (profile == MatroskaProfile.WebM && Array.IndexOf(WebMIds, id) < 0 && !id.StartsWith("D_WEBVTT/", StringComparison.Ordinal))
         {
-            throw new MuxRefusedException(MuxRefusalReason.UnsupportedCodec, $"{name}: WebM carries only VP8, VP9, AV1, Vorbis and Opus; {id} is not allowed.", index, codec);
+            throw new MuxRefusedException(MuxRefusalReason.UnsupportedCodec, $"{name}: WebM carries only VP8, VP9, AV1, Vorbis, Opus and WebVTT; {id} is not allowed.", index, codec);
         }
     }
 

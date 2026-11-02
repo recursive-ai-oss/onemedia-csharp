@@ -33,6 +33,12 @@
     <EmbeddedResource Include="../../testdata/asf/wmav2-tagged.wma" LogicalName="wmav2-tagged.wma" />
     <EmbeddedResource Include="../../testdata/mpeg/h264-aac.ts" LogicalName="h264-aac.ts" />
     <EmbeddedResource Include="../../testdata/mpeg/h264-aac.m2ts" LogicalName="h264-aac.m2ts" />
+    <EmbeddedResource Include="../../testdata/text/oracle/mb_tx3g.mp4" LogicalName="tt-mb_tx3g.mp4" />
+    <EmbeddedResource Include="../../testdata/text/oracle/mb_wvtt.mp4" LogicalName="tt-mb_wvtt.mp4" />
+    <EmbeddedResource Include="../../testdata/text/oracle/mb_stpp.mp4" LogicalName="tt-mb_stpp.mp4" />
+    <EmbeddedResource Include="../../testdata/text/oracle/mm_srt.mkv" LogicalName="tt-mm_srt.mkv" />
+    <EmbeddedResource Include="../../testdata/text/oracle/mm_ass.mkv" LogicalName="tt-mm_ass.mkv" />
+    <EmbeddedResource Include="../../testdata/text/oracle/mm_vtt.mkv" LogicalName="tt-mm_vtt.mkv" />
     <EmbeddedResource Include="../../testdata/mpeg/mpeg2-mp2.vob" LogicalName="mpeg2-mp2.vob" />
     <EmbeddedResource Include="../../testdata/mpeg/h264.264" LogicalName="h264.264" />
     <EmbeddedResource Include="../../testdata/mpeg/vp8.ivf" LogicalName="vp8.ivf" />

@@ -133,6 +133,12 @@ public sealed class MatroskaDemuxer : IDemuxer, IMetadataProvider
     public MediaMetadata ReadMetadata(CancellationToken cancellationToken = default) =>
         MatroskaMetadataReader.Read(_media, SegmentDataOffset, SeekEntries, Tags, Attachments, Info, Entries, Tracks, Duration, _limits, Defects, cancellationToken);
 
+    /// <summary>
+    /// The BlockAdditional (BlockAddID 1) of the packet <see cref="TryReadPacket"/> just delivered, or empty when its block had none. S_TEXT/WEBVTT
+    /// keeps the cue settings, identifier and preceding comments there. Valid until the next call to <see cref="TryReadPacket"/>.
+    /// </summary>
+    public ReadOnlySpan<byte> LastBlockAdditional => _reader.LastBlockAdditional;
+
     /// <inheritdoc />
     public void SetTrackEnabled(int trackIndex, bool enabled) => _reader.SetTrackEnabled(trackIndex, enabled);
 
@@ -264,6 +270,9 @@ public sealed class MatroskaAsyncDemuxer : IAsyncDemuxer, IAsyncMetadataProvider
 
     /// <summary>The track entries as stored, in the same order as <see cref="Tracks"/>.</summary>
     public IReadOnlyList<MatroskaTrackEntry> Entries => _reader.Entries;
+
+    /// <summary>The BlockAdditional (BlockAddID 1) of the packet just read, or empty (see <see cref="MatroskaDemuxer.LastBlockAdditional"/>). Valid until the next read.</summary>
+    public ReadOnlySpan<byte> LastBlockAdditional => _reader.LastBlockAdditional;
 
     /// <inheritdoc />
     public PacketView Current => new(_reader.CurrentInfo, _reader.CurrentData);

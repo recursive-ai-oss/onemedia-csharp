@@ -1,0 +1,3 @@
+ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers
+MP4Box - GPAC version 26.07-rev0-ga07cbfff-master
+mkvmerge v103.0 ('The Darkness') 64-bit

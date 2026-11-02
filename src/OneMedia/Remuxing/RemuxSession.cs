@@ -15,7 +15,7 @@ namespace RecursiveAI.OneMedia.Remuxing;
 /// retime packets (trim, split, concatenation) drive one themselves.
 /// </summary>
 /// <remarks>
-/// <para>Give every packet of every wanted track to <see cref="WritePacket"/> in the order the output should store them, then call
+/// <para>Give every packet of every wanted track to <see cref="WritePacket(in PacketInfo, ReadOnlySpan{byte}, CancellationToken)"/> in the order the output should store them, then call
 /// <see cref="Finish"/>. Packets are copied before the call returns. Memory does not depend on the length of the input: the only packets held
 /// back are those that arrive before every track's configuration is known, up to <see cref="RemuxOptions.ConfigurationProbeBytes"/>.</para>
 /// <para>A session is not thread-safe. Disposing it before <see cref="Finish"/> abandons the output.</para>
@@ -102,6 +102,7 @@ public sealed class RemuxSession : IDisposable
     private readonly List<Held> _held = [];
     private long _heldBytes;
     private IMuxer? _muxer;
+    private byte[]? _additional;
     private bool _started;
     private bool _finished;
     private byte[] _scratch = new byte[1 << 16];
@@ -272,6 +273,36 @@ public sealed class RemuxSession : IDisposable
     }
 
     private static string Describe(MediaTrack t) => t.CodecTag is { Length: > 0 } tag ? $"{t.Kind} {t.Codec.Name} [{tag}]" : $"{t.Kind} {t.Codec.Name}";
+
+    /// <summary>
+    /// Writes one packet together with a BlockAdditional (BlockAddID 1), which Matroska output stores in a BlockGroup (WebVTT cue settings and identifiers
+    /// travel this way) and ISO output does not write. The other rules are those of <see cref="WritePacket(in PacketInfo, ReadOnlySpan{byte}, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="info">The packet; <see cref="PacketInfo.TrackIndex"/> is the <b>input</b> track index.</param>
+    /// <param name="data">The payload. Copied before the call returns.</param>
+    /// <param name="additional">The BlockAdditional bytes; empty for none. Copied.</param>
+    /// <param name="cancellationToken">Checked before the packet is accepted.</param>
+    /// <exception cref="InvalidOperationException">As for the overload without additions.</exception>
+    /// <exception cref="MuxRefusedException">As for the overload without additions.</exception>
+    /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
+    public void WritePacket(in PacketInfo info, ReadOnlySpan<byte> data, ReadOnlySpan<byte> additional, CancellationToken cancellationToken = default)
+    {
+        if (additional.IsEmpty)
+        {
+            WritePacket(in info, data, cancellationToken);
+            return;
+        }
+
+        _additional = additional.ToArray();
+        try
+        {
+            WritePacket(in info, data, cancellationToken);
+        }
+        finally
+        {
+            _additional = null;
+        }
+    }
 
     /// <summary>Writes one packet.</summary>
     /// <param name="info">The packet; <see cref="PacketInfo.TrackIndex"/> is the <b>input</b> track index.</param>
@@ -830,7 +861,15 @@ public sealed class RemuxSession : IDisposable
     private void WriteNow(TrackState s, PacketInfo p, ReadOnlySpan<byte> payload, CancellationToken cancellationToken)
     {
         _options.Observer?.Invoke(p, payload);
-        _muxer!.WritePacket(p, payload, cancellationToken);
+        if (_additional is not null && _muxer is RecursiveAI.OneMedia.Matroska.MatroskaMuxer matroska)
+        {
+            matroska.WritePacket(p, payload, _additional, cancellationToken);
+        }
+        else
+        {
+            _muxer!.WritePacket(p, payload, cancellationToken);
+        }
+
         s.Packets++;
     }
 
