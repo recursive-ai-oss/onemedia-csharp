@@ -352,7 +352,11 @@ internal static class IsoBmffOpener
             }
         }
 
-        throw new MediaFormatException(new MediaDefect(DefectKind.MissingRequired, DefectSeverity.Error, source.Position, "The data has no movie box.", "isobmff.no-moov"));
+        // Media data first and no movie box after it: the movie box is written when the recording ends, so a file that is still being
+        // written cannot be read, and the finished one can (ISO/IEC 14496-12 §8.2 allows the box at either end).
+        throw mdatFirst
+            ? new MediaFormatException(new MediaDefect(DefectKind.MissingRequired, DefectSeverity.Error, source.Position, "The media data comes first and the movie box has not been written yet: this file can be read only when it is finished.", "isobmff.moov-not-written"))
+            : new MediaFormatException(new MediaDefect(DefectKind.MissingRequired, DefectSeverity.Error, source.Position, "The data has no movie box.", "isobmff.no-moov"));
     }
 
     private static MediaTime TotalDuration(List<SegmentIndexBox> indexes)

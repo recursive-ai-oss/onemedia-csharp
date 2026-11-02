@@ -8,9 +8,17 @@ namespace RecursiveAI.OneMedia.Oracles;
 /// <summary>Where the pinned reference tools live and how they are run.</summary>
 internal static class Oracle
 {
-    /// <summary>The oracle directory: <c>$ONEMEDIA_HOME/oracles/bin</c>, falling back to the PATH.</summary>
+    /// <summary>
+    /// The oracle directory: <c>$ONEMEDIA_HOME/oracles/bin</c>, falling back to the PATH. <c>ONEMEDIA_FFPROBE</c> names another ffprobe build,
+    /// for the files the pinned one cannot read.
+    /// </summary>
     public static string Tool(string name)
     {
+        if (name == "ffprobe" && Environment.GetEnvironmentVariable("ONEMEDIA_FFPROBE") is { Length: > 0 } override_)
+        {
+            return override_;
+        }
+
         string home = Environment.GetEnvironmentVariable("ONEMEDIA_HOME") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "onemedia");
         string candidate = Path.Combine(home, "oracles", "bin", name);
         return File.Exists(candidate) ? candidate : name;
