@@ -88,6 +88,13 @@ public sealed record RepairReport(
     RepairConfidence Confidence,
     IReadOnlyList<string> Warnings)
 {
+    /// <summary>
+    /// The full report of the truncated-file reconstruction when the repair had to rebuild the movie box from the media data (otherwise null):
+    /// per-track samples, setup source and notes, the input ranges used and skipped, and every guess. <see cref="Tracks"/> carries the same
+    /// confidence and per-track ranges in the common shape.
+    /// </summary>
+    public Reconstruction.ReconstructionReport? Reconstruction { get; init; }
+
     /// <summary>True when an output file was written (every status but <see cref="RepairStatus.Unrepairable"/>).</summary>
     public bool OutputWritten => Status != RepairStatus.Unrepairable;
 

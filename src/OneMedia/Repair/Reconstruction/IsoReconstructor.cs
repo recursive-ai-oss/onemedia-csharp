@@ -193,10 +193,25 @@ public static class IsoReconstructor
         List<ReconstructedTrack> tracks = [];
         long[] counts = new long[setups.Count];
         long[] bytes = new long[setups.Count];
+        List<ByteRange>[] trackRanges = new List<ByteRange>[setups.Count];
+        for (int i = 0; i < trackRanges.Length; i++)
+        {
+            trackRanges[i] = [];
+        }
+
         foreach (SampleRec r in scanner.Samples)
         {
             counts[r.Track]++;
             bytes[r.Track] += r.Length;
+            List<ByteRange> tr = trackRanges[r.Track];
+            if (tr.Count > 0 && tr[^1].Offset + tr[^1].Length == r.Offset)
+            {
+                tr[^1] = new ByteRange(tr[^1].Offset, tr[^1].Length + r.Length);
+            }
+            else
+            {
+                tr.Add(new ByteRange(r.Offset, r.Length));
+            }
         }
 
         long unframed = 0;
@@ -233,7 +248,8 @@ public static class IsoReconstructor
                 counts[i] > 0 && muxReport.Tracks.Count > i ? muxReport.Tracks[i].Duration : MediaTime.Unknown,
                 confidence,
                 s.Source,
-                [.. s.Notes, .. t.Notes]));
+                [.. s.Notes, .. t.Notes],
+                trackRanges[i]));
         }
 
         foreach (string n in muxReport.Notes)

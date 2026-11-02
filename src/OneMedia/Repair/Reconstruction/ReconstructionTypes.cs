@@ -61,6 +61,7 @@ public readonly record struct SkippedRange(ByteRange Range, SkippedReason Reason
 /// <param name="Confidence">How far to trust the track.</param>
 /// <param name="Setup">Where the sample entry came from.</param>
 /// <param name="Notes">Plain-words statements about what was guessed or estimated for this track.</param>
+/// <param name="Ranges">The input byte ranges this track's samples were read from, in file order, with adjacent ranges merged; empty when not listed.</param>
 public sealed record ReconstructedTrack(
     int Index,
     TrackKind Kind,
@@ -70,7 +71,8 @@ public sealed record ReconstructedTrack(
     MediaTime Duration,
     ReconstructionConfidence Confidence,
     ReconstructionSetupSource Setup,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    IReadOnlyList<ByteRange>? Ranges = null);
 
 /// <summary>
 /// What a reconstruction did: the tracks it rebuilt with a confidence each, which byte ranges of the input became samples and which

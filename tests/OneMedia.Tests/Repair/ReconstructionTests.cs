@@ -189,6 +189,112 @@ public sealed class ReconstructionTests
         Assert.True(report.RecoveredFraction > 0.5, $"recovered {report.RecoveredFraction}");
     }
 
+    private static string TempFile(byte[] bytes)
+    {
+        string path = Path.Combine(Path.GetTempPath(), "recon-" + Guid.NewGuid().ToString("N") + ".mp4");
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    // ftyp, the whole media data box, then the first bytes of the movie box: a recording cut while the movie box at the end was being written.
+    private static byte[] CutInsideMovieBoxAtTheEnd(byte[] file)
+    {
+        int pos = 0;
+        int ftypEnd = 0, mdatStart = 0, mdatEnd = 0, moov = 0;
+        while (pos + 8 <= file.Length)
+        {
+            uint size = BinaryPrimitives.ReadUInt32BigEndian(file.AsSpan(pos));
+            string type = System.Text.Encoding.ASCII.GetString(file, pos + 4, 4);
+            switch (type)
+            {
+                case "ftyp": ftypEnd = pos + (int)size; break;
+                case "mdat": mdatStart = pos; mdatEnd = pos + (int)size; break;
+                case "moov": moov = pos; break;
+            }
+
+            pos += (int)size;
+        }
+
+        using MemoryStream ms = new();
+        ms.Write(file, 0, ftypEnd);
+        ms.Write(file, mdatStart, mdatEnd - mdatStart);
+        ms.Write(file, moov, 40);
+        return ms.ToArray();
+    }
+
+    [Fact]
+    public void MediaRepairRebuildsACutOffRecordingWithAReferenceAndReportsPerTrack()
+    {
+        byte[] healthy = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "avi", "avcc-odd-source.mp4"));
+        string input = TempFile(Cut(healthy, 0.7));
+        string reference = TempFile(healthy);
+        string output = input + ".fixed.mp4";
+        try
+        {
+            RecursiveAI.OneMedia.Repair.RepairReport r = Media.Repair(input, output, reference);
+            Assert.True(r.Status is RecursiveAI.OneMedia.Repair.RepairStatus.Repaired or RecursiveAI.OneMedia.Repair.RepairStatus.PartiallyRepaired, r.Status.ToString());
+            Assert.NotNull(r.Reconstruction);
+            Assert.Contains(r.Items, i => i.Structure == "moov" && i.Action == RecursiveAI.OneMedia.Repair.RepairAction.Rebuilt);
+            Assert.Equal(2, r.Tracks.Count);
+            Assert.All(r.Tracks, t => Assert.True(t.Packets > 0 && t.Ranges.Count > 0 && t.Confidence >= RecursiveAI.OneMedia.Repair.RepairConfidence.Medium));
+            List<Packet> original = Packets(healthy);
+            List<Packet> rebuilt = Packets(File.ReadAllBytes(output));
+            AssertPrefix(original, rebuilt, TrackKind.Video);
+            AssertPrefix(original, rebuilt, TrackKind.Audio);
+        }
+        finally
+        {
+            File.Delete(input);
+            File.Delete(reference);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public void MediaRepairRebuildsAFileWhoseMovieBoxAtTheEndIsCutOff()
+    {
+        byte[] healthy = File.ReadAllBytes(Fixture("mp3.mp4"));
+        string input = TempFile(CutInsideMovieBoxAtTheEnd(healthy));
+        string output = input + ".fixed.mp4";
+        try
+        {
+            RecursiveAI.OneMedia.Repair.RepairReport r = Media.Repair(input, output);
+            Assert.NotNull(r.Reconstruction);
+            Assert.True(r.OutputWritten);
+            Assert.Contains(r.Items, i => i.Action == RecursiveAI.OneMedia.Repair.RepairAction.Dropped && i.Range.Offset + i.Range.Length == new FileInfo(input).Length);
+            List<Packet> rebuilt = Packets(File.ReadAllBytes(output));
+            AssertPrefix(Packets(healthy), rebuilt, TrackKind.Audio);
+            Assert.True(OfKind(rebuilt, TrackKind.Audio).Count > 0);
+        }
+        finally
+        {
+            File.Delete(input);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public void MediaRepairOfAnUnframeableFileIsUnrepairableWithAReason()
+    {
+        byte[] healthy = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "avi", "avcc-odd-source.mp4"));
+        byte[] cut = Cut(healthy, 0.7);
+        Array.Fill(cut, (byte)0x55, 40, cut.Length - 40); // nothing but noise after the file type box
+        string input = TempFile(cut);
+        string output = input + ".fixed.mp4";
+        try
+        {
+            RecursiveAI.OneMedia.Repair.RepairReport r = Media.Repair(input, output);
+            Assert.Equal(RecursiveAI.OneMedia.Repair.RepairStatus.Unrepairable, r.Status);
+            Assert.False(File.Exists(output));
+            Assert.NotEmpty(r.Warnings);
+        }
+        finally
+        {
+            File.Delete(input);
+            File.Delete(output);
+        }
+    }
+
     [Fact]
     public void AnMp3FileIsFoundFromItsFrameHeadersAlone()
     {
