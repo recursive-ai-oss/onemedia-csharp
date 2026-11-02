@@ -38,6 +38,7 @@ TeletextTarget.Register(targets);
 BitmapSubtitleTargets.Register(targets);
 CaptionTargets.Register(targets);
 EventTargets.Register(targets);
+ReconstructTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;

@@ -280,16 +280,6 @@ internal sealed class NalVideoFramer : TrackFramer
 
             int type = NalType(nal[0]);
             bool vcl = IsVcl(type);
-            if (!EmulationPreventionHolds(nal[Math.Min(nal.Length, Codec == NalCodec.H264 ? 1 : 2)..]))
-            {
-                if (!seenVcl)
-                {
-                    return FrameStatus.No;
-                }
-
-                break;
-            }
-
             bool opens = vcl ? seenVcl && FirstSliceOfPicture(nal) : seenVcl && OpensAccessUnit(type);
             if (opens)
             {
@@ -315,23 +305,33 @@ internal sealed class NalVideoFramer : TrackFramer
                 firstUnit = false;
             }
 
+            // The cheap header checks come before anything that reads the whole unit or asks for more bytes, so stray data is turned down fast.
+            if (vcl && !seenVcl)
+            {
+                if (!SliceHeaderPlausible(nal, type, out intraFirst))
+                {
+                    return FrameStatus.No;
+                }
+            }
+
+            if (!EmulationPreventionHolds(nal[Math.Min(nal.Length, Codec == NalCodec.H264 ? 1 : 2)..]))
+            {
+                if (!seenVcl)
+                {
+                    return FrameStatus.No;
+                }
+
+                break;
+            }
+
             if (len > data.Length - start)
             {
                 // This unit runs past what was offered.
-                return atEnd ? (seenVcl ? FrameStatus.Partial : FrameStatus.Partial) : FrameStatus.NeedMore;
+                return atEnd ? FrameStatus.Partial : FrameStatus.NeedMore;
             }
 
             if (vcl)
             {
-                if (!seenVcl && !SliceHeaderPlausible(nal, type, out bool intra))
-                {
-                    return FrameStatus.No;
-                }
-                else if (!seenVcl)
-                {
-                    SliceHeaderPlausible(nal, type, out intraFirst);
-                }
-
                 if (!seenVcl)
                 {
                     firstVclType = type;

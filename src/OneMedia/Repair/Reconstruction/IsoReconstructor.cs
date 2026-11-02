@@ -106,7 +106,8 @@ public static class IsoReconstructor
         {
             TrackSetup s = setups[i];
             s.Framer.Track = i;
-            s.Framer.MaxSample = (int)Math.Min(options.Limits.MaxPacketBytes, int.MaxValue / 2);
+            long maxSample = Math.Min(options.Limits.MaxPacketBytes, int.MaxValue / 2);
+            s.Framer.MaxSample = (int)(s.MaxSampleHint > 0 ? Math.Min(maxSample, s.MaxSampleHint) : maxSample);
             framers.Add(s.Framer);
         }
 
@@ -267,6 +268,9 @@ public static class IsoReconstructor
         public int Channels { get; set; }
 
         public GuessedAudioSetup GuessedSetup { get; set; }
+
+        /// <summary>Largest sample worth believing for this track, from the reference's sizes; 0 when unknown.</summary>
+        public int MaxSampleHint { get; set; }
 
         /// <summary>Frame rate the stream itself states (numerator, denominator), or (0, 0).</summary>
         public (long N, long D) StreamRate { get; set; }
@@ -575,6 +579,17 @@ public static class IsoReconstructor
                 list.RemoveAll(x => x <= 0);
                 list.Sort();
                 s.ReferenceFrameTicks = list.Count > 0 ? list[list.Count / 2] : 0;
+                if (sizeHistogram.TryGetValue(t.Index, out Dictionary<int, int>? sizes) && sizes.Count > 0)
+                {
+                    // A sample of this track is not many times bigger than the biggest one seen; a generous bound keeps stray data from being read as a huge sample.
+                    int largest = 0;
+                    foreach (int size in sizes.Keys)
+                    {
+                        largest = Math.Max(largest, size);
+                    }
+
+                    s.MaxSampleHint = (int)Math.Min(int.MaxValue / 2, Math.Max(1L << 20, (long)largest * 16));
+                }
                 if (s.Framer is PcmFramer && sizeHistogram.TryGetValue(t.Index, out Dictionary<int, int>? hist) && hist.Count > 0)
                 {
                     int best = 0, bestCount = 0;
