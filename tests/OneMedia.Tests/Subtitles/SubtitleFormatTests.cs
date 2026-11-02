@@ -128,6 +128,18 @@ public class SubtitleFormatTests
     }
 
     [Fact]
+    public void WebVttTopPlacementIsWrittenWithoutALineAlignmentSuffix()
+    {
+        // Chromium 140 ignores a line setting that carries ",start" (observed in headless playback); start is the default, so it is left out.
+        SubtitleDocument srt = SubtitleFormats.Srt.Read(Bytes("sample.srt"));
+        SubtitleCue top = srt.Cues[0] with { Placement = new CuePlacement { VerticalAlign = SubtitleVerticalAlign.Top } };
+        SubtitleDocument doc = srt with { Cues = SubtitleList.From([top]) };
+        string vtt = SubtitleFormats.WebVtt.Write(doc).Text;
+        Assert.True(vtt.Contains(" line:0", StringComparison.Ordinal), vtt);
+        Assert.DoesNotContain(",start", vtt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AssModelHasWhatTheFileSays()
     {
         SubtitleDocument doc = SubtitleFormats.Ass.Read(Bytes("sample.ass"));

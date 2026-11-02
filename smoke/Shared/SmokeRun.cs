@@ -143,6 +143,7 @@ internal static class SmokeRun
         MuxSmoke.Run(Check);
         RemuxSmoke.Run(Check);
         ReconstructSmoke.Run(Check);
+        MpegTsMuxSmoke.Run(Check);
         EditSmoke.Run(Check);
         RepairSmoke.Run(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.
