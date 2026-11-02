@@ -232,6 +232,7 @@ def compare_time_based(ffprobe, src, dst, mapping, modes, reader):
                 match += new_diff
                 diff = snap[2]
                 del first[snap[4]:]
+    total = max(total, match)
     name = src.rsplit("/", 1)[-1]
     print("%s\tstreams=%d\tpackets=%d\tmatch=%d\tdiff=%d\t%s" % (name, len(mapping), total, match, diff, dict(classes) if classes else ""))
     for line in first:
