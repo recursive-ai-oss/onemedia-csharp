@@ -48,6 +48,9 @@ public enum StripAction
     /// <summary>The box or element was turned into padding of the same size (a <c>free</c> box), so no byte after it moved.</summary>
     ConvertedToPadding,
 
+    /// <summary>The bytes were overwritten with a neutral value that is not zero (0xFF in AVCHD camera data, where zeros would need escaping; spaces in text), and the field's tag or key was changed so readers skip it. Length unchanged.</summary>
+    Overwritten,
+
     /// <summary>The text of an XMP packet was rewritten without the properties, padded with white space to its old length.</summary>
     Rewritten,
 }

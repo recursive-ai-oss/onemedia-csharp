@@ -45,6 +45,20 @@ internal sealed class StripSink
         Note(cat, system, name, trackId, offset, length, action);
     }
 
+    /// <summary>Overwrites a range with a constant byte and records it.</summary>
+    public void Fill(StripCategories cat, string system, string name, long trackId, long offset, long length, byte value, StripAction action = StripAction.Overwritten)
+    {
+        if (length <= 0)
+        {
+            return;
+        }
+
+        byte[] bytes = new byte[length];
+        Array.Fill(bytes, value);
+        Patches.Write(offset, bytes);
+        Note(cat, system, name, trackId, offset, length, action);
+    }
+
     /// <summary>Records a change another path makes (a rewritten box).</summary>
     public void Note(StripCategories cat, string system, string name, long trackId, long offset, long length, StripAction action, long? bytes = null)
     {
