@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using RecursiveAI.OneMedia.Riff;
 using RecursiveAI.OneMedia.Tags;
 using Xunit;
 
@@ -150,6 +151,21 @@ public sealed class WriterFixTests : IDisposable
         before = GC.GetAllocatedBytesForCurrentThread();
         r = TagWriter.SaveInPlace(mp4, bigger, pad64);
         Console.WriteLine($"NUMBERS mp4 cover 20 MB to 24 MB into a 64 MiB free box in place: allocated {GC.GetAllocatedBytesForCurrentThread() - before}, written {r.Write!.BytesWritten}, peak working set {System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64}");
+    }
+
+    /// <summary>
+    /// A fuzz find: a nested BW64 chunk stating 0xFFFFFFFF (its size lives in ds64) lost that marker when headers were regenerated for an
+    /// untouched file.
+    /// </summary>
+    [Fact]
+    public void RegeneratingHeadersOfAnUntouchedRf64FileKeepsANestedAllOnesSize()
+    {
+        byte[] raw = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "writer-riff", "writer-riff-nested-bw64-size-ffffffff-regenerated.bin"));
+        byte[] file = raw[1..];
+        using MemoryMediaSource src = new(file);
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+        ChunkEditor strict = new(cf, src) { RewriteHeaders = true };
+        Assert.Equal(file, WriterTestSupport.Apply(strict.Build(), file));
     }
 
     // ---- finding 17: padding on growth ----
