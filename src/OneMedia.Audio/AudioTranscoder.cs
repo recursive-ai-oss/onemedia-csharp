@@ -12,24 +12,24 @@ using RecursiveAI.OneMedia.Remuxing;
 namespace RecursiveAI.OneMedia.Audio;
 
 /// <summary>
-/// Re-encodes an audio track to Opus so a browser can play it: the track is decoded with OneAudio (or read directly when it is PCM), resampled to
-/// 48 kHz when needed, and encoded with OneAudio's Opus encoder. Plug it into <see cref="MakePlayableOptions.AudioTranscoder"/>, or call
+/// Re-encodes an audio track so a browser can play it: the track is decoded with OneAudio (or read directly when it is PCM) and encoded with
+/// OneAudio's Opus, AAC-LC or FLAC encoder, whichever the browser profile prefers (Opus needs 48 kHz, AAC resamples only rates it lacks). Plug it into <see cref="MakePlayableOptions.AudioTranscoder"/>, or call
 /// <see cref="MakePlayable"/>.
 /// </summary>
 /// <remarks>
-/// Mono and stereo only (Opus here is single-stream). Sources: every codec OneAudio decodes (AAC-LC, MP3, Vorbis, FLAC, Opus, AMR) and integer or float PCM.
+/// Mono and stereo only (the encoders here are single-stream). Sources: every codec OneAudio decodes (AAC-LC, MP3, Vorbis, FLAC, Opus, AMR) and integer or float PCM.
 /// AC-3, E-AC-3, ALAC and WMA have no decoder here, so such a track stays a blocker.
 /// </remarks>
 public sealed class AudioTranscoder : IAudioTranscoder
 {
-    private static readonly CodecId[] s_targets = [CodecId.Opus];
+    private static readonly CodecId[] s_targets = [CodecId.Opus, CodecId.Aac, CodecId.Flac];
 
     private static readonly HashSet<string> s_decodable = ["aac", "mp3", "opus", "vorbis", "flac", "amr-nb", "amr-wb", "pcm"];
 
     /// <summary>A transcoder with the default settings.</summary>
     public static AudioTranscoder Default { get; } = new();
 
-    /// <summary>Opus; the stream is 48 kHz whatever the source rate.</summary>
+    /// <summary>Opus (48 kHz whatever the source rate), AAC-LC and FLAC (the source's rate, or the nearest AAC has). A browser profile's own order decides which is used (<see cref="BrowserProfile.AudioTargets"/>).</summary>
     public IReadOnlyList<CodecId> Targets => s_targets;
 
     /// <summary>Makes a file play in a browser profile, re-encoding audio to Opus when that is what blocks it.</summary>
@@ -53,10 +53,10 @@ public sealed class AudioTranscoder : IAudioTranscoder
             return false;
         }
 
-        if (target != CodecId.Opus)
+        if (target != CodecId.Opus && target != CodecId.Aac && target != CodecId.Flac)
         {
             refusalCode = "transcode.no-encoder";
-            refusalMessage = $"There is no {target.Name} encoder; only Opus.";
+            refusalMessage = $"There is no {target.Name} encoder; only Opus, AAC and FLAC.";
             return false;
         }
 
@@ -70,7 +70,7 @@ public sealed class AudioTranscoder : IAudioTranscoder
         if (source.Audio is { Channels: > 2 })
         {
             refusalCode = "transcode.channels";
-            refusalMessage = $"The audio has {source.Audio.Value.Channels} channels; the Opus encoder takes one or two.";
+            refusalMessage = $"The audio has {source.Audio.Value.Channels} channels; the {target.Name} encoder takes one or two.";
             return false;
         }
 
@@ -90,7 +90,9 @@ public sealed class AudioTranscoder : IAudioTranscoder
         MediaFile file = Media.Open(inputPath);
         try
         {
-            return OpusTranscode.Create(file, source, bitRate, cancellationToken);
+            return target == CodecId.Aac ? AacTranscode.Create(file, source, bitRate, cancellationToken)
+                : target == CodecId.Flac ? FlacTranscode.Create(file, source, cancellationToken)
+                : OpusTranscode.Create(file, source, bitRate, cancellationToken);
         }
         catch (OneAudioException e)
         {
@@ -112,6 +114,9 @@ internal interface ISampleSource : IDisposable
 
     int Channels { get; }
 
+    /// <summary>Bits per sample of the source when it is integer PCM, FLAC or another lossless stream that says; 0 for lossy sources.</summary>
+    int BitsPerSample { get; }
+
     /// <summary>Reads whole frames; 0 at the end.</summary>
     int Read(Span<float> destination);
 }
@@ -121,6 +126,8 @@ internal sealed class DecoderSamples(IAudioDecoder decoder) : ISampleSource
     public int SampleRate => decoder.Format.SampleRate;
 
     public int Channels => decoder.Format.Channels;
+
+    public int BitsPerSample => decoder.Format.BitsPerSample;
 
     public int Read(Span<float> destination) => decoder.Read(destination);
 
@@ -160,6 +167,8 @@ internal sealed class PcmSamples : ISampleSource
     public int SampleRate { get; }
 
     public int Channels { get; }
+
+    public int BitsPerSample => _format.Encoding == PcmEncoding.FloatingPoint ? 24 : _format.BytesPerSample * 8;
 
     public int Read(Span<float> destination)
     {
@@ -322,40 +331,7 @@ internal sealed class OpusTranscode : IAudioTranscode
 
     public static OpusTranscode Create(MediaFile file, MediaTrack track, long bitRate, CancellationToken cancellationToken)
     {
-        IDemuxer demuxer = file.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "Transcoding needs a file opened from a seekable source.");
-        MediaTrack t = file.Tracks[track.Index];
-
-        // The first packet's time anchors the audio on the timeline; read it before the decoder starts its own pass.
-        foreach (MediaTrack x in demuxer.Tracks)
-        {
-            demuxer.SetTrackEnabled(x.Index, x.Index == t.Index);
-        }
-
-        long firstPts = 0;
-        int generation = file.BeginRead();
-        if (demuxer.TryReadPacket(out PacketView p))
-        {
-            MediaTime pts = p.Info.Pts.IsKnown ? p.Info.Pts : p.Info.Dts;
-            firstPts = pts.IsKnown ? pts.Rescale(t.Timescale, MediaRounding.NearestAwayFromZero).Ticks : 0;
-        }
-
-        _ = generation;
-        foreach (MediaTrack x in demuxer.Tracks)
-        {
-            demuxer.SetTrackEnabled(x.Index, true);
-        }
-
-        ISampleSource source;
-        if (t.Codec == CodecId.Pcm)
-        {
-            PcmSampleFormat format = IsoSampleEntries.ResolvePcm(t, Remuxer.PcmOptionsFor(demuxer, t));
-            source = new PcmSamples(file, t, format);
-        }
-        else
-        {
-            source = new DecoderSamples(file.Decode(t));
-        }
-
+        ISampleSource source = TranscodeInput.Open(file, track, out MediaTrack t, out long firstPts);
         try
         {
             return new OpusTranscode(file, source, t, firstPts, bitRate, cancellationToken);

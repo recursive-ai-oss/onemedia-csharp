@@ -73,6 +73,13 @@ public static class Remuxer
                     feeds.Drain(session, view.Info.Dts.IsKnown ? view.Info.Dts : view.Info.Pts, false, cancellationToken);
                 }
 
+                // A demuxer of a one-track format (native FLAC, MP3, ADTS) cannot switch its track off, so its own packets of a replaced track are
+                // dropped here; only the feed's reach the output.
+                if (feeds.Replaces(view.Info.TrackIndex))
+                {
+                    continue;
+                }
+
                 session.WritePacket(view.Info, view.Data, demuxer is Matroska.MatroskaDemuxer matroska ? matroska.LastBlockAdditional : default, cancellationToken);
                 if (session.TakeWantedChange())
                 {
@@ -129,6 +136,13 @@ public static class Remuxer
                 if (feeds.Any)
                 {
                     feeds.Drain(session, view.Info.Dts.IsKnown ? view.Info.Dts : view.Info.Pts, false, cancellationToken);
+                }
+
+                // A demuxer of a one-track format (native FLAC, MP3, ADTS) cannot switch its track off, so its own packets of a replaced track are
+                // dropped here; only the feed's reach the output.
+                if (feeds.Replaces(view.Info.TrackIndex))
+                {
+                    continue;
                 }
 
                 session.WritePacket(view.Info, view.Data, demuxer is Matroska.MatroskaAsyncDemuxer matroska ? matroska.LastBlockAdditional : default, cancellationToken);
