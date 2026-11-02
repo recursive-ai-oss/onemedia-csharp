@@ -60,7 +60,7 @@ try
         List<Rec> x = inp[i], y = outp[map[i]];
         if (x.Count != y.Count)
         {
-            problems.Add($"track {i} ({a.Tracks[i].Codec}): {x.Count} packets in, {y.Count} out");
+            problems.Add($"track {i} ({a.Tracks[i].Codec}): {x.Count} packets in, {y.Count} out" + (x.Count > 0 ? $" (first input pts {x[0].Pts}, dts {x[0].Dts})" : ""));
         }
 
         int n = Math.Min(x.Count, y.Count);

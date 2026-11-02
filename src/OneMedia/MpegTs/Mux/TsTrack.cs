@@ -213,7 +213,8 @@ internal static class TsTrackPlanner
                 kind = TsPayloadKind.TimedId3;
                 streamType = 0x15;
                 streamId = 0xFC;
-                // Apple "Timed Metadata for HTTP Live Streaming": registration 'ID3 ' and a metadata_descriptor (0x26) naming ID3 as application format and format.
+                // ITU-T H.222.0 metadata_descriptor (tag 0x26) with a registration descriptor, both naming 'ID3 ' as application format and format: the form HLS players
+                // recognise. Checked by decoding the PMT with a transport stream analyser and by ffprobe, which reports the stream as timed ID3.
                 d.AddRange(Registration("ID3 "));
                 d.AddRange([0x26, 0x0D, 0xFF, 0xFF, (byte)'I', (byte)'D', (byte)'3', (byte)' ', 0xFF, (byte)'I', (byte)'D', (byte)'3', (byte)' ', 0x00, 0x1F]);
                 break;
