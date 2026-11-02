@@ -71,10 +71,13 @@ internal static class CaptionTargets
     private static void Scc(ReadOnlySpan<byte> input)
     {
         string text = Encoding.Latin1.GetString(input);
+        _ = SccSubtitleFormat.Instance.TryRead(input, out _);
         if (SccDocument.TryParse(text, out SccDocument? doc) && doc is not null)
         {
             _ = doc.Decode();
             string written = doc.Write();
+            // The registry path: the format reads what the document's own writer produced.
+            _ = SccSubtitleFormat.Instance.TryRead(Encoding.UTF8.GetBytes(written), out _);
             if (!SccDocument.TryParse(written, out SccDocument? again) || again!.Write() != written)
             {
                 throw new InvalidOperationException("the canonical SCC form is not stable");

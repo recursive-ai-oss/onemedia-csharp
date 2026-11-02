@@ -34,6 +34,7 @@ public sealed class Cea608Decoder
         public int BaseRow = Rows - 1;
         public int Row;
         public int Col;
+        public bool WroteLast; // the last character went into column 32, where the cursor stays
         public byte Attr;
         public bool Open;
         public CaptionMode OpenMode;
@@ -120,9 +121,16 @@ public sealed class Cea608Decoder
             if (field == 1)
             {
                 HandleXds(f, time, c1, c2);
+                return;
             }
 
-            return;
+            // 47 CFR 79.101(i)(1): a first byte of 00h–0Fh is ignored alone and the second byte is treated normally.
+            c1 = c2 >= 0x20 ? c2 : 0;
+            c2 = 0;
+            if (c1 == 0)
+            {
+                return;
+            }
         }
 
         if (c1 >= 0x20 && field == 1 && f.InXds)
@@ -160,7 +168,8 @@ public sealed class Cea608Decoder
         if (c1 == 0x10 || c1 == 0x18)
         {
             // 0x10/0x18 with 0x20–0x2F: background attribute (no effect on text); with 0x40–0x7F: a PAC for row 11.
-            if (c2 < 0x40)
+            // 47 CFR 79.101(i), PAC table: first byte 10h carries row 11 with second bytes 40h–5Fh only.
+            if (c2 < 0x40 || c2 >= 0x60)
             {
                 return;
             }
@@ -199,7 +208,8 @@ public sealed class Cea608Decoder
                     if (ch.Mode != Mode.None)
                     {
                         // CEA-608 §6.4: an extended character replaces the basic character sent before it as a fallback.
-                        if (ch.Col > 0)
+                        // In column 32 the cursor did not move after the fallback character, so there is nothing to step back over.
+                        if (ch.Col > 0 && !ch.WroteLast)
                         {
                             ch.Col--;
                         }
@@ -218,6 +228,7 @@ public sealed class Cea608Decoder
                 {
                     Channel ch = ChannelFor(field, dc, f.TextMode);
                     ch.Col = Math.Min(Cols - 1, ch.Col + (c2 - 0x20)); // tab offset
+                    ch.WroteLast = false;
                     break;
                 }
 
@@ -277,6 +288,7 @@ public sealed class Cea608Decoder
 
         ch.Attr = attr;
         ch.Col = indent;
+        ch.WroteLast = false;
         if (ch.Mode == Mode.RollUp)
         {
             ch.BaseRow = Math.Max(row - 1, ch.RollRows - 1);
@@ -318,6 +330,7 @@ public sealed class Cea608Decoder
         Cell[,] grid = ch.Mode == Mode.PopOn ? ch.Hidden : ch.Shown;
         int row = Math.Clamp(ch.Row, 0, Rows - 1);
         grid[row, ch.Col] = new Cell { Ch = c, Attr = ch.Attr };
+        ch.WroteLast = ch.Col == Cols - 1;
         if (ch.Col < Cols - 1)
         {
             ch.Col++;
@@ -383,6 +396,7 @@ public sealed class Cea608Decoder
                 if (ch.Col > 0)
                 {
                     ch.Col--;
+                    ch.WroteLast = false;
                     (ch.Mode == Mode.PopOn ? ch.Hidden : ch.Shown)[Math.Clamp(ch.Row, 0, Rows - 1), ch.Col] = default;
                     Update(ch, time);
                 }
@@ -401,7 +415,15 @@ public sealed class Cea608Decoder
                 }
 
             case 0x28: // FON: flash on
+                // 47 CFR 79.101(h)(1)(i): Flash On is a spacing attribute, shown as a standard space.
                 ch.Attr |= 32;
+                if (ch.Mode != Mode.None)
+                {
+                    Put(ch, time, ' ');
+                    ch.Attr |= 32;
+                    Update(ch, time);
+                }
+
                 break;
             case 0x2c: // EDM: erase displayed memory
                 Clear(ch.Shown);

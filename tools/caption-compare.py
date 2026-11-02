@@ -6,7 +6,9 @@ import re, sys
 
 def parse(path):
     try:
-        data = open(path, encoding='utf-8-sig', errors='replace').read().replace('\r', '')
+        # Read as bytes: ccextractor 0.96.5 ends every DTVCC text row with a raw 0xFF byte that the packet does not contain (checked on
+        # cea708_dtv: each service block fills its packet exactly); it is dropped here, nothing else is normalised.
+        data = open(path, 'rb').read().decode('utf-8', errors='replace').replace('\r', '').replace('\ufffd', '').lstrip('\ufeff')
     except FileNotFoundError:
         return []
     cues = []

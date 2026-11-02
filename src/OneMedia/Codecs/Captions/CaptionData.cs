@@ -134,4 +134,123 @@ public static class CaptionData
         p[^1] = 0xff;
         return p;
     }
+
+    /// <summary>The older MPEG-2 user data layouts that are not ATSC <c>GA94</c>.</summary>
+    public enum LegacyLayout
+    {
+        /// <summary>Not a recognised layout.</summary>
+        None,
+
+        /// <summary>SCTE 20 style: type code 0x03 followed by bit-packed, bit-reversed line 21 elements (one 608 pair per element).</summary>
+        Scte20,
+
+        /// <summary>DVD-Video GOP user data (<c>43 43 01 F8</c>): the caption pairs of a whole GOP, two triplets (one per field) per frame.</summary>
+        DvdGop,
+
+        /// <summary>A "display order" layout (<c>02 09 .. .. 02 0A p1 p2</c>) seen in one published sample: one field 1 pair per picture.</summary>
+        DisplayOrderPair,
+    }
+
+    /// <summary>
+    /// Reads the user data layouts that predate or sit beside ATSC <c>GA94</c>. These come from black-box observation of published samples, not from a
+    /// standard (see <c>docs/captions.md</c>): SCTE 20 is read from its bit layout as seen in a sample and checked against the same program carried as
+    /// <c>GA94</c>; the DVD GOP layout and the display-order layout likewise.
+    /// </summary>
+    /// <param name="userData">The user data bytes after the 0xB2 start code.</param>
+    /// <param name="into">Receives the triplets in transmission order.</param>
+    /// <returns>Which layout matched, or <see cref="LegacyLayout.None"/> (nothing is added).</returns>
+    public static LegacyLayout TryGetFromLegacyMpeg2UserData(ReadOnlySpan<byte> userData, List<CcTriplet> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        if (userData.Length >= 8 && userData[0] == 0x02 && userData[1] == 0x09 && userData[4] == 0x02 && userData[5] == 0x0a)
+        {
+            into.Add(new CcTriplet(true, 0, userData[6], userData[7]));
+            return LegacyLayout.DisplayOrderPair;
+        }
+
+        if (userData.Length >= 6 && userData[0] == 0x43 && userData[1] == 0x43 && userData[2] == 0x01 && userData[3] == 0xf8)
+        {
+            // Byte 4: bit 7 set, bit 6 = the first field of each frame pair is field 1, bits 0-4 = number of triplets. Each triplet is a
+            // marker (0xFF) and two bytes. Observed: in a sample whose captions are on field 1 the pairs sit in the second triplet of each
+            // frame and bit 6 is clear, so a clear bit 6 puts field 2 first.
+            int count = userData[4] & 0x1f;
+            bool firstIsField1 = (userData[4] & 0x40) != 0;
+            int added = 0;
+            for (int i = 0; i < count && 5 + (i * 3) + 3 <= userData.Length; i++)
+            {
+                int at = 5 + (i * 3);
+                bool field1 = (i & 1) == 0 ? firstIsField1 : !firstIsField1;
+                into.Add(new CcTriplet((userData[at] & 1) != 0, (byte)(field1 ? 0 : 1), userData[at + 1], userData[at + 2]));
+                added++;
+            }
+
+            return added > 0 ? LegacyLayout.DvdGop : LegacyLayout.None;
+        }
+
+        if (userData.Length >= 7 && userData[0] == 0x03)
+        {
+            // Observed layout after the type code: 8 header bits, a 5-bit element count, then per element 26 bits: priority (2), field_number (2;
+            // 1 = field 1, 2 = field 2), line_offset (5; 11 for line 21), two caption bytes sent least significant bit first (8 + 8), one more bit.
+            var bits = new BitCursor(userData[1..]);
+            _ = bits.Read(8);
+            int count = bits.Read(5);
+            int added = 0;
+            for (int i = 0; i < count && bits.Remaining >= 26; i++)
+            {
+                _ = bits.Read(2);
+                int field = bits.Read(2);
+                _ = bits.Read(5);
+                byte b1 = Reverse((byte)bits.Read(8));
+                byte b2 = Reverse((byte)bits.Read(8));
+                _ = bits.Read(1);
+                if (field is 1 or 2)
+                {
+                    into.Add(new CcTriplet(true, (byte)(field - 1), b1, b2));
+                    added++;
+                }
+            }
+
+            return added > 0 ? LegacyLayout.Scte20 : LegacyLayout.None;
+        }
+
+        return LegacyLayout.None;
+    }
+
+    private static byte Reverse(byte b)
+    {
+        int r = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            r = (r << 1) | ((b >> i) & 1);
+        }
+
+        return (byte)r;
+    }
+
+    private ref struct BitCursor
+    {
+        private readonly ReadOnlySpan<byte> _data;
+        private int _pos;
+
+        public BitCursor(ReadOnlySpan<byte> data)
+        {
+            _data = data;
+            _pos = 0;
+        }
+
+        public readonly int Remaining => (_data.Length * 8) - _pos;
+
+        public int Read(int n)
+        {
+            int v = 0;
+            for (int i = 0; i < n; i++)
+            {
+                int bit = _pos < _data.Length * 8 ? (_data[_pos >> 3] >> (7 - (_pos & 7))) & 1 : 0;
+                v = (v << 1) | bit;
+                _pos++;
+            }
+
+            return v;
+        }
+    }
 }

@@ -231,4 +231,105 @@ public sealed class CaptionTests
         Assert.Contains(cue.Spans, sp => sp.Style?.Color == new SubtitleColor(255, 255, 0));
         Assert.Equal(15 - 4 + 1, cue.Placement!.Row); // four rows (the long line wraps twice) sit at the bottom of the grid
     }
+
+    private static string Data(string name) => Path.Combine(AppContext.BaseDirectory, "testdata", "captions", name);
+
+    private static byte P(int b) => Cea608Encoder.WithParity(b);
+
+    [Fact]
+    public void AFullRowOfExtendedCharactersSurvivesTheLastColumn()
+    {
+        // Every one of the 32 columns holds an extended character (each sent after its fallback character); in column 32 the cursor does not move,
+        // so the extended character must replace the fallback in place instead of stepping back.
+        string row = "\u00c1\u00c9\u00d3\u00da\u00dc\u00fc\u00a1\u00a9\u00c0\u00c2\u00c7\u00c8\u00ca\u00cb\u00eb\u00ce\u00cf\u00ef\u00d4\u00d9\u00f9\u00db\u00ab\u00bb\u00c3\u00e3\u00cd\u00cc\u00ec\u00d2\u00f2\u00d5";
+        Assert.Equal(32, row.Length);
+        var d = new Cea608Decoder();
+        Feed(d, 0, Cea608Encoder.PopOn([new Cea608Row(15, 1, row, [])]));
+        d.Finish(T(500));
+        Assert.Equal(row, Assert.Single(d.Captions).Text);
+    }
+
+    [Fact]
+    public void FlashOnIsASpacingAttribute()
+    {
+        // 47 CFR 79.101(h)(1)(i): Flash On appears in the display as a standard space.
+        var d = new Cea608Decoder();
+        Feed(d, 0, [(P(0x14), P(0x29)), (P(0x14), P(0x70)), (P('A'), P(0)), (P(0x14), P(0x28)), (P('B'), P(0)), (P(0x14), P(0x2c))]);
+        d.Finish(T(20));
+        Assert.Equal("A B", Assert.Single(d.Captions).Text);
+    }
+
+    [Fact]
+    public void FirstByteBelow10hIsIgnoredAloneOnField1AndPreambleRow11TakesOnly40hTo5Fh()
+    {
+        // 47 CFR 79.101(i)(1): a first byte of 00h-0Fh is ignored by itself and the second byte is treated normally (field 1 here is the first field).
+        var d = new Cea608Decoder();
+        Feed(d, 0, [(P(0x14), P(0x29)), (P(0x14), P(0x70)), (P(0x00), P('B')), (P(0x14), P(0x2c))]);
+        d.Finish(T(20));
+        Assert.Equal("B", Assert.Single(d.Captions).Text);
+
+        // PAC table: first byte 10h is row 11 with second bytes 40h-5Fh; 10h 60h is unassigned and must not move the cursor.
+        var e = new Cea608Decoder();
+        Feed(e, 0, [(P(0x14), P(0x29)), (P(0x14), P(0x70)), (P(0x10), P(0x60)), (P('A'), P(0)), (P(0x14), P(0x2c))]);
+        e.Finish(T(20));
+        Assert.Equal(15, Assert.Single(e.Captions).Rows[0].Row);
+    }
+
+    [Fact]
+    public void LegacyMpeg2UserDataLayoutsYieldTheirPairs()
+    {
+        var into = new List<CcTriplet>();
+        // Bit-packed layout: 8 header bits, count 1, one element (field 1, line offset 11) with 94 26 sent least significant bit first.
+        Assert.Equal(CaptionData.LegacyLayout.Scte20, CaptionData.TryGetFromLegacyMpeg2UserData([0x03, 0x81, 0x08, 0xac, 0xa5, 0x90, 0x00], into));
+        Assert.Equal(new CcTriplet(true, 0, 0x94, 0x26), Assert.Single(into));
+        into.Clear();
+        // DVD GOP data: two triplets per frame; with the first-field bit clear the pair sits in the second triplet, which is field 1.
+        Assert.Equal(CaptionData.LegacyLayout.DvdGop, CaptionData.TryGetFromLegacyMpeg2UserData([0x43, 0x43, 0x01, 0xf8, 0x82, 0xff, 0x80, 0x80, 0xff, 0x94, 0x26], into));
+        Assert.Equal([new CcTriplet(true, 1, 0x80, 0x80), new CcTriplet(true, 0, 0x94, 0x26)], into);
+        into.Clear();
+        Assert.Equal(CaptionData.LegacyLayout.DisplayOrderPair, CaptionData.TryGetFromLegacyMpeg2UserData([0x02, 0x09, 0x80, 0x80, 0x02, 0x0a, 0x94, 0x26, 0x08, 0x20], into));
+        Assert.Equal(new CcTriplet(true, 0, 0x94, 0x26), Assert.Single(into));
+        into.Clear();
+        Assert.Equal(CaptionData.LegacyLayout.None, CaptionData.TryGetFromLegacyMpeg2UserData([0x03, 0x81], into));
+        Assert.Empty(into);
+    }
+
+    [Fact]
+    public void ClosedCaptionTrackOfAMovieIsReadAsCues()
+    {
+        // c608.mov: a QuickTime closed-caption track written by ffmpeg from three.scc; ffmpeg's own decoder reads the same three texts.
+        using MediaFile file = Media.Open(Data("c608.mov"));
+        MediaTrack track = Assert.Single(file.Tracks);
+        Assert.True(CaptionExtractor.IsClosedCaptionTrack(track));
+        EmbeddedCaptions caps = EmbeddedCaptions.Read(file, track);
+        Assert.Equal(["HELLO WORLD\nsecond line here", "Caf\u00e9 \u266a ni\u00f1o", "Italic and underline"], caps.Cea608.Select(c => c.Text));
+    }
+
+    [Fact]
+    public void SccAndSrtConvertBothWaysEndToEnd()
+    {
+        SubtitleFormats.Register(SccSubtitleFormat.Instance);
+        string dir = Path.Combine(Path.GetTempPath(), "onemedia-scc-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string srt = Path.Combine(dir, "a.srt");
+            string scc = Path.Combine(dir, "b.scc");
+            _ = Subtitles.Convert(Data("three.scc"), srt);
+            SubtitleDocument fromScc = Subtitles.Read(srt);
+            Assert.Equal(["HELLO WORLD\nsecond line here", "Caf\u00e9 \u266a ni\u00f1o", "Italic and underline"], fromScc.Cues.Select(c => c.Text));
+            ConversionReport report = Subtitles.Convert(srt, scc);
+            Assert.NotNull(report);
+            SubtitleDocument back = Subtitles.Read(scc);
+            Assert.Equal(fromScc.Cues.Select(c => c.Text), back.Cues.Select(c => c.Text));
+            for (int i = 0; i < back.Cues.Count; i++)
+            {
+                Assert.InRange(Math.Abs(back.Cues[i].Start.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks - fromScc.Cues[i].Start.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks), 0, 40);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

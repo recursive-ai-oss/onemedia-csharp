@@ -51,6 +51,15 @@ public sealed class CaptionExtractor
         return track.Codec == CodecId.Mpeg2Video ? new CaptionExtractor(CaptionCarriage.Mpeg2UserData) : null;
     }
 
+    /// <summary>True when the last <see cref="Extract"/> call found DVD GOP user data: its triplets cover a whole group of pictures, two per frame.</summary>
+    public bool LastWasGop { get; private set; }
+
+    /// <summary>
+    /// True when the last <see cref="Extract"/> call found the display-order layout: the pairs are stored in display order while the pictures
+    /// are in decode order, so the n-th pair belongs to the n-th picture shown (see <see cref="ReadFrames"/>).
+    /// </summary>
+    public bool LastWasDisplayOrder { get; private set; }
+
     /// <summary>Appends the caption triplets in one sample to <paramref name="into"/>.</summary>
     /// <param name="sample">The sample bytes.</param>
     /// <param name="into">Receives triplets in the order found.</param>
@@ -61,12 +70,31 @@ public sealed class CaptionExtractor
         int before = into.Count;
         if (_carriage == CaptionCarriage.Mpeg2UserData)
         {
+            LastWasGop = false;
+            LastWasDisplayOrder = false;
             var reader = new Mpeg2StartCodeReader(sample);
             while (reader.TryRead(out int code, out ReadOnlySpan<byte> body, out _))
             {
-                if (code == Mpeg2StartCode.UserData && CaptionData.TryGetFromMpeg2UserData(body, out ReadOnlySpan<byte> cc))
+                if (code != Mpeg2StartCode.UserData)
+                {
+                    continue;
+                }
+
+                if (CaptionData.TryGetFromMpeg2UserData(body, out ReadOnlySpan<byte> cc))
                 {
                     AddTriplets(cc, into);
+                }
+                else
+                {
+                    switch (CaptionData.TryGetFromLegacyMpeg2UserData(body, into))
+                    {
+                        case CaptionData.LegacyLayout.DvdGop:
+                            LastWasGop = true;
+                            break;
+                        case CaptionData.LegacyLayout.DisplayOrderPair:
+                            LastWasDisplayOrder = true;
+                            break;
+                    }
                 }
             }
 
@@ -153,6 +181,75 @@ public sealed class CaptionExtractor
         }
     }
 
+    /// <summary>True for a QuickTime/ISO closed-caption track with CEA-608 samples (sample entry <c>c608</c>).</summary>
+    /// <param name="track">Any track.</param>
+    /// <returns>True when <see cref="ReadFrames"/> reads the track's own samples rather than video user data or SEI.</returns>
+    public static bool IsClosedCaptionTrack(MediaTrack track)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        return string.Equals(track.CodecTag, "c608", StringComparison.Ordinal);
+    }
+
+    // Apple QuickTime File Format, closed captioning media: a sample is a sequence of atoms (size, type, payload); 'cdat' holds CEA-608
+    // byte pairs of field 1 / data channel 1, one pair per video frame, and the sample may last longer than its pairs (the rest is null
+    // pairs). 'cdt2' holds field 2 pairs (seen in files written by other tools; the Apple page names only 'cdat'). Unknown atoms are skipped.
+    private static List<CaptionFrame> ReadC608Frames(MediaFile file, MediaTrack track, CancellationToken cancellationToken)
+    {
+        var frames = new List<CaptionFrame>();
+        var one = new MediaTime(1001, 30000); // CEA-608 pairs arrive once per NTSC frame
+        foreach (OwnedPacket p in file.Packets(track))
+        {
+            using (p)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                MediaTime pts = p.Info.Pts.IsKnown ? p.Info.Pts : p.Info.Dts;
+                if (!pts.IsKnown)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<byte> d = p.Data.Span;
+                int pos = 0;
+                var perFrame = new List<List<CcTriplet>>();
+                while (pos + 8 <= d.Length)
+                {
+                    long size = (uint)((d[pos] << 24) | (d[pos + 1] << 16) | (d[pos + 2] << 8) | d[pos + 3]);
+                    if (size < 8 || size > d.Length - pos)
+                    {
+                        break;
+                    }
+
+                    ReadOnlySpan<byte> type = d.Slice(pos + 4, 4);
+                    byte cc = type.SequenceEqual("cdat"u8) ? (byte)0 : type.SequenceEqual("cdt2"u8) ? (byte)1 : (byte)255;
+                    if (cc != 255)
+                    {
+                        ReadOnlySpan<byte> pairs = d.Slice(pos + 8, (int)size - 8);
+                        for (int i = 0; i + 1 < pairs.Length; i += 2)
+                        {
+                            int frame = i / 2;
+                            while (perFrame.Count <= frame)
+                            {
+                                perFrame.Add([]);
+                            }
+
+                            perFrame[frame].Add(new CcTriplet(true, cc, pairs[i], pairs[i + 1]));
+                        }
+                    }
+
+                    pos += (int)size;
+                }
+
+                for (int f = 0; f < perFrame.Count; f++)
+                {
+                    MediaTime t = new MediaTime(pts.Ticks, pts.Timescale) + new MediaTime(one.Ticks * f, one.Timescale).Rescale(pts.Timescale, MediaRounding.Floor);
+                    frames.Add(new CaptionFrame(t, one.Rescale(pts.Timescale, MediaRounding.Floor), perFrame[f].ToArray()));
+                }
+            }
+        }
+
+        return frames;
+    }
+
     /// <summary>
     /// Reads every caption-bearing sample of a video track and returns them in presentation order (a stable sort by presentation time, so
     /// triplets of one picture keep their order and pictures that share a time keep decode order).
@@ -170,10 +267,11 @@ public sealed class CaptionExtractor
         var frames = new List<CaptionFrame>();
         if (ex is null)
         {
-            return frames;
+            return IsClosedCaptionTrack(track) ? ReadC608Frames(file, track, cancellationToken) : frames;
         }
 
         var tmp = new List<CcTriplet>();
+        bool displayOrder = false;
         foreach (OwnedPacket p in file.Packets(track))
         {
             using (p)
@@ -183,9 +281,40 @@ public sealed class CaptionExtractor
                 if (ex.Extract(p.Data.Span, tmp) > 0)
                 {
                     MediaTime pts = p.Info.Pts.IsKnown ? p.Info.Pts : p.Info.Dts;
-                    frames.Add(new CaptionFrame(pts, p.Info.Duration, tmp.ToArray()));
+                    displayOrder |= ex.LastWasDisplayOrder;
+                    if (ex.LastWasGop && pts.IsKnown && p.Info.Duration.IsKnown && p.Info.Duration.Ticks > 0)
+                    {
+                        // GOP data: two triplets per frame, the frames following the picture that carries it, one duration apart.
+                        for (int k = 0, f = 0; k < tmp.Count; k += 2, f++)
+                        {
+                            CcTriplet[] pair = tmp.Count - k >= 2 ? [tmp[k], tmp[k + 1]] : [tmp[k]];
+                            frames.Add(new CaptionFrame(new MediaTime(pts.Ticks + (p.Info.Duration.Rescale(pts.Timescale, MediaRounding.Floor).Ticks * f), pts.Timescale), p.Info.Duration, pair));
+                        }
+                    }
+                    else
+                    {
+                        frames.Add(new CaptionFrame(pts, p.Info.Duration, tmp.ToArray()));
+                    }
                 }
             }
+        }
+
+        if (displayOrder)
+        {
+            // The pairs already run in display order: hand the k-th pair the k-th smallest presentation time and keep the stream order.
+            var times = new List<MediaTime>(frames.Count);
+            foreach (CaptionFrame f in frames)
+            {
+                times.Add(f.Pts);
+            }
+
+            times.Sort();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                frames[i] = frames[i] with { Pts = times[i] };
+            }
+
+            return frames;
         }
 
         // Presentation order: List.Sort is unstable, so order by (pts, decode index) explicitly.

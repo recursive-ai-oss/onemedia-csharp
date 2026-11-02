@@ -29,6 +29,31 @@ if (args[0] == "mkscc" && args.Length >= 2)
     return 0;
 }
 
+if (args[0] == "mkscc-ext" && args.Length >= 2)
+{
+    // Writes an SCC whose captions use every extended and special character once: the table check against other decoders.
+    MediaTime T(int ms) => new(ms, 1000);
+    string[] sets =
+    [
+        "\u00c1\u00c9\u00d3\u00da\u00dc\u00fc\u2018\u00a1*\u2019\u2014\u00a9\u2120\u2022\u201c\u201d\u00c0\u00c2\u00c7\u00c8\u00ca\u00cb\u00eb\u00ce\u00cf\u00ef\u00d4\u00d9\u00f9\u00db\u00ab\u00bb",
+        "\u00c3\u00e3\u00cd\u00cc\u00ec\u00d2\u00f2\u00d5\u00f5{}\\^_|~\u00c4\u00e4\u00d6\u00f6\u00df\u00a5\u00a4\u2502\u00c5\u00e5\u00d8\u00f8\u250c\u2510\u2514\u2518",
+        "\u00ae\u00b0\u00bd\u00bf\u2122\u00a2\u00a3\u266a\u00e0\u00e8\u00e2\u00ea\u00ee\u00f4\u00fb",
+    ];
+    var extCaps = new List<Cea608Caption>();
+    for (int i = 0; i < sets.Length; i++)
+    {
+        extCaps.Add(new Cea608Caption(Cea608Channel.CC1, T(1000 + (i * 4000)), T(3000 + (i * 4000)), [new Cea608Row(15, 1, sets[i], [])]));
+    }
+
+    File.WriteAllText(args[1], SccDocument.FromCaptions(extCaps).Write());
+    foreach (string x in sets)
+    {
+        Console.WriteLine(x);
+    }
+
+    return 0;
+}
+
 if (args[0] == "remux" && args.Length >= 3)
 {
     RemuxReport rr = Remuxer.Remux(args[1], args[2], new RemuxOptions { Overwrite = true });
@@ -75,11 +100,35 @@ if (args.Length < 2)
 }
 
 using MediaFile media = Media.Open(args[1]);
-MediaTrack? video = media.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Video);
+MediaTrack? video = media.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Video) ?? media.Tracks.FirstOrDefault(CaptionExtractor.IsClosedCaptionTrack);
 if (video is null)
 {
-    Console.Error.WriteLine("no video track");
+    Console.Error.WriteLine("no video or c608 track; tracks: " + string.Join(", ", media.Tracks.Select(t => $"{t.Kind}/{t.Codec.Name}/{t.CodecTag}")));
     return 1;
+}
+
+if (args[0] == "userdata-all")
+{
+    // Prints the whole body of the first 40 MPEG-2 user data sections that start with the given hex prefix (default: any).
+    string prefix = args.Length > 2 ? args[2] : "";
+    int n = 0;
+    foreach (OwnedPacket p in media.Packets(video))
+    {
+        using (p)
+        {
+            var rd = new RecursiveAI.OneMedia.Codecs.Mpeg2Video.Mpeg2StartCodeReader(p.Data.Span);
+            while (rd.TryRead(out int code, out ReadOnlySpan<byte> body, out _))
+            {
+                string hex = Convert.ToHexString(body);
+                if (code == 0xb2 && hex.StartsWith(prefix, StringComparison.Ordinal) && n++ < 40)
+                {
+                    Console.WriteLine($"pts={p.Info.Pts.Ticks} dts={p.Info.Dts.Ticks} len={body.Length} {hex}");
+                }
+            }
+        }
+    }
+
+    return 0;
 }
 
 if (args[0] == "userdata")
@@ -125,6 +174,34 @@ if (args[0] == "pairs")
     }
 
     Console.WriteLine();
+    return 0;
+}
+
+if (args[0] == "dtvcc")
+{
+    // Prints each DTVCC packet (type-3 triplet starts one, type-2 triplets continue it) as hex, first 30.
+    var cur = new StringBuilder();
+    int printed = 0;
+    foreach (CaptionFrame f in frames)
+    {
+        foreach (CcTriplet t in f.Triplets)
+        {
+            if (!t.Valid || t.Type < 2)
+            {
+                continue;
+            }
+
+            if (t.Type == 3 && cur.Length > 0 && printed++ < 30)
+            {
+                Console.WriteLine(cur.ToString());
+                cur.Clear();
+            }
+
+            cur.Append($"{t.Data1:x2}{t.Data2:x2} ");
+        }
+    }
+
+    Console.WriteLine(cur.ToString());
     return 0;
 }
 
