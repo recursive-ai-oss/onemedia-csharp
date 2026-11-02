@@ -59,6 +59,26 @@ public sealed class MatroskaDemuxer : IDemuxer, IMetadataProvider
         return Create(input, options, defects, options.LeaveOpen ? null : source, null, cancellationToken);
     }
 
+    /// <summary>
+    /// Opens the file only to learn what the reader reports about its head (the defects), with the read window rented for the call and returned
+    /// before it ends. Nothing of the reader survives, so no packet can point into the window afterwards.
+    /// </summary>
+    internal static DefectLog OpenedDefects(IMediaSource source, MediaOpenOptions options, CancellationToken cancellationToken)
+    {
+        DefectLog defects = options.Defects ?? new DefectLog(options.Limits);
+        byte[] window = System.Buffers.ArrayPool<byte>.Shared.Rent(EbmlInput.MaxEnsure);
+        try
+        {
+            MatroskaReader reader = new(new SyncSourceInput(source, window), options.Limits, defects);
+            SyncWait.Complete(reader.OpenAsync(cancellationToken));
+            return defects;
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(window);
+        }
+    }
+
     // As Open, for a caller that has already read the first bytes of the source: they are not read again.
     internal static MatroskaDemuxer Open(IMediaSource source, ReadOnlySpan<byte> head, MediaOpenOptions options, CancellationToken cancellationToken)
     {

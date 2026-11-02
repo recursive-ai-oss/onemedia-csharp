@@ -169,13 +169,54 @@ public sealed class EbmlEditor
     public EditPlan Build(CancellationToken cancellationToken = default)
     {
         // How far elements move decides what the stored positions must say, and the positions' own widths can change how far elements
-        // move. Plan, read the movement off the plan, plan again with positions fixed, until the two agree.
+        // move. Plan the edits alone and read the movement off the plan; then find the sizes the stored positions settle at (a few cheap
+        // passes over the SeekHead, Cues and Cluster positions); then plan once more with them in place. The result is checked against the
+        // movement it makes: if the two do not agree (a size field that widened, say), planning goes on round by round until they do.
         ShiftMap map = new();
+        EditPlan plan = BuildRound(map, null, cancellationToken);
+        ShiftMap next = ShiftMap.FromChanges(plan.Changes);
+        if (next.IsEquivalentTo(map))
+        {
+            return plan;
+        }
+
+        ShiftMap edits = next;
+        map = next;
+        for (int pass = 0; pass < 8; pass++)
+        {
+            List<Patch> patches = ComputeAllPatches(map, cancellationToken);
+            ShiftMap grown = edits.Clone();
+            foreach (Patch patch in patches)
+            {
+                long delta = patch.NewLength - patch.Target.Range.Length;
+                if (delta != 0)
+                {
+                    grown.Add(patch.Target.Range.End, delta);
+                }
+            }
+
+            if (!grown.IsEquivalentTo(map))
+            {
+                map = grown;
+                continue;
+            }
+
+            plan = BuildRound(map, patches, cancellationToken);
+            next = ShiftMap.FromChanges(plan.Changes);
+            if (next.IsEquivalentTo(map))
+            {
+                return plan;
+            }
+
+            map = next;
+            break;
+        }
+
         for (int round = 0; ; round++)
         {
-            EditPlan plan = BuildRound(map, cancellationToken);
-            ShiftMap next = ShiftMap.FromChanges(plan.Changes);
-            if (next.Signature() == map.Signature())
+            plan = BuildRound(map, null, cancellationToken);
+            next = ShiftMap.FromChanges(plan.Changes);
+            if (next.IsEquivalentTo(map))
             {
                 return plan;
             }
@@ -189,32 +230,67 @@ public sealed class EbmlEditor
         }
     }
 
-    private EditPlan BuildRound(ShiftMap map, CancellationToken cancellationToken)
+    // Plans the file for one assumed movement of the elements. The patches (new SeekHead, Cues and Cluster positions) are worked out for that
+    // movement unless the caller already has them.
+    private EditPlan BuildRound(ShiftMap map, List<Patch>? patches, CancellationToken cancellationToken)
     {
-        Rewriter rw = new(_document, _source, RewriteHeaders, cancellationToken);
-        HashSet<EbmlElement> consumed = new(NodeComparer<EbmlElement>.Instance);
+        Rewriter rw = new(_document, _source, RewriteHeaders, _crcMemo, cancellationToken);
         long used = 0;
         long available = 0;
         long required = 0;
-        foreach (Request r in _requests)
+        if (_planned is { } planned && planned.RequestCount == _requests.Count)
         {
-            switch (r.Kind)
+            // What the requests turn into does not depend on how far elements move, so later rounds replay the first round's slots.
+            foreach (SlotSpec slot in planned.Slots)
             {
-                case RequestKind.Replace:
-                    PlanReplace(rw, consumed, r, ref used, ref available, ref required);
-                    break;
-                case RequestKind.Remove:
-                    PlanRemove(rw, r);
-                    break;
-                default:
-                    PlanAppend(rw, consumed, r, ref used, ref available, ref required);
-                    break;
+                rw.AddSlot(slot.First, slot.Last, slot.Replacement, slot.Description);
             }
+
+            foreach ((EbmlElement? parent, PieceList content) in planned.Appends)
+            {
+                rw.AddAppendElement(parent, content);
+            }
+
+            (used, available, required) = (planned.Used, planned.Available, planned.Required);
+        }
+        else
+        {
+            HashSet<EbmlElement> consumed = new(NodeComparer<EbmlElement>.Instance);
+            rw.Log = new PlannedEdits(_requests.Count);
+            foreach (Request r in _requests)
+            {
+                switch (r.Kind)
+                {
+                    case RequestKind.Replace:
+                        PlanReplace(rw, consumed, r, ref used, ref available, ref required);
+                        break;
+                    case RequestKind.Remove:
+                        PlanRemove(rw, r);
+                        break;
+                    default:
+                        PlanAppend(rw, consumed, r, ref used, ref available, ref required);
+                        break;
+                }
+            }
+
+            rw.Log.Used = used;
+            rw.Log.Available = available;
+            rw.Log.Required = required;
+            _planned = rw.Log;
+            rw.Log = null;
         }
 
-        if (!map.IsEmpty)
+        if (patches is null && !map.IsEmpty)
         {
-            AddPositionFixups(rw, map, cancellationToken);
+            patches = ComputeAllPatches(map, cancellationToken);
+        }
+
+        if (patches is not null)
+        {
+            foreach (Patch p in patches)
+            {
+                rw.AddSlot(p.Target, p.Target, p.Make(), $"move positions in {p.Target.Name ?? $"0x{p.Target.Id:X}"}");
+            }
         }
 
         if (RewriteHeaders)
@@ -229,6 +305,10 @@ public sealed class EbmlEditor
     // A Void that a SeekHead entry points into hides an element the reader reaches by that entry, so it is no padding either.
     private bool IsPadding(EbmlElement e) => e.Id == MatroskaIds.Void && !e.IsSizeInferred && !SeekHeadHides(e);
 
+    private PlannedEdits? _planned;
+    private readonly Dictionary<long, CrcMemo> _crcMemo = [];
+    private readonly Dictionary<long, byte[]> _smallElements = [];
+    private readonly Dictionary<long, ClusterPosition?> _clusterPositions = [];
     private List<long>? _seekTargets;
     private bool _seekHeadDamaged;
 
@@ -406,8 +486,9 @@ public sealed class EbmlEditor
 
     private sealed record Patch(EbmlElement Target, long NewLength, Func<PieceList> Make);
 
-    private void AddPositionFixups(Rewriter rw, ShiftMap shift, CancellationToken ct)
+    private List<Patch> ComputeAllPatches(ShiftMap shift, CancellationToken ct)
     {
+        List<Patch> all = [];
         foreach (EbmlElement seg in _document.Elements)
         {
             if (seg.Id != MatroskaIds.Segment)
@@ -421,14 +502,32 @@ public sealed class EbmlEditor
                 continue;
             }
 
-            foreach (Patch p in ComputePatches(rw, seg, segStart, shift, ct))
-            {
-                rw.AddSlot(p.Target, p.Target, p.Make(), $"move positions in {p.Target.Name ?? $"0x{p.Target.Id:X}"}");
-            }
+            all.AddRange(ComputePatches(seg, segStart, shift, ct));
         }
+
+        return all;
     }
 
-    private List<Patch> ComputePatches(Rewriter rw, EbmlElement seg, long segStart, ShiftMap shift, CancellationToken ct)
+    // True when an edit the caller asked for replaces this element (it is then not patched: its new content is the caller's).
+    private bool HasRequestedEdit(EbmlElement e)
+    {
+        if (_planned is null)
+        {
+            return false;
+        }
+
+        foreach (SlotSpec slot in _planned.Slots)
+        {
+            if (slot.First.Offset == e.Offset)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private List<Patch> ComputePatches(EbmlElement seg, long segStart, ShiftMap shift, CancellationToken ct)
     {
         long baseShift = shift.Shift(segStart);
         Func<long, long> mapRel = rel => rel + shift.Shift(segStart + rel) - baseShift;
@@ -436,7 +535,7 @@ public sealed class EbmlEditor
         foreach (EbmlElement child in seg.ChildElements)
         {
             ct.ThrowIfCancellationRequested();
-            if (rw.HasEdit(child))
+            if (HasRequestedEdit(child))
             {
                 continue;
             }
@@ -507,19 +606,56 @@ public sealed class EbmlEditor
         return l;
     }
 
+    // The bytes of a small element (a SeekHead), read once however many rounds look at them; callers never change the array.
     private byte[] ReadElement(EbmlElement e)
     {
+        if (_smallElements.TryGetValue(e.Offset, out byte[]? known))
+        {
+            return known;
+        }
+
         long size = TotalSize(e);
         _limits.CheckAllocation(size, e.Offset);
         byte[] bytes = new byte[size];
         _source.ReadExactly(e.Offset, bytes);
+        _smallElements[e.Offset] = bytes;
         return bytes;
     }
 
     // RFC 9559 §12.2.6: a Cluster may carry its own Segment-relative Position, a few elements into its payload.
     private Patch? ClusterPositionPatch(EbmlElement cluster, Func<long, long> mapRel)
     {
-        Span<byte> head = new byte[64];
+        if (ClusterPositionOf(cluster) is not { } found)
+        {
+            return null;
+        }
+
+        long mapped = mapRel((long)found.Old);
+        if (mapped == (long)found.Old)
+        {
+            return null;
+        }
+
+        byte[] rebuilt = EbmlWriter.UnsignedElement(MatroskaIds.Position, (ulong)mapped, found.Size);
+        return new Patch(found.Target, rebuilt.Length, () => Data(rebuilt));
+    }
+
+    // Where a Cluster keeps its Position element and what it says; looked at once, since the answer does not depend on how far elements move.
+    private ClusterPosition? ClusterPositionOf(EbmlElement cluster)
+    {
+        if (_clusterPositions.TryGetValue(cluster.Offset, out ClusterPosition? known))
+        {
+            return known;
+        }
+
+        ClusterPosition? found = FindClusterPosition(cluster);
+        _clusterPositions[cluster.Offset] = found;
+        return found;
+    }
+
+    private ClusterPosition? FindClusterPosition(EbmlElement cluster)
+    {
+        Span<byte> head = stackalloc byte[64]; // the first few element headers of a Cluster; bounds the read
         int n = _source.Read(cluster.Offset + cluster.HeaderSize, head);
         int at = 0;
         for (int step = 0; step < 6 && at < n; step++)
@@ -538,30 +674,16 @@ public sealed class EbmlEditor
             if (id == MatroskaIds.Position && size <= 8 && at + idLen + sizeLen + size <= n)
             {
                 Ebml.TryReadUnsigned(head.Slice(at + idLen + sizeLen, (int)size), out ulong old);
-                long mapped = mapRel((long)old);
-                if (mapped == (long)old)
-                {
-                    return null;
-                }
-
                 long absolute = cluster.Offset + cluster.HeaderSize + at;
-                EbmlElement? target = null;
                 foreach (EbmlElement c in cluster.ChildElements)
                 {
                     if (c.Offset == absolute)
                     {
-                        target = c;
-                        break;
+                        return new ClusterPosition(c, old, (int)size);
                     }
                 }
 
-                if (target is null)
-                {
-                    return null;
-                }
-
-                byte[] rebuilt = EbmlWriter.UnsignedElement(MatroskaIds.Position, (ulong)mapped, (int)size);
-                return new Patch(target, rebuilt.Length, () => Data(rebuilt));
+                return null;
             }
 
             if (size > n)
@@ -574,6 +696,29 @@ public sealed class EbmlEditor
 
         return null;
     }
+
+    private sealed record ClusterPosition(EbmlElement Target, ulong Old, int Size);
+
+    private sealed record SlotSpec(EbmlElement First, EbmlElement Last, PieceList Replacement, string Description);
+
+    // What the requests were turned into, kept so that later rounds do not plan them again.
+    private sealed class PlannedEdits(int requestCount)
+    {
+        public int RequestCount { get; } = requestCount;
+
+        public List<SlotSpec> Slots { get; } = [];
+
+        public List<(EbmlElement? Parent, PieceList Content)> Appends { get; } = [];
+
+        public long Used { get; set; }
+
+        public long Available { get; set; }
+
+        public long Required { get; set; }
+    }
+
+    // The CRC-32 of one master element's children as last computed, with the pieces it was computed over.
+    private sealed record CrcMemo(OutputPiece[] Pieces, uint Crc);
 
     private enum RequestKind
     {
@@ -588,20 +733,30 @@ public sealed class EbmlEditor
     {
         private readonly EbmlDocument _document;
         private readonly bool _regenerate;
+        private readonly Dictionary<long, CrcMemo> _memo;
 
-        public Rewriter(EbmlDocument document, IMediaSource source, bool regenerate, CancellationToken ct)
+        public Rewriter(EbmlDocument document, IMediaSource source, bool regenerate, Dictionary<long, CrcMemo> memo, CancellationToken ct)
             : base(source, ct)
         {
             _document = document;
             _regenerate = regenerate;
+            _memo = memo;
         }
 
-        public void AddSlot(EbmlElement first, EbmlElement last, PieceList replacement, string description) =>
+        /// <summary>When set, the slots and appends added are also recorded here.</summary>
+        public PlannedEdits? Log { get; set; }
+
+        public void AddSlot(EbmlElement first, EbmlElement last, PieceList replacement, string description)
+        {
             AddEdit(new SlotEdit<EbmlElement>(first, last, replacement, description));
+            Log?.Slots.Add(new SlotSpec(first, last, replacement, description));
+        }
 
-        public void AddAppendElement(EbmlElement? parent, PieceList content) => AddAppend(parent, content);
-
-        public new bool HasEdit(EbmlElement e) => base.HasEdit(e);
+        public void AddAppendElement(EbmlElement? parent, PieceList content)
+        {
+            AddAppend(parent, content);
+            Log?.Appends.Add((parent, content));
+        }
 
         public PieceList Rewrite() => RewriteArea(null);
 
@@ -687,6 +842,52 @@ public sealed class EbmlEditor
             return size;
         }
 
+        // The same master element is rewritten in every round of a plan and, unless a position inside it moved, comes out the same: the CRC-32 is
+        // worked out again only when the pieces differ from the last time.
+        private uint MemoisedCrc32(EbmlElement node, PieceList rest)
+        {
+            IReadOnlyList<OutputPiece> pieces = rest.Pieces;
+            if (_memo.TryGetValue(node.Offset, out CrcMemo? memo) && SamePieces(memo.Pieces, pieces))
+            {
+                return memo.Crc;
+            }
+
+            uint value = rest.Crc32(Source, CancellationToken);
+            _memo[node.Offset] = new CrcMemo([.. pieces], value);
+            return value;
+        }
+
+        private static bool SamePieces(OutputPiece[] before, IReadOnlyList<OutputPiece> now)
+        {
+            if (before.Length != now.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < before.Length; i++)
+            {
+                OutputPiece a = before[i];
+                OutputPiece b = now[i];
+                if (a.Kind != b.Kind || a.Length != b.Length)
+                {
+                    return false;
+                }
+
+                bool same = a.Kind switch
+                {
+                    OutputPieceKind.Copy => a.SourceRange == b.SourceRange,
+                    OutputPieceKind.Data => a.Bytes.Span.SequenceEqual(b.Bytes.Span),
+                    _ => ReferenceEquals(a.Generator, b.Generator),
+                };
+                if (!same)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         protected override bool TryGetLeading(EbmlElement node, out long leadingEnd)
         {
             leadingEnd = 0;
@@ -709,7 +910,7 @@ public sealed class EbmlEditor
         {
             // RFC 8794 §11.3.1: the CRC-32 covers everything in the parent after the CRC-32 element, stored little-endian.
             EbmlElement crc = node.ChildElements[0];
-            uint value = rest.Crc32(Source, CancellationToken);
+            uint value = MemoisedCrc32(node, rest);
             byte[] le = new byte[4];
             BinaryPrimitives.WriteUInt32LittleEndian(le, value);
             into.AddCopy(crc.Offset, crc.HeaderSize);

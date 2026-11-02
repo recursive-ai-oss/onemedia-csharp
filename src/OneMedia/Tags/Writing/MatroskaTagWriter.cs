@@ -56,11 +56,14 @@ internal static class MatroskaTagWriter
 
         // The reader's own verdict: a file it reports errors for (other than a cut-off end or a wrong CRC-32) is not edited, because the edit would move things the
         // reader found by searching or guessing.
-        using (MediaFile probe = MediaFile.Open(src, null, new MediaOpenOptions { Limits = limits, LeaveOpen = true }, ct))
+        // The sniffer in TagWriter has already told Matroska from the first four bytes (and every EBML head is Matroska to the registry too), so the
+        // Matroska reader is opened directly: the same verdict without trying every registered format.
+        DefectLog readerDefects = MatroskaDemuxer.OpenedDefects(src, new MediaOpenOptions { Limits = limits, LeaveOpen = true }, ct);
+        foreach (MediaDefect readerDamage in readerDefects)
         {
-            if (probe.Defects.Any(d => d.Severity == DefectSeverity.Error && d.Kind is not (DefectKind.ChecksumMismatch or DefectKind.SizeExceedsFile)))
+            if (readerDamage.Severity == DefectSeverity.Error && readerDamage.Kind is not (DefectKind.ChecksumMismatch or DefectKind.SizeExceedsFile))
             {
-                throw new UnsupportedMediaException("The reader reports damage in this file (" + probe.Defects.First(d => d.Severity == DefectSeverity.Error && d.Kind is not (DefectKind.ChecksumMismatch or DefectKind.SizeExceedsFile)).Message + "); repair it before editing its tags.");
+                throw new UnsupportedMediaException("The reader reports damage in this file (" + readerDamage.Message + "); repair it before editing its tags.");
             }
         }
 
@@ -340,14 +343,26 @@ internal static class MatroskaTagWriter
 
     private static string? TextChild(EbmlElement parent, uint id)
     {
-        EbmlElement? c = parent.ChildElements.FirstOrDefault(x => x.Id == id);
+        EbmlElement? c = null;
+        foreach (EbmlElement x in parent.ChildElements)
+        {
+            if (x.Id == id)
+            {
+                c = x;
+                break;
+            }
+        }
+
         if (c is null || c.PayloadSize > 1 << 20)
         {
             return null;
         }
 
-        byte[] b = new byte[c.PayloadSize];
-        return c.ReadPayload(b) == b.Length ? Encoding.UTF8.GetString(b).TrimEnd('\0') : null;
+        // Names and values are short: they are read into a fixed stack buffer unless longer than it.
+        int size = (int)c.PayloadSize;
+        Span<byte> small = stackalloc byte[256]; // bounded by the size test below
+        Span<byte> b = size <= small.Length ? small[..size] : new byte[size];
+        return c.ReadPayload(b) == b.Length ? Encoding.UTF8.GetString(b).TrimEnd(' ') : null;
     }
 
     private static byte[] BuildSimple(EbmlElement? old, string name, string value, IMediaSource src)

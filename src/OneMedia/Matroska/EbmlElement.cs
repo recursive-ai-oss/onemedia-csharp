@@ -17,7 +17,7 @@ public enum EbmlCrcStatus
 internal sealed class EbmlTreeContext(IMediaSource source, MediaLimits limits, DefectLog defects, CancellationToken cancellationToken)
 {
     private const int CacheSize = 16 * 1024;
-    private readonly byte[] _cache = new byte[CacheSize];
+    private byte[]? _cache;
     private long _cacheStart = -1;
     private int _cacheLength;
     private long _elementCount;
@@ -37,11 +37,13 @@ internal sealed class EbmlTreeContext(IMediaSource source, MediaLimits limits, D
     /// <summary>Reads at an offset through a one-chunk cache so that walking many small headers costs few source reads.</summary>
     public int ReadAt(long offset, Span<byte> destination)
     {
-        if (destination.Length >= CacheSize)
+        // Bytes already in memory are read straight from there; the chunk cache (allocated on first use) is for sources that cost a call per read.
+        if (destination.Length >= CacheSize || Source is MemoryMediaSource)
         {
             return Source.Read(offset, destination, CancellationToken);
         }
 
+        _cache ??= new byte[CacheSize];
         if (_cacheStart < 0 || offset < _cacheStart || offset + destination.Length > _cacheStart + _cacheLength)
         {
             _cacheLength = Source.Read(offset, _cache, CancellationToken);
