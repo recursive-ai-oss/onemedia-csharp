@@ -139,8 +139,9 @@ internal static class Mp3TagWriter
         return new TagWritePlan(plan, new TagWriteReport(reports, notes));
     }
 
-    // A replacement that would write the bytes already there is dropped, so that an edit which changes nothing leaves the tag as it is. A tag's
-    // padding is not compared (it would mean reading all of it): when the new head equals the old head and the length is the same, the old padding stays.
+    // A replacement that would write the bytes already there is dropped, so that an edit which changes nothing leaves the tag as it is. The padding
+    // after the new head is read to the end (in small pieces, so memory stays constant): padding that is not all zeros holds bytes of frames
+    // that an earlier edit removed, and keeping them would keep a removed value in the file.
     private static bool Unchanged(IMediaSource src, Replacement x)
     {
         if (x.Length != x.NewLength || x.Data.Length > x.Length)
@@ -155,14 +156,99 @@ internal static class Mp3TagWriter
             return false;
         }
 
-        // Frames removed from the end of a tag leave their bytes where the padding now starts, and a frame begins with a non-zero identifier: a few
-        // bytes show whether the old padding is really padding. Without this check the removed frames stayed in the file.
-        long tail = Math.Min(16, x.Length - x.Data.Length);
-        if (tail > 0)
+        return x.Length == x.Data.Length || FirstNonZero(src, x.Offset + x.Data.Length, x.Length - x.Data.Length) < 0;
+    }
+
+    /// <summary>Offset of the first non-zero byte in the range, or -1 when the range is all zeros. Reads in pieces of 64 KiB.</summary>
+    internal static long FirstNonZero(IMediaSource src, long offset, long length)
+    {
+        byte[] buffer = new byte[(int)Math.Min(length, 65536)];
+        long done = 0;
+        while (done < length)
         {
-            byte[] next = new byte[tail];
-            src.ReadExactly(x.Offset + x.Data.Length, next);
-            return !next.AsSpan().ContainsAnyExcept((byte)0);
+            int n = (int)Math.Min(buffer.Length, length - done);
+            src.ReadExactly(offset + done, buffer.AsSpan(0, n));
+            int at = buffer.AsSpan(0, n).IndexOfAnyExcept((byte)0);
+            if (at >= 0)
+            {
+                return offset + done + at;
+            }
+
+            done += n;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// A plan that changes nothing but leftovers: every byte of an ID3v2 tag's padding that is not zero becomes zero. The frames are untouched and
+    /// the file keeps its layout, so it also applies in place.
+    /// </summary>
+    public static TagWritePlan CleanPlan(IMediaSource src, MediaLimits limits, CancellationToken ct)
+    {
+        List<Replacement> reps = [];
+        long length = src.Length;
+        long audioStart = 0;
+        Span<byte> head = stackalloc byte[Id3Header.HeaderSize]; // the fixed tag header
+        while (src.Read(audioStart, head, ct) == head.Length && Id3Header.TryParse(head, out _) && Id3Tag.TryRead(src, audioStart, out Id3Tag? tag, limits) && tag is not null)
+        {
+            if (!tag.Padding.IsNone && tag.Padding.Length > 0 && FirstNonZero(src, tag.Padding.Offset, tag.Padding.Length) >= 0)
+            {
+                reps.Add(new Replacement(tag.Padding.Offset, tag.Padding.Length, [], "leftover bytes in the ID3v2 padding", tag.Padding.Length));
+            }
+
+            audioStart += tag.Range.Length;
+        }
+
+        List<string> notes = reps.Count == 0 ? [] : [$"Bytes left in the padding of {reps.Count} ID3v2 tag(s) by earlier edits were zeroed."];
+        return new TagWritePlan(ReplacementPlan.Build(length, reps, 0), new TagWriteReport([], notes));
+    }
+
+    /// <summary>Looks for bytes of removed or stale ID3v2 frames in the tags at the start of the file and for frame-like bytes right after the tags.</summary>
+    public static IReadOnlyList<TagResidue> FindResidue(IMediaSource src, MediaLimits limits, CancellationToken ct)
+    {
+        List<TagResidue> found = [];
+        long audioStart = 0;
+        Span<byte> head = stackalloc byte[Id3Header.HeaderSize]; // the fixed tag header
+        Span<byte> id = stackalloc byte[4]; // a frame identifier
+        while (src.Read(audioStart, head, ct) == head.Length && Id3Header.TryParse(head, out _) && Id3Tag.TryRead(src, audioStart, out Id3Tag? tag, limits) && tag is not null)
+        {
+            if (!tag.Padding.IsNone && tag.Padding.Length > 0)
+            {
+                long at = FirstNonZero(src, tag.Padding.Offset, tag.Padding.Length);
+                if (at >= 0)
+                {
+                    int got = src.Read(at, id, ct);
+                    bool frame = got == 4 && LooksLikeFrameId(id);
+                    found.Add(new TagResidue(TagSystems.Id3v2, frame ? TagResidueKind.StaleFrame : TagResidueKind.NonZeroPadding, at, tag.Padding.Offset + tag.Padding.Length - at,
+                        frame ? $"A frame '{System.Text.Encoding.ASCII.GetString(id)}' sits in the padding." : "The padding holds bytes that are not zero."));
+                }
+            }
+
+            audioStart += tag.Range.Length;
+        }
+
+        if (audioStart > 0 && audioStart + 4 <= src.Length)
+        {
+            Span<byte> next = stackalloc byte[4]; // the bytes after the tag: audio, or a frame that should not be here
+            if (src.Read(audioStart, next, ct) == 4 && LooksLikeFrameId(next))
+            {
+                found.Add(new TagResidue(TagSystems.Id3v2, TagResidueKind.FrameAfterTag, audioStart, 4, $"A frame '{System.Text.Encoding.ASCII.GetString(next)}' follows the tag where audio should start."));
+            }
+        }
+
+        return found;
+    }
+
+    // An ID3v2.3/2.4 frame identifier: four upper-case letters or digits.
+    private static bool LooksLikeFrameId(ReadOnlySpan<byte> id)
+    {
+        foreach (byte c in id)
+        {
+            if (!((c >= (byte)'A' && c <= (byte)'Z') || (c >= (byte)'0' && c <= (byte)'9')))
+            {
+                return false;
+            }
         }
 
         return true;

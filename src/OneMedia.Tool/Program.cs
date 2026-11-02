@@ -37,10 +37,11 @@ static int Run(string[] args)
         bool json = args.Contains("--json");
         bool sidecars = !args.Contains("--no-sidecars");
         bool telemetry = args.Contains("--telemetry");
-        string? path = args.Skip(1).FirstOrDefault(a => a is not ("--json" or "--no-sidecars" or "--telemetry"));
+        bool fileTimes = args.Contains("--file-times");
+        string? path = args.Skip(1).FirstOrDefault(a => a is not ("--json" or "--no-sidecars" or "--telemetry" or "--file-times"));
         if (path is not null)
         {
-            return Info(path, json, sidecars, telemetry);
+            return Info(path, json, sidecars, telemetry, fileTimes);
         }
     }
 
@@ -55,20 +56,23 @@ static int Run(string[] args)
     }
 
     Console.Error.WriteLine("usage: onemedia --version");
-    Console.Error.WriteLine("       onemedia info <file> [--json] [--no-sidecars] [--telemetry]   format, duration, tracks, facts with every candidate, and defects (sidecars beside the file count as evidence; --telemetry also decodes GPS telemetry into the facts)");
+    Console.Error.WriteLine("       onemedia info <file> [--json] [--no-sidecars] [--telemetry] [--file-times]   format, duration, tracks, facts with every candidate, and defects (sidecars beside the file count as evidence; --telemetry also decodes GPS telemetry into the facts; --file-times adds the file's last-write time as a last-resort capture time)");
     Console.Error.WriteLine(RemuxCommand.Usage);
     Console.Error.WriteLine(PlayableCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
+    Console.Error.WriteLine("       onemedia tags <file> --check   look for leftover removed or stale values (exit 1 if found); with no edits, --replace/--out/--in-place zero them");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     return 2;
 }
 
-static int Info(string path, bool json, bool sidecars, bool telemetry)
+static int Info(string path, bool json, bool sidecars, bool telemetry, bool fileTimes)
 {
     try
     {
         using MediaFile media = Media.Open(path);
+        // The last-write time changes with every copy or save, so it is offered as evidence only when asked for (--file-times).
+        media.UseFileSystemTime = fileTimes;
         if (sidecars)
         {
             media.AddSidecarsBesideFile();

@@ -151,7 +151,7 @@ internal sealed class GpmfDecoder
     }
 
     // Device-level triplets that are not streams (camera model, serial number, settings): delivered once as raw items, so a reader can find
-    // them (and a privacy strip can locate them) without every payload repeating them.
+    // them (and a later tool that removes them could locate them) without every payload repeating them.
     private void DeviceField(ReadOnlySpan<byte> payload, in GpmfKlv klv, int baseOffset)
     {
         if (klv.Data.Length == 0 || _deviceFieldsSeen.Contains((_deviceId, klv.Key)))

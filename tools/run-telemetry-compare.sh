@@ -7,7 +7,7 @@ set -eu
 CORPUS=${CORPUS:-$HOME/onemedia/corpus/gopro}
 EXIFTOOL=${EXIFTOOL:-$HOME/onemedia/oracles/bin/exiftool}
 BIN=${BIN:?set BIN to the TelemetryCheck release dll}
-OUT=${1:-$HOME/onemedia/u42-telemetry/ref}
+OUT=${1:-$HOME/onemedia/telemetry/ref}
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$OUT"
 for f in "$CORPUS"/*.mp4; do

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Worker-side sweep for the MPEG readers: builds the harness, then runs the packet differential, the track/duration check and the
-# metadata comparison on the generated and published MPEG files, into $1 (default ~/onemedia/u13-mpeg/out).
+# metadata comparison on the generated and published MPEG files, into $1 (default ~/onemedia/mpeg/out).
 #   tools/run-mpeg-sweep.sh [OUT] [build]
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-O="${1:-$HOME/onemedia/u13-mpeg/out}"; mkdir -p "$O"
+O="${1:-$HOME/onemedia/mpeg/out}"; mkdir -p "$O"
 C="${ONEMEDIA_HOME:-$HOME/onemedia}/corpus"
 G="$C/generated/mpeg"; S="$C/samples"
 bash "$here/run-mpeg-diff.sh" build 2>&1 | tail -3

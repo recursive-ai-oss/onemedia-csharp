@@ -22,6 +22,6 @@ for s in "$@"; do
     *) echo "unknown stage $s"; continue;;
   esac
   mkdir -p "$work"
-  wq run --class heavy --cores $cores --max 28m --label "onemedia u29 mkvmux $s" -- bash -c "$cmd" > "$log" 2>&1
+  wq run --class heavy --cores $cores --max 28m --label "onemedia mkvmux $s" -- bash -c "$cmd" > "$log" 2>&1
   echo "$s exit $? ($log)"
 done

@@ -114,6 +114,15 @@ EBML and chunk editors refuse (`ArgumentException`) an addition inside an elemen
   shows the new values) but the reader, which does not scan for them, does not see them. Files written with an index of `Tags` are unaffected.
 - **ASF `ID3` attribute.** The embedded ID3 tag in an ASF attribute is kept as it is and noted in the report; removing a field that the ID3 tag also holds does not remove it there.
 
+## Leftovers from earlier edits
+
+A removed value must not stay in the file. Every writer except ID3v2 writes its padding as generated zeros on every edit. ID3v2 padding is also zeroed
+by every save of an MP3 or other ID3v2-led audio file: `Save`, `SaveAs` and `SaveInPlace`, with edits for other fields and with none. An edit that leaves the
+live frames as they are still reads the whole padding and rewrites it when it holds anything but zeros. `TagWriter.CheckResidue(path)` and `onemedia tags <file> --check`
+list what is left: non-zero bytes in ID3v2 padding, a frame inside the padding, a frame right after the tag where audio should start. They report where, never what.
+A field that an old version failed to remove (0.3.0-preview.1 left removed trailing ID3 frames in place as ordinary frames) cannot be told from a tag that is wanted:
+remove the field again and save. Tests: `TagResidueTests` (every way of saving, on eight formats; crafted leftovers).
+
 ## Not done
 
 Speex/Theora comments, ID3 tag-wide unsynchronisation, ID3v2 at the end of a file, an ID3v2 tag in front of a FLAC stream (copied as it is; the report notes it, and readers that prefer it, such as ATL.NET, keep seeing the old values), QuickTime `mdta` key creation when the file has no `keys` box, picture dimensions in FLAC PICTURE blocks

@@ -5,9 +5,9 @@
 set -uo pipefail
 export PATH=~/dotnet10:$PATH DOTNET_ROOT=~/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1
 export ONEMEDIA_HOME="${ONEMEDIA_HOME:-$HOME/onemedia}"
-export ONEMEDIA_SCRATCH="${ONEMEDIA_SCRATCH:-$HOME/onemedia/u13-mpeg}"
+export ONEMEDIA_SCRATCH="${ONEMEDIA_SCRATCH:-$HOME/onemedia/mpeg}"
 ART="$ONEMEDIA_SCRATCH/artifacts"
-export TMPDIR="${TMPDIR:-$HOME/onemedia/u13-mpeg/tmp}"
+export TMPDIR="${TMPDIR:-$HOME/onemedia/mpeg/tmp}"
 mkdir -p "$ART" "$TMPDIR"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 case "${1:-}" in
