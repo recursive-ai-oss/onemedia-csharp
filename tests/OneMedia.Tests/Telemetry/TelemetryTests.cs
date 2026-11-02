@@ -315,6 +315,35 @@ public class TelemetryTests
     }
 
     [Fact]
+    public void ARawSampleInAStreamThatWasTypedStaysRaw()
+    {
+        // Found by fuzzing: a later payload gave the key a structure the decoder cannot read, so its sample is delivered as bytes inside a channel
+        // that earlier held numbers. Materialising the channels used to read numbers that were not there.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "telemetry-file", "gpmf-raw-item-in-typed-channel.bin"));
+        using MediaFile media = MediaFile.Open(new MemoryMediaSource(input.AsSpan(1).ToArray()));
+        IReadOnlyList<TelemetryChannel> channels = media.Telemetry;
+        Assert.NotEmpty(channels);
+        foreach (TelemetryChannel c in channels)
+        {
+            Assert.All(c.Samples, s => Assert.Equal(c.Kind == TelemetryKind.Unknown, s is RawTelemetrySample));
+        }
+    }
+
+    [Fact]
+    public void AxesRemapToTheRequestedOrderAndSign()
+    {
+        // HERO6 stores ACCL as Y, -X, Z (ORIN "YxZ") and asks for Z, X, Y (ORIO "ZXY").
+        double[] stored = [1, 2, 3];
+        double[] camera = new double[3];
+        Assert.True(GpmfAxes.TryRemap(stored, "YxZ", "ZXY", camera));
+        Assert.Equal([3.0, -2.0, 1.0], camera);
+        Assert.True(GpmfAxes.TryRemap(stored, "ZXY", "ZXY", camera));
+        Assert.Equal(stored, camera);
+        Assert.False(GpmfAxes.TryRemap(stored, "YxZ", "ZXW", camera));
+        Assert.False(GpmfAxes.TryRemap(stored, "YxZ", "ZX", camera));
+    }
+
+    [Fact]
     public void HostileGpmfNeverThrows()
     {
         DefectLog log = new();

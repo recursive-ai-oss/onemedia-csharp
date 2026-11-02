@@ -130,7 +130,7 @@ foreach (MediaTrack track in tracks)
 
     foreach (TelemetryChannelInfo ch in reader.Channels)
     {
-        Console.Error.WriteLine($"track {track.Id} {reader.Format} {ch.Name} dev {ch.DeviceId} kind {ch.Kind} samples {counts.GetValueOrDefault(ch.Index)} label '{ch.Label}' units [{string.Join(",", ch.Units)}] axes '{ch.AxisOrder}'");
+        Console.Error.WriteLine($"track {track.Id} {reader.Format} {ch.Name} dev {ch.DeviceId} kind {ch.Kind} samples {counts.GetValueOrDefault(ch.Index)} label '{ch.Label}' units [{string.Join(",", ch.Units)}] axes '{ch.AxisOrder}' out '{ch.AxisOutputOrder}'");
     }
 }
 

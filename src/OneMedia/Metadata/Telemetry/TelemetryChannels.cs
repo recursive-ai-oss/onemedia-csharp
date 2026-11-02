@@ -119,7 +119,7 @@ public static class TelemetryChannels
         ReadOnlySpan<double> v = item.Values;
         switch (item.Kind)
         {
-            case TelemetryKind.Gps:
+            case TelemetryKind.Gps when v.Length >= 2:
                 return new GpsSample(item.Time, item.Duration, item.Range, v[0], v[1], Opt(v, 2), Opt(v, 3), Opt(v, 4), item.Fix, Opt(v, 5),
                     item.GpsTimeTicks > 0 ? new DateTime(item.GpsTimeTicks, DateTimeKind.Utc) : null);
             case TelemetryKind.Accelerometer or TelemetryKind.Gyroscope or TelemetryKind.Magnetometer or TelemetryKind.Gravity when v.Length >= 3:

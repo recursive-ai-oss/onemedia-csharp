@@ -27,6 +27,7 @@ internal sealed class GpmfDecoder
     private static readonly uint Gpsf = GpmfKlv.MakeKey("GPSF");
     private static readonly uint Gpsp = GpmfKlv.MakeKey("GPSP");
     private static readonly uint Orin = GpmfKlv.MakeKey("ORIN");
+    private static readonly uint Orio = GpmfKlv.MakeKey("ORIO");
     private static readonly uint Gps5 = GpmfKlv.MakeKey("GPS5");
     private static readonly uint Gps9 = GpmfKlv.MakeKey("GPS9");
 
@@ -179,6 +180,7 @@ internal sealed class GpmfDecoder
         ReadOnlySpan<byte> body = payload.Slice(offset, length);
         (int Offset, int Length, int Size, int Repeat) stnm = (-1, 0, 0, 0);
         (int Offset, int Length, int Size, int Repeat) orin = (-1, 0, 0, 0);
+        (int Offset, int Length, int Size, int Repeat) orio = (-1, 0, 0, 0);
         _gpsuTicks = 0;
         _gpsFix = -1;
         _gpsPrecision = -1;
@@ -192,6 +194,10 @@ internal sealed class GpmfDecoder
             else if (klv.Key == Orin)
             {
                 orin = (offset + klv.DataOffset, klv.Data.Length, klv.StructSize, klv.Repeat);
+            }
+            else if (klv.Key == Orio)
+            {
+                orio = (offset + klv.DataOffset, klv.Data.Length, klv.StructSize, klv.Repeat);
             }
             else if (klv.Key == Gpsu && klv.Type == (byte)'U' && klv.Data.Length >= 16)
             {
@@ -232,7 +238,7 @@ internal sealed class GpmfDecoder
             }
             else if (!Modifiers.Contains(klv.Key))
             {
-                EmitData(payload, klv, offset, stnm, orin, 0);
+                EmitData(payload, klv, offset, stnm, orin, orio, 0);
             }
         }
 
@@ -303,7 +309,8 @@ internal sealed class GpmfDecoder
         }
     }
 
-    private void EmitData(ReadOnlySpan<byte> payload, in GpmfKlv klv, int baseOffset, (int Offset, int Length, int Size, int Repeat) stnm, (int Offset, int Length, int Size, int Repeat) orin, int depth)
+    private void EmitData(ReadOnlySpan<byte> payload, in GpmfKlv klv, int baseOffset, (int Offset, int Length, int Size, int Repeat) stnm, (int Offset, int Length, int Size, int Repeat) orin,
+        (int Offset, int Length, int Size, int Repeat) orio, int depth)
     {
         if (klv.IsNested)
         {
@@ -320,7 +327,7 @@ internal sealed class GpmfDecoder
             {
                 if (!Modifiers.Contains(child.Key))
                 {
-                    EmitData(payload, child, innerBase, stnm, orin, depth + 1);
+                    EmitData(payload, child, innerBase, stnm, orin, orio, depth + 1);
                 }
             }
 
@@ -341,10 +348,11 @@ internal sealed class GpmfDecoder
             kind = TelemetryKind.Unknown;
         }
 
-        TelemetryChannelInfo stream = StreamFor(klv.Key, 0, kind, comps, payload, stnm, orin);
+        TelemetryChannelInfo stream = StreamFor(klv.Key, 0, kind, comps, payload, stnm, orin, orio);
         if (comps == 0)
         {
             ref TelemetryItem raw = ref _collector.Add(stream);
+            raw.Kind = TelemetryKind.Unknown; // the stream may be typed (an earlier payload gave this key numbers); this sample is only bytes.
             raw.Time = _pts;
             raw.Duration = _duration;
             raw.Range = RangeOf(dataOffset, klv.Data.Length);
@@ -484,7 +492,8 @@ internal sealed class GpmfDecoder
     }
 
     private TelemetryChannelInfo StreamFor(uint key, int variant, TelemetryKind kind, int comps, ReadOnlySpan<byte> payload,
-        (int Offset, int Length, int Size, int Repeat) stnm = default, (int Offset, int Length, int Size, int Repeat) orin = default)
+        (int Offset, int Length, int Size, int Repeat) stnm = default, (int Offset, int Length, int Size, int Repeat) orin = default,
+        (int Offset, int Length, int Size, int Repeat) orio = default)
     {
         TelemetryChannelInfo? s = _collector.Find(TelemetryFormat.Gpmf, _deviceId, key, variant);
         if (s is not null)
@@ -503,6 +512,11 @@ internal sealed class GpmfDecoder
         if (orin.Offset >= 0 && orin.Length > 0 && orin.Offset + orin.Length <= payload.Length)
         {
             s.AxisOrder = Latin1(TrimNul(payload.Slice(orin.Offset, orin.Length)));
+        }
+
+        if (orio.Offset >= 0 && orio.Length > 0 && orio.Offset + orio.Length <= payload.Length)
+        {
+            s.AxisOutputOrder = Latin1(TrimNul(payload.Slice(orio.Offset, orio.Length)));
         }
 
         string units = comps > 0 ? ComponentUnits(payload, comps) : string.Empty;

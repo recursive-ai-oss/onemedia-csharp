@@ -129,6 +129,9 @@ public sealed class TelemetryChannelInfo
     /// <summary>GPMF input axis order (<c>ORIN</c>, for example <c>ZXY</c>) when the stream states one: the order the components are stored in; else empty.</summary>
     public string AxisOrder { get; internal set; } = string.Empty;
 
+    /// <summary>GPMF output axis order (<c>ORIO</c>, for example <c>ZXY</c>) the camera asks for when the stream states one; else empty. See <see cref="Gpmf.GpmfAxes"/>.</summary>
+    public string AxisOutputOrder { get; internal set; } = string.Empty;
+
     /// <summary>The ISO track id the data came from.</summary>
     public long TrackId { get; internal set; }
 
