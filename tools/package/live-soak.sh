@@ -21,14 +21,14 @@ PK=$!
 printf 'elapsed_s\trss_kib\tsegment_files\twindow_segments\tmedia_sequence\n' > "$S/rss.tsv"
 T0=$SECONDS; n=0
 while kill -0 "$PK" 2>/dev/null; do
-  sleep 5; n=$((n + 1))
+  sleep 0.5; n=$((n + 1))
   rss="$(awk '/VmRSS/ {print $2}' /proc/$PK/status 2>/dev/null || echo 0)"
   files="$(ls "$S/out"/video0/*.m4s 2>/dev/null | wc -l)"
   win="$(grep -c '^#EXTINF' "$S/out/video0/index.m3u8" 2>/dev/null || echo 0)"
   seq="$(awk -F: '/^#EXT-X-MEDIA-SEQUENCE/ {print $2}' "$S/out/video0/index.m3u8" 2>/dev/null)"
-  printf '%s\t%s\t%s\t%s\t%s\n' $((SECONDS - T0)) "$rss" "$files" "$win" "${seq:-0}" >> "$S/rss.tsv"
-  # every ~10 minutes: probe a snapshot of the live presentation as a client would see it
-  if [ $((n % 120)) -eq 1 ] && [ -f "$S/out/master.m3u8" ]; then
+  printf "%s\t%s\t%s\t%s\t%s\n" $((n / 2)) "$rss" "$files" "$win" "${seq:-0}" >> "$S/rss.tsv"
+  # every ~5 minutes: probe a snapshot of the live presentation as a client would see it
+  if [ $((n % 600)) -eq 1 ] && [ -f "$S/out/master.m3u8" ]; then
     rm -rf "$S/snap/cur"; cp -r "$S/out" "$S/snap/cur" 2>/dev/null
     echo "snapshot at $((SECONDS - T0)) s: $("$FFPROBE" -v error -show_entries format=duration -of csv=p=0 "$S/snap/cur/video0/index.m3u8" 2>&1 | head -1)" >> "$S/soak.log"
   fi
@@ -36,6 +36,6 @@ done
 wait "$PK"; echo "packager exit $?" >> "$S/soak.log"; wait "$FF"; echo "ffmpeg exit $?" >> "$S/soak.log"
 tail -3 "$S/package.log" >> "$S/soak.log"
 echo "final: $(grep -c '^#EXTINF' "$S/out/video0/index.m3u8") segments listed, endlist: $(grep -c ENDLIST "$S/out/video0/index.m3u8")" >> "$S/soak.log"
-awk 'NR>1 {if (min==""||$2<min) min=$2; if ($2>max) max=$2; n++} END {print "rss KiB min", min, "max", max, "samples", n}' "$S/rss.tsv" >> "$S/soak.log"
+awk 'NR>1 && $2>0 {if (min==""||$2<min) min=$2; if ($2>max) max=$2; n++} END {print "rss KiB min", min, "max", max, "samples", n}' "$S/rss.tsv" >> "$S/soak.log"
 cat "$S/soak.log"
 rm -rf "$S/out" "$S/snap" "$S/pipe"
