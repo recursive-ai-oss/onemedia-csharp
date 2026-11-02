@@ -71,13 +71,13 @@ with open(os.path.join(out, "dji.srt"), "w", newline="\n") as f:
 00:00:00,000 --> 00:00:00,033
 <font size="36">SrtCnt : 1, DiffTime : 33ms
 2023-02-24 08:47:37.832
-[iso : 100] [shutter : 1/250.0] [fnum : 170] [ev : 0] [ct : 4730] [color_md : default] [focal_len : 240] [latitude: 46.619111] [longitude: 4.873111] [rel_alt: 0.500 abs_alt: 235.848] </font>
+[iso : 100] [shutter : 1/250.0] [fnum : 170] [ev : 0] [ct : 4730] [color_md : default] [focal_len : 240] [latitude: 12.345678] [longitude: 56.789012] [rel_alt: 0.500 abs_alt: 101.250] </font>
 
 2
 00:00:00,033 --> 00:00:00,066
 <font size="36">SrtCnt : 2, DiffTime : 33ms
 2023-02-24 08:47:37.862
-[iso : 100] [latitude: 46.619111] [longitude: 4.873111] [rel_alt: 0.500 abs_alt: 235.848] </font>
+[iso : 100] [latitude: 12.345678] [longitude: 56.789012] [rel_alt: 0.500 abs_alt: 101.250] </font>
 ''')
 
 with open(os.path.join(out, "sidecar.xmp"), "w", newline="\n") as f:

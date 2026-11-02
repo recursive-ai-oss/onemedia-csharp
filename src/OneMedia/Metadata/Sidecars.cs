@@ -375,7 +375,7 @@ public static class Sidecars
         return false;
     }
 
-    // "[latitude: 46.619111]" or "[latitude : 46.6]" or inside "[rel_alt: 0.5 abs_alt: 235.8]".
+    // "[latitude: 12.345678]" or "[latitude : 12.3]" or inside "[rel_alt: 0.5 abs_alt: 101.2]".
     private static bool TryBracket(string line, string key, out double value)
     {
         value = 0;

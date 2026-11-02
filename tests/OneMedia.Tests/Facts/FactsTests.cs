@@ -383,7 +383,7 @@ public class SidecarTests
         Assert.NotEmpty(e.Defects);
     }
 
-    private const string Srt = "1\r\n00:00:00,000 --> 00:00:00,033\r\n<font size=\"36\">SrtCnt : 1, DiffTime : 33ms\r\n2023-02-24 08:47:37.832\r\n[iso : 100] [shutter : 1/250.0] [fnum : 170] [ev : 0] [ct : 4730] [latitude: 46.619111] [longitude: -4.873111] [rel_alt: 0.500 abs_alt: 235.848] </font>\r\n\r\n2\r\n00:00:00,033 --> 00:00:00,066\r\n<font size=\"36\">SrtCnt : 2\r\n2023-02-24 08:47:37.862\r\n</font>\r\n";
+    private const string Srt = "1\r\n00:00:00,000 --> 00:00:00,033\r\n<font size=\"36\">SrtCnt : 1, DiffTime : 33ms\r\n2023-02-24 08:47:37.832\r\n[iso : 100] [shutter : 1/250.0] [fnum : 170] [ev : 0] [ct : 4730] [latitude: 12.345678] [longitude: -56.789012] [rel_alt: 0.500 abs_alt: 101.250] </font>\r\n\r\n2\r\n00:00:00,033 --> 00:00:00,066\r\n<font size=\"36\">SrtCnt : 2\r\n2023-02-24 08:47:37.862\r\n</font>\r\n";
 
     [Fact]
     public void DjiSrtGivesLocalTimeAndPosition()
@@ -395,9 +395,9 @@ public class SidecarTests
         Assert.Equal(new DateTime(2023, 2, 24, 8, 47, 37, 832), t.Value.Value);
         Assert.Equal(TimeZoneCertainty.Unknown, t.Certainty);
         GeoLocation g = e.Location.Single().Value;
-        Assert.Equal(46.619111, g.Latitude);
-        Assert.Equal(-4.873111, g.Longitude);
-        Assert.Equal(235.848, g.Altitude);
+        Assert.Equal(12.345678, g.Latitude);
+        Assert.Equal(-56.789012, g.Longitude);
+        Assert.Equal(101.250, g.Altitude);
     }
 
     [Fact]
@@ -537,7 +537,7 @@ public class FactsFixtureTests
     public void DjiFixtureGivesPosition()
     {
         EvidenceSet e = Sidecars.Read(Fixture("dji.srt"))!;
-        Assert.Equal(46.619111, e.Location.Single().Value.Latitude);
+        Assert.Equal(12.345678, e.Location.Single().Value.Latitude);
         Assert.Equal(new DateTime(2023, 2, 24, 8, 47, 37, 832), e.CaptureTime.Single().Value.Value);
     }
 }
