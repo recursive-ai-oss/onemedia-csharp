@@ -363,6 +363,49 @@ public class SubtitleFormatTests
     }
 
     [Fact]
+    public void PositionAtTheRightEdgeWritesAsTtml()
+    {
+        var doc = new SubtitleDocument
+        {
+            Cues = SubtitleList.Of(new SubtitleCue
+            {
+                Start = new MediaTime(0, 1),
+                End = new MediaTime(2, 1),
+                Text = "edge",
+                Placement = new CuePlacement { Position = 100, Size = 50 },
+            }),
+        };
+        SubtitleOutput ttml = SubtitleFormats.Ttml.Write(doc);
+        Assert.Single(SubtitleFormats.Ttml.Read(ttml.Data).Cues);
+    }
+
+    [Theory]
+    [InlineData("fuzz/subs-webvtt/regions-position-100.vtt")]
+    [InlineData("fuzz/subs-ass/position-100.ass")]
+    public void FuzzReprosWriteThroughEveryFormat(string file)
+    {
+        byte[] input = File.ReadAllBytes(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", file));
+        SubtitleDocument doc = SubtitleFormats.Read(input);
+        foreach (SubtitleFormat target in SubtitleFormats.All)
+        {
+            Assert.NotEmpty(target.Write(doc).Data);
+        }
+    }
+
+    [Fact]
+    public void ImageCueToTextFormatReportsTheImageDropped()
+    {
+        var image = new SubtitleImage(10, 20, 2, 2, 8, new byte[16]) { DisplayWidth = 1920, DisplayHeight = 1080 };
+        var doc = new SubtitleDocument
+        {
+            Cues = SubtitleList.Of(new SubtitleCue { Start = new MediaTime(0, 1), End = new MediaTime(1, 1), Images = SubtitleList.Of(image) }),
+        };
+        Assert.Equal(image, doc.Cues[0].Images[0]);
+        SubtitleOutput srt = SubtitleFormats.Srt.Write(doc);
+        Assert.True(srt.Report.Count(SubtitleFeatures.Images, LossKind.Dropped) == 1);
+    }
+
+    [Fact]
     public void RegisteredFormatsAreFoundByName()
     {
         Assert.Same(SubtitleFormats.WebVtt, SubtitleFormats.Find("vtt"));
