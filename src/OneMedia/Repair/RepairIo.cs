@@ -25,6 +25,9 @@ internal sealed class RepairInput : IDisposable
     /// <summary>The file size in bytes.</summary>
     public long Length { get; }
 
+    /// <summary>The underlying source, for engines that run their own scan (the truncated-file reconstruction).</summary>
+    public IMediaSource Source => _source;
+
     /// <summary>
     /// Returns up to <paramref name="count"/> bytes at <paramref name="offset"/>; fewer only at the end of the file. The span is valid until
     /// the next call. <paramref name="count"/> must not exceed 64 KiB.

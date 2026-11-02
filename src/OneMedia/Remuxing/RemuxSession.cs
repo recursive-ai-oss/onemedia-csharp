@@ -87,6 +87,8 @@ public sealed class RemuxSession : IDisposable
         public bool Derives { get; set; }
 
         public bool ReportedRetime { get; set; }
+
+        public bool ReportedLeading { get; set; }
     }
 
     private readonly struct Held(PacketInfo info, byte[] data)
@@ -199,6 +201,16 @@ public sealed class RemuxSession : IDisposable
         if (!wanted)
         {
             _losses.Add(new RemuxLoss(LossKind.Track, LossReason.Deselected, t.Index, Describe(t), "The track was left out on request."));
+            return;
+        }
+
+        if (_format is RemuxFormat.MpegTs or RemuxFormat.M2ts)
+        {
+            // The transport stream muxer takes both framings itself (Annex B or length-prefixed NAL units, ADTS or raw AAC), so nothing is repackaged here.
+            // Raw AAC with no AudioSpecificConfig cannot be given ADTS headers: the first packet shows which framing the track has.
+            bool needsFraming = t.Kind == TrackKind.Audio && t.Codec == CodecId.Aac && t.Configuration.IsEmpty;
+            s.Resolved = !needsFraming;
+            s.FramingDecided = !needsFraming;
             return;
         }
 
@@ -411,6 +423,18 @@ public sealed class RemuxSession : IDisposable
         {
             s.FramingDecided = true;
             bool adts = AdtsHeader.TryParse(data, out AdtsHeader h) && h.FrameLength <= data.Length;
+            if (_format is RemuxFormat.MpegTs or RemuxFormat.M2ts)
+            {
+                s.Resolved = true;
+                if (!adts)
+                {
+                    s.Wanted = false;
+                    _losses.Add(new RemuxLoss(LossKind.Track, LossReason.MissingConfiguration, s.Input.Index, Describe(s.Input), "The AAC packets are raw access units and the track has no AudioSpecificConfig, so ADTS headers cannot be written."));
+                }
+
+                return;
+            }
+
             s.Mode = adts ? Repack.Adts : Repack.None;
             if (adts && s.Input.Configuration.IsEmpty)
             {
@@ -625,7 +649,8 @@ public sealed class RemuxSession : IDisposable
 
         // Packet times that already have the priming taken off start at minus the priming (Ogg Opus). Muxers expect raw media times, with
         // the priming in the edit information, so every time moves forward by it.
-        if (t.Edit.PacketTimesIncludePriming && t.Edit.Priming.IsKnown && !t.Edit.Priming.IsZero)
+        bool transportStream = _format is RemuxFormat.MpegTs or RemuxFormat.M2ts;
+        if (t.Edit.PacketTimesIncludePriming && t.Edit.Priming.IsKnown && !t.Edit.Priming.IsZero && !transportStream)
         {
             s.Shift = t.Edit.Priming;
             declared = declared with { Edit = t.Edit with { PacketTimesIncludePriming = false } };
@@ -639,6 +664,36 @@ public sealed class RemuxSession : IDisposable
             if (lost != TrackDisposition.None)
             {
                 _losses.Add(new RemuxLoss(LossKind.Disposition, LossReason.NotRepresentable, t.Index, lost.ToString(), "MP4 and QuickTime have no field for these disposition flags."));
+            }
+        }
+
+        if (_format is RemuxFormat.MpegTs or RemuxFormat.M2ts)
+        {
+            if (declared.Video is { RotationDegrees: not 0 } turn)
+            {
+                _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotRepresentable, t.Index, "rotation", $"A transport stream has no display rotation field; the {turn.RotationDegrees} degree rotation is not carried."));
+            }
+
+            // A transport stream has no edit list: the start of the first edit (and the priming) moves the packet times instead, so the track
+            // starts at presentation time zero as a player of the source would show it. Priming packets keep a time before zero.
+            if (!t.Edit.PacketTimesIncludePriming)
+            {
+                MediaTime moved = t.PresentationTime(new MediaTime(0, t.Timescale)); // in the track timescale, so nothing rounds away
+                if (moved.IsKnown && !moved.IsZero)
+                {
+                    s.Shift = moved;
+                    _changes.Add($"Input track {t.Index}: times were moved by {moved.Ticks}/{moved.Timescale} s, the start of its first edit and its priming, because a transport stream has no edit list.");
+                }
+            }
+
+            if (declared.Edit.Edits is { Count: > 1 } || declared.Edit.EndPadding is { IsKnown: true, IsZero: false })
+            {
+                _losses.Add(new RemuxLoss(LossKind.Timing, LossReason.NotRepresentable, t.Index, "edits", "A transport stream has no edit list: only the start of the first edit is applied; later edits, gaps and the end padding are not."));
+            }
+
+            if (declared.Disposition != TrackDisposition.None)
+            {
+                _losses.Add(new RemuxLoss(LossKind.Disposition, LossReason.NotRepresentable, t.Index, declared.Disposition.ToString(), "A transport stream has no field for track dispositions."));
             }
         }
 
@@ -772,6 +827,18 @@ public sealed class RemuxSession : IDisposable
 
     private void EmitNow(TrackState s, in PacketInfo info, ReadOnlySpan<byte> data, CancellationToken cancellationToken)
     {
+        if (_format is RemuxFormat.MpegTs or RemuxFormat.M2ts && s.Packets == 0 && !info.Pts.IsKnown && !info.Dts.IsKnown)
+        {
+            // A transport stream capture can begin in the middle of a picture or frame that has no time stamp; there is nothing to place it at.
+            if (!s.ReportedLeading)
+            {
+                s.ReportedLeading = true;
+                _changes.Add($"Input track {s.Input.Index}: packets at the start with no time stamp were skipped.");
+            }
+
+            return;
+        }
+
         ReadOnlySpan<byte> payload = data;
         switch (s.Mode)
         {

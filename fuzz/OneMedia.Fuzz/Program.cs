@@ -27,6 +27,7 @@ XiphFlvTargets.Register(targets);
 PcmTargets.Register(targets);
 WriterTarget.Register(targets);
 RemuxTarget.Register(targets);
+TsMuxTarget.Register(targets);
 TagWriteTarget.Register(targets);
 DateWriteTarget.Register(targets);
 FactsTargets.Register(targets);
@@ -38,6 +39,7 @@ TeletextTarget.Register(targets);
 BitmapSubtitleTargets.Register(targets);
 CaptionTargets.Register(targets);
 EventTargets.Register(targets);
+ReconstructTarget.Register(targets);
 RepairTarget.Register(targets);
 WavMuxTarget.Register(targets);
 

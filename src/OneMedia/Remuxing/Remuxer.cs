@@ -20,7 +20,7 @@ public static class Remuxer
 
     /// <summary>Chooses the output container from a file name's extension.</summary>
     /// <param name="path">A path or file name.</param>
-    /// <returns>The format: <c>.mp4</c> MP4, <c>.m4a</c>/<c>.m4b</c> M4A, <c>.m4v</c> M4V, <c>.mov</c> QuickTime, <c>.3gp</c>, <c>.3g2</c>, <c>.mkv</c>/<c>.mka</c> Matroska, <c>.webm</c> WebM, <c>.wav</c>/<c>.wave</c>/<c>.bwf</c> WAVE, <c>.rf64</c> RF64; null for anything else.</returns>
+    /// <returns>The format: <c>.mp4</c> MP4, <c>.m4a</c>/<c>.m4b</c> M4A, <c>.m4v</c> M4V, <c>.mov</c> QuickTime, <c>.3gp</c>, <c>.3g2</c>, <c>.mkv</c>/<c>.mka</c> Matroska, <c>.webm</c> WebM, <c>.ts</c> transport stream, <c>.m2ts</c>/<c>.mts</c> 192-byte transport stream; <c>.wav</c>/<c>.wave</c>/<c>.bwf</c> WAVE, <c>.rf64</c> RF64; null for anything else.</returns>
     public static RemuxFormat? FormatForPath(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -36,6 +36,8 @@ public static class Remuxer
             ".webm" => RemuxFormat.WebM,
             ".wav" or ".wave" or ".bwf" => RemuxFormat.Wav,
             ".rf64" => RemuxFormat.Rf64,
+            ".ts" => RemuxFormat.MpegTs,
+            ".m2ts" or ".mts" => RemuxFormat.M2ts,
             _ => null,
         };
     }
@@ -216,7 +218,8 @@ public static class Remuxer
                 report = Remux(input, output, format, options, cancellationToken);
             }
 
-            if (options?.CarryTags ?? true)
+            // A transport stream has no tag system to carry them into; Inspect already listed them as not written.
+            if ((options?.CarryTags ?? true) && format is not (RemuxFormat.MpegTs or RemuxFormat.M2ts))
             {
                 report = CarryTags(input, outputPath, report, inPlaceFirst: false, cancellationToken);
             }

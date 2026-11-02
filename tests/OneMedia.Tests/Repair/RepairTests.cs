@@ -260,7 +260,7 @@ public class RepairTests
     }
 
     [Fact]
-    public void Mp4WithoutMovieBoxIsLeftToReconstruction()
+    public void Mp4WithNothingButAFileTypeBoxIsUnrepairableWithAReason()
     {
         byte[] b = File.ReadAllBytes(Data("tiny.mp4"));
         int moov = IndexOf(b, "moov"u8.ToArray()) - 4;
@@ -268,7 +268,7 @@ public class RepairTests
         string output = Temp(".mp4");
         try
         {
-            RepairReport r = Media.Repair(input, output);
+            RepairReport r = Media.Repair(input, output, Data("tiny.mp4"));
             Assert.Equal(RepairStatus.Unrepairable, r.Status);
             Assert.False(File.Exists(output));
             Assert.NotEmpty(r.Warnings);

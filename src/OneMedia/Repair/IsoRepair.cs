@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using RecursiveAI.OneMedia.Repair.Reconstruction;
 
 namespace RecursiveAI.OneMedia.Repair;
 
@@ -6,7 +7,7 @@ namespace RecursiveAI.OneMedia.Repair;
 /// ISO base media (MP4/MOV/3GP) index repair, ISO/IEC 14496-12. Progressive files keep every byte and get their chunk offset tables
 /// (<c>stco</c>/<c>co64</c>) and durations (<c>mdhd</c>, <c>tkhd</c>, <c>mvhd</c>) corrected in place; a truncated <c>mdat</c> size is corrected too.
 /// Fragmented files get a fresh <c>mfra</c> (<c>tfra</c> per track, §8.8.10-8.8.11) and, when the input had one, a fresh <c>sidx</c> (§8.16.3);
-/// a last fragment that is cut off is left out. A file whose <c>moov</c> is missing needs reconstruction and is reported as such.
+/// a last fragment that is cut off is left out. A file whose <c>moov</c> is missing or cut off is rebuilt from its media data by <see cref="IsoReconstructor"/>.
 /// </summary>
 internal static partial class IsoRepair
 {
@@ -46,7 +47,7 @@ internal static partial class IsoRepair
         public int StszAt = -1;                // the sample size box (its version byte) within the movie box bytes
     }
 
-    public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct)
+    public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct, IMediaSource? reference = null, ReconstructionOptions? reconstruction = null)
     {
         var report = new RepairReportBuilder("isobmff", input.Length);
         var boxes = new List<BoxHeader>();
@@ -83,10 +84,8 @@ internal static partial class IsoRepair
         BoxHeader? moov = boxes.Exists(x => x.Type == Moov) ? boxes.Find(x => x.Type == Moov) : null;
         if (moov is null || moov.Value.Truncated)
         {
-            report.Warn(moov is null
-                ? "The movie box (moov) is missing: the file was cut before it was written. Reconstructing the index from the media data needs the truncated-file reconstruction (with a reference file from the same device where possible)."
-                : "The movie box (moov) is cut off at the end of the file; reconstruction from the media data is needed.");
-            return report.Build(RepairStatus.Unrepairable, 0);
+            // the movie box is missing or cut off: rebuild it from the media data
+            return Reconstruct(input, destination, limits, reference, reconstruction, report, ct);
         }
 
         return fragmented

@@ -10,7 +10,7 @@ namespace RecursiveAI.OneMedia.Tool;
 internal static class RemuxCommand
 {
     public const string Usage =
-        "       onemedia remux <in> <out> [--format mp4|m4a|m4v|mov|3gp|3g2|fmp4|cmaf|mkv|webm|wav|rf64] [--no-faststart] [--drop <track>]... [--only video|audio]\n"
+        "       onemedia remux <in> <out> [--format mp4|m4a|m4v|mov|3gp|3g2|fmp4|cmaf|mkv|webm|ts|m2ts|wav|rf64] [--no-faststart] [--drop <track>]... [--only video|audio]\n"
         + "                      [--language <track>=<code>]... [--rotate <track>=<0|90|180|270>]... [--strict] [--overwrite]\n"
         + "                      copy tracks into another container without touching the compressed data; lists what was left out\n"
         + "       onemedia remux <in> <out> --faststart   move the movie box of an MP4/MOV/3GP file to the front, copying everything else unchanged";
@@ -127,6 +127,8 @@ internal static class RemuxCommand
         "webm" => RemuxFormat.WebM,
         "wav" or "wave" or "bwf" => RemuxFormat.Wav,
         "rf64" => RemuxFormat.Rf64,
+        "ts" or "mpegts" => RemuxFormat.MpegTs,
+        "m2ts" or "mts" => RemuxFormat.M2ts,
         _ => throw new ArgumentException($"unknown format {name}"),
     };
 

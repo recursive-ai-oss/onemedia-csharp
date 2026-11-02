@@ -138,6 +138,9 @@ public readonly record struct SequenceParameterSet
     /// <summary>sps_max_num_reorder_pics of the highest sub-layer.</summary>
     public int MaxNumReorderPics { get; init; }
 
+    /// <summary>log2_max_pic_order_cnt_lsb_minus4 + 4.</summary>
+    public int Log2MaxPicOrderCntLsb { get; init; }
+
     /// <summary>sps_max_dec_pic_buffering_minus1 + 1 of the highest sub-layer.</summary>
     public int MaxDecPicBuffering { get; init; }
 
@@ -317,6 +320,7 @@ public readonly record struct SequenceParameterSet
             BitDepthLuma = (int)bdl + 8,
             BitDepthChroma = (int)bdc + 8,
             MaxNumReorderPics = (int)Math.Min(reorder, 64u),
+            Log2MaxPicOrderCntLsb = (int)log2PocLsbMinus4 + 4,
             MaxDecPicBuffering = (int)Math.Min(buffering, 65u),
             Color = ColorInfo.Unspecified,
         };
@@ -640,6 +644,15 @@ public readonly record struct PictureParameterSet
     /// <summary>entropy_coding_sync_enabled_flag.</summary>
     public bool EntropyCodingSyncEnabled { get; init; }
 
+    /// <summary>dependent_slice_segments_enabled_flag.</summary>
+    public bool DependentSliceSegmentsEnabled { get; init; }
+
+    /// <summary>output_flag_present_flag.</summary>
+    public bool OutputFlagPresent { get; init; }
+
+    /// <summary>num_extra_slice_header_bits.</summary>
+    public int NumExtraSliceHeaderBits { get; init; }
+
     /// <summary>Parses a picture parameter set.</summary>
     /// <param name="nal">The NAL unit including its two-byte header.</param>
     /// <param name="pps">The result when true.</param>
@@ -655,7 +668,10 @@ public readonly record struct PictureParameterSet
         BitReader r = new(nal[2..], removeEmulationPrevention: true);
         uint id = r.ReadUe();
         uint spsId = r.ReadUe();
-        r.SkipBits(2 + 3 + 1 + 1); // dependent_slice_segments, output_flag_present, num_extra_slice_header_bits, sign_data_hiding, cabac_init_present
+        bool dependentSlices = r.ReadFlag();
+        bool outputFlagPresent = r.ReadFlag();
+        int extraSliceHeaderBits = (int)r.ReadBits(3);
+        r.SkipBits(1 + 1); // sign_data_hiding, cabac_init_present
         r.ReadUe();
         r.ReadUe();
         r.ReadSe();
@@ -675,7 +691,7 @@ public readonly record struct PictureParameterSet
             return false;
         }
 
-        pps = new PictureParameterSet { PpsId = (int)id, SpsId = (int)spsId, TilesEnabled = tiles, EntropyCodingSyncEnabled = sync };
+        pps = new PictureParameterSet { PpsId = (int)id, SpsId = (int)spsId, TilesEnabled = tiles, EntropyCodingSyncEnabled = sync, DependentSliceSegmentsEnabled = dependentSlices, OutputFlagPresent = outputFlagPresent, NumExtraSliceHeaderBits = extraSliceHeaderBits };
         return true;
     }
 }
