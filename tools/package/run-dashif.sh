@@ -11,4 +11,6 @@ PORT=$((20000 + RANDOM % 20000))
 trap 'kill $SRV 2>/dev/null' EXIT
 sleep 1
 cd "$D/app"
+# The validator keeps what it fetched in its file cache and reuses it for the next run, whatever the URL; every run starts with an empty cache.
+rm -rf storage/framework/cache/data/* 2>/dev/null
 if [ $# -eq 0 ]; then php artisan app:analyze-manifest --all "http://127.0.0.1:$PORT/manifest.mpd"; else php artisan app:analyze-manifest "http://127.0.0.1:$PORT/manifest.mpd" "$@"; fi
