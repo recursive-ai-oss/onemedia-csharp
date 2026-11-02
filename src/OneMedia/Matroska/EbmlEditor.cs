@@ -46,6 +46,13 @@ public sealed class EbmlEditor
     /// </summary>
     public bool RewriteHeaders { get; set; }
 
+    /// <summary>
+    /// Bytes of Void element to leave after an element that has to grow, or after an element added where there was no Void to take it, so that a
+    /// later edit fits in place. Default 0 (no padding); values below 2 (the smallest Void element) are treated as 0. An edit that fits the
+    /// existing layout, and a file that is not edited, never gain padding.
+    /// </summary>
+    public long GrowthPadding { get; set; }
+
     /// <summary>Replaces an element with a new element.</summary>
     /// <param name="element">The element to replace.</param>
     /// <param name="newElement">The complete new element (ID, size and payload).</param>
@@ -277,6 +284,15 @@ public sealed class EbmlEditor
         return null;
     }
 
+    // An element that had to grow leaves a Void element behind it, so that a later edit can be saved in place.
+    private void AddGrowthPadding(PieceList into)
+    {
+        if (GrowthPadding >= 2)
+        {
+            PaddingPieces.AddVoid(into, GrowthPadding);
+        }
+    }
+
     private static bool Fits(long remainder) => remainder == 0 || remainder >= 2;
 
     private void PlanReplace(Rewriter rw, HashSet<EbmlElement> consumed, Request r, ref long used, ref long available, ref long required)
@@ -295,7 +311,7 @@ public sealed class EbmlEditor
         else if (m < n && Fits(n - m))
         {
             repl.AddData(bytes);
-            repl.AddData(EbmlWriter.Void(n - m));
+            PaddingPieces.AddVoid(repl, n - m);
             name += " (remainder kept as Void)";
         }
         else
@@ -308,7 +324,7 @@ public sealed class EbmlEditor
                 repl.AddData(bytes);
                 if (f - (m - n) > 0)
                 {
-                    repl.AddData(EbmlWriter.Void(f - (m - n)));
+                    PaddingPieces.AddVoid(repl, f - (m - n));
                 }
 
                 used += m - n;
@@ -320,7 +336,11 @@ public sealed class EbmlEditor
                 repl.AddData(bytes);
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? TotalSize(next) : 0;
                 available += free;
-                required += m > n ? Math.Max(1, m - n - free) : 1;
+                required += m > n ? Math.Max(1, m - n - free) : 2 - (n - m); // a gap of one byte cannot hold a Void element
+                if (m > n)
+                {
+                    AddGrowthPadding(repl);
+                }
             }
         }
 
@@ -335,7 +355,7 @@ public sealed class EbmlEditor
         string name = node.Name ?? $"0x{node.Id:X}";
         if (!r.Reclaim)
         {
-            repl.AddData(EbmlWriter.Void(n));
+            PaddingPieces.AddVoid(repl, n);
         }
 
         rw.AddSlot(node, node, repl, r.Reclaim ? $"remove {name}" : $"clear {name} to a Void element");
@@ -364,7 +384,7 @@ public sealed class EbmlEditor
             repl.AddData(bytes);
             if (f - m > 0)
             {
-                repl.AddData(EbmlWriter.Void(f - m));
+                PaddingPieces.AddVoid(repl, f - m);
             }
 
             used += m;
@@ -378,6 +398,7 @@ public sealed class EbmlEditor
         required += Math.Max(1, m - free);
         PieceList added = new();
         added.AddData(bytes);
+        AddGrowthPadding(added);
         rw.AddAppendElement(parent, added);
     }
 

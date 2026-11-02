@@ -78,10 +78,11 @@ internal static class WriterTarget
             case Family.Iso:
                 {
                     BoxTree tree = new(src, Limits, log);
-                    BoxEditor e = new(tree, src, Limits) { RewriteHeaders = strict };
+                    BoxEditor e = new(tree, src, Limits) { RewriteHeaders = strict, GrowthPadding = append ? 200 : 0 };
                     if (append)
                     {
                         e.AppendChild(null, BoxBuilder.CreateFree(64));
+                        e.AppendChild(null, BoxBuilder.Create(BoxTypes.Make("zzzz"), new byte[600]));
                     }
 
                     EditPlan plan = e.Build();
@@ -91,10 +92,11 @@ internal static class WriterTarget
             case Family.Ebml:
                 {
                     EbmlDocument doc = EbmlDocument.Open(src, Limits, log);
-                    EbmlEditor e = new(doc, src, Limits) { RewriteHeaders = strict };
+                    EbmlEditor e = new(doc, src, Limits) { RewriteHeaders = strict, GrowthPadding = append ? 200 : 0 };
                     if (append && doc.Segment is not null)
                     {
                         e.AppendChild(doc.Segment, EbmlWriter.Void(64));
+                        e.AppendChild(doc.Segment, EbmlWriter.Element(0xBF, new byte[600]));
                     }
 
                     EditPlan plan = e.Build();
@@ -104,10 +106,11 @@ internal static class WriterTarget
             default:
                 {
                     ChunkFile cf = ChunkFile.TryOpen(src, Limits, log) ?? throw new MediaFormatException("Not a chunk file.");
-                    ChunkEditor e = new(cf, src, Limits) { RewriteHeaders = strict };
+                    ChunkEditor e = new(cf, src, Limits) { RewriteHeaders = strict, GrowthPadding = append ? 200 : 0 };
                     if (append)
                     {
                         e.AppendChild(null, ChunkBuilder.CreatePadding(cf.Layout, 64));
+                        e.AppendChild(null, ChunkBuilder.CreatePadding(cf.Layout, 600));
                     }
 
                     EditPlan plan = e.Build();

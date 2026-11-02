@@ -32,13 +32,22 @@ internal static class MatroskaTagWriter
     {
         EbmlDocument doc = EbmlDocument.Open(src, limits, null, ct);
         EbmlElement seg = doc.Segment ?? throw new UnsupportedMediaException("The file has no Segment; its tags cannot be edited.");
-        EbmlEditor editor = new(doc, src, limits);
+        EbmlEditor editor = new(doc, src, limits) { GrowthPadding = options.PaddingBytes };
         List<SystemWriteReport> reports = [];
         IReadOnlyList<EbmlElement> children = seg.ChildElements;
 
         // Damage in front of the first Cluster, or a top-level element of unknown size that is not a Segment or Cluster anywhere (bytes that no element accounts for, sizes that run past their parent or are unknown where they cannot be, a SeekHead whose entries were cut back; a wrong CRC-32 is no bar, the editor recomputes it, and neither is a Segment cut off by the end of a truncated file) leaves the
         // reader's picture of the file resting on luck: it found its way by searching, and moving anything could change what it finds. Such a file is repaired first, not
         // edited. Damage after the head (a cut-off last Cluster) does not matter here.
+        // Bytes after the Segment that are no element (a run of zeros left by a tool, for example) are a different matter from damage inside it.
+        foreach (MediaDefect d in doc.Defects)
+        {
+            if (d.Severity == DefectSeverity.Error && d.Offset >= seg.Range.End)
+            {
+                throw new UnsupportedMediaException($"The file has {src.Length - d.Offset} byte(s) after the Segment that are not an element (from offset {d.Offset}); remove them before editing its tags.") { Offset = d.Offset };
+            }
+        }
+
         long firstCluster = children.FirstOrDefault(c => c.Id == 0x1F43B675)?.Offset ?? seg.Range.End;
         if (doc.Defects.Any(d => d.Offset > seg.Offset && ((d.Kind != DefectKind.ChecksumMismatch && d.Offset < firstCluster) || d.Kind == DefectKind.InvalidSize)) || children.Any(c => c.Id == 0x114D9B74 && HasCutBackSize(c)))
         {

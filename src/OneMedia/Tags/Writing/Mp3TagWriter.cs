@@ -8,7 +8,16 @@ using RecursiveAI.OneMedia.Tags.Id3;
 namespace RecursiveAI.OneMedia.Tags;
 
 /// <summary>One replacement of a byte range of the source by new bytes (or, with a zero length, an insertion).</summary>
-internal readonly record struct Replacement(long Offset, long Length, byte[] Data, string Description);
+/// <param name="Offset">Where the replaced range starts.</param>
+/// <param name="Length">Length of the replaced range.</param>
+/// <param name="Data">The new bytes.</param>
+/// <param name="Description">What is replaced, for the report.</param>
+/// <param name="ZeroPad">Zero bytes that follow <paramref name="Data"/> (tag padding); generated when written, never held.</param>
+internal readonly record struct Replacement(long Offset, long Length, byte[] Data, string Description, long ZeroPad = 0)
+{
+    /// <summary>Length of the new content: the bytes plus the padding.</summary>
+    public long NewLength => Data.Length + ZeroPad;
+}
 
 internal static class ReplacementPlan
 {
@@ -23,8 +32,9 @@ internal static class ReplacementPlan
             list.AddCopy(pos, r.Offset - pos);
             long start = list.Length;
             list.AddData(r.Data);
+            list.AddZeros(r.ZeroPad);
             list.NoteChange(r.Description, new ByteRange(r.Offset, r.Length), start);
-            required += Math.Max(0, r.Data.Length - r.Length);
+            required += Math.Max(0, r.NewLength - r.Length);
             pos = r.Offset + r.Length;
         }
 
@@ -66,15 +76,15 @@ internal static class Mp3TagWriter
         {
             if (tags.Count == 0)
             {
-                (byte[] fresh, SystemWriteReport created, List<string> n0) = BuildId3v2(src, null, edits, options, limits, 0);
+                (byte[] fresh, long freshPad, SystemWriteReport created, List<string> n0) = BuildId3v2(src, null, edits, options, limits, 0);
                 notes.AddRange(n0);
                 reports.Add(created);
-                reps.Add(new Replacement(0, 0, fresh, "ID3v2 tag"));
+                reps.Add(new Replacement(0, 0, fresh, "ID3v2 tag", freshPad));
             }
 
             for (int i = 0; i < tags.Count; i++)
             {
-                (byte[] newTag, SystemWriteReport r, List<string> n) = BuildId3v2(src, tags[i], edits, options, limits, tags[i].Range.Length);
+                (byte[] newTag, long newPad, SystemWriteReport r, List<string> n) = BuildId3v2(src, tags[i], edits, options, limits, tags[i].Range.Length);
                 notes.AddRange(n);
                 if (i == 0)
                 {
@@ -85,7 +95,7 @@ internal static class Mp3TagWriter
                     notes.Add($"A further ID3v2 tag follows the first (at {tags[i].Range.Offset}); it received the same edits.");
                 }
 
-                reps.Add(new Replacement(tags[i].Range.Offset, tags[i].Range.Length, newTag, "ID3v2 tag"));
+                reps.Add(new Replacement(tags[i].Range.Offset, tags[i].Range.Length, newTag, "ID3v2 tag", newPad));
             }
         }
 
@@ -124,8 +134,22 @@ internal static class Mp3TagWriter
             }
         }
 
-        EditPlan plan = ReplacementPlan.Build(length, reps.Where(x => x.Length != x.Data.Length || !x.Data.AsSpan().SequenceEqual(ReadRange(src, new ByteRange(x.Offset, x.Length)))), padAvail);
+        EditPlan plan = ReplacementPlan.Build(length, reps.Where(x => !Unchanged(src, x)), padAvail);
         return new TagWritePlan(plan, new TagWriteReport(reports, notes));
+    }
+
+    // A replacement that would write the bytes already there is dropped, so that an edit which changes nothing leaves the tag as it is. A tag's
+    // padding is not compared (it would mean reading all of it): when the new head equals the old head and the length is the same, the old padding stays.
+    private static bool Unchanged(IMediaSource src, Replacement x)
+    {
+        if (x.Length != x.NewLength || x.Data.Length > x.Length)
+        {
+            return false;
+        }
+
+        byte[] old = new byte[x.Data.Length];
+        src.ReadExactly(x.Offset, old);
+        return old.AsSpan().SequenceEqual(x.Data);
     }
 
     private static byte[] ReadRange(IMediaSource src, ByteRange r)
@@ -357,9 +381,17 @@ internal static class Mp3TagWriter
         public bool Deleted { get; set; }
     }
 
-    internal static (byte[] Tag, SystemWriteReport Report, List<string> Notes) BuildId3v2Public(IMediaSource src, Id3Tag? tag, TagEdits edits, TagWriteOptions options, MediaLimits limits, long oldLength) => BuildId3v2(src, tag, edits, options, limits, oldLength);
+    // For tags inside a chunk of a RIFF file: the chunk builder needs the whole payload, so the padding is materialised here.
+    internal static (byte[] Tag, SystemWriteReport Report, List<string> Notes) BuildId3v2Public(IMediaSource src, Id3Tag? tag, TagEdits edits, TagWriteOptions options, MediaLimits limits, long oldLength)
+    {
+        (byte[] head, long pad, SystemWriteReport report, List<string> notes) = BuildId3v2(src, tag, edits, options, limits, oldLength);
+        byte[] whole = new byte[head.Length + pad];
+        head.CopyTo(whole, 0);
+        return (whole, report, notes);
+    }
 
-    private static (byte[] Tag, SystemWriteReport Report, List<string> Notes) BuildId3v2(IMediaSource src, Id3Tag? tag, TagEdits edits, TagWriteOptions options, MediaLimits limits, long oldLength)
+    // Returns the tag header and frames, and the number of zero padding bytes that follow them.
+    private static (byte[] Tag, long ZeroPad, SystemWriteReport Report, List<string> Notes) BuildId3v2(IMediaSource src, Id3Tag? tag, TagEdits edits, TagWriteOptions options, MediaLimits limits, long oldLength)
     {
         List<string> notes = [];
         int version = options.Id3v2Version == 3 ? 3 : 4;
@@ -487,7 +519,7 @@ internal static class Mp3TagWriter
             bodyLength = framesLength + options.PaddingBytes;
         }
 
-        byte[] result = new byte[10 + bodyLength];
+        byte[] result = new byte[10 + framesLength];
         "ID3"u8.CopyTo(result);
         result[3] = (byte)version;
         result[4] = 0;
@@ -501,7 +533,7 @@ internal static class Mp3TagWriter
         }
 
         _ = padAvail;
-        return (result, rep with { Conversions = conv, Created = created }, notes);
+        return (result, bodyLength - framesLength, rep with { Conversions = conv, Created = created }, notes);
     }
 
     private static bool Matches(FrameOut f, string key, IReadOnlyList<string> aliases)

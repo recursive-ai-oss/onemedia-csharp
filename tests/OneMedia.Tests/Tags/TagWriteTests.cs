@@ -380,7 +380,8 @@ public sealed class TagWriteTests
         byte[] result = Apply(wave, e);
         using MemoryMediaSource src = new(result);
         ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog(MediaLimits.Default))!;
-        Assert.Equal(["fmt ", "data", "LIST", "id3 "], cf.Chunks.Select(c => c.Id).ToArray());
+        // The growing chunks each leave a JUNK chunk behind them (the default padding); they are not what this test is about.
+        Assert.Equal(["fmt ", "data", "LIST", "id3 "], cf.Chunks.Select(c => c.Id).Where(id => id != "JUNK").ToArray());
         Assert.All(cf.Chunks, c => Assert.Equal(0, c.Offset % 2));
         using MediaFile m = MediaFile.Open(src);
         Assert.Single(m.Tags.Pictures);
