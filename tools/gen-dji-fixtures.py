@@ -23,7 +23,7 @@ def full(typ, version, flags, *parts):
     return box(typ, struct.pack(">I", (version << 24) | flags), *parts)
 
 
-def mp4(entry_type, handler, samples, timescale=1000, delta=100, text=False):
+def mp4(entry_type, handler, samples, timescale=1000, delta=100, text=False, udta=b""):
     """samples: list of bytes; one sample per `delta` ticks."""
     n = len(samples)
     dur = n * delta
@@ -50,7 +50,7 @@ def mp4(entry_type, handler, samples, timescale=1000, delta=100, text=False):
     dinf = box(b"dinf", full(b"dref", 0, 0, struct.pack(">I", 1), full(b"url ", 0, 1)))
     minf = box(b"minf", nmhd, dinf, stbl)
     mdia = box(b"mdia", mdhd, hdlr, minf)
-    moov = box(b"moov", mvhd, box(b"trak", tkhd, mdia))
+    moov = box(b"moov", mvhd, box(b"trak", tkhd, mdia), box(b"udta", udta) if udta else b"")
     mdat_payload = b"".join(samples)
     data_off = len(ftyp) + len(moov) + 8
     moov = moov.replace(struct.pack(">IIII", 20, 0, 0, 0)[:0] + full(b"stco", 0, 0, struct.pack(">II", 1, 0)), full(b"stco", 0, 0, struct.pack(">II", 1, data_off)))
@@ -141,6 +141,26 @@ def djmd_osmo_sample(i):
     ])
 
 
+def klv(key, typ, size, repeat, data):
+    if typ == b"c":
+        repeat = len(data)  # text: one byte per element
+    data = data + b"\0" * (-len(data) % 4)
+    return key + typ + bytes([size]) + struct.pack(">H", repeat) + data
+
+
+def gopro_device_files(out):
+    """A GoPro-style file: a gpmd track whose device is named "Fusion", and a udta GPMF atom with the camera model (MINF)."""
+    isog = klv(b"ISOG", b"f", 4, 1, struct.pack(">f", 100.0))
+    strm_body = klv(b"STNM", b"c", 1, 17, b"ISO sensor gain") + isog
+    strm = b"STRM" + b"\0" + bytes([1]) + struct.pack(">H", len(strm_body)) + strm_body
+    dev_body = klv(b"DVID", b"L", 4, 1, struct.pack(">I", 1)) + klv(b"DVNM", b"c", 1, 6, b"Fusion") + strm
+    devc = b"DEVC" + b"\0" + bytes([1]) + struct.pack(">H", len(dev_body)) + dev_body
+    u_body = klv(b"DVID", b"L", 4, 1, struct.pack(">I", 1)) + klv(b"DVNM", b"c", 1, 15, b"Global Settings") + klv(b"MINF", b"c", 1, 11, b"HERO8 Black")
+    u_devc = b"DEVC" + b"\0" + bytes([1]) + struct.pack(">H", len(u_body)) + u_body
+    atom = box(b"GPMF", u_devc)
+    open(os.path.join(out, "gpmf-device.mp4"), "wb").write(mp4(b"gpmd", b"meta", [devc, devc], udta=atom))
+
+
 def srt_text(i):
     lat, lon = 52.5 + i * 1e-4, 13.4 + i * 1e-4
     return (f'<font size="36">SrtCnt : {i + 1}, DiffTime : 33ms\n2024-01-15 14:30:{22 + i // 10:02d},{(i % 10) * 100:03d}\n'
@@ -162,6 +182,7 @@ def main():
     for wire in ("f32", "f64", "varint"):
         samples = [djmd_sample(wire, i) for i in range(5)]
         open(os.path.join(out, f"djmd-{wire}.mp4"), "wb").write(mp4(b"djmd", b"meta", samples))
+    gopro_device_files(out)
     texts = [srt_text(i) for i in range(5)]
     blocks = []
     for i, t in enumerate(texts):

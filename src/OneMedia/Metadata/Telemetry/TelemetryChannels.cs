@@ -105,6 +105,7 @@ public static class TelemetryChannels
         {
             TrackId = trackId,
             Label = info.Label,
+            DeviceName = info.DeviceName,
             Units = info.Units,
             NominalRateHz = rate,
         };
@@ -217,6 +218,67 @@ public static class TelemetryFacts
 
         return result;
     }
+
+    // GPMF device names that name a block of settings or a lens rather than the camera.
+    private static readonly string[] GenericDeviceNames = ["Camera", "Global Settings", "Highlights", "Geometry Calibrations", "IMU Calibrations", "Back Lens", "Front Lens", "Rear Lens"];
+
+    /// <summary>
+    /// The device maker the telemetry implies: GoPro for a GPMF stream, DJI for <c>djmd</c> metadata. Neither format writes the maker as text, so the
+    /// candidate says it is inferred from the format.
+    /// </summary>
+    /// <param name="channels">Channels from <see cref="TelemetryChannels.Read"/>.</param>
+    /// <returns>At most one candidate per format.</returns>
+    public static IReadOnlyList<FactCandidate<string>> MakeCandidates(IReadOnlyList<TelemetryChannel> channels)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+        List<FactCandidate<string>> result = [];
+        foreach ((string format, string make) in new[] { ("gpmf", "GoPro"), ("djmd", "DJI") })
+        {
+            foreach (TelemetryChannel c in channels)
+            {
+                if (c.Format == format)
+                {
+                    result.Add(new FactCandidate<string>(make, "telemetry:" + format, make, "inferred: only " + make + " cameras write this telemetry format"));
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The device model the telemetry states: the GPMF <c>MINF</c> text when the track carries it, else the first GPMF device name that is not a generic
+    /// settings block (for example <c>Fusion</c>); the model string of <c>djmd</c> metadata.
+    /// </summary>
+    /// <param name="channels">Channels from <see cref="TelemetryChannels.Read"/>.</param>
+    /// <returns>Candidates, with the byte range of the text where it is a raw item.</returns>
+    public static IReadOnlyList<FactCandidate<string>> ModelCandidates(IReadOnlyList<TelemetryChannel> channels)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+        List<FactCandidate<string>> result = [];
+        foreach (TelemetryChannel c in channels)
+        {
+            if (c.Kind == TelemetryKind.Unknown && ((c.Format == "gpmf" && c.Name == "MINF") || (c.Format == "djmd" && c.Name == "model")) && c.Samples.Count > 0
+                && c.Samples[0] is RawTelemetrySample raw && Text(raw.Data.Span) is { Length: > 0 } text)
+            {
+                result.Add(new FactCandidate<string>(text, "telemetry:" + c.Format + ":" + c.Name, text, "text as written", TimeZoneCertainty.Unknown, raw.Range));
+            }
+        }
+
+        foreach (TelemetryChannel c in channels)
+        {
+            if (c.Format == "gpmf" && c.DeviceName.Length > 0 && Array.IndexOf(GenericDeviceNames, c.DeviceName) < 0)
+            {
+                result.Add(new FactCandidate<string>(c.DeviceName, "telemetry:gpmf:DVNM", c.DeviceName, "GPMF device name that is not a settings block"));
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static string Text(ReadOnlySpan<byte> data) => System.Text.Encoding.Latin1.GetString(data).Trim(' ', ' ');
 
     /// <summary>The earliest UTC time a GPS channel reports with a usable fix, as a capture-time candidate: the camera clock cannot say it better than the satellites.</summary>
     /// <param name="channels">Channels from <see cref="TelemetryChannels.Read"/>.</param>

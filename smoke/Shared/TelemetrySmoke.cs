@@ -37,7 +37,7 @@ internal static class TelemetrySmoke
                 gps |= c.Kind == TelemetryKind.Gps && c.Samples.Count > 0;
             }
 
-            check("telemetry " + name, tracks == 1 && items > 5 && gps);
+            check("telemetry " + name, tracks == 1 && items > (format == TelemetryFormat.Mdpm ? 2 : 5) && gps);
         }
     }
 

@@ -176,8 +176,9 @@ public sealed class DefaultFactResolver : IFactResolver
     public MediaFacts Resolve(FactEvidence evidence)
     {
         ArgumentNullException.ThrowIfNull(evidence);
-        Fact<string> make = Order(evidence.Make, "make");
-        Fact<string> model = Order(evidence.Model, "model");
+        // Telemetry names the device only when nothing else does: its candidates follow the container's and the sidecars'.
+        Fact<string> make = Order([.. evidence.Make, .. Telemetry.TelemetryFacts.MakeCandidates(evidence.Telemetry)], "make");
+        Fact<string> model = Order([.. evidence.Model, .. Telemetry.TelemetryFacts.ModelCandidates(evidence.Telemetry)], "model");
         DeviceProfile? profile = Profiles.Find(make.Best?.Value, model.Best?.Value, SoftwareForProfile(evidence));
 
         return new MediaFacts(

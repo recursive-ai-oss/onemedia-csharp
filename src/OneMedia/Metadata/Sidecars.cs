@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Xml;
+using RecursiveAI.OneMedia.Metadata.Telemetry.Dji;
 using RecursiveAI.OneMedia.Tags.Xmp;
 
 namespace RecursiveAI.OneMedia.Metadata;
@@ -254,8 +255,8 @@ public static class Sidecars
 
     /// <summary>
     /// Reads a DJI SRT file's first frames: the wall-clock time of frame 1 (<c>YYYY-MM-DD HH:MM:SS.mmm</c>, no zone) moved back by the frame's cue start,
-    /// and the first non-zero <c>[latitude: …] [longitude: …]</c> position with <c>abs_alt</c>. Only the bracketed layout is understood; the older
-    /// <c>GPS (a, b, c)</c> layout is reported as a defect because its coordinate order was not settled by a published sample.
+    /// and the first non-zero position with its absolute altitude. The text is read by <see cref="DjiSrt"/>, the same parser that
+    /// decodes the full telemetry, so every layout it knows (bracketed pairs, <c>GPS(lat,lon,alt)</c>) gives evidence.
     /// </summary>
     /// <param name="data">The SRT bytes; only the first 64 KiB are read.</param>
     /// <param name="limits">Resource limits; <see cref="MediaLimits.Default"/> when <c>null</c>.</param>
@@ -270,145 +271,39 @@ public static class Sidecars
             head = head[..SrtHeadBytes];
         }
 
-        string text = System.Text.Encoding.UTF8.GetString(head).Replace("\r", string.Empty, StringComparison.Ordinal);
-        string[] lines = text.Split('\n');
-        long cueStartTicks = 0;
-        bool haveTime = false;
-        bool sawGpsForm = false;
-        foreach (string raw in lines)
+        // One parser serves both the telemetry channels and this evidence: the first frames' channels give the clock and the position.
+        foreach (TelemetryChannel c in DjiSrt.Read(head))
         {
-            string line = raw.Trim();
-            int arrow = line.IndexOf("-->", StringComparison.Ordinal);
-            if (arrow > 0 && TryParseSrtTime(line.AsSpan(0, arrow), out long start))
+            if (c.Name == "dji clock" && set.CaptureTime.Count == 0)
             {
-                if (!haveTime)
+                foreach (TelemetrySample sample in c.Samples)
                 {
-                    cueStartTicks = start;
-                }
-
-                continue;
-            }
-
-            if (!haveTime && TryFindTimestamp(line, out MediaDateTime dt, out string rawTime))
-            {
-                haveTime = true;
-                DateTime first = dt.Value.AddTicks(-cueStartTicks);
-                set.CaptureTime = [new FactCandidate<MediaDateTime>(dt with { Value = first }, "sidecar:dji-srt:timestamp", rawTime,
-                    "wall-clock time of frame 1 in the SRT text, moved back by the cue start; no time zone is written")];
-            }
-
-            if (set.Location.Count == 0)
-            {
-                if (TryBracket(line, "latitude", out double lat) && TryBracket(line, "longitude", out double lon) && Math.Abs(lat) <= 90 && Math.Abs(lon) <= 180 && !(lat == 0 && lon == 0))
-                {
-                    double? alt = TryBracket(line, "abs_alt", out double a) ? a : null;
-                    set.Location = [new FactCandidate<GeoLocation>(new GeoLocation(lat, lon, alt), "sidecar:dji-srt:position", string.Create(CultureInfo.InvariantCulture, $"{lat} {lon}"),
-                        "first non-zero [latitude] [longitude] of the file; altitude is abs_alt (metres above sea level)")];
-                }
-                else if (line.Contains("GPS (", StringComparison.Ordinal) || line.Contains("GPS(", StringComparison.Ordinal))
-                {
-                    sawGpsForm = true;
+                    if (sample is ScalarSample { Values.Count: >= 7 } k && !double.IsNaN(k.Values[0]))
+                    {
+                        DateTime wall = new((int)k.Values[0], (int)k.Values[1], (int)k.Values[2], (int)k.Values[3], (int)k.Values[4], Math.Min((int)k.Values[5], 59), (int)k.Values[6], DateTimeKind.Unspecified);
+                        long cueTicks = sample.Time.IsKnown ? sample.Time.Rescale(10_000_000, MediaRounding.NearestEven).Ticks : 0;
+                        string rawTime = string.Create(CultureInfo.InvariantCulture, $"{wall:yyyy-MM-dd HH:mm:ss.fff}");
+                        set.CaptureTime = [new FactCandidate<MediaDateTime>(new MediaDateTime(wall.AddTicks(-cueTicks), null, TimeZoneCertainty.Unknown), "sidecar:dji-srt:timestamp", rawTime,
+                            "wall-clock time of frame 1 in the SRT text, moved back by the cue start; no time zone is written")];
+                        break;
+                    }
                 }
             }
-
-            if (haveTime && set.Location.Count > 0)
+            else if (c.Name == "dji gps" && set.Location.Count == 0)
             {
-                break;
-            }
-        }
-
-        if (sawGpsForm && set.Location.Count == 0)
-        {
-            set.Defects.Add(DefectKind.Unsupported, DefectSeverity.Info, -1, "The DJI SRT uses the GPS (a, b, c) layout, whose position is not read.", "sidecar.dji-gps-form");
-        }
-
-        return set;
-    }
-
-    // "00:00:01,033" or "00:00:01.033" to 100 ns ticks.
-    private static bool TryParseSrtTime(ReadOnlySpan<char> s, out long ticks)
-    {
-        ticks = 0;
-        s = s.Trim();
-        if (s.Length < 12 || s[2] != ':' || s[5] != ':' || s[8] is not (',' or '.'))
-        {
-            return false;
-        }
-
-        if (!int.TryParse(s[..2], NumberStyles.None, CultureInfo.InvariantCulture, out int h) || !int.TryParse(s.Slice(3, 2), NumberStyles.None, CultureInfo.InvariantCulture, out int m)
-            || !int.TryParse(s.Slice(6, 2), NumberStyles.None, CultureInfo.InvariantCulture, out int sec) || !int.TryParse(s.Slice(9, 3), NumberStyles.None, CultureInfo.InvariantCulture, out int ms))
-        {
-            return false;
-        }
-
-        ticks = ((((h * 60L) + m) * 60L) + sec) * 10_000_000L + (ms * 10_000L);
-        return true;
-    }
-
-    // "2023-02-24 08:47:37.832" anywhere in the line, with an optional ",uuu" microsecond tail.
-    private static bool TryFindTimestamp(string line, out MediaDateTime value, out string raw)
-    {
-        value = default;
-        raw = string.Empty;
-        for (int i = 0; i + 19 <= line.Length; i++)
-        {
-            if (line[i] == '2' && i + 4 < line.Length && line[i + 4] == '-' && char.IsAsciiDigit(line[i + 1]) && (i == 0 || !char.IsAsciiDigit(line[i - 1])))
-            {
-                int end = i + 19;
-                while (end < line.Length && (char.IsAsciiDigit(line[end]) || line[end] == '.' || (line[end] == ',' && end + 1 < line.Length && char.IsAsciiDigit(line[end + 1]))))
+                foreach (TelemetrySample sample in c.Samples)
                 {
-                    end++;
-                }
-
-                string candidate = line[i..end];
-                // The ",uuu" tail of a microsecond-precision stamp is not part of the fraction MediaDateTime reads.
-                int comma = candidate.IndexOf(',', 19 < candidate.Length ? 19 : 0);
-                string parse = comma > 19 ? candidate[..comma] : candidate;
-                if (MediaDateTime.TryParse(parse, out value, out bool dateOnly) && !dateOnly)
-                {
-                    raw = candidate;
-                    return true;
+                    if (sample is GpsSample g && Math.Abs(g.Latitude) <= 90 && Math.Abs(g.Longitude) <= 180 && !(g.Latitude == 0 && g.Longitude == 0))
+                    {
+                        set.Location = [new FactCandidate<GeoLocation>(new GeoLocation(g.Latitude, g.Longitude, g.Altitude), "sidecar:dji-srt:position", string.Create(CultureInfo.InvariantCulture, $"{g.Latitude} {g.Longitude}"),
+                            "first non-zero position of the file; altitude is abs_alt (metres above sea level) or the third GPS() value")];
+                        break;
+                    }
                 }
             }
         }
 
-        return false;
-    }
-
-    // "[latitude: 12.345678]" or "[latitude : 12.3]" or inside "[rel_alt: 0.5 abs_alt: 101.2]".
-    private static bool TryBracket(string line, string key, out double value)
-    {
-        value = 0;
-        int i = line.IndexOf(key, StringComparison.Ordinal);
-        while (i >= 0)
-        {
-            int p = i + key.Length;
-            while (p < line.Length && line[p] == ' ')
-            {
-                p++;
-            }
-
-            if (p < line.Length && line[p] == ':')
-            {
-                p++;
-                while (p < line.Length && line[p] == ' ')
-                {
-                    p++;
-                }
-
-                int q = p;
-                while (q < line.Length && (char.IsAsciiDigit(line[q]) || line[q] is '.' or '-' or '+'))
-                {
-                    q++;
-                }
-
-                return q > p && double.TryParse(line.AsSpan(p, q - p), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
-            }
-
-            i = line.IndexOf(key, i + 1, StringComparison.Ordinal);
-        }
-
-        return false;
+        return set;
     }
 
     private static void Copy(MediaFacts f, EvidenceSet set)

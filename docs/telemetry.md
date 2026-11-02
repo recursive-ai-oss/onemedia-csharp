@@ -1,6 +1,6 @@
 # Timed telemetry
 
-Decoders for the timed sensor data that cameras and phones store in a data track of an ISO base media file: GoPro GPMF (`gpmd`), Google CAMM (`camm`) and Apple QuickTime timed metadata (`mebx`). Namespaces `RecursiveAI.OneMedia.Metadata.Telemetry` (reader, items, channels) with `.Gpmf`, `.Camm` and `.Mebx` for the format layers. Nothing is decoded from audio or video samples.
+Decoders for the timed sensor data that cameras and phones store in a data track of an ISO base media file: GoPro GPMF (`gpmd`), Google CAMM (`camm`) and Apple QuickTime timed metadata (`mebx`), DJI per-frame text and `djmd` protobuf, and AVCHD camera data (MDPM) in the SEI of a transport stream. Namespaces `RecursiveAI.OneMedia.Metadata.Telemetry` (reader, items, channels) with `.Gpmf`, `.Camm` and `.Mebx` for the format layers. Nothing is decoded from audio or video samples.
 
 ## API
 
@@ -38,9 +38,46 @@ Packet: u16 reserved, u16 type, little-endian. Types 0 to 7 decode as in the Goo
 
 The sample entry's `keys` box lists local key ids with `keyd` (namespace and key) and `dtyp` (data type). A sample is concatenated atoms `[size][local key id][value]`. Ids 0 and 0xFFFFFFFF are placeholders and ignored. Well-known types 1, 2, 21-24, 28, 65-67, 70-72, 74-79 decode; nested atoms (type 28, e.g. detected-face groups) are walked up to depth 6. `com.apple.quicktime.location.ISO6709` becomes a Gps item. Detected faces are personal data: only synthetic samples are committed, and the nested layout is built from ExifTool's tag documentation and unverified on a device.
 
+## DJI per-frame text (`dji-srt`)
+
+DJI drones write one text block per frame (or per second) as a timed-text (`tx3g`/`text`) subtitle track or as a `.SRT` sidecar. `DjiSrt.Read(bytes or path)` decodes a sidecar; a subtitle track decodes through `media.Telemetry` / `OpenTelemetry` like any other (every `tx3g` or `text` track is a candidate and yields nothing unless its text has DJI keys). There is one parser (`DjiTextDecoder`); `Sidecars.ReadDjiSrt` uses it for the capture-time and location evidence.
+
+Layouts read, from the published descriptions of DJI's output: bracketed `[key: value]` pairs (several pairs may share a bracket, spaces around the colon are free); `SrtCnt`/`FrameCnt` and `DiffTime`; the clock line `YYYY-MM-DD HH:MM:SS,mmm` (comma or dot); `GPS(lat,lon,alt)` with a unit letter after the altitude; `BAROMETER(v)` and `BAROMETER:vM`; the compact line `F/5.6, SS 400, ISO 100, EV 0, GPS (a, b, c)`; `F.PRY (pitch, roll, yaw)` and `G.PRY (...)`. `HOME` and distance fields are not decoded. Keys: `latitude`, `longitude` (also the misspelling `longtitude`), `rel_alt`, `abs_alt`, `iso`, `shutter`, `fnum`, `ev`, `ct`, `focal_len`, `gb_yaw`, `gb_pitch`, `gb_roll`; others (`color_md`, `tint`, `pp_*`, `dzoom_ratio`) are skipped.
+
+Units: `fnum` and `focal_len` written as integers are scaled (f-number / 100, focal length / 10, as the older firmware writes them), written with a decimal point they are literal. A shutter of `1/N` is the exact fraction; `SS N` in the compact line is `1/N`.
+
+| Channel | Kind | Components |
+|---|---|---|
+| `dji gps` | Gps | latitude, longitude, absolute altitude (m), NaN speeds and DOP, fix 0 |
+| `dji altitude` | Scalar | relative altitude, absolute altitude |
+| `dji camera` | CameraSettings | ISO, shutter (s), f-number, EV, colour temperature (K), focal length (mm) |
+| `dji gimbal`, `dji aircraft` | Orientation | yaw, pitch, roll in degrees (`OrientationSample` Euler fields) |
+| `dji barometer` | Scalar | value |
+| `dji clock` | Scalar | year, month, day, hour, minute, second, millisecond, frame counter, DiffTime ms |
+
+The clock line carries no time zone and is not GPS time: `GpsSample.GpsTime` stays empty, the clock is its own channel. Every item's range is the whole text sample (file offset for a track, the cue text inside the sidecar), so a strip operation can blank the block.
+
+Settled by observation, not by a real device file: no freely licensed DJI sample was found (see Verification), so the layouts follow the descriptions. The compact `GPS (a, b, c)` line of the Phantom 4 RTK description shows values that look like longitude first; the decoder reads latitude first as the description says, which is unverified.
+
+## DJI `djmd` protobuf (`djmd`)
+
+Newer DJI cameras write a `djmd` data track of protocol buffer messages (and a `dbgi` track of debug values, hundreds of megabytes per recording, which is not read). `ProtobufReader` walks any message without a schema (field number, wire type, value or payload). `DjmdDecoder` maps fields by protocol name (the first string of the message, for example `dvtm_wm265e.proto`) and path of field numbers, using the paths of the public tag documentation. Conventions were read back from ExifTool 13.60 on synthetic messages (`tools/gen-dji-fixtures.py`): coordinates are doubles (radians when the unit field of the GPS message is 0, degrees otherwise), altitudes are integers in millimetres (the relative one may be a float), attitude is a signed integer in tenths of a degree, ISO and colour temperature are integers. Protocol families mapped: Mavic 3 / Matrice 30 (`wm265e`, `wm260`, `wm261`, `pm320`), Air 3 / Mini 4 Pro / Lito (`Air3`, `Air3s`, `Lito_X1`, `Mini4_Pro`), Mavic 4, Matrice 4E (`wa345e`), Avata 2 / Neo (`AVATA2`, `NEO2`, `dji_neo`), Osmo Action 4 to 6 and Osmo 360 (`ac203`, `ac204`, `ac206`, `oq101`). Shutter, f-number, quaternions, accelerometer and GPS date-time are not mapped (ExifTool's formats for them were not settled by a readable synthetic value); they stay in the raw message.
+
+Channels: `djmd gps`, `djmd altitude`, `djmd camera`, `djmd aircraft`, `djmd gimbal`, `djmd frame` (typed, as for the text), plus raw channels `djmd message` (every sample's whole message, so any unmapped field is reachable with `ProtobufReader` and its byte range), `serial number` and `model` (the strings, with the byte range of the text for a strip). A protocol not in the table gives only the raw channels. Aircraft serial numbers are personal data: those items keep their ranges.
+
+## AVCHD camera data (`mdpm`)
+
+AVCHD camcorders repeat the camera data block (SEI user data unregistered, UUID `17ee8c60-f84d-11d9-8cd6-0800200c9a66`, marker `MDPM`) about once per group of pictures in the H.264 video of an M2TS/MTS stream. The `Mdpm` format reads those blocks from the video packets of a transport stream (`TelemetryTrackReader.FormatOf(file, track)`; it needs the file because only the container tells TS from other H.264). Reading the telemetry therefore reads every video packet of the file: the cameras put the block in the video, and nothing else locates it. A stream without GPS entries yields no channel.
+
+Entries (tag byte and four data bytes; rationals are two big-endian 16-bit halves): `B1`/`B2`-`B4` latitude reference and degrees, minutes, seconds; `B5`/`B6`-`B8` longitude; `B9`/`BA` altitude reference and metres; `BB`-`BD` UTC time of day; `BE` status (`A` active); `BF` measure mode (`2`/`3`); `C0` DOP; `C1`/`C2` speed with unit (K, M, N); `CA`-`CC` date digits. Channel `mdpm gps`: latitude, longitude (signed by the references), altitude, speed (m/s), NaN, DOP, mode; fix 2D/3D only when the status is `A`; `GpsTime` only when the three date entries hold eight digits (`YYYYMMDD`). That date layout is not confirmed on a camera file (ExifTool joins the entries as text and loses the day for the layout we write), so a stream without it reports no GPS time. The item range is the video packet, because the SEI is spread over the transport packets; a strip must rescan it.
+
+## Device facts from telemetry
+
+`TelemetryFacts.MakeCandidates` and `ModelCandidates` feed the default resolver behind the container's own candidates. GoPro: the camera model is the `MINF` text of the GPMF block in the `udta` atom (read at open without touching the track; matches ExifTool's `Model` on all six GoPro files that have one, and ExifTool reports none for the files without), else a `DVNM` device name that is not a settings block (`Camera`, `Global Settings`, `Highlights`, lens and calibration blocks are skipped); the make "GoPro" is inferred from the format. DJI: the `model` string of `djmd` metadata and the make "DJI" inferred from the format. Device names that need the track need `media.Telemetry` to have been read.
+
 ## Defects and limits
 
-Defect codes: `gpmf.truncated` (nested data past its parent, clamped), `gpmf.depth`, `gpmf.type-size`, `camm.short`, `camm.trailing`, `mebx.atom-size`, `telemetry.items`. Limits: 65,536 items per packet, GPMF depth 6, mebx depth 6. Hostile input never throws from the decoders.
+Hostile DJI text, protobuf and SEI input never throws and adds no defect codes (text keys that do not parse are skipped, a damaged protobuf message ends the walk). Defect codes: `gpmf.truncated` (nested data past its parent, clamped), `gpmf.depth`, `gpmf.type-size`, `camm.short`, `camm.trailing`, `mebx.atom-size`, `telemetry.items`. Limits: 65,536 items per packet, GPMF depth 6, mebx depth 6. Hostile input never throws from the decoders.
 
 ## Privacy
 
@@ -63,3 +100,19 @@ Explained differences: ExifTool prints GPS speed in km/h (ours m/s, ratio exactl
 Not compared value by value: HUES, FACE, SCEN (the demo lists complex multi-structure keys differently; HUES first rows match), MFGI and VPTS (no oracle prints them). A mapping of HUES/FACE onto ExifTool tags was tried and dropped because ExifTool's layout differs; they stay raw with ranges.
 
 Fuzz: targets `telemetry-gpmf`, `telemetry-camm`, `telemetry-mebx`, `telemetry-file`.
+
+### DJI and MDPM
+
+Method: `tools/run-dji-mdpm-compare.sh` (synthetic files from `tools/gen-dji-fixtures.py` and `tools/gen-mdpm-gps-fixtures.py`, ExifTool 13.60 `-ee -n -j -G3 -a`, `tools/dji-mdpm-compare.py`).
+
+| Check | Result |
+|---|---|
+| `djmd-real.mp4` (wm265e layout, 5 samples) vs ExifTool | latitude, longitude, absolute and relative altitude, ISO, drone and gimbal yaw/pitch/roll, frame number: equal counts, max difference 0 |
+| `djmd-osmo.mp4` (ac203 layout) vs ExifTool | latitude, longitude, GPS altitude, ISO, colour temperature, frame number: equal, max difference 7e-15 |
+| `mdpm-gps.mts`, `mdpm-south-west.mts` (3 blocks) vs ExifTool | latitude, longitude (signed by the references), altitude, DOP, speed: equal, max difference 4e-14 |
+| published AVCHD samples `dean00007.mts`, `avchd_lite_14s_playback_speed_problems.MTS` | no GPS in either; ExifTool and OneMedia both report none |
+| Pull path | decoders into a reused collector allocate 0 bytes (test); 300,000 text samples (1,200,000 items, 80 MB file): 0 bytes after the first quarter, 41 MB resident |
+
+No freely licensed DJI video or sidecar from a real aircraft was found, so the DJI layouts rest on published format descriptions and ExifTool's reading of synthetic messages; a real file may use protocol arrangements or value types not yet mapped. The first real `djmd` file should be compared with ExifTool before the mapping is called settled.
+
+Fuzz: targets `telemetry-dji-text`, `telemetry-djmd`, `telemetry-mdpm`.
