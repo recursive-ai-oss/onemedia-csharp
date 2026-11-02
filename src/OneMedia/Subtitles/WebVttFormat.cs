@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // W3C WebVTT: the file, block and cue-text syntax (WebVTT §4 and §6.1 parsing, as a tolerant reader).
 internal sealed class WebVttFormat : SubtitleFormat

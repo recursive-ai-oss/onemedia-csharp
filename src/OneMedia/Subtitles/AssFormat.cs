@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // SubStation Alpha (.ssa) and Advanced SubStation Alpha (.ass). There is no formal standard; this follows the widely published
 // description of the sections ([Script Info], [V4+ Styles], [Events]), the Format-line driven field order, and the override tags.

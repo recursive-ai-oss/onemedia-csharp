@@ -1,7 +1,7 @@
 # Subtitles and captions
 
 One cue model carries subtitles whatever holds them: a sidecar file, a container text track, embedded CEA-608/708 captions.
-It lives in `RecursiveAI.OneMedia.Subtitles` (`src/OneMedia/Subtitles/Cues.cs`).
+It lives in `RecursiveAI.OneMedia.Captions` (`src/OneMedia/Subtitles/Cues.cs`).
 
 ## The cue model
 

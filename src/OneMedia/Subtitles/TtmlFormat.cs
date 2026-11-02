@@ -3,7 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Xml;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // TTML2 / DFXP / IMSC1 text profile (W3C TTML2, W3C IMSC 1.0.1). The reader is tolerant about namespaces and units; the writer
 // produces the IMSC1 text profile with media time base (IMSC1 §6.9: ttp:profile on tt, xml:lang required).

@@ -49,6 +49,11 @@ static int Run(string[] args)
         return TagsCommand.Run(args[1..]);
     }
 
+    if (args.Length >= 1 && args[0] == "subs")
+    {
+        return SubsCommand.Run(args[1..]);
+    }
+
     if (args.Length >= 1 && args[0] == "strip")
     {
         return StripCommand.Run(args[1..]);
@@ -67,6 +72,7 @@ static int Run(string[] args)
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     Console.Error.WriteLine(StripCommand.Usage);
+    Console.Error.WriteLine(SubsCommand.Usage);
     return 2;
 }
 

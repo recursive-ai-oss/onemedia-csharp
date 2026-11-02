@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // YouTube SBV: "H:MM:SS.mmm,H:MM:SS.mmm" then text lines, blocks separated by an empty line. Plain text only.
 internal sealed class SbvFormat : SubtitleFormat

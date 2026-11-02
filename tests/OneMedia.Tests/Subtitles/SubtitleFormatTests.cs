@@ -1,7 +1,7 @@
 using System.Text;
-using RecursiveAI.OneMedia.Subtitles;
+using RecursiveAI.OneMedia.Captions;
 
-namespace RecursiveAI.OneMedia.Tests.Subtitles;
+namespace RecursiveAI.OneMedia.Tests.Captions;
 
 public class SubtitleFormatTests
 {

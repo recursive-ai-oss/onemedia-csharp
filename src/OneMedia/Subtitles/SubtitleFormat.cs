@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 /// <summary>What a subtitle format can carry; also names the thing a conversion loss is about.</summary>
 [Flags]
@@ -382,6 +382,41 @@ public static class SubtitleFormats
 
             Volatile.Write(ref s_all, list.ToArray());
         }
+    }
+
+    /// <summary>The features the cues, header and styles of a document use (what a target format would have to carry to be lossless).</summary>
+    /// <param name="document">The document.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
+    public static SubtitleFeatures FeaturesUsed(SubtitleDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        SubtitleFeatures used = SubtitleFeatures.None;
+        foreach (SubtitleCue cue in document.Cues)
+        {
+            used |= SubtitleLoss.Used(cue);
+        }
+
+        if (document.Styles.Count > 0)
+        {
+            used |= SubtitleFeatures.Styles;
+        }
+
+        if (document.Regions.Count > 0)
+        {
+            used |= SubtitleFeatures.Region;
+        }
+
+        if (document.Language is not null)
+        {
+            used |= SubtitleFeatures.Language;
+        }
+
+        if (document.Title is not null)
+        {
+            used |= SubtitleFeatures.Header;
+        }
+
+        return used;
     }
 
     /// <summary>Finds a format by name (<c>srt</c>, <c>webvtt</c>, …; <c>vtt</c>, <c>ssa</c>, <c>dfxp</c>, <c>imsc</c> are accepted too) or by extension.</summary>

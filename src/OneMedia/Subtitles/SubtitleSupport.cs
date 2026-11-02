@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Unicode;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // Shared plumbing for the readers and writers: byte decoding, the cursor that turns text positions into byte offsets and line/column
 // for defects, markup emission, colours and small parsing helpers.

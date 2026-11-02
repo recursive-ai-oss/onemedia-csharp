@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // SubRip (.srt). There is no formal standard; the layout is the one every player reads (numbered blocks, "-->" time lines,
 // <b>/<i>/<u>/<s>/<font> markup). Observed in files written by ffmpeg 7.0.2 and by common subtitle editors.
