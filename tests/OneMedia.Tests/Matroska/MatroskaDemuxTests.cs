@@ -593,6 +593,7 @@ public class MatroskaDemuxTests
         Assert.Equal(expected.Count, n);
     }
 
+    [Trait("Browser", "allocation")]
     [Fact]
     public void PullPathAllocatesNothingPerPacketLacedOrNot()
     {

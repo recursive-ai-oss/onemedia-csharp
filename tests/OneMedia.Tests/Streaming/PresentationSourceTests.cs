@@ -289,6 +289,7 @@ public sealed class PresentationAllocationTests
 {
     private static string Data(params string[] parts) => Path.Combine([AppContext.BaseDirectory, "testdata", "streaming", .. parts]);
 
+    [Trait("Browser", "allocation")]
     [Fact]
     public void PacketsInsideASegmentCostNoAllocation()
     {

@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Builds the unit-test sources of tests/OneMedia.Tests into a browser-wasm app with a small reflection runner (xUnit's own runner
+       needs threads and an app host, which the single-threaded browser runtime has neither of). Run it with tools/wasm-suite. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- The library grants this assembly name access to its internals, which the suite uses. -->
+    <AssemblyName>$(PackagePrefix)OneMedia.Tests</AssemblyName>
+    <!-- The onemedia tool is a plain executable; the suite only calls its types. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <RootNamespace>RecursiveAI.OneMedia.Tests</RootNamespace>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+    <!-- CA1416: the few tests that start processes or watch files are excluded at run time (docs/platforms.md); the call sites still compile. -->
+    <NoWarn>$(NoWarn);xUnit1051;xUnit1031;CA1416</NoWarn>
+    <!-- This is the test host, not the library: it finds tests by reflection. -->
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <IsAotCompatible>false</IsAotCompatible>
+    <DefineConstants>$(DefineConstants);BROWSER_WASM</DefineConstants>
+    <!-- Some tests assert zero allocations; tiered compilation would add allocations of its own. The interpreter ignores it anyway. -->
+    <TieredCompilation>false</TieredCompilation>
+    <!-- Wasm bundle: ship the fixtures in the virtual file system rather than as loose files. -->
+    <WasmEnableThreads>false</WasmEnableThreads>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Linq" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <PackageReference Include="xunit.v3.assert" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../OneMedia.Tests/**/*.cs" Exclude="../OneMedia.Tests/obj/**;../OneMedia.Tests/bin/**" LinkBase="Suite" />
+    <WasmExtraFilesToDeploy Include="main.mjs" />
+  </ItemGroup>
+
+  <Import Project="../OneMedia.Tests/TestFiles.props" />
+
+  <!-- The fixtures the shared props copy beside the test binary go into the virtual file system under /testdata and /docs instead,
+       which is where AppContext.BaseDirectory points in the browser runtime. -->
+  <Target Name="FixturesIntoVirtualFileSystem" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <WasmFilesToIncludeInFileSystem Include="@(None)" TargetPath="/%(None.Link)" Condition="'%(None.Link)' != ''" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Tool/OneMedia.Tool.csproj" />
+  </ItemGroup>
+
+</Project>

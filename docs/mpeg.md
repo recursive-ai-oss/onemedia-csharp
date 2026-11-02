@@ -124,7 +124,8 @@ All keep reading where they safely can. The limits object bounds PES and unit si
 ## Asynchronous opening
 
 `OpenAsync` for ranged and remote sources runs the synchronous reader on a pool thread over a blocking range adapter. It is correct and I/O-bounded the same way,
-but it holds a pool thread while it waits and is **not suitable for single-threaded browser WebAssembly**; a true asynchronous reader needs an asynchronous `ByteInput` (planned with the WASM suite).
+but it holds a pool thread while it waits. Single-threaded browser WebAssembly has no thread to wait on: there a source that answers at once (memory, a file in the virtual file system) works,
+and a source that answers later is refused with a `NotSupportedException` that says so, instead of a hang. A true asynchronous reader needs an asynchronous `ByteInput`; see `docs/platforms.md`.
 
 ## Differences from ffprobe 7.0.2
 

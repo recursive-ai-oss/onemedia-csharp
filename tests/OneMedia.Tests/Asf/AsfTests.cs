@@ -289,6 +289,7 @@ public class AsfTests
         Assert.Equal(AsfObjectKind.MetadataLibrary, ((AsfObjectNode)ext.Children[0]).Kind);
     }
 
+    [Trait("Browser", "allocation")]
     [Fact]
     public void PullPathAllocatesNothingPerPacket()
     {

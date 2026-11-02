@@ -433,6 +433,7 @@ public sealed class WriterFixTests : IDisposable
 
     // ---- stray temporary files ----
 
+    [Trait("Browser", "process")]
     [Fact]
     public void TemporaryFilesAreNamedAfterTheirTargetAndTheProcess()
     {
@@ -450,6 +451,7 @@ public sealed class WriterFixTests : IDisposable
         }
     }
 
+    [Trait("Browser", "process")]
     [Fact]
     public void ASaveRemovesTemporaryFilesOfAKilledSaveOfTheSameTarget()
     {

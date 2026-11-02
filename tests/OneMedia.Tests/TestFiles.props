@@ -1,0 +1,77 @@
+<Project>
+  <!-- The fixtures and shared sources the test suite needs. Imported by the test project and by the browser host, which builds the same sources. -->
+  <ItemGroup>
+    <!-- A trivial demuxer shared with the smoke apps. -->
+    <Compile Include="../../smoke/Shared/FixedPacketDemuxer.cs" Link="Shared/FixedPacketDemuxer.cs" />
+    <!-- Writes synthetic MP4 files; shared with the comparison tool. -->
+    <Compile Include="../../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
+    <!-- Writes small ASF files; shared with the fuzz seeds. -->
+    <Compile Include="../../tools/asf/AsfBuilder.cs" Link="Shared/AsfBuilder.cs" />
+    <!-- Small fixtures and their ffprobe packet listings. -->
+    <None Include="../../testdata/repair/*" Link="testdata/repair/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/package/*" Link="testdata/package/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/hls-playlist/*" Link="testdata/fuzz/hls-playlist/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/dash-mpd/*" Link="testdata/fuzz/dash-mpd/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/isobmff/*" Link="testdata/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/isobmff/family/*" Link="testdata/isobmff/family/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/streaming/**" Link="testdata/streaming/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/subtitles/*" Link="testdata/subtitles/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/events/*" Link="testdata/events/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/mpeg/*" Link="testdata/mpeg/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Cue sources and the text-track files that ffmpeg, MP4Box and mkvmerge wrote from them (tools/gen-texttrack-fixtures.sh). -->
+    <None Include="../../testdata/text/*" Link="testdata/text/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/text/oracle/*" Link="testdata/text/oracle/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Synthetic GPMF, CAMM and mebx files made by tools/gen-telemetry-fixtures.py. -->
+    <None Include="../../testdata/telemetry/*" Link="testdata/telemetry/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/strip/*" Link="testdata/strip/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/strip/review/*" Link="testdata/strip/review/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/telemetry-file/*" Link="testdata/fuzz/telemetry-file/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The browser profile tables as text. -->
+    <None Include="../../testdata/playback/*" Link="testdata/playback/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Tagged fixtures and the rendered mapping table. -->
+    <None Include="../../testdata/metadata/*" Link="testdata/metadata/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/datewrite/*" Link="testdata/datewrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/facts/*" Link="testdata/facts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/exif/*" Link="testdata/fuzz/exif/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/sidecars/*" Link="testdata/fuzz/sidecars/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/tags/*" Link="testdata/fuzz/tags/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/isobmff/*" Link="testdata/fuzz/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/subs-webvtt/*" Link="testdata/fuzz/subs-webvtt/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/subs-ass/*" Link="testdata/fuzz/subs-ass/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/registry/*" Link="testdata/fuzz/registry/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/writer-riff/*" Link="testdata/fuzz/writer-riff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/writer-ebml/*" Link="testdata/fuzz/writer-ebml/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/reconstruct-iso/*" Link="testdata/fuzz/reconstruct-iso/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/video-es/*" Link="testdata/fuzz/video-es/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/asf/*" Link="testdata/fuzz/asf/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/riff-wav/*" Link="testdata/fuzz/riff-wav/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/review/*" Link="testdata/review/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/datewrite/*" Link="testdata/fuzz/datewrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/tagwrite/*" Link="testdata/fuzz/tagwrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/pcm/*" Link="testdata/pcm/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/tag-mapping.md" Link="docs/tag-mapping.md" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The codec fuzz targets double as robustness checks: the tests feed them random, truncated and bit-flipped input. -->
+    <Compile Include="../../fuzz/OneMedia.Fuzz/CodecFuzz.cs" Link="Codecs/CodecFuzz.cs" />
+    <Compile Include="../../fuzz/OneMedia.Fuzz/AudioStreamFuzz.cs" Link="AudioStreams/AudioStreamFuzz.cs" />
+    <None Include="../../testdata/fuzz/id3/*" Link="testdata/fuzz/id3/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/audio-es/*" Link="testdata/audio-es/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/audio-es/tagged/*" Link="testdata/audio-es/tagged/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/xiph-flv/*" Link="testdata/fuzz/xiph-flv/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The codec fuzz targets double as robustness checks: the tests feed them random, truncated and bit-flipped input. -->
+    <None Include="../../testdata/xiph-flv/*" Link="testdata/xiph-flv/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/audio/*" Link="testdata/audio/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/asf/*" Link="testdata/asf/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="../../fuzz/OneMedia.Fuzz/RiffAviTarget.cs" Link="Avi/RiffAviTarget.cs" />
+    <Compile Include="../../fuzz/OneMedia.Fuzz/DvTarget.cs" Link="Avi/DvTarget.cs" />
+    <Compile Include="../../fuzz/OneMedia.Fuzz/WriterTarget.cs" Link="Writing/WriterTarget.cs" />
+    <Compile Include="../../fuzz/OneMedia.Fuzz/TsMuxTarget.cs" Link="TsMux/TsMuxTarget.cs" />
+    <None Include="../../testdata/captions/*" Link="testdata/captions/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/bitmapsubs/*" Link="testdata/bitmapsubs/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/avi/*" Link="testdata/avi/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/riff-avi/*" Link="testdata/fuzz/riff-avi/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/dv/*" Link="testdata/fuzz/dv/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/events-file/*" Link="testdata/fuzz/events-file/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/heaac/*.m4a" Link="testdata/heaac/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
