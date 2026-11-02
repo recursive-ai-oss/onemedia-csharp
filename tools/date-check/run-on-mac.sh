@@ -19,6 +19,6 @@ swiftc -O "$here/mac-dates.swift" -o "$work/mac-dates" 2>"$work/swiftc.log" || {
     mdls -name kMDItemContentCreationDate -name kMDItemContentModificationDate -name kMDItemRecordingYear -name kMDItemContentType "$f" 2>&1 | sed 's/^/    /'
   done
   echo "## Photos"
-  if timeout 20 osascript -e 'tell application "Photos" to count of albums' >"$work/photos.out" 2>&1; then echo "Photos answered: $(cat "$work/photos.out")"; else echo "Photos: not available headless: $(head -c 300 "$work/photos.out")"; fi
+  if perl -e 'alarm 20; exec @ARGV' osascript -e 'tell application "Photos" to count of albums' >"$work/photos.out" 2>&1; then echo "Photos answered: $(cat "$work/photos.out")"; else echo "Photos: not available headless: $(head -c 300 "$work/photos.out")"; fi
 } > "$out" 2>&1
 rm -rf "$work"

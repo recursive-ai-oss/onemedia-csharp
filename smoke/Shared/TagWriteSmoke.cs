@@ -42,6 +42,19 @@ internal static class TagWriteSmoke
         }
 
         check("tag write xmp", found);
+
+        // A capture-time write: header times, a tag and a Matroska element, read back through the resolver.
+        DateTimeOffset when = new(2024, 5, 1, 12, 30, 0, TimeSpan.FromHours(2));
+        foreach (string name in new[] { "aac.m4a", "opus.webm", "lame-info.mp3", "wmav2-tagged.wma" })
+        {
+            MemoryMediaSource dsrc = new(Resource(name));
+            CaptureTimePlan dplan = CaptureTimeWriter.Plan(dsrc, when);
+            using MemoryStream dout = new();
+            SafeWriter.Write(dplan.Plan, dsrc, dout);
+            using MemoryMediaSource dback = new(dout.ToArray());
+            using MediaFile dm = MediaFile.Open(dback);
+            check("capture time " + name, dplan.Report.Written.Count > 0 && dm.CaptureTime.Best is { } best && (best.Value.ToDateTimeOffset() is { } i ? i == when : best.Value.Value == when.DateTime));
+        }
     }
 
     private static bool HasPicture(MediaFile m)
