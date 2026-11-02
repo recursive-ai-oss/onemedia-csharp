@@ -2,6 +2,7 @@
 """Runs the browser-wasm build of the unit-test suite in headless Chromium and prints its summary.
 
 Usage: run.py APPBUNDLE_DIR [--timeout SECONDS] [--log FILE] [--channel chrome] [-- RUNNER ARGS...]
+(the options may come before or after APPBUNDLE_DIR; RUNNER ARGS follow the first "--")
 
 APPBUNDLE_DIR is the AppBundle folder that `dotnet build tests/OneMedia.Tests.Browser -c Release` produces. The runner arguments are
 passed on to the suite (--filter TEXT, --list, --quiet, --include-excluded). Needs the Playwright Python package and a Chromium it can
@@ -24,9 +25,15 @@ def main():
     ap.add_argument("--timeout", type=int, default=3000)
     ap.add_argument("--log")
     ap.add_argument("--channel")
-    ap.add_argument("rest", nargs="*")
-    a = ap.parse_args()
-    runner_args = [x for x in a.rest if x != "--"]
+    # Everything after the first "--" belongs to the suite. Splitting it off here, before argparse sees it, behaves the same on every
+    # Python version (argparse's handling of "--" after options differs between 3.12 and 3.13).
+    argv = sys.argv[1:]
+    runner_args = []
+    if "--" in argv:
+        at = argv.index("--")
+        runner_args = argv[at + 1:]
+        argv = argv[:at]
+    a = ap.parse_args(argv)
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args, **kw):
