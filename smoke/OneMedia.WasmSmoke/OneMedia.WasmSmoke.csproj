@@ -21,6 +21,9 @@
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
     <EmbeddedResource Include="../../testdata/audio/opus.webm" LogicalName="opus.webm" />
+    <EmbeddedResource Include="../../testdata/telemetry/gpmf-synthetic.mp4" LogicalName="gpmf-synthetic.mp4" />
+    <EmbeddedResource Include="../../testdata/telemetry/camm-all-types.mp4" LogicalName="camm-all-types.mp4" />
+    <EmbeddedResource Include="../../testdata/telemetry/mebx-synthetic.mp4" LogicalName="mebx-synthetic.mp4" />
     <EmbeddedResource Include="../../testdata/audio/aac.m4a" LogicalName="aac.m4a" />
     <EmbeddedResource Include="../../testdata/asf/wmav2-tagged.wma" LogicalName="wmav2-tagged.wma" />
     <EmbeddedResource Include="../../testdata/mpeg/h264-aac.ts" LogicalName="h264-aac.ts" />
