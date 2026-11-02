@@ -224,6 +224,21 @@ seed() {
             { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
           done ;;
+    edit-trim|edit-split|package|playable) # The first bytes pick options (edit-*: flags, two times, then the file; package/playable: one byte); the rest is a media file.
+          for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/isobmff/*.mov "$here"/testdata/isobmff/*.3gp "$here"/testdata/isobmff/family/*.mp4; do
+            [ -f "$f" ] || continue
+            [ "$(stat -c %s "$f")" -le 262144 ] || continue
+            case "$target" in
+              edit-*) { printf '\000\002\005'; cat "$f"; } > "$corpus/$(basename "$f").seed" ;;
+              *) { printf '\000'; cat "$f"; } > "$corpus/$(basename "$f").seed"; { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-1.seed" ;;
+            esac
+          done ;;
+    edit-concat|growing) # The whole input is a media file.
+          for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/isobmff/*.3gp "$here"/testdata/isobmff/family/*.mp4 "$here"/testdata/mpeg/*; do
+            [ -f "$f" ] || continue
+            [ "$(stat -c %s "$f")" -le 262144 ] || continue
+            cp "$f" "$corpus/$(basename "$f").seed"
+          done ;;
     cc-data) # The first byte picks the carriage (0 H.264, 1 HEVC, 2 MPEG-2; the rest of the value is the NAL length size); the rest is one video sample.
           { printf '\000\000\000\000\001\006\004\012\265\000\061GA94\003\301\377\374\224\057\375\200\200\377\200'; } > "$corpus/h264-annexb.seed"
           { printf '\012\000\000\000\012\006\004\012\265\000\061GA94\003\301\377\374\224\057\375\200\200\377\200'; } > "$corpus/h264-len4.seed"

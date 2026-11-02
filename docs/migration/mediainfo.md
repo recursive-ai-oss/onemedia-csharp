@@ -13,9 +13,9 @@ values; there is no text report to parse.
 | General: `Format`, `Duration` | `media.Format`, `media.Duration` / `media.ExactDuration` |
 | `Encoded_Date`, `Tagged_Date`, `Recorded_Date` (General) | `media.CaptureTime.Candidates`, `media.Facts`, `media.Native[...]` |
 | General: `Title`, `Performer`, `Album`, `Track/Position`, `Cover_Data` | `media.Tags.Title`, `Artist`, `Album`… |
-| Video: `Format`, `Width`, `Height`, `FrameRate`/`FrameRate_Num`/`FrameRate_Den`, `Rotation` | `media.Video.Codec`, `.Video.Value.Width`, `.Height`, `.FrameRateNumerator/Denominator`, `.RotationDegrees` |
+| Video: `Format`, `Width`, `Height`, `FrameRate`/`FrameRate_Num`/`FrameRate_Den`, `Rotation` | `media.Video.Codec`, `.Width`, `.Height`, `.FrameRate` (display `double?`; exact: `.Video.FrameRateNumerator/Denominator`), `.RotationDegrees` |
 | `CodecID` | `track.Rfc6381Codec()`, `track.CodecTag` |
-| Audio: `Format`, `Channel(s)`, `SamplingRate`, `BitRate` | `media.Audio.Codec`, `.Audio.Value.Channels`, `.SampleRate`, `.BitRate` |
+| Audio: `Format`, `Channel(s)`, `SamplingRate`, `BitRate` | `media.Audio.Codec`, `.Channels`, `.SampleRate`, `.BitRate` |
 | Text streams, Menu streams | `media.Subtitles` (cues via `Document.Cues`), chapters through the native layer |
 | `--Output=JSON`, `--Full` | typed objects; the CLI's `info` command prints a report |
 | Inform templates | not provided: write the projection you want in C# |

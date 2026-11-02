@@ -6,6 +6,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Added
 
+- `MediaTrack` forwards one-line fields: `Width`, `Height`, `RotationDegrees`, `FrameRate` (video) and `SampleRate`, `Channels` (audio), all nullable, so `media.Video?.Width` and `media.Audio?.SampleRate` read as the README sketch does. They read the existing `Video` and `Audio` info; nothing else changes.
 - The unit-test suite runs in headless Chromium on the browser-wasm runtime (`tests/OneMedia.Tests.Browser`, `tools/wasm-suite`, `docs/platforms.md`), and a CI job runs it. In that runtime `FileMediaSource.ReadAsync` completes in place, and the readers written as synchronous code (MPEG-TS/PS, AVI, DV, FLAC, FLV, WAV and the other audio files) refuse a source that answers later with a `NotSupportedException` instead of waiting for ever.
 
 ## [0.7.0-preview.1] - 2026-11-02

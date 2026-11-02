@@ -26,7 +26,7 @@ internal static class Tasks
         ("video and audio facts", dir =>
         {
             using var media = Media.Open(Path.Combine(dir, "tiny.mp4"));
-            return $"{media.Video?.Video?.Width}x{media.Video?.Video?.Height} {media.Video?.Codec} / {media.Audio?.Codec} {media.Audio?.Audio?.SampleRate} Hz; {media.Tracks.Count} tracks";
+            return $"{media.Video?.Width}x{media.Video?.Height} {media.Video?.Codec} / {media.Audio?.Codec} {media.Audio?.SampleRate} Hz; {media.Tracks.Count} tracks";
         }),
         ("subtitle tracks", dir =>
         {

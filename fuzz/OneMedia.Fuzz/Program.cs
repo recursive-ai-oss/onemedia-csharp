@@ -44,6 +44,7 @@ RepairTarget.Register(targets);
 ManifestTargets.Register(targets);
 WavMuxTarget.Register(targets);
 PresentationTarget.Register(targets);
+OperationTargets.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;
