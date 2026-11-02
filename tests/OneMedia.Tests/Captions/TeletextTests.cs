@@ -141,6 +141,34 @@ public class TeletextTests
         Assert.Equal("ЮАБ", Assert.Single(track.Document.Cues).Text);
     }
 
+    [Theory]
+    [InlineData(TeletextAlphabet.CyrillicSerbianCroatian, "ЧАБ")]
+    [InlineData(TeletextAlphabet.CyrillicRussianBulgarian, "ЮАБ")]
+    [InlineData(TeletextAlphabet.CyrillicUkrainian, "ЮАБ")]
+    [InlineData(TeletextAlphabet.Greek, "ΐΑΒ")]
+    [InlineData(TeletextAlphabet.Hebrew, "@AB")]
+    public void AlphabetTablesMapSpotCodes(TeletextAlphabet alphabet, string upper)
+    {
+        // Column 4 rows 0 to 2 of each table (ETS 300 706 tables 38 to 46).
+        TeletextCharacterSet set = new(alphabet);
+        Assert.Equal(upper, new string([set.MapG0(0x40), set.MapG0(0x41), set.MapG0(0x42)]));
+        Assert.NotEqual('�', set.MapG0(0x7E));
+        Assert.Equal('■', set.MapG0(0x7F));
+    }
+
+    [Fact]
+    public void GreekHebrewAndFinalSigmaPositions()
+    {
+        Assert.Equal('ς', new TeletextCharacterSet(TeletextAlphabet.Greek).MapG0(0x72));
+        Assert.Equal('ω', new TeletextCharacterSet(TeletextAlphabet.Greek).MapG0(0x79));
+        Assert.Equal('א', new TeletextCharacterSet(TeletextAlphabet.Hebrew).MapG0(0x60));
+        Assert.Equal('ת', new TeletextCharacterSet(TeletextAlphabet.Hebrew).MapG0(0x7A));
+        Assert.Equal('₪', new TeletextCharacterSet(TeletextAlphabet.Hebrew).MapG0(0x7B));
+        Assert.Equal('ї', new TeletextCharacterSet(TeletextAlphabet.CyrillicUkrainian).MapG0(0x26));
+        Assert.Equal('*', new TeletextCharacterSet(TeletextAlphabet.CyrillicRussianBulgarian).MapG0(0x2A));
+        Assert.Equal(TeletextAlphabet.Greek, TeletextCharacterSet.FromDesignation(0b0110111).Alphabet);
+    }
+
     [Fact]
     public void LanguageFallbackChoosesPolish()
     {

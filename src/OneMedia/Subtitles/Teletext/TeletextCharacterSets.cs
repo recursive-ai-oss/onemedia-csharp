@@ -18,10 +18,10 @@ public enum TeletextAlphabet
     /// <summary>Greek (table 42).</summary>
     Greek,
 
-    /// <summary>Arabic (table 44). Not mapped: characters come out as U+FFFD.</summary>
+    /// <summary>Arabic (table 44). Letters are not mapped: they come out as U+FFFD.</summary>
     Arabic,
 
-    /// <summary>Hebrew (table 46). Not mapped: characters come out as U+FFFD.</summary>
+    /// <summary>Hebrew (table 46).</summary>
     Hebrew,
 }
 
@@ -176,6 +176,7 @@ public readonly record struct TeletextCharacterSet(TeletextAlphabet Alphabet, Te
             "ukr" => new TeletextCharacterSet(TeletextAlphabet.CyrillicUkrainian),
             "srp" => new TeletextCharacterSet(TeletextAlphabet.CyrillicSerbianCroatian),
             "ell" or "gre" => new TeletextCharacterSet(TeletextAlphabet.Greek),
+            "heb" => new TeletextCharacterSet(TeletextAlphabet.Hebrew),
             _ => null,
         };
     }
@@ -211,14 +212,46 @@ internal static class TeletextCharacters
         "#$ŠėęŽčūšąųžį",                        // Lettish/Lithuanian
     ];
 
-    // Table 39 columns 2 to 7 for Cyrillic option 2 (Russian/Bulgarian); 0x7F is the block.
+    // Tables 38 to 40, 42 and 46 (columns 2 to 7, rows 0 to F, so 96 characters from code 0x20), transcribed from the published glyph
+    // tables. Position 7/F is the block character in every set. Position 2/A is the asterisk in all of them.
+    private const string Digits = "0123456789:;<=>?";
+
+    private const string CyrillicSerbianCroatian =
+        " !\"#$%&'()*+,-./" + Digits +
+        "ЧАБЦДЕФГХИЈКЛМНО" +
+        "ПЌРСТУВЃЉЊЗЋЖЂШЏ" +
+        "чабцдефгхијклмно" +
+        "пќрстувѓљњзћжђш■";
+
     private const string CyrillicRussian =
-        " !\"#$%ы'()Ж+,-./" +
-        "0123456789:;<=>?" +
+        " !\"#$%ы'()*+,-./" + Digits +
         "ЮАБЦДЕФГХИЙКЛМНО" +
         "ПЯРСТУЖВЬЪЗШЭЩЧЫ" +
         "юабцдефгхийклмно" +
         "пярстужвьъзшэщч■";
+
+    private const string CyrillicUkrainian =
+        " !\"#$%ї'()*+,-./" + Digits +
+        "ЮАБЦДЕФГХИЙКЛМНО" +
+        "ПЯРСТУЖВЬІЗШЄЩЧЇ" +
+        "юабцдефгхийклмно" +
+        "пярстужвьізшєщч■";
+
+    // Table 42. Position 5/2 holds a lone tonos mark.
+    private const string Greek =
+        " !\"#$%&'()*+,-./" + "0123456789:;«=»?" +
+        "ΐΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟ" +
+        "ΠΡ\u0384ΣΤΥΦΧΨΩΪΫάέήί" +
+        "ΰαβγδεζηθικλμνξο" +
+        "πρςστυφχψωϊϋόύώ■";
+
+    // Table 46. Position 7/B is the shekel sign.
+    private const string Hebrew =
+        " !\"£$%&'()*+,-./" + Digits +
+        "@ABCDEFGHIJKLMNO" +
+        "PQRSTUVWXYZ←½→↑#" +
+        "אבגדהוזחטיךכלםמן" +
+        "נסעףפץצקרשת₪‖¾÷■";
 
     // Table 37, columns 2 and 3 and 5 to 7 of the Latin G2 set. Column 4 (diacritical marks) is handled by composition.
     private static readonly string G2Column2 = " ¡¢£$¥#§¤‘“«←↑→↓";
@@ -245,10 +278,19 @@ internal static class TeletextCharacters
                 }
 
                 return code == 0x7F ? '■' : (char)code;
+            case TeletextAlphabet.CyrillicSerbianCroatian:
+                return CyrillicSerbianCroatian[code - 0x20];
             case TeletextAlphabet.CyrillicRussianBulgarian:
                 return CyrillicRussian[code - 0x20];
+            case TeletextAlphabet.CyrillicUkrainian:
+                return CyrillicUkrainian[code - 0x20];
+            case TeletextAlphabet.Greek:
+                return Greek[code - 0x20];
+            case TeletextAlphabet.Hebrew:
+                return Hebrew[code - 0x20];
             default:
-                // Other alphabets share ASCII for the digits and punctuation they do not redefine; letters are unmapped.
+                // Arabic (table 44) draws contextual letter forms that have no one-to-one character; its digits and punctuation share ASCII and
+                // the letters are reported as unmapped.
                 return code is >= 0x20 and <= 0x40 ? (char)code : '\uFFFD';
         }
     }
