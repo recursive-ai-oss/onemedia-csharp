@@ -120,6 +120,12 @@ internal static class IsoStrip
             }
 
             value = Trimmed(value);
+            if (tag.System == TagSystems.QuickTimeUserData && tag.Key == "MUID" && value.Length > 16)
+            {
+                // GoPro's MUID holds the 16-byte media id followed by a date; the settings block repeats the id alone.
+                secrets.Add(new Secret(c, "udta:MUID (id)", value[..16]));
+            }
+
             if (value.Length >= 6)
             {
                 secrets.Add(new Secret(c, tag.System + ":" + tag.Key, value));

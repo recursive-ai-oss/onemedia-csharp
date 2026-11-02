@@ -53,7 +53,7 @@ def secrets_of(lines):
             continue
         if name in ('GPSAltitude', 'GPSSpeed', 'GPSSpeed3D', 'GPSDOP', 'GPSHPositioningError', 'GPSMeasureMode', 'GPSDateTime', 'GPSTrack', 'GPSAltitudeRef', 'GPSLatitudeRef', 'GPSLongitudeRef'):
             continue
-        if re.search(r'serial|unique|mediauid|contentid|content identifier|ownername|cameraowner|coordinates|iso6709', name, re.I):
+        if re.search(r'serial|unique|mediauid|contentid|content identifier|ownername|cameraowner|coordinates|iso6709|location', name, re.I):
             v = value.strip()
             if len(v) >= 6 and not re.fullmatch(r'0+', v):
                 if re.fullmatch(r'[0-9a-fA-F]{12,}', v):
