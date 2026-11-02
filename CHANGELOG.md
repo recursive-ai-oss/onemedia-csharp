@@ -4,6 +4,19 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.0-preview.1] - 2026-11-02
+
+HLS and DASH packaging, HLS/DASH presentations and growing files as sources. Everything in 0.6.0-preview.1 stays; repair, subtitles, captions, capture facts, telemetry and timed events are still previews.
+
+**Read this first.**
+- **HLS/DASH packaging is a preview.** It is verified by packet equality with the input (ffprobe) and by playback in hls.js and dash.js in Chromium, Firefox and WebKit, plus native HLS in macOS WebKit. It has **not** passed a validator: Apple `mediastreamvalidator` was not run (it needs an Apple ID sign-in), and the DASH-IF conformance tool v3.1.0 ran once (two findings, both fixed) and then fails inside its own base-URI handling on every later run. See `docs/packaging.md`.
+- **HLS/DASH sources and growing files are previews.** Live DASH is not reloaded (a dynamic MPD is read as it stands); HLS subtitle renditions are not read; a segment is held whole in memory, up to `MediaLimits.MaxSegmentBytes` (256 MiB by default); segments under `EXT-X-KEY` or `ContentProtection` are reported `Protected` and not decrypted (`docs/streaming-sources.md`).
+- Encryption is not written, and live mode takes one input (`docs/packaging.md`).
+
+### Fixed
+
+- A playlist read leniently could hold a `FRAME-RATE` or `VIDEO-RANGE` value with a comma or a space (it had been quoted in the input); writing it bare split it into other attributes, so the playlist did not rewrite to itself. Such a value is now written quoted. Found by the `hls-playlist` fuzz target.
+
 ### Added
 
 - Preview: packaging for streaming (`Packager`, `PackagingOptions`, `LiveOptions`, `Media.PackageHls`, `Media.PackageDash`, `onemedia package`, `docs/packaging.md`). A file or a live stream is cut into CMAF segments (or, for HLS, transport-stream segments) with HLS playlists and a DASH MPD, as video on demand or live with a sliding window, as a segment per file or one file per track with byte ranges, with a bit-rate ladder from several inputs, WebVTT subtitle renditions and timed events (`EXT-X-DATERANGE`, DASH `EventStream`). Live mode holds constant memory (a 2-hour unpaced soak plateaued at 106 MiB; a 10-minute real-time run stayed under 73 MiB with every playlist update parsed and checked).
