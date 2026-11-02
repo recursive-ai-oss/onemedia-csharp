@@ -69,7 +69,7 @@ def compare(src, out, with_bytes):
         s, o = src[i], out[i]
         if s[3] != o[3]:
             # Without --bytes the source is re-framed (Annex B start codes and in-band parameter sets, ADTS headers), so sizes differ by design.
-            diff["size" if with_bytes else "size(reframed, explained)"] += 1
+            diff["size" if with_bytes else "size-reframed(explained)"] += 1
         if with_bytes and s[5] != o[5]:
             diff["hash"] += 1
         if (s[4][:1] == "K") != (o[4][:1] == "K"):

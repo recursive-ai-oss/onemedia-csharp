@@ -148,7 +148,7 @@ internal sealed class TsSegmenter : IDisposable
         MediaTime t = p.Dts.IsKnown ? p.Dts : p.Pts;
         if (_referenceOut >= 0 && p.TrackIndex == _referenceOut && t.IsKnown)
         {
-            MediaTime end = p.Duration.IsKnown ? t + p.Duration : t;
+            MediaTime end = p.Duration.IsKnown ? t.Add(p.Duration, MediaRounding.NearestAwayFromZero) : t;
             _lastEnd = _lastEnd.IsKnown ? MediaTime.Max(_lastEnd, end) : end;
             _samples++;
         }
