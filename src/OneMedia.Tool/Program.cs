@@ -35,10 +35,11 @@ static int Run(string[] args)
     if (args.Length >= 2 && args[0] == "info")
     {
         bool json = args.Contains("--json");
-        string? path = args.Skip(1).FirstOrDefault(a => a != "--json");
+        bool sidecars = !args.Contains("--no-sidecars");
+        string? path = args.Skip(1).FirstOrDefault(a => a is not ("--json" or "--no-sidecars"));
         if (path is not null)
         {
-            return Info(path, json);
+            return Info(path, json, sidecars);
         }
     }
 
@@ -53,7 +54,7 @@ static int Run(string[] args)
     }
 
     Console.Error.WriteLine("usage: onemedia --version");
-    Console.Error.WriteLine("       onemedia info <file> [--json]   format, duration, tracks and defects of a media file");
+    Console.Error.WriteLine("       onemedia info <file> [--json] [--no-sidecars]   format, duration, tracks, facts with every candidate, and defects (sidecars beside the file count as evidence)");
     Console.Error.WriteLine(RemuxCommand.Usage);
     Console.Error.WriteLine(PlayableCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
@@ -62,11 +63,16 @@ static int Run(string[] args)
     return 2;
 }
 
-static int Info(string path, bool json)
+static int Info(string path, bool json, bool sidecars)
 {
     try
     {
         using MediaFile media = Media.Open(path);
+        if (sidecars)
+        {
+            media.AddSidecarsBesideFile();
+        }
+
         if (json)
         {
             WriteJson(media);
@@ -182,6 +188,7 @@ static void WriteText(MediaFile media)
     WriteFactText("make", media.Device.Make, v => v);
     WriteFactText("model", media.Device.Model, v => v);
     WriteFactText("software", media.Device.Software, v => v);
+    WriteFactText("serial", media.Device.Serial, v => v);
     WriteFactText("rotation", media.Rotation, ShowRotation);
 
     foreach (MediaDefect d in media.Defects)
@@ -199,6 +206,11 @@ static void WriteFactText<T>(string name, Fact<T> fact, Func<T, string> show)
     if (fact.Best is { } best)
     {
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{name}: {show(best.Value)} ({best.Source}, {fact.Candidates.Count} candidate(s))"));
+        if (fact.Resolution is { } why)
+        {
+            Console.WriteLine($"  why: {why.Reason}");
+        }
+
         if (fact.Candidates.Count > 1)
         {
             foreach (FactCandidate<T> c in fact.Candidates)
@@ -223,6 +235,12 @@ static void WriteFactJson<T>(Utf8JsonWriter w, string name, Fact<T> fact, Func<T
 
     w.WriteStartObject(name);
     w.WriteString("value", show(fact.Best!.Value));
+    if (fact.Resolution is { } why)
+    {
+        w.WriteString("rule", why.Rule);
+        w.WriteString("reason", why.Reason);
+    }
+
     w.WriteStartArray("candidates");
     foreach (FactCandidate<T> c in fact.Candidates)
     {
@@ -232,6 +250,12 @@ static void WriteFactJson<T>(Utf8JsonWriter w, string name, Fact<T> fact, Func<T
         w.WriteString("raw", c.RawValue);
         w.WriteString("interpretation", c.Interpretation);
         w.WriteString("timezone", c.Certainty.ToString());
+        if (!c.Range.IsNone)
+        {
+            w.WriteNumber("offset", c.Range.Offset);
+            w.WriteNumber("length", c.Range.Length);
+        }
+
         w.WriteEndObject();
     }
 
@@ -334,6 +358,7 @@ static void WriteJson(MediaFile media)
     WriteFactJson(w, "make", media.Device.Make, v => v);
     WriteFactJson(w, "model", media.Device.Model, v => v);
     WriteFactJson(w, "software", media.Device.Software, v => v);
+    WriteFactJson(w, "serial", media.Device.Serial, v => v);
     WriteFactJson(w, "rotation", media.Rotation, ShowRotation);
     w.WriteEndObject();
     w.WriteStartArray("defects");
