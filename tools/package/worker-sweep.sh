@@ -22,7 +22,7 @@ for f in "$WORK"/inputs/*; do
     out="$WORK/out/$name.$mode"; extra=""; bytes_flag="$bytes"
     case "$mode" in single) extra="--single-file";; ts) extra="--ts"; bytes_flag="";; tssingle) extra="--ts --single-file"; bytes_flag="";; esac
     sub=""; [ "$name" = h264-aac.mp4 ] && sub="--subs $WORK/inputs/subs-en.vtt:en:English"
-    if ! "${TOOL[@]}" package "$f" "$out" --segment "$SEG" $extra $sub > "$WORK/logs/$name.$mode.package.log" 2>&1; then
+    if ! "${TOOL[@]}" package "$f" "$out" --segment "$SEG" --overwrite $extra $sub > "$WORK/logs/$name.$mode.package.log" 2>&1; then
       printf '%s\t%s\tPACKAGE-FAILED\t-\t-\t%s\n' "$name" "$mode" "$(tail -1 "$WORK/logs/$name.$mode.package.log")" >> "$SUMMARY"; continue; fi
     srcprobe=""; case "$name" in *.ts|*.m2ts) srcprobe="--source-ffprobe ${FFPROBE_TS:-/usr/bin/ffprobe}";; esac
     python3 "$HERE/check-packets.py" "$FFPROBE" "$f" "$out" $bytes_flag $srcprobe > "$WORK/logs/$name.$mode.packets.log" 2>&1; rc=$?
