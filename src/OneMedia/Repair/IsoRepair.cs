@@ -14,7 +14,7 @@ internal static partial class IsoRepair
     private const uint Mdia = 0x6D646961, Mdhd = 0x6D646864, Hdlr = 0x68646C72, Minf = 0x6D696E66, Stbl = 0x7374626C, Stts = 0x73747473, Stsz = 0x7374737A, Stz2 = 0x73747A32;
     private const uint Stsc = 0x73747363, Stco = 0x7374636F, Co64 = 0x636F3634, Edts = 0x65647473, Elst = 0x656C7374, Mvhd = 0x6D766864, Mvex = 0x6D766578, Trex = 0x74726578;
     private const uint Traf = 0x74726166, Tfhd = 0x74666864, Tfdt = 0x74666474, Trun = 0x7472756E, Mehd = 0x6D656864, Free = 0x66726565, Skip = 0x736B6970;
-    private const uint Vide = 0x76696465;
+    private const uint Vide = 0x76696465, Stsd = 0x73747364;
 
     private readonly record struct BoxHeader(uint Type, long Offset, int HeaderSize, long Size, bool Truncated);
 
@@ -35,6 +35,7 @@ internal static partial class IsoRepair
         public long Samples;
         public long ChunkTableAt = -1;         // absolute file offset of the first stco/co64 entry
         public bool Co64;
+        public int VideoCheck;  // how a chunk start of this video track is recognised: 1 length-prefixed NAL units (avc1, hvc1, ...), 2 start code (MPEG-4 part 2, MPEG-2), 0 not at all
         public long[] Offsets = [];
         public long[] ChunkSizes = [];
         public long[] ChunkStart = [];         // decode time of each chunk's first sample, in media timescale
@@ -276,13 +277,44 @@ internal static partial class IsoRepair
                 }
             }
 
-            if (!found)
+            // the first chunk need not sit at the start of the media data (some writers put a few bytes of their own first), so the layout
+            // is also tried flush with the end of the box
+            long chunkBytes = 0;
+            foreach (TrackInfo t in tracks)
             {
+                foreach (long c in t.ChunkSizes)
+                {
+                    chunkBytes += c;
+                }
+            }
+
+            var starts = new List<long>();
+            if (mdats.Count == 1)
+            {
+                starts.Add(mdats[0].Start);
+                long flush = mdats[0].End - chunkBytes;
+                if (flush > mdats[0].Start && flush - mdats[0].Start <= 1 << 16)
+                {
+                    starts.Add(flush);
+                }
+            }
+            else
+            {
+                starts.Add(0);
+            }
+
+            foreach (long layoutStart in starts)
+            {
+                if (found)
+                {
+                    break;
+                }
+
                 foreach (bool descending in new[] { false, true })
                 {
-                    long[][] laid = LayoutByTime(tracks, mdats.Count > 0 ? mdats[0].Start : 0, descending);
+                    long[][] laid = LayoutByTime(tracks, mdats.Count > 0 ? layoutStart : 0, descending);
                     bool fits = mdats.Count == 1 && LayoutEnd(tracks, laid) <= mdats[0].End;
-                    if (fits && Validate(input, tracks, t => laid[tracks.IndexOf(t)], mdats, out bool verified) && (verified || tracks.TrueForAll(t => t.Handler != Vide)))
+                    if (fits && Validate(input, tracks, t => laid[tracks.IndexOf(t)], mdats, out bool verified) && (tracks.Count == 1 || !tracks.Exists(t => t.Handler == Vide && t.VideoCheck == 0)))
                     {
                         chosen = laid;
                         how = "chunks laid out one after another in the order of their decode times";
@@ -292,6 +324,22 @@ internal static partial class IsoRepair
                             conf = RepairConfidence.Medium;
                         }
 
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found && mdats.Count == 1)
+            {
+                foreach (long walkStart in starts)
+                {
+                    long[][]? walked = WalkLayout(input, tracks, (walkStart, mdats[0].End));
+                    if (walked is not null && Validate(input, tracks, t => walked[tracks.IndexOf(t)], mdats, out bool verifiedWalk) && verifiedWalk)
+                    {
+                        chosen = walked;
+                        how = "chunks found one after another in the media data: each video chunk is the one that starts with a plausible sample, the others follow in decode-time order";
+                        conf = RepairConfidence.Medium;
                         found = true;
                         break;
                     }
@@ -525,7 +573,13 @@ internal static partial class IsoRepair
                             foreach ((uint st, int sa, int sh, int ss) in Children(m, na + nh, na + ns))
                             {
                                 int body = sa + sh + 4;
-                                if (st == Stsz && ss >= sh + 12)
+                                if (st == Stsd && ss >= sh + 8 + 8 + 4)
+                                {
+                                    // 14496-15: these sample entries carry length-prefixed NAL units
+                                    uint entry = BinaryPrimitives.ReadUInt32BigEndian(m.AsSpan(sa + sh + 12));
+                                    t.VideoCheck = entry is 0x6D703476 or 0x6D703276 or 0x6D703176 ? 2 : entry is 0x61766331 or 0x61766333 or 0x68766331 or 0x68657631 or 0x76766331 or 0x76766931 or 0x64766831 or 0x64766865 or 0x64766131 or 0x64766176 ? 1 : 0;
+                                }
+                                else if (st == Stsz && ss >= sh + 12)
                                 {
                                     stszAt = sa + sh;
                                 }
@@ -677,7 +731,7 @@ internal static partial class IsoRepair
                 }
 
                 spans.Add((o[i], o[i] + t.ChunkSizes[i]));
-                if (t.Handler == Vide)
+                if (t.Handler == Vide && t.VideoCheck != 0)
                 {
                     anyVideo = true;
                     ReadOnlySpan<byte> h = input.Peek(o[i], 8);
@@ -687,8 +741,7 @@ internal static partial class IsoRepair
                         continue;
                     }
 
-                    uint len = BinaryPrimitives.ReadUInt32BigEndian(h);
-                    allVideoOk &= len >= 1 && len + 4 <= t.FirstSampleSize[i] && (h[4] & 0x80) == 0;
+                    allVideoOk &= PlausibleStart(t, h, t.FirstSampleSize[i]);
                 }
             }
         }
@@ -704,6 +757,18 @@ internal static partial class IsoRepair
 
         verified = anyVideo && allVideoOk;
         return !anyVideo || allVideoOk;
+    }
+
+    // A chunk of video starts with a sample whose first bytes look like the codec's framing.
+    private static bool PlausibleStart(TrackInfo t, ReadOnlySpan<byte> h, long firstSampleSize)
+    {
+        if (t.VideoCheck == 2)
+        {
+            return h.Length >= 4 && h[0] == 0 && h[1] == 0 && h[2] == 1;
+        }
+
+        uint len = BinaryPrimitives.ReadUInt32BigEndian(h);
+        return len >= 1 && len + 4 <= firstSampleSize && (h[4] & 0x80) == 0;
     }
 
     private static long[][] LayoutByTime(List<TrackInfo> tracks, long start, bool descendingTies)
@@ -741,6 +806,89 @@ internal static partial class IsoRepair
         }
 
         return result;
+    }
+
+    // Walks the media data from its start. Chunk sizes are known from the sample tables, only the order of the tracks' chunks is not.
+    // At each position a video chunk (length-prefixed NAL units) is recognised by its first sample starting with a plausible length; when
+    // none does, the next chunk of the non-NAL track that is earliest in time is taken. Returns null when the walk does not fit.
+    private static long[][]? WalkLayout(RepairInput input, List<TrackInfo> tracks, (long Start, long End) mdat)
+    {
+        if (!tracks.Exists(t => t.Handler == Vide && t.VideoCheck != 0) || tracks.Exists(t => t.Handler == Vide && t.VideoCheck == 0))
+        {
+            return null;
+        }
+
+        long[][] result = [.. tracks.ConvertAll(t => new long[t.Offsets.Length])];
+        int[] next = new int[tracks.Count];
+        long pos = mdat.Start;
+        while (true)
+        {
+            int pick = -1;
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                TrackInfo t = tracks[i];
+                if (next[i] >= t.Offsets.Length || t.Handler != Vide || t.VideoCheck == 0 || t.ChunkSizes[next[i]] == 0)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<byte> h = input.Peek(pos, 8);
+                long first = t.FirstSampleSize[next[i]];
+                if (h.Length >= 5 && first >= 5 && pos + t.ChunkSizes[next[i]] <= mdat.End)
+                {
+                    if (PlausibleStart(t, h, first))
+                    {
+                        pick = i;
+                        break;
+                    }
+                }
+            }
+
+            if (pick < 0)
+            {
+                for (int i = 0; i < tracks.Count; i++)
+                {
+                    TrackInfo t = tracks[i];
+                    if (next[i] >= t.Offsets.Length || (t.Handler == Vide && t.VideoCheck != 0))
+                    {
+                        continue;
+                    }
+
+                    if (pick < 0)
+                    {
+                        pick = i;
+                        continue;
+                    }
+
+                    TrackInfo q = tracks[pick];
+                    Int128 l = (Int128)t.ChunkStart[next[i]] * Math.Max(1, q.Timescale);
+                    Int128 r = (Int128)q.ChunkStart[next[pick]] * Math.Max(1, t.Timescale);
+                    if (l < r)
+                    {
+                        pick = i;
+                    }
+                }
+            }
+
+            if (pick < 0)
+            {
+                break;
+            }
+
+            result[pick][next[pick]] = pos;
+            pos += tracks[pick].ChunkSizes[next[pick]];
+            next[pick]++;
+        }
+
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            if (next[i] < tracks[i].Offsets.Length)
+            {
+                return null; // a video chunk that no position matched
+            }
+        }
+
+        return pos <= mdat.End ? result : null;
     }
 
     private static long LayoutEnd(List<TrackInfo> tracks, long[][] laid)

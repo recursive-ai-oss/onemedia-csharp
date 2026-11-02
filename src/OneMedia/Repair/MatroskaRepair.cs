@@ -64,6 +64,7 @@ internal static class MatroskaRepair
         }
 
         long ebmlEnd = ebmlHdr + ebmlSize;
+        long docTypeVersion = ReadDocTypeVersion(input, ebmlHdr, ebmlSize);
         if (!TryHeader(input.Peek(ebmlEnd, 16), out uint segId, out int segHdr, out long segDeclared) || segId != MatroskaIds.Segment)
         {
             report.Warn("No Segment element follows the EBML header.");
@@ -377,7 +378,7 @@ internal static class MatroskaRepair
         seekEntries.Add((MatroskaIds.Cluster, firstClusterOut));
         cuesOut = cursor;
         seekEntries.Add((MatroskaIds.Cues, cuesOut));
-        byte[] cues = BuildCues(elements, tracks, limits, out long cueCount);
+        byte[] cues = BuildCues(elements, tracks, limits, docTypeVersion, out long cueCount);
         cursor += cues.Length;
         long segmentSize = cursor;
 
@@ -431,6 +432,36 @@ internal static class MatroskaRepair
 
     private static bool IsClusterChild(uint id) => id is MatroskaIds.Timestamp or MatroskaIds.Position or MatroskaIds.PrevSize or MatroskaIds.SimpleBlock
         or MatroskaIds.BlockGroup or MatroskaIds.EncryptedBlock or MatroskaIds.SilentTracks or MatroskaIds.Void or MatroskaIds.Crc32;
+
+    // The EBML header's DocTypeVersion, 1 when it is absent or the header is oversized.
+    private static long ReadDocTypeVersion(RepairInput input, int headerSize, long size)
+    {
+        if (size is <= 0 or > 4096)
+        {
+            return 1;
+        }
+
+        byte[] body = new byte[size];
+        input.Read(headerSize, body);
+        int p = 0;
+        while (p < body.Length && TryHeader(body.AsSpan(p), out uint id, out int hdr, out long len) && len >= 0 && p + hdr + len <= body.Length)
+        {
+            if (id == MatroskaIds.DocTypeVersion && len is > 0 and <= 8)
+            {
+                long v = 0;
+                for (int i = 0; i < len; i++)
+                {
+                    v = (v << 8) | body[p + hdr + i];
+                }
+
+                return v;
+            }
+
+            p += hdr + (int)len;
+        }
+
+        return 1;
+    }
 
     private static bool TryHeader(ReadOnlySpan<byte> s, out uint id, out int hdr, out long size)
     {
@@ -966,7 +997,7 @@ internal static class MatroskaRepair
         return EbmlWriter.Element(MatroskaIds.SeekHead, body.ToArray());
     }
 
-    private static byte[] BuildCues(List<Element> elements, List<TrackInfo> tracks, MediaLimits limits, out long count)
+    private static byte[] BuildCues(List<Element> elements, List<TrackInfo> tracks, MediaLimits limits, long docTypeVersion, out long count)
     {
         var body = new List<byte>();
         count = 0;
@@ -980,10 +1011,12 @@ internal static class MatroskaRepair
             foreach (CueCandidate q in c.Cues)
             {
                 limits.CheckCues((int)Math.Min(int.MaxValue, count + 1), e.Offset);
+                // RFC 9559: CueRelativePosition exists from DocTypeVersion 4; a file that declares an older version must not carry it
+                byte[] relative = docTypeVersion >= 4 ? EbmlWriter.UnsignedElement(MatroskaIds.CueRelativePosition, (ulong)(q.RelativePosition - (c.Rewrite && c.HasCrc ? 6 : 0))) : [];
                 byte[] positions = EbmlWriter.Element(MatroskaIds.CueTrackPositions, [
                     .. EbmlWriter.UnsignedElement(MatroskaIds.CueTrack, (ulong)q.Track),
                     .. EbmlWriter.UnsignedElement(MatroskaIds.CueClusterPosition, (ulong)c.OutputPosition),
-                    .. EbmlWriter.UnsignedElement(MatroskaIds.CueRelativePosition, (ulong)(q.RelativePosition - (c.Rewrite && c.HasCrc ? 6 : 0)))]);
+                    .. relative]);
                 body.AddRange(EbmlWriter.Element(MatroskaIds.CuePoint, [.. EbmlWriter.UnsignedElement(MatroskaIds.CueTime, (ulong)Math.Max(0, q.Time)), .. positions]));
                 count++;
             }
