@@ -1209,13 +1209,24 @@ public static class IsoReconstructor
             }
         }
 
-        // The step between display positions: the gcd of the count differences inside each coded video sequence.
+        // The step between display positions: the gcd of the gaps between neighbouring counts once the counts of a coded video sequence are put in
+        // order. (Differences between pictures that are neighbours in decoding order are not enough: in a deep reference pyramid they can all be
+        // multiples of the real step.)
         long step = 0;
-        for (int k = 1; k < count; k++)
+        int from = 0;
+        for (int k = 1; k <= count; k++)
         {
-            if ((samples[idx[k]].Flags & SampleRec.ResetsOrder) == 0)
+            if (k == count || (samples[idx[k]].Flags & SampleRec.ResetsOrder) != 0)
             {
-                step = Gcd(step, Math.Abs(poc[k] - poc[k - 1]));
+                long[] sorted = new long[k - from];
+                Array.Copy(poc, from, sorted, 0, sorted.Length);
+                Array.Sort(sorted);
+                for (int i = 1; i < sorted.Length; i++)
+                {
+                    step = Gcd(step, sorted[i] - sorted[i - 1]);
+                }
+
+                from = k;
             }
         }
 
