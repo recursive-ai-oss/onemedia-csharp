@@ -100,4 +100,10 @@ public sealed record RemuxOptions
 
     /// <summary>The timescale of the movie header for the ISO targets, in ticks per second; 0 (the default) lets the muxer choose. Edit list durations are stated in it.</summary>
     public long MovieTimescale { get; init; }
+
+    /// <summary>
+    /// For the path overloads: after the remux, write the input's tags and pictures into the output through the common view (default true). The stream overloads
+    /// never do; their report lists every tag as not written. Chapters are not carried.
+    /// </summary>
+    public bool CarryTags { get; init; } = true;
 }

@@ -236,10 +236,35 @@ public class RemuxTests
     }
 
     [Fact]
-    public void TagsAndChaptersAreListedAsNotWritten()
+    public void StreamRemuxListsTagsAsNotWritten()
     {
         (_, RemuxReport report) = Remux(Data("xiph-flv", "tags.flac"));
         Assert.Contains(report.Losses, l => l.Kind == LossKind.Tag && l.Reason == LossReason.NotWritten);
+    }
+
+    [Theory]
+    [InlineData("o.mp4")]
+    [InlineData("o.mkv")]
+    public void PathRemuxCarriesCommonTags(string name)
+    {
+        string src = Data("xiph-flv", "tags.flac");
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string dst = Path.Combine(dir, name);
+            RemuxReport report = Remuxer.Remux(src, dst);
+            using MediaFile a = Media.Open(src);
+            using MediaFile b = Media.Open(dst);
+            Assert.False(string.IsNullOrEmpty(a.Metadata.Tags.Title));
+            Assert.Equal(a.Metadata.Tags.Title, b.Metadata.Tags.Title);
+            Assert.Equal(a.Metadata.Tags.Artist, b.Metadata.Tags.Artist);
+            Assert.DoesNotContain(report.Losses, l => l.Kind == LossKind.Tag && l.Reason == LossReason.NotWritten);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]

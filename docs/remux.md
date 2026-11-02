@@ -91,8 +91,8 @@ input's defect count.
 | `LossKind` | Reported when |
 |---|---|
 | `Track` | a track was left out (see the reasons above) |
-| `Tag` | the input has native tags (one entry per tag system, with the count and the first keys). **No muxer writes tags yet**, so every tag system is `NotWritten`; if the tags cannot be read, one `NotInspected` entry says so |
-| `Picture` | embedded pictures (cover art), `NotWritten` |
+| `Tag` | Path overloads (`RemuxOptions.CarryTags`, default true) write the input's common-view fields and pictures into the finished output with the tag writer (`tag-writing.md`); the report lists fields the output's tag system cannot hold (`NotRepresentable`, with the writer's reason) and native tags that have no common field (one entry per system, count and first keys). Stream overloads write no tags: each system is `NotWritten`. Unreadable tags give one `NotInspected` entry |
+| `Picture` | embedded pictures are carried with the tags on path overloads; `NotWritten` on stream overloads |
 | `Chapter` | chapters, `NotWritten` |
 | `CodecField` | sample entry boxes of an ISO source that the output does not write (anything other than `colr clap fiel gama btrt chnl srat mdcv clli`, which are copied, and the configuration/`pasp` boxes the muxer regenerates), and sample descriptions after the first |
 | `Disposition` | MP4/QuickTime keep only `Default` and `Disabled`; other disposition flags (forced, commentary, hearing impaired …) are listed |

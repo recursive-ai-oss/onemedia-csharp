@@ -164,11 +164,21 @@ public static class Remuxer
         ArgumentNullException.ThrowIfNull(inputPath);
         ArgumentNullException.ThrowIfNull(outputPath);
         using MediaFile input = Media.Open(inputPath);
-        using FileStream output = Create(outputPath, options?.Overwrite ?? false);
+        FileStream output = Create(outputPath, options?.Overwrite ?? false);
         bool done = false;
         try
         {
-            RemuxReport report = Remux(input, output, format, options, cancellationToken);
+            RemuxReport report;
+            using (output)
+            {
+                report = Remux(input, output, format, options, cancellationToken);
+            }
+
+            if (options?.CarryTags ?? true)
+            {
+                report = CarryTags(input, outputPath, report, cancellationToken);
+            }
+
             done = true;
             return report;
         }
@@ -359,6 +369,77 @@ public static class Remuxer
         }
 
         return boxes.Count == 0 ? null : new IsoTrackOptions { SampleEntryBoxes = boxes };
+    }
+
+    // Writes the input's common-view tags and pictures into the finished output with the tag writer, and replaces the muxer-level "not written"
+    // tag and picture losses with what the writer reports. Tags with no common field have no counterpart to carry and stay losses.
+    private static RemuxReport CarryTags(MediaFile input, string outputPath, RemuxReport report, CancellationToken cancellationToken)
+    {
+        List<RemuxLoss> losses = [.. report.Losses.Where(l => l.Kind is not (LossKind.Tag or LossKind.Picture) || l.Reason != LossReason.NotWritten)];
+        try
+        {
+            Tags.CommonTags tags = input.Metadata.Tags;
+            Tags.TagEdits edits = new();
+            HashSet<NativeTag> mapped = [];
+            foreach (Tags.CommonField field in Enum.GetValues<Tags.CommonField>())
+            {
+                IReadOnlyList<Tags.CommonValue> values = tags.Values(field);
+                if (values.Count == 0)
+                {
+                    continue;
+                }
+
+                edits.Set(field, values.Select(v => v.Text));
+                foreach (Tags.CommonValue v in values)
+                {
+                    mapped.Add(v.Source);
+                }
+            }
+
+            int pictures = 0;
+            foreach (Tags.TagPicture p in tags.Pictures)
+            {
+                edits.SetPicture(p.ReadData(), p.MimeType, p.Type);
+                mapped.Add(p.Source);
+                pictures++;
+            }
+
+            if (!edits.IsEmpty)
+            {
+                Tags.TagWriteReport written = Tags.TagWriter.Save(outputPath, edits, null, cancellationToken);
+                foreach (Tags.SystemWriteReport s in written.Systems)
+                {
+                    foreach ((Tags.CommonField field, string reason) in s.NotRepresentable)
+                    {
+                        losses.Add(new RemuxLoss(LossKind.Tag, LossReason.NotRepresentable, -1, $"{s.System}:{field}", reason));
+                    }
+                }
+
+                foreach (string note in written.Notes)
+                {
+                    losses.Add(new RemuxLoss(LossKind.Tag, LossReason.NotRepresentable, -1, "tags", note));
+                }
+
+                if (written.Systems.Count == 0)
+                {
+                    losses.Add(new RemuxLoss(LossKind.Tag, LossReason.NotWritten, -1, "tags", "The output has no tag system the common fields could be written to."));
+                }
+            }
+
+            foreach (IGrouping<string, NativeTag> g in input.Metadata.NativeTags.Where(t => !mapped.Contains(t)).GroupBy(t => t.System))
+            {
+                string keys = string.Join(", ", g.Select(t => t.Key).Distinct().Take(8));
+                losses.Add(new RemuxLoss(LossKind.Tag, LossReason.NotRepresentable, -1, g.Key, $"{g.Count()} native tags with no common field: {keys}{(g.Select(t => t.Key).Distinct().Count() > 8 ? ", …" : string.Empty)}."));
+            }
+
+            report = report with { Changes = [.. report.Changes, $"tags carried through the common view ({edits.Edits.Count} edits, {pictures} pictures)"] };
+        }
+        catch (Exception e) when (e is MediaException or MediaReadStateException or InvalidOperationException or NotSupportedException)
+        {
+            losses.Add(new RemuxLoss(LossKind.Tag, LossReason.NotWritten, -1, "tags", "The tags could not be carried: " + e.Message));
+        }
+
+        return report with { Losses = losses };
     }
 
     /// <summary>Lists the tags, pictures and chapters of the input; the muxers do not write any of them yet, so each is a loss.</summary>
