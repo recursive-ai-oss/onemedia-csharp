@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using RecursiveAI.OneMedia.IsoBmff;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 /// <summary>A stretch of the timeline with the same set of cues showing.</summary>
 /// <param name="Start">Where the stretch starts.</param>

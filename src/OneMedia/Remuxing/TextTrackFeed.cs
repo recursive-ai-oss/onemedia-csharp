@@ -1,4 +1,4 @@
-using RecursiveAI.OneMedia.Subtitles;
+using RecursiveAI.OneMedia.Captions;
 
 namespace RecursiveAI.OneMedia.Remuxing;
 

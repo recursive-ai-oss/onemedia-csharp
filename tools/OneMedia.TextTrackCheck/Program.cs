@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 using RecursiveAI.OneMedia;
-using RecursiveAI.OneMedia.Subtitles;
+using RecursiveAI.OneMedia.Captions;
 
 // Usage:
 //   TextTrackCheck raw <file>

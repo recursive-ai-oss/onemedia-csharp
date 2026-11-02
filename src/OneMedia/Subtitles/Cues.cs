@@ -1,6 +1,6 @@
 using System.Collections;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // The cue model: one shape for subtitles and captions whatever carried them (a sidecar file, a container text track, CEA-608/708).
 // Everything here is immutable once built: records with init-only members and value-equal lists, so "the same cues" is == on the model.

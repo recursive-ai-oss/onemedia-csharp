@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using RecursiveAI.OneMedia.IsoBmff;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 // 3GPP timed text (tx3g) and QuickTime text to and from the cue model. Mapping choices that the specification leaves open are listed in
 // docs/text-tracks.md.

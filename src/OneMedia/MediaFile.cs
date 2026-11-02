@@ -1,3 +1,4 @@
+using RecursiveAI.OneMedia.Captions;
 using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Metadata.Telemetry;
@@ -435,7 +436,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     // call instead of returning packets from a position someone else moved. Silent empty output is never the result.
     private bool _readStarted;
     private int _generation;
-    private List<RecursiveAI.OneMedia.Subtitles.SubtitleTrack>? _subtitles;
+    private List<SubtitleTrack>? _subtitles;
 
     private IReadOnlyList<TelemetryChannel>? _telemetry;
 
@@ -443,19 +444,19 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// The text subtitle tracks of the file (MP4, MOV and 3GP timed text, WebVTT and TTML in ISO; Matroska SubRip, ASS and WebVTT; WebM WebVTT), in
     /// container order, each with its cues. Tracks in other forms (bitmaps, transport stream subtitles) are not listed; <see cref="Tracks"/> has them.
     /// </summary>
-    public IReadOnlyList<RecursiveAI.OneMedia.Subtitles.SubtitleTrack> Subtitles
+    public IReadOnlyList<SubtitleTrack> Subtitles
     {
         get
         {
             if (_subtitles is null)
             {
-                List<RecursiveAI.OneMedia.Subtitles.SubtitleTrack> list = [];
+                List<SubtitleTrack> list = [];
                 foreach (MediaTrack t in Tracks)
                 {
-                    RecursiveAI.OneMedia.Subtitles.TextTrackFormat f = RecursiveAI.OneMedia.Subtitles.TextTracks.FormatOf(t);
-                    if (f != RecursiveAI.OneMedia.Subtitles.TextTrackFormat.Unknown)
+                    TextTrackFormat f = TextTracks.FormatOf(t);
+                    if (f != TextTrackFormat.Unknown)
                     {
-                        list.Add(new RecursiveAI.OneMedia.Subtitles.SubtitleTrack(this, t, f));
+                        list.Add(new SubtitleTrack(this, t, f));
                     }
                 }
 

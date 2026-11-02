@@ -1,4 +1,4 @@
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 /// <summary>
 /// A text subtitle track of an open file with its cues: what <c>MediaFile.Subtitles</c> lists. The track's properties come from the container;

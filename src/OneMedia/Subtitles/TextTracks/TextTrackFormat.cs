@@ -1,6 +1,6 @@
 using RecursiveAI.OneMedia.Remuxing;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 /// <summary>The kinds of subtitle text track that OneMedia reads and writes inside MP4, QuickTime, 3GP and Matroska/WebM files.</summary>
 public enum TextTrackFormat

@@ -5,7 +5,7 @@ namespace RecursiveAI.OneMedia.IsoBmff;
 
 // 3GPP timed text (3GPP TS 26.245 §5.15 to §5.17) as MP4 and 3GP files carry it in 'tx3g' sample entries and samples, and the older QuickTime
 // 'text' entry (Apple QuickTime File Format, "Text Media"). These types are the wire layer: they hold what the bytes say and write the same
-// bytes back. Mapping to the cue model is one layer up, in RecursiveAI.OneMedia.Subtitles.TextTracks.
+// bytes back. Mapping to the cue model is one layer up, in RecursiveAI.OneMedia.Captions.TextTracks.
 
 /// <summary>Face style bits of a <see cref="TextStyleRecord"/> (3GPP TS 26.245 §5.15). No bit set means plain text.</summary>
 [Flags]

@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace RecursiveAI.OneMedia.Subtitles;
+namespace RecursiveAI.OneMedia.Captions;
 
 /// <summary>What a format-specific text codec does with one packet; internal seam between the public decoder and the per-format mappings.</summary>
 internal interface ITextTrackDecoder
