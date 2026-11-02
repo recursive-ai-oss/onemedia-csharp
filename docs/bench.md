@@ -98,3 +98,43 @@ read; the tools run as released binaries.
 - `bench/iocount.sh DLL ROW IMPL REL` counts the read calls and bytes a cell makes on its input file (strace).
 - `bench/profile.sh DLL ROW IMPL REL TIMES` samples a looped cell with `dotnet-trace` and prints self and inclusive time by method.
   It needs `dotnet-trace` in `~/onemedia/u5-bench/tools` (`dotnet tool install dotnet-trace --tool-path ...`).
+
+## Subtitle rows
+
+`OneMedia.Bench subsbench [-r ROWFILTER] [-n SAMPLES] [CUES...]` times the sidecar readers and writers next to SubtitlesParser (MIT)
+and the Subtitle Edit core library (GPL; public API only, bench project only, never shipped). The bar is the fastest managed
+comparator per row, which is the Subtitle Edit core library wherever it has the format.
+
+**Input.** One synthetic SRT of N cues (seeded, 1–2 lines each, about one line in seven wrapped in `<i>`, accented letters and
+commas), read once by OneMedia to write the WebVTT, ASS and TTML files of the same cues with OneMedia's writers. Every
+implementation reads the same bytes, and each row prints the number of cues it parsed (or the byte length of its output) so that a
+difference in work shows. Sizes are 20,000 and 100,000 cues (1.4 MB and 7.2 MB of SRT).
+
+**Rows.** `parse srt|vtt|ass|ttml`; `convert srt->vtt|ass|ttml`. SubtitlesParser has no TTML parser and no writers.
+
+**What the work is.**
+- *Parse*: file bytes in, cues with times and text out. Both sides decode the bytes (OneMedia from bytes, the comparators through
+  `Encoding.UTF8.GetString` and a split into lines) and read every cue.
+- *Convert*: that parse, plus the target format written and encoded to file bytes (Subtitle Edit: `ToText` then
+  `Encoding.UTF8.GetBytes`; OneMedia: `Write(...).Data`).
+- OneMedia does more on the way than the comparators, which favours them: it detects the encoding (byte order mark, UTF-16 without
+  one, UTF-8 validity), detects the line ending, parses inline markup into styled spans and keeps what the model has no field for as
+  extras, logs defects with byte offsets, reports every rounding in a loss report (SRT milliseconds to ASS centiseconds is a
+  reported approximation for most cues) and returns the written text next to its bytes. Subtitle Edit's SRT and ASS loaders keep
+  the raw text with its tags and report nothing.
+
+**Method.** One process; every implementation of a row is warmed with 30 runs, then sampled in turn (one run of each, round after
+round) so that other processes' load lands on all of them alike; the median and minimum of `-n` samples (default 30) and the bytes
+allocated per run by the calling thread are printed. The published figure is the median on an exclusive machine; runs on a busy
+shared machine are indicative.
+
+**Equivalence check.** `OneMedia.Bench subsdump [-m MUTATIONS] FILE...` reads the files, their CRLF, CR, BOM and UTF-16 variants and
+seeded damaged variants (byte deletions, flips, inserted markup characters, duplicated lines, truncation) in all six sidecar
+formats and prints one SHA-256 per input and format over everything the model holds (cues, spans, styles, regions, extras) and the
+defects with offsets, plus what each writer produces from it and its loss report. Diffing the output of two builds proves a
+performance change did not change behaviour: the tuning of the subtitle layer was held to 0 differences over 30,000 input/format
+pairs (testdata sidecars, a rich generated document in five formats, 120 damaged variants of each).
+
+`OneMedia.Bench subsloop WORK CUES SECONDS` repeats one OneMedia subtitle workload (`parse-srt`, `parse-vtt`, `parse-ass`, `convert-vtt`,
+`convert-ass`) for a sampling profiler such as `dotnet-trace`. At 100,000 cues a run allocates 54–110 MB and keeps tens of MB alive until
+it ends, so garbage-collector time is a large share of every row; medians on a shared machine swing more than the minimum.

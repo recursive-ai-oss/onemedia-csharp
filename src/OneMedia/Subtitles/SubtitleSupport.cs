@@ -17,6 +17,7 @@ internal static class SubtitleText
     }
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly Encoding StrictUtf8Encoder = Encoding.GetEncoding(65001, EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback);
 
     internal static string NameOf(Encoding e) => e.CodePage switch
     {
@@ -101,6 +102,16 @@ internal static class SubtitleText
         }
         else
         {
+            // The usual case in one pass: valid UTF-8 decodes straight away. Invalid bytes throw, and are then located below.
+            try
+            {
+                encoding = new UTF8Encoding(false);
+                return StrictUtf8.GetString(data);
+            }
+            catch (DecoderFallbackException)
+            {
+            }
+
             ReadOnlySpan<byte> body = data;
             int bad = FirstInvalidUtf8(body, out bool incompleteEnd);
             if (bad < 0 || (tolerateTruncatedEnd && incompleteEnd))
@@ -200,7 +211,7 @@ internal static class SubtitleText
 
     internal static byte[] Encode(string text, Encoding encoding, bool bom, ConversionReport report)
     {
-        Encoding strict = Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback);
+        Encoding strict = encoding.CodePage == 65001 ? StrictUtf8Encoder : Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback);
         byte[] body;
         try
         {
@@ -243,6 +254,7 @@ internal sealed class SubtitleSource
     private int _cursorLineStart;
     private bool _newLineSeen;
     private bool _mixedReported;
+    private int _noCr; // 0 not looked at yet, 1 the text has no carriage return, 2 it has one
 
     internal SubtitleSource(string text, DefectLog log, MediaLimits limits, Encoding encoding, int bomLength)
     {
@@ -262,6 +274,31 @@ internal sealed class SubtitleSource
     internal Encoding Encoding { get; }
 
     internal int BomLength { get; }
+
+    /// <summary>Every line of the text, as <see cref="NextLine"/> returns them.</summary>
+    internal LineTable ReadLines()
+    {
+        var table = new LineTable(CountLines());
+        int pos = 0;
+        while (NextLine(ref pos, out int s, out int l))
+        {
+            table.Add((s, l));
+        }
+
+        return table;
+    }
+
+    /// <summary>The number of lines, counted by line feeds (or carriage returns when the text has no line feed): room for a line table.</summary>
+    internal int CountLines()
+    {
+        int n = Text.AsSpan().Count('\n');
+        if (n == 0)
+        {
+            n = Text.AsSpan().Count('\r');
+        }
+
+        return Math.Min(n + 1, 1 << 24);
+    }
 
     /// <summary>The first line ending seen, or <c>"\n"</c>.</summary>
     internal string NewLine { get; private set; } = "\n";
@@ -323,37 +360,51 @@ internal sealed class SubtitleSource
     {
         start = pos;
         length = 0;
-        if (pos >= Text.Length)
+        string text = Text;
+        if (pos >= text.Length)
         {
             return false;
         }
 
-        int i = pos;
-        while (i < Text.Length && Text[i] != '\n' && Text[i] != '\r')
+        if (_noCr == 0)
         {
-            i++;
+            _noCr = text.AsSpan().IndexOf('\r') < 0 ? 1 : 2;
         }
 
-        length = i - pos;
-        if (i < Text.Length)
+        if (_noCr == 1)
         {
-            string terminator;
-            if (Text[i] == '\r' && i + 1 < Text.Length && Text[i + 1] == '\n')
+            // Only line feeds in the text: no terminator choice to make and no mixed endings to report.
+            int lf = text.AsSpan(pos).IndexOf('\n');
+            int end = lf < 0 ? text.Length : pos + lf;
+            length = end - pos;
+            if (lf >= 0)
             {
-                terminator = "\r\n";
-            }
-            else
-            {
-                terminator = Text[i] == '\r' ? "\r" : "\n";
+                end++;
+                if (!_newLineSeen)
+                {
+                    _newLineSeen = true;
+                    NewLine = "\n";
+                }
             }
 
+            pos = end;
+            return true;
+        }
+
+        int i = text.AsSpan(pos).IndexOfAny('\n', '\r');
+        i = i < 0 ? text.Length : pos + i;
+        length = i - pos;
+        if (i < text.Length)
+        {
+            bool crlf = text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n';
+            string terminator = crlf ? "\r\n" : text[i] == '\r' ? "\r" : "\n";
             i += terminator.Length;
             if (!_newLineSeen)
             {
                 _newLineSeen = true;
                 NewLine = terminator;
             }
-            else if (terminator != NewLine && !_mixedReported)
+            else if (!_mixedReported && !ReferenceEquals(terminator, NewLine) && terminator != NewLine)
             {
                 _mixedReported = true;
                 Report(DefectKind.Inconsistent, DefectSeverity.Info, start + length, "Mixed line endings.", "subtitles.newline.mixed");
@@ -390,7 +441,92 @@ internal sealed class SubtitleSource
 
     internal ReadOnlySpan<char> Slice(int start, int length) => Text.AsSpan(start, length);
 
-    internal void CheckCue(int count, int index) => Limits.CheckCues(count, ByteOffset(index));
+    /// <summary>
+    /// The text of lines <paramref name="first"/> up to <paramref name="end"/> joined with <c>\n</c>, as one string. When the lines are
+    /// separated by a single <c>\n</c> in the source the result is one substring.
+    /// </summary>
+    internal static string JoinLines(string text, LineTable lines, int first, int end)
+    {
+        if (end <= first)
+        {
+            return "";
+        }
+
+        (int s0, int l0) = lines[first];
+        if (end - first == 1)
+        {
+            return text.Substring(s0, l0);
+        }
+
+        bool contiguous = true;
+        int total = l0;
+        for (int k = first + 1; k < end; k++)
+        {
+            (int s, int l) = lines[k];
+            total += l + 1;
+            if (s != lines[k - 1].Start + lines[k - 1].Length + 1 || text[s - 1] != '\n')
+            {
+                contiguous = false;
+            }
+        }
+
+        if (contiguous)
+        {
+            return text.Substring(s0, total);
+        }
+
+        return string.Create(total, (text, lines, first, end), static (span, st) =>
+        {
+            int w = 0;
+            for (int k = st.first; k < st.end; k++)
+            {
+                if (k > st.first)
+                {
+                    span[w++] = '\n';
+                }
+
+                (int s, int l) = st.lines[k];
+                st.text.AsSpan(s, l).CopyTo(span[w..]);
+                w += l;
+            }
+        });
+    }
+
+    // The byte offset costs a pass over the text, so it is computed only when the limit is actually crossed.
+    internal void CheckCue(int count, int index)
+    {
+        if (count > Limits.MaxCues)
+        {
+            Limits.CheckCues(count, ByteOffset(index));
+        }
+    }
+}
+
+// Line starts and lengths of a text, in order. A plain array with a count: the line table of a big file is a large allocation.
+internal sealed class LineTable
+{
+    private (int Start, int Length)[] _items;
+
+    internal LineTable(int capacity) => _items = new (int Start, int Length)[Math.Max(capacity, 4)];
+
+    internal int Count { get; private set; }
+
+    // Callers stay below Count; the array's own bounds check is the only one made.
+    internal (int Start, int Length) this[int index]
+    {
+        get => _items[index];
+        set => _items[index] = value;
+    }
+
+    internal void Add((int Start, int Length) line)
+    {
+        if (Count == _items.Length)
+        {
+            Array.Resize(ref _items, _items.Length * 2);
+        }
+
+        _items[Count++] = line;
+    }
 }
 
 // One styled interval to be written as markup, and a point marker.
@@ -447,15 +583,83 @@ internal static class MarkupWriter
         }
     }
 
+    private static readonly System.Buffers.SearchValues<char> SrtSpecial = System.Buffers.SearchValues.Create("\n");
+    private static readonly System.Buffers.SearchValues<char> VttSpecial = System.Buffers.SearchValues.Create("&<>\n");
+
+    /// <summary>A starting capacity for the text of a document: <paramref name="perCue"/> characters a cue, capped.</summary>
+    internal static int EstimateCapacity(int cues, int perCue) => (int)Math.Min(1024L + ((long)cues * perCue), 1 << 24);
+
+    /// <summary>
+    /// Appends text with line breaks written as <paramref name="newLine"/>; for WebVTT also <c>&amp;</c>, <c>&lt;</c> and <c>&gt;</c> as
+    /// character references.
+    /// </summary>
+    internal static void AppendEscaped(StringBuilder sb, ReadOnlySpan<char> s, bool webVtt, string newLine)
+    {
+        System.Buffers.SearchValues<char> set = webVtt ? VttSpecial : SrtSpecial;
+        while (!s.IsEmpty)
+        {
+            int k = s.IndexOfAny(set);
+            if (k < 0)
+            {
+                sb.Append(s);
+                return;
+            }
+
+            sb.Append(s[..k]);
+            switch (s[k])
+            {
+                case '&':
+                    sb.Append("&amp;");
+                    break;
+                case '<':
+                    sb.Append("&lt;");
+                    break;
+                case '>':
+                    sb.Append("&gt;");
+                    break;
+                default:
+                    sb.Append(newLine);
+                    break;
+            }
+
+            s = s[(k + 1)..];
+        }
+    }
+
+    private static void Emit(StringBuilder sb, ReadOnlySpan<char> s, bool webVtt, string newLine, Action<StringBuilder, ReadOnlySpan<char>>? escape)
+    {
+        if (escape is null)
+        {
+            AppendEscaped(sb, s, webVtt, newLine);
+        }
+        else
+        {
+            escape(sb, s);
+        }
+    }
+
     // Writes text with nested markup from intervals that may overlap. Where two intervals cross, the inner one is closed and
     // reopened around the boundary so the output nests properly. Closing happens before opening at a position; points go between.
-    internal static void Write(StringBuilder sb, string text, List<MarkupInterval> intervals, List<MarkupPoint> points, Action<StringBuilder, ReadOnlySpan<char>> escape)
+    internal static void Write(StringBuilder sb, string text, List<MarkupInterval> intervals, List<MarkupPoint> points, bool webVtt, string newLine) =>
+        Write(sb, text, intervals, points, webVtt, newLine, null);
+
+    /// <summary>As the other overload, with the caller's own escaping of text runs (TTML).</summary>
+    internal static void Write(StringBuilder sb, string text, List<MarkupInterval> intervals, List<MarkupPoint> points, Action<StringBuilder, ReadOnlySpan<char>> escape) =>
+        Write(sb, text, intervals, points, false, "", escape);
+
+    private static void Write(StringBuilder sb, string text, List<MarkupInterval> intervals, List<MarkupPoint> points, bool webVtt, string newLine, Action<StringBuilder, ReadOnlySpan<char>>? escape)
     {
         intervals.RemoveAll(i => i.Start >= i.End || i.End <= 0 || i.Start >= text.Length);
         for (int k = 0; k < intervals.Count; k++)
         {
             MarkupInterval iv = intervals[k];
             intervals[k] = iv with { Start = Math.Max(iv.Start, 0), End = Math.Min(iv.End, text.Length) };
+        }
+
+        if (intervals.Count == 0 && points.Count == 0)
+        {
+            Emit(sb, text, webVtt, newLine, escape);
+            return;
         }
 
         intervals.Sort(static (a, b) =>
@@ -471,7 +675,8 @@ internal static class MarkupWriter
         });
         points.Sort(static (a, b) => a.Position.CompareTo(b.Position));
 
-        var boundaries = new SortedSet<int> { 0, text.Length };
+        // Every position where something opens, closes or is marked, once, in order.
+        var boundaries = new List<int>(((intervals.Count + points.Count) * 2) + 2) { 0, text.Length };
         foreach (MarkupInterval iv in intervals)
         {
             boundaries.Add(iv.Start);
@@ -483,22 +688,39 @@ internal static class MarkupWriter
             boundaries.Add(Math.Clamp(p.Position, 0, text.Length));
         }
 
+        boundaries.Sort();
         var stack = new List<MarkupInterval>();
         int nextInterval = 0;
         int nextPoint = 0;
         int written = 0;
+        int previous = -1;
         foreach (int b in boundaries)
         {
+            if (b == previous)
+            {
+                continue;
+            }
+
+            previous = b;
             if (b > written)
             {
-                escape(sb, text.AsSpan(written, b - written));
+                Emit(sb, text.AsSpan(written, b - written), webVtt, newLine, escape);
                 written = b;
             }
 
             // Close everything that ends here, reopening the survivors that were above it.
             while (true)
             {
-                int lowest = stack.FindIndex(s => s.End <= b);
+                int lowest = -1;
+                for (int k = 0; k < stack.Count; k++)
+                {
+                    if (stack[k].End <= b)
+                    {
+                        lowest = k;
+                        break;
+                    }
+                }
+
                 if (lowest < 0)
                 {
                     break;
