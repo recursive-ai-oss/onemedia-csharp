@@ -13,6 +13,8 @@ while IFS=$'\t' read -r name kind playlist rest; do
   p="$in/$name/$playlist"
   case "$name" in
     *master2) args+=("$p=$in/$name/v0.m3u8") ;;
+    # ffprobe stalls on a SegmentList of byte ranges into one file per track; the media files themselves hold the same samples.
+    dash-av-single|dash-av-single-list) args+=("$p=$in/$name/media-0.mp4+$in/$name/media-1.mp4") ;;
     *) args+=("$p") ;;
   esac
 done < "$in/MANIFEST.tsv"

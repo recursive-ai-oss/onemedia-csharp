@@ -116,6 +116,83 @@ public readonly record struct HlsByteRange(long Length, long Offset)
     public long End => Offset + Length;
 }
 
+/// <summary>How the media is encrypted (<c>METHOD</c> of <c>EXT-X-KEY</c>, RFC 8216 §4.3.2.4).</summary>
+public enum HlsKeyMethod
+{
+    /// <summary>Not encrypted (<c>NONE</c>).</summary>
+    None = 0,
+
+    /// <summary>Whole-segment AES-128 CBC (<c>AES-128</c>).</summary>
+    Aes128,
+
+    /// <summary>Sample-level encryption (<c>SAMPLE-AES</c>).</summary>
+    SampleAes,
+
+    /// <summary>Sample-level AES-CTR (<c>SAMPLE-AES-CTR</c>).</summary>
+    SampleAesCtr,
+
+    /// <summary>Another method name; see <see cref="HlsKey.MethodName"/>.</summary>
+    Other,
+}
+
+/// <summary>An <c>EXT-X-KEY</c>: how to obtain the key that decrypts the segments after it. The library reads and writes it; decrypting is out of scope.</summary>
+public sealed record HlsKey
+{
+    /// <summary>The method.</summary>
+    public HlsKeyMethod Method { get; init; }
+
+    /// <summary>The <c>METHOD</c> as written.</summary>
+    public string MethodName { get; init; } = "NONE";
+
+    /// <summary>The key's <c>URI</c>, or null (absent for <c>NONE</c>).</summary>
+    public string? Uri { get; init; }
+
+    /// <summary>The <c>IV</c> as written (<c>0x</c> and 32 hex digits), or null: the IV is then the segment's media sequence number (RFC 8216 §5.2).</summary>
+    public string? Iv { get; init; }
+
+    /// <summary>The <c>KEYFORMAT</c>, or null for <c>identity</c>.</summary>
+    public string? KeyFormat { get; init; }
+
+    /// <summary>The <c>KEYFORMATVERSIONS</c>, or null for version 1.</summary>
+    public string? KeyFormatVersions { get; init; }
+
+    /// <summary>Attributes the model does not name, as <c>NAME=value</c> text.</summary>
+    public IReadOnlyList<string> OtherAttributes { get; init; } = [];
+
+    /// <summary>The tag line as written to a playlist.</summary>
+    public override string ToString()
+    {
+        StringBuilder sb = new("#EXT-X-KEY:METHOD=");
+        sb.Append(Method == HlsKeyMethod.Other ? MethodName : Method switch { HlsKeyMethod.None => "NONE", HlsKeyMethod.Aes128 => "AES-128", HlsKeyMethod.SampleAes => "SAMPLE-AES", _ => "SAMPLE-AES-CTR" });
+        if (Uri is not null)
+        {
+            sb.Append(",URI=\"").Append(Uri).Append('"');
+        }
+
+        if (Iv is not null)
+        {
+            sb.Append(",IV=").Append(Iv);
+        }
+
+        if (KeyFormat is not null)
+        {
+            sb.Append(",KEYFORMAT=\"").Append(KeyFormat).Append('"');
+        }
+
+        if (KeyFormatVersions is not null)
+        {
+            sb.Append(",KEYFORMATVERSIONS=\"").Append(KeyFormatVersions).Append('"');
+        }
+
+        foreach (string o in OtherAttributes)
+        {
+            sb.Append(',').Append(o);
+        }
+
+        return sb.ToString();
+    }
+}
+
 /// <summary>An <c>EXT-X-MAP</c>: the initialisation section that media segments after it need (RFC 8216 §4.3.2.5).</summary>
 /// <param name="Uri">Where the initialisation section is.</param>
 /// <param name="ByteRange">The part of the resource, or null for the whole of it.</param>
@@ -148,7 +225,13 @@ public sealed record HlsSegment
     /// <summary>True when the segment is marked <c>EXT-X-GAP</c>: it is not available and clients should not request it.</summary>
     public bool Gap { get; init; }
 
-    /// <summary>Tags that precede the segment and are not modelled (<c>EXT-X-KEY</c>, <c>EXT-X-DATERANGE</c>, <c>EXT-X-BITRATE</c>, vendor tags), whole lines, kept so a rewrite loses nothing.</summary>
+    /// <summary>The keys in effect for the segment (RFC 8216 §4.3.2.4): the last <c>EXT-X-KEY</c> of each <see cref="HlsKey.KeyFormat"/> before it. Empty when the segment is not encrypted. Several keys apply when a playlist carries one per key system.</summary>
+    public IReadOnlyList<HlsKey> Keys { get; init; } = [];
+
+    /// <summary>True when <c>EXT-X-KEY</c> tags stand directly before this segment, so that <see cref="Keys"/> is written here (the first segment of a playlist that is encrypted from its start has this set). An empty <see cref="Keys"/> with this set is <c>METHOD=NONE</c>.</summary>
+    public bool KeysChanged { get; init; }
+
+    /// <summary>Tags that precede the segment and are not modelled (<c>EXT-X-DATERANGE</c>, <c>EXT-X-BITRATE</c>, vendor tags), whole lines, kept so a rewrite loses nothing.</summary>
     public IReadOnlyList<string> OtherTags { get; init; } = [];
 }
 
@@ -214,6 +297,44 @@ public abstract class HlsPlaylist
     {
         ArgumentNullException.ThrowIfNull(text);
         return HlsParser.Parse(text, limits ?? MediaLimits.Default);
+    }
+
+    /// <summary>Parses a playlist the way real-world servers write them: what the standard forbids is reported as a defect and skipped instead of thrown.</summary>
+    /// <remarks>Recovered cases: no <c>#EXTM3U</c> first line, a segment URI without <c>EXTINF</c> (kept, duration zero), a URI without <c>EXT-X-STREAM-INF</c> (dropped), and any modelled tag whose value is malformed (the tag is ignored). Nothing else changes against <see cref="Parse(string, MediaLimits?)"/>.</remarks>
+    /// <param name="text">The playlist text.</param>
+    /// <param name="limits">Limits; defaults when null.</param>
+    /// <returns>The playlist and the defects found, in line order.</returns>
+    /// <exception cref="MediaLimitExceededException">A limit was exceeded.</exception>
+    public static HlsParseResult ParseLenient(string text, MediaLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        List<ManifestDefect> defects = [];
+        HlsPlaylist playlist = HlsParser.Parse(text, limits ?? MediaLimits.Default, defects);
+        return new HlsParseResult(playlist, defects);
+    }
+
+    /// <summary>Like <see cref="ParseLenient(string, MediaLimits?)"/> without throwing.</summary>
+    /// <param name="text">The playlist text.</param>
+    /// <param name="result">The playlist and defects, or null.</param>
+    /// <param name="limits">Limits; defaults when null.</param>
+    /// <returns>False when the text is null or a limit was exceeded.</returns>
+    public static bool TryParseLenient(string? text, out HlsParseResult? result, MediaLimits? limits = null)
+    {
+        result = null;
+        if (text is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            result = ParseLenient(text, limits);
+            return true;
+        }
+        catch (MediaLimitExceededException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Parses a playlist from UTF-8 bytes.</summary>
@@ -311,13 +432,14 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
     {
         get
         {
-            MediaTime sum = MediaTime.Zero;
+            // Summed in nanoseconds: the segments may be in different timescales (a decimal fraction each), which exact addition would refuse.
+            Int128 nanos = 0;
             foreach (HlsSegment s in Segments)
             {
-                sum += s.Duration;
+                nanos += (Int128)s.Duration.Ticks * 1_000_000_000 / s.Duration.Timescale;
             }
 
-            return sum;
+            return new MediaTime((long)Int128.Clamp(nanos, 0, long.MaxValue), 1_000_000_000);
         }
     }
 
@@ -364,6 +486,20 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
                 {
                     v = Math.Max(v, IFramesOnly ? 5 : 6);
                 }
+
+                // RFC 8216 §7: IV needs version 2, KEYFORMAT and KEYFORMATVERSIONS version 5.
+                foreach (HlsKey k in s.Keys)
+                {
+                    if (k.Iv is not null)
+                    {
+                        v = Math.Max(v, 2);
+                    }
+
+                    if (k.KeyFormat is not null || k.KeyFormatVersions is not null)
+                    {
+                        v = Math.Max(v, 5);
+                    }
+                }
             }
 
             return IFramesOnly ? Math.Max(v, 4) : v;
@@ -403,6 +539,20 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
             {
                 writer.Write(t);
                 writer.Write('\n');
+            }
+
+            if (s.KeysChanged)
+            {
+                if (s.Keys.Count == 0)
+                {
+                    writer.Write("#EXT-X-KEY:METHOD=NONE\n");
+                }
+
+                foreach (HlsKey k in s.Keys)
+                {
+                    writer.Write(k.ToString());
+                    writer.Write('\n');
+                }
             }
 
             if (s.Discontinuity)

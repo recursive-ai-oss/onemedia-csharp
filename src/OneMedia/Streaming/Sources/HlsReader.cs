@@ -30,7 +30,7 @@ internal static class HlsReader
     public static PresentationPlan Read(string text, Uri location, MediaLimits limits, DefectLog defects)
     {
         PresentationPlan plan = new();
-        HlsPlaylist playlist = HlsPlaylist.Parse(text, limits);
+        HlsPlaylist playlist = Parse(text, limits, defects);
         if (playlist is HlsMediaPlaylist media)
         {
             PlannedRendition r = ToRendition(media, location, limits, defects);
@@ -78,7 +78,7 @@ internal static class HlsReader
     /// <summary>Reads a media playlist (RFC 8216 §4.3.2, §4.3.3).</summary>
     /// <exception cref="ManifestFormatException">The playlist is malformed or is a multivariant playlist.</exception>
     public static PlannedRendition ReadMedia(string text, Uri location, MediaLimits limits, DefectLog defects) =>
-        HlsPlaylist.Parse(text, limits) is HlsMediaPlaylist m ? ToRendition(m, location, limits, defects) : throw new ManifestFormatException("A variant's URI names a multivariant playlist, not a media playlist.");
+        Parse(text, limits, defects) is HlsMediaPlaylist m ? ToRendition(m, location, limits, defects) : throw new ManifestFormatException("A variant's URI names a multivariant playlist, not a media playlist.");
 
     private static PlannedRendition ToRendition(HlsMediaPlaylist playlist, Uri location, MediaLimits limits, DefectLog defects)
     {
@@ -88,13 +88,16 @@ internal static class HlsReader
             defects.Add(DefectKind.Unsupported, DefectSeverity.Warning, 0, "An I-frames-only playlist lists byte ranges of single pictures; it is read as an ordinary playlist.", "hls.iframes-only");
         }
 
-        // A key tag applies to every segment after it until another one (RFC 8216 §4.3.2.4). The model keeps a key before the first segment among the
-        // playlist's own tags and any other among the other tags of the segment that follows it.
-        bool encrypted = KeyedBy(playlist.OtherTags, false);
+        bool encrypted;
         long sequence = playlist.MediaSequence;
         foreach (HlsSegment s in playlist.Segments)
         {
-            encrypted = KeyedBy(s.OtherTags, encrypted);
+            // RFC 8216 §4.3.2.4: the model lists the keys in effect for each segment; none means not encrypted.
+            encrypted = false;
+            foreach (HlsKey k in s.Keys)
+            {
+                encrypted |= k.Method != HlsKeyMethod.None;
+            }
 
             r.Protected |= encrypted;
             if (!s.Gap)
@@ -132,17 +135,22 @@ internal static class HlsReader
         return r;
     }
 
-    private static bool KeyedBy(IReadOnlyList<string> tags, bool current)
+    /// <summary>Reads a playlist leniently, as servers write them, and records what the standard forbids as defects in the log.</summary>
+    private static HlsPlaylist Parse(string text, MediaLimits limits, DefectLog defects)
     {
-        foreach (string tag in tags)
+        HlsParseResult result = HlsPlaylist.ParseLenient(text, limits);
+        foreach (ManifestDefect d in result.Defects)
         {
-            if (tag.StartsWith("#EXT-X-KEY:", StringComparison.Ordinal) && HlsAttributeList.TryParse(tag.AsSpan("#EXT-X-KEY:".Length), out HlsAttributeList keys))
+            defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, d.Offset, $"Playlist line {d.Line}: {d.Message}", "hls." + d.Kind switch
             {
-                current = keys.Get("METHOD") is { } method && method != "NONE";
-            }
+                ManifestDefectKind.MissingPlaylistHeader => "missing-header",
+                ManifestDefectKind.SegmentWithoutDuration => "segment-without-duration",
+                ManifestDefectKind.UriWithoutStreamInf => "uri-without-stream-inf",
+                _ => "malformed-tag",
+            });
         }
 
-        return current;
+        return result.Playlist;
     }
 
     /// <summary>The total of the segment durations, or unknown when one of them states none.</summary>

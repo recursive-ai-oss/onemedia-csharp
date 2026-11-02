@@ -5,7 +5,7 @@ namespace RecursiveAI.OneMedia.Streaming;
 /// <summary>Reads HLS playlists (RFC 8216). Tolerant of unknown tags, strict about the ones it models.</summary>
 internal static class HlsParser
 {
-    public static HlsPlaylist Parse(string text, MediaLimits limits)
+    public static HlsPlaylist Parse(string text, MediaLimits limits, List<ManifestDefect>? defects = null)
     {
         limits.CheckAllocation(text.Length, 0);
         if (text.Length > 0 && text[0] == '\uFEFF')
@@ -16,19 +16,40 @@ internal static class HlsParser
         // RFC 8216 §4.1: lines end with LF or CRLF; the first line is #EXTM3U.
         string[] lines = text.Split('\n');
         limits.CheckElementCount(lines.Length, 0);
-        if (lines.Length == 0 || lines[0].TrimEnd('\r') != "#EXTM3U")
+        long[] starts = new long[lines.Length];
+        long at = 0;
+        for (int i = 0; i < lines.Length; i++)
         {
-            throw new ManifestFormatException("A playlist starts with #EXTM3U.", 1);
+            starts[i] = at;
+            at += lines[i].Length + 1;
         }
 
+        int first = 1;
+        if (lines.Length == 0 || lines[0].TrimEnd('\r') != "#EXTM3U")
+        {
+            if (defects is null)
+            {
+                throw new ManifestFormatException("A playlist starts with #EXTM3U.", 1);
+            }
+
+            defects.Add(new ManifestDefect(ManifestDefectKind.MissingPlaylistHeader, 1, 0, "A playlist starts with #EXTM3U."));
+            first = 0;
+        }
+
+        Context ctx = new(defects, starts);
         bool multivariant = false;
-        for (int i = 1; i < lines.Length && !multivariant; i++)
+        for (int i = first; i < lines.Length && !multivariant; i++)
         {
             multivariant = lines[i].StartsWith("#EXT-X-STREAM-INF:", StringComparison.Ordinal) || lines[i].StartsWith("#EXT-X-MEDIA:", StringComparison.Ordinal)
                 || lines[i].StartsWith("#EXT-X-I-FRAME-STREAM-INF:", StringComparison.Ordinal);
         }
 
-        return multivariant ? ParseMultivariant(lines) : ParseMedia(lines);
+        return multivariant ? ParseMultivariant(lines, first, ctx) : ParseMedia(lines, first, ctx);
+    }
+
+    private sealed record Context(List<ManifestDefect>? Defects, long[] Starts)
+    {
+        public void Report(ManifestDefectKind kind, int line, string message) => Defects!.Add(new ManifestDefect(kind, line, Starts[line - 1], message));
     }
 
     private static HlsAttributeList Attributes(string line, int number)
@@ -64,7 +85,7 @@ internal static class HlsParser
         return new HlsByteRange(length, offset);
     }
 
-    private static HlsMediaPlaylist ParseMedia(string[] lines)
+    private static HlsMediaPlaylist ParseMedia(string[] lines, int first, Context ctx)
     {
         int? version = null;
         int target = 0;
@@ -83,7 +104,10 @@ internal static class HlsParser
         bool discontinuity = false, gap = false;
         DateTimeOffset? pdt = null;
         long previousEnd = 0;
-        for (int n = 1; n < lines.Length; n++)
+        List<HlsKey> keys = [];
+        List<string> pendingKeyLines = [];
+        bool keysChanged = false;
+        for (int n = first; n < lines.Length; n++)
         {
             string line = lines[n].TrimEnd('\r');
             int number = n + 1;
@@ -96,7 +120,14 @@ internal static class HlsParser
             {
                 if (!haveDuration)
                 {
-                    throw new ManifestFormatException("A segment URI needs an EXTINF tag before it.", number);
+                    if (ctx.Defects is null)
+                    {
+                        throw new ManifestFormatException("A segment URI needs an EXTINF tag before it.", number);
+                    }
+
+                    // Real playlists sometimes list a URI with no EXTINF; the segment is kept with an unknown (zero) duration.
+                    ctx.Report(ManifestDefectKind.SegmentWithoutDuration, number, "A segment URI needs an EXTINF tag before it.");
+                    duration = default;
                 }
 
                 segments.Add(new HlsSegment
@@ -109,8 +140,12 @@ internal static class HlsParser
                     ProgramDateTime = pdt,
                     Map = map,
                     Gap = gap,
+                    Keys = keys.ToArray(),
+                    KeysChanged = keysChanged,
                     OtherTags = pending.Count == 0 ? [] : pending.ToArray(),
                 });
+                keysChanged = false;
+                pendingKeyLines.Clear();
                 if (range is { } used)
                 {
                     previousEnd = used.End;
@@ -132,6 +167,8 @@ internal static class HlsParser
             }
 
             string name = line.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? line[..colon] : line;
+            try
+            {
             switch (name)
             {
                 case "#EXT-X-VERSION":
@@ -168,6 +205,25 @@ internal static class HlsParser
 
                         start = t;
                         precise = Yes(a.Get("PRECISE"));
+                        break;
+                    }
+
+                case "#EXT-X-KEY":
+                    {
+                        // RFC 8216 §4.3.2.4: a key applies to every segment after it until another key of the same KEYFORMAT; METHOD=NONE ends encryption.
+                        HlsKey key = ParseKey(Attributes(line, number), number);
+                        if (key.Method == HlsKeyMethod.None)
+                        {
+                            keys.Clear();
+                        }
+                        else
+                        {
+                            keys.RemoveAll(k => string.Equals(k.KeyFormat ?? "identity", key.KeyFormat ?? "identity", StringComparison.Ordinal));
+                            keys.Add(key);
+                        }
+
+                        keysChanged = true;
+                        pendingKeyLines.Add(line);
                         break;
                     }
 
@@ -228,9 +284,15 @@ internal static class HlsParser
 
                     break;
             }
+            }
+            catch (ManifestFormatException e) when (ctx.Defects is not null)
+            {
+                ctx.Report(ManifestDefectKind.MalformedTag, number, e.Message);
+            }
         }
 
-        // Unmodelled tags after the last segment URI belong after it.
+        // Unmodelled tags after the last segment URI belong after it; so do key tags no segment followed.
+        trailing.AddRange(pendingKeyLines);
         trailing.AddRange(pending);
         return new HlsMediaPlaylist
         {
@@ -250,7 +312,7 @@ internal static class HlsParser
         };
     }
 
-    private static HlsMultivariantPlaylist ParseMultivariant(string[] lines)
+    private static HlsMultivariantPlaylist ParseMultivariant(string[] lines, int first, Context ctx)
     {
         int? version = null;
         bool independent = false, precise = false;
@@ -259,7 +321,7 @@ internal static class HlsParser
         List<HlsVariant> variants = [];
         List<HlsRendition> renditions = [];
         HlsAttributeList? pendingVariant = null;
-        for (int n = 1; n < lines.Length; n++)
+        for (int n = first; n < lines.Length; n++)
         {
             string line = lines[n].TrimEnd('\r');
             int number = n + 1;
@@ -272,10 +334,24 @@ internal static class HlsParser
             {
                 if (pendingVariant is null)
                 {
-                    throw new ManifestFormatException("A URI needs an EXT-X-STREAM-INF tag before it.", number);
+                    if (ctx.Defects is null)
+                    {
+                        throw new ManifestFormatException("A URI needs an EXT-X-STREAM-INF tag before it.", number);
+                    }
+
+                    ctx.Report(ManifestDefectKind.UriWithoutStreamInf, number, "A URI needs an EXT-X-STREAM-INF tag before it.");
+                    continue;
                 }
 
-                variants.Add(Variant(pendingVariant, line, false, number));
+                try
+                {
+                    variants.Add(Variant(pendingVariant, line, false, number));
+                }
+                catch (ManifestFormatException e) when (ctx.Defects is not null)
+                {
+                    ctx.Report(ManifestDefectKind.MalformedTag, number, e.Message);
+                }
+
                 pendingVariant = null;
                 continue;
             }
@@ -286,6 +362,8 @@ internal static class HlsParser
             }
 
             string name = line.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? line[..colon] : line;
+            try
+            {
             switch (name)
             {
                 case "#EXT-X-VERSION":
@@ -349,14 +427,38 @@ internal static class HlsParser
                     other.Add(line);
                     break;
             }
+            }
+            catch (ManifestFormatException e) when (ctx.Defects is not null)
+            {
+                ctx.Report(ManifestDefectKind.MalformedTag, number, e.Message);
+            }
         }
 
-        if (pendingVariant is not null)
+        if (pendingVariant is not null && ctx.Defects is not null)
+        {
+            ctx.Report(ManifestDefectKind.MalformedTag, lines.Length, "EXT-X-STREAM-INF is not followed by a URI.");
+        }
+        else if (pendingVariant is not null)
         {
             throw new ManifestFormatException("EXT-X-STREAM-INF is not followed by a URI.", lines.Length);
         }
 
         return new HlsMultivariantPlaylist { Version = version ?? 1, IndependentSegments = independent, StartTimeOffset = start, StartPrecise = precise, OtherTags = other, Variants = variants, Renditions = renditions };
+    }
+
+    private static HlsKey ParseKey(HlsAttributeList a, int number)
+    {
+        string method = a.Get("METHOD") ?? throw new ManifestFormatException("EXT-X-KEY needs METHOD.", number);
+        return new HlsKey
+        {
+            Method = method switch { "NONE" => HlsKeyMethod.None, "AES-128" => HlsKeyMethod.Aes128, "SAMPLE-AES" => HlsKeyMethod.SampleAes, "SAMPLE-AES-CTR" => HlsKeyMethod.SampleAesCtr, _ => HlsKeyMethod.Other },
+            MethodName = method,
+            Uri = a.Get("URI"),
+            Iv = a.Get("IV"),
+            KeyFormat = a.Get("KEYFORMAT"),
+            KeyFormatVersions = a.Get("KEYFORMATVERSIONS"),
+            OtherAttributes = a.Others("METHOD", "URI", "IV", "KEYFORMAT", "KEYFORMATVERSIONS"),
+        };
     }
 
     private static HlsVariant Variant(HlsAttributeList a, string uri, bool iframe, int number)

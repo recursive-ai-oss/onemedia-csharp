@@ -160,6 +160,21 @@ public sealed class PresentationSourceTests
     }
 
     [Fact]
+    public async Task AKeyThatStartsPartWayAndASegmentWithoutDurationAreRecovered()
+    {
+        // A segment URI with no EXTINF is kept (a defect, not a refusal); the key that starts at the second segment makes the presentation protected.
+        Dictionary<string, byte[]> files = new()
+        {
+            ["/p/index.m3u8"] = Text("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\na.ts\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"k.bin\"\n#EXTINF:1.0,\nb.ts\n#EXT-X-ENDLIST\n"),
+            ["/p/a.ts"] = new byte[188 * 20],
+            ["/p/b.ts"] = new byte[188 * 20],
+        };
+        await using PresentationDemuxer d = await PresentationSource.OpenAsync(new Uri("http://example.test/p/index.m3u8"), Memory(files));
+        Assert.True(d.IsProtected);
+        Assert.Contains(d.Defects, x => x.Code == "hls.segment-without-duration");
+    }
+
+    [Fact]
     public async Task AVariantIsChosenByIndexAndListed()
     {
         string dir = Data("hls-fmp4-av");

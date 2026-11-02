@@ -22,13 +22,28 @@ internal static class StreamingChecks
         {
             int eq = arg.IndexOf('=', StringComparison.Ordinal);
             string ours = Path.GetFullPath(eq < 0 ? arg : arg[..eq]);
-            string theirs = Path.GetFullPath(eq < 0 ? arg : arg[(eq + 1)..]);
+            string[] theirFiles = (eq < 0 ? arg : arg[(eq + 1)..]).Split('+', StringSplitOptions.RemoveEmptyEntries);
             FileReport report;
             try
             {
-                List<ProbeStream> streams = FfprobeReader.ReadStreams(theirs);
-                List<PacketRecord> packets = [.. FfprobeReader.ReadPackets(theirs, streams)];
+                // ffprobe may be given several files (a presentation whose tracks live in separate media files); their streams follow one another.
+                List<ProbeStream> streams = [];
+                List<PacketRecord> packets = [];
+                foreach (string t in theirFiles)
+                {
+                    string theirs = Path.GetFullPath(t);
+                    int first = streams.Count;
+                    List<ProbeStream> s = FfprobeReader.ReadStreams(theirs);
+                    foreach (PacketRecord p in FfprobeReader.ReadPackets(theirs, s))
+                    {
+                        packets.Add(p with { Track = p.Track + first });
+                    }
+
+                    streams.AddRange(s.Select(x => x with { Index = x.Index + first }));
+                }
+
                 OurResult result = OurReader.Read(registry, ours);
+                (streams, packets) = AlignStreams(streams, packets, result.Tracks);
                 report = Comparer.Compare(ours, streams, packets, result, exceptions);
             }
             catch (Exception e) when (e is IOException or InvalidOperationException or FormatException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
@@ -48,6 +63,35 @@ internal static class StreamingChecks
         return bad == 0 ? 0 : 1;
     }
 
+    /// <summary>
+    /// ffprobe lists every rendition of a presentation, in an order of its own (media groups first), while we play one rendition per kind in track order.
+    /// Pairs each of our tracks with the next unused ffprobe stream of the same kind and drops the rest, renumbering what stays.
+    /// </summary>
+    private static (List<ProbeStream>, List<PacketRecord>) AlignStreams(List<ProbeStream> streams, List<PacketRecord> packets, List<MediaTrack> tracks)
+    {
+        Dictionary<int, int> map = [];
+        List<ProbeStream> kept = [];
+        foreach (MediaTrack t in tracks)
+        {
+            string kind = t.Kind switch { TrackKind.Video => "video", TrackKind.Audio => "audio", TrackKind.Subtitle => "subtitle", _ => "data" };
+            ProbeStream? s = streams.FirstOrDefault(x => x.CodecType == kind && !map.ContainsKey(x.Index));
+            if (s is null)
+            {
+                continue;
+            }
+
+            map[s.Index] = kept.Count;
+            kept.Add(s with { Index = kept.Count });
+        }
+
+        if (kept.Count == 0)
+        {
+            return (streams, packets);
+        }
+
+        return (kept, [.. packets.Where(p => map.ContainsKey(p.Track)).Select(p => p with { Track = map[p.Track] })]);
+    }
+
     // ---- growing files ----------------------------------------------------------------------------------------------------------------
 
     /// <summary>
@@ -55,7 +99,7 @@ internal static class StreamingChecks
     /// real-time rate while we read the file as it grows. At the end our packets are compared with ffprobe's for the finished file. With --fast the
     /// writer is not slowed to real time; with --mem packets are not kept, only counted and hashed, and the working set is sampled.
     /// </summary>
-    public static int Growing(List<string> args, string outDir)
+    public static int Growing(List<string> args, string outDir, string? exceptionsPath)
     {
         string format = args[0];
         int seconds = int.Parse(args[1], CultureInfo.InvariantCulture);
@@ -159,7 +203,7 @@ internal static class StreamingChecks
             return writer.ExitCode == 0 ? 0 : 1;
         }
 
-        Exceptions exceptions = Exceptions.Load(Path.Combine(AppContext.BaseDirectory, "exceptions.tsv"));
+        Exceptions exceptions = exceptionsPath is null ? Exceptions.None : Exceptions.Load(exceptionsPath);
         List<ProbeStream> streams = FfprobeReader.ReadStreams(path);
         List<PacketRecord> theirs = [.. FfprobeReader.ReadPackets(path, streams)];
         OurResult result = new() { Format = fmt, Tracks = [.. tracks], Packets = ours, Shifts = shiftHolder };

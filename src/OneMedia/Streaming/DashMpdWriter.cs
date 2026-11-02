@@ -355,7 +355,8 @@ internal static class DashMpdWriter
         w.WriteStartElement("SegmentTemplate");
         Number(w, "timescale", t.Timescale, 1);
         Number(w, "duration", t.Duration);
-        Number(w, "startNumber", t.StartNumber, 1);
+        // The default of 1 is written out: some readers assume another default when a timeline is present.
+        w.WriteAttributeString("startNumber", t.StartNumber.ToString(CultureInfo.InvariantCulture));
         if (t.EndNumber is { } e)
         {
             w.WriteAttributeString("endNumber", e.ToString(CultureInfo.InvariantCulture));
@@ -377,7 +378,9 @@ internal static class DashMpdWriter
             return "PT0S";
         }
 
-        Int128 nanos = ((Int128)time.Ticks * 1_000_000_000 + (time.Timescale / 2)) / time.Timescale;
+        // Rounded up to a microsecond: a duration that is too short would cut off the end of the media.
+        Int128 micros = ((Int128)time.Ticks * 1_000_000 + time.Timescale - 1) / time.Timescale;
+        Int128 nanos = micros * 1000;
         long totalSeconds = (long)(nanos / 1_000_000_000);
         long fraction = (long)(nanos % 1_000_000_000);
         long hours = totalSeconds / 3600;

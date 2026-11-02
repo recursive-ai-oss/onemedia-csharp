@@ -59,7 +59,7 @@ internal static class Program
         {
             case "diff": return Diff(o);
             case "presdiff": return StreamingChecks.PresentationDiff(o.Files, o.Out, o.Exceptions is null ? Oracles.Exceptions.None : Oracles.Exceptions.Load(o.Exceptions));
-            case "growing": return StreamingChecks.Growing(o.Files, o.Out);
+            case "growing": return StreamingChecks.Growing(o.Files, o.Out, o.Exceptions);
             case "presio": return StreamingChecks.PresentationIo(o.Files, o.Root, o.Out);
             case "structure": return Structure(o);
             case "io": return Io(o);

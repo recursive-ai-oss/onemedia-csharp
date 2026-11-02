@@ -37,7 +37,14 @@ public readonly record struct DashTimelineEntry(long? Start, long Duration, int 
 /// <param name="Duration">The duration in timescale units.</param>
 /// <param name="Uri">The media URL, relative to the <c>BaseURL</c> in effect; for a <c>SegmentList</c> entry, the <c>media</c> URL.</param>
 /// <param name="Range">A byte range of <see cref="Uri"/>, or null.</param>
-public readonly record struct DashSegmentRef(long Number, long Time, long Duration, string Uri, string? Range = null);
+public readonly record struct DashSegmentRef(long Number, long Time, long Duration, string Uri, string? Range = null)
+{
+    /// <summary>The <c>presentationTimeOffset</c> in effect, in the same timescale as <see cref="Time"/>. <see cref="Time"/> is on the media's own timeline (it is what <c>$Time$</c> expands to and what <c>SegmentTimeline</c> <c>t</c> states); the presentation timeline is <see cref="Time"/> minus this offset (ISO/IEC 23009-1 §5.3.9.2.2).</summary>
+    public long PresentationTimeOffset { get; init; }
+
+    /// <summary>The segment's start on the period's presentation timeline: <see cref="Time"/> minus <see cref="PresentationTimeOffset"/>, in timescale units.</summary>
+    public long PresentationStart => Time - PresentationTimeOffset;
+}
 
 /// <summary>A <c>SegmentTemplate</c>: URLs built from a pattern (ISO/IEC 23009-1 §5.3.9.4).</summary>
 public sealed record DashSegmentTemplate
@@ -199,7 +206,7 @@ public sealed record DashSegmentTemplate
                         return list;
                     }
 
-                    list.Add(new DashSegmentRef(number, time, s.Duration, Expand(Media, representationId, bandwidth, number, time)));
+                    list.Add(new DashSegmentRef(number, time, s.Duration, Expand(Media, representationId, bandwidth, number, time)) { PresentationTimeOffset = PresentationTimeOffset });
                     number++;
                     time += s.Duration;
                 }
@@ -223,8 +230,9 @@ public sealed record DashSegmentTemplate
         for (long k = 0; k < count; k++)
         {
             long number = StartNumber + k;
-            long time = k * Duration;
-            list.Add(new DashSegmentRef(number, time, Duration, Expand(Media, representationId, bandwidth, number, time)));
+            // The media time of segment k is the offset plus k durations, so that its presentation time is k durations.
+            long time = PresentationTimeOffset + (k * Duration);
+            list.Add(new DashSegmentRef(number, time, Duration, Expand(Media, representationId, bandwidth, number, time)) { PresentationTimeOffset = PresentationTimeOffset });
         }
 
         return list;
