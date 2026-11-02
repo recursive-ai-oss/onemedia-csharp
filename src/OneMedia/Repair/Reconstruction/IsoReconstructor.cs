@@ -809,7 +809,12 @@ public static class IsoReconstructor
                     continue;
                 }
 
-                TrackSetup s = BuildInStreamVideo(f, notes);
+                TrackSetup? s = BuildInStreamVideo(f, notes);
+                if (s is null)
+                {
+                    continue;
+                }
+
                 setups.Add(s);
                 f.Track = setups.Count - 1;
                 return;
@@ -859,7 +864,8 @@ public static class IsoReconstructor
         return true;
     }
 
-    private static TrackSetup BuildInStreamVideo(NalVideoFramer f, List<string> notes)
+    // Null when the parameter sets found in the stream do not make a usable codec configuration (stray data that looked like a start).
+    private static TrackSetup? BuildInStreamVideo(NalVideoFramer f, List<string> notes)
     {
         ArrayBufferWriter<byte> cfg = new();
         List<ReadOnlyMemory<byte>> sets = [];
@@ -875,9 +881,12 @@ public static class IsoReconstructor
         CodecId codec;
         if (f.Codec == NalCodec.H264)
         {
-            H264.AvcDecoderConfigurationRecord.TryCreateFromAnnexB(annexB, out H264.AvcDecoderConfigurationRecord? rec, f.LengthSize);
-            rec!.Write(cfg);
-            f.TryGetAvcSps(out Codecs.H264.SequenceParameterSet sps);
+            if (!H264.AvcDecoderConfigurationRecord.TryCreateFromAnnexB(annexB, out H264.AvcDecoderConfigurationRecord? rec, f.LengthSize) || rec is null || !f.TryGetAvcSps(out Codecs.H264.SequenceParameterSet sps))
+            {
+                return null;
+            }
+
+            rec.Write(cfg);
             width = sps.Width;
             height = sps.Height;
             if (sps.FrameRateNumerator > 0 && sps.FrameRateDenominator > 0)
@@ -891,9 +900,12 @@ public static class IsoReconstructor
         }
         else
         {
-            Hevc.HevcDecoderConfigurationRecord.TryCreateFromAnnexB(annexB, out Hevc.HevcDecoderConfigurationRecord? rec, f.LengthSize);
-            rec!.Write(cfg);
-            f.TryGetHevcSps(out Hevc.SequenceParameterSet sps);
+            if (!Hevc.HevcDecoderConfigurationRecord.TryCreateFromAnnexB(annexB, out Hevc.HevcDecoderConfigurationRecord? rec, f.LengthSize) || rec is null || !f.TryGetHevcSps(out Hevc.SequenceParameterSet sps))
+            {
+                return null;
+            }
+
+            rec.Write(cfg);
             width = sps.Width;
             height = sps.Height;
             if (sps.HasTimingInfo && sps.NumUnitsInTick > 0 && sps.TimeScale > 0)

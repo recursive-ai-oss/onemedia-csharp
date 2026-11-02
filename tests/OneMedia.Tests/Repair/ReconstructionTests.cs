@@ -227,6 +227,27 @@ public sealed class ReconstructionTests
         Assert.NotEqual(default, e.Failure);
     }
 
+    // Inputs the fuzzer found (parameter sets in the stream that made no usable codec configuration) and the seeds it started from:
+    // each must end in a rebuilt file or a ReconstructionException, nothing else.
+    [Fact]
+    public void FuzzFindingsAndSeedsEndInAFileOrATypedFailure()
+    {
+        string dir = Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "reconstruct-iso");
+        string[] files = Directory.GetFiles(dir);
+        Assert.NotEmpty(files);
+        Assert.Contains(files, f => f.EndsWith(".bin", StringComparison.Ordinal));
+        foreach (string file in files)
+        {
+            try
+            {
+                Rebuild(File.ReadAllBytes(file), null);
+            }
+            catch (ReconstructionException)
+            {
+            }
+        }
+    }
+
     [Fact]
     public void RandomBytesAfterAFileTypeBoxNeverThrowAnythingUntyped()
     {
