@@ -111,4 +111,18 @@ public static partial class Media
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="when"/> is outside 1904 to 2262.</exception>
     /// <exception cref="UnsupportedMediaException">The format has no capture-date writer.</exception>
     public static Tags.CaptureTimeReport SetCaptureTime(string input, string output, DateTimeOffset when) => Tags.CaptureTimeWriter.SaveAs(input, output, when);
+
+    /// <summary>Packages a file as HLS: CMAF segments, a playlist per track and a multivariant playlist (<c>master.m3u8</c>) in the directory.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="directory">The output directory; created if needed.</param>
+    /// <returns>What was written. Segment length, single-file mode, subtitles and live output are options of <see cref="Streaming.Packager"/>.</returns>
+    public static Streaming.PackagingReport PackageHls(string input, string directory) =>
+        Streaming.Packager.Package(input, directory, new Streaming.PackagingOptions { Formats = Streaming.PackagingFormats.Hls });
+
+    /// <summary>Packages a file as MPEG-DASH: CMAF segments and a manifest (<c>manifest.mpd</c>) in the directory.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="directory">The output directory; created if needed.</param>
+    /// <returns>What was written. Options live on <see cref="Streaming.Packager"/>.</returns>
+    public static Streaming.PackagingReport PackageDash(string input, string directory) =>
+        Streaming.Packager.Package(input, directory, new Streaming.PackagingOptions { Formats = Streaming.PackagingFormats.Dash });
 }

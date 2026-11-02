@@ -41,6 +41,7 @@ CaptionTargets.Register(targets);
 EventTargets.Register(targets);
 ReconstructTarget.Register(targets);
 RepairTarget.Register(targets);
+ManifestTargets.Register(targets);
 WavMuxTarget.Register(targets);
 PresentationTarget.Register(targets);
 

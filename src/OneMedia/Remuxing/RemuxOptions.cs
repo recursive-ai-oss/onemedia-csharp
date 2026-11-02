@@ -114,6 +114,12 @@ public sealed record RemuxOptions
     public long MovieTimescale { get; init; }
 
     /// <summary>
+    /// For <see cref="RemuxFormat.FragmentedMp4"/> and <see cref="RemuxFormat.Cmaf"/>: the length a fragment reaches before the next keyframe starts a new one; null (the default) keeps the
+    /// muxer's two seconds. A caller that ends fragments itself with <see cref="RemuxSession.EndFragment"/> (a segmenter) sets a very large value.
+    /// </summary>
+    public MediaTime? FragmentDuration { get; init; }
+
+    /// <summary>
     /// For the path overloads: after the remux, write the input's tags and pictures into the output through the common view (default true). The stream overloads
     /// never do; their report lists every tag as not written. Chapters are not carried.
     /// </summary>

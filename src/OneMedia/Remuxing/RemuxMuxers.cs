@@ -55,6 +55,7 @@ internal static class RemuxMuxers
                         MovieTimescale = options.MovieTimescale,
                         Layout = layout,
                         Cmaf = format == RemuxFormat.Cmaf,
+                        FragmentDuration = options.FragmentDuration ?? new MediaTime(2, 1),
                         Limits = options.Limits,
                         CreationTime = options.CreationTime,
                     });

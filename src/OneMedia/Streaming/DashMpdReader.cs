@@ -18,7 +18,17 @@ internal static class DashMpdReader
     public static DashMpd Parse(byte[] data, MediaLimits limits)
     {
         using MemoryStream ms = new(data, writable: false);
-        return Parse(XmlReader.Create(ms, Settings(limits)), limits);
+        XmlReader reader;
+        try
+        {
+            reader = XmlReader.Create(ms, Settings(limits));
+        }
+        catch (Exception e) when (e is XmlException or ArgumentException)
+        {
+            throw new ManifestFormatException("The MPD is not well-formed XML: " + e.Message, e);
+        }
+
+        return Parse(reader, limits);
     }
 
     private static XmlReaderSettings Settings(MediaLimits limits) => new()
@@ -43,6 +53,12 @@ internal static class DashMpdReader
         }
         catch (XmlException e)
         {
+            throw new ManifestFormatException("The MPD is not well-formed XML: " + e.Message, e);
+        }
+        catch (ArgumentException e)
+        {
+            // The BCL's text reader throws ArgumentOutOfRangeException, not XmlException, when an XML declaration names an encoding it has to switch to
+            // after it has buffered the declaration (found by fuzzing); the document is malformed all the same.
             throw new ManifestFormatException("The MPD is not well-formed XML: " + e.Message, e);
         }
 
@@ -74,7 +90,7 @@ internal static class DashMpdReader
                 case "Period": periods.Add(ReadPeriod(e)); break;
                 case "BaseURL": baseUrls.Add(e.Value.Trim()); break;
                 case "UTCTiming": timings.Add(Descriptor(e)); break;
-                default: other.Add(e.ToString(SaveOptions.DisableFormatting)); break;
+                default: other.Add(Raw(e)); break;
             }
         }
 
@@ -108,7 +124,7 @@ internal static class DashMpdReader
             {
                 case "AdaptationSet": sets.Add(ReadAdaptationSet(e)); break;
                 case "BaseURL": baseUrls.Add(e.Value.Trim()); break;
-                default: other.Add(e.ToString(SaveOptions.DisableFormatting)); break;
+                default: other.Add(Raw(e)); break;
             }
         }
 
@@ -146,7 +162,7 @@ internal static class DashMpdReader
             }
             else
             {
-                other.Add(e.ToString(SaveOptions.DisableFormatting));
+                other.Add(Raw(e));
             }
         }
 
@@ -207,7 +223,7 @@ internal static class DashMpdReader
             }
             else
             {
-                other.Add(e.ToString(SaveOptions.DisableFormatting));
+                other.Add(Raw(e));
             }
         }
 
@@ -291,6 +307,9 @@ internal static class DashMpdReader
     };
 
     private static DashDescriptor Descriptor(XElement e) => new(e.Name.LocalName, Attr(e, "schemeIdUri") ?? string.Empty, Attr(e, "value"), Attr(e, "id"));
+
+    // XElement.ToString declares the element's namespace on it; inside the MPD's own namespace that declaration is redundant and would make a rewrite differ from the text it came from.
+    private static string Raw(XElement e) => e.ToString(SaveOptions.DisableFormatting).Replace(" xmlns=\"urn:mpeg:dash:schema:mpd:2011\"", string.Empty, StringComparison.Ordinal);
 
     private static string? Attr(XElement e, string name) => e.Attribute(name)?.Value;
 

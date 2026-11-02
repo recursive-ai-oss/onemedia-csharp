@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" profiles="urn:mpeg:dash:profile:isoff-live:2011" minBufferTime="PT2S" availabilityStartTime="2026-01-01T00:00:00Z" minimumUpdatePeriod="PT4S" timeShiftBufferDepth="PT30S">
+  <Period id="0" start="PT0S">
+    <AdaptationSet contentType="video" mimeType="video/mp4" segmentAlignment="true" startWithSAP="1">
+      <SegmentTemplate timescale="90000" media="v_$Number%05d$.m4s" initialization="v_init.mp4" startNumber="5">
+        <SegmentTimeline><S t="450000" d="180000" r="2"/><S d="90000" r="-1"/></SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="v1" bandwidth="800000" codecs="avc1.64001f" width="640" height="360" frameRate="30000/1001"/>
+    </AdaptationSet>
+    <AdaptationSet contentType="audio" mimeType="audio/mp4" lang="en">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <ContentProtection schemeIdUri="urn:x"/>
+      <Representation id="a1" bandwidth="128000" codecs="mp4a.40.2" audioSamplingRate="48000">
+        <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>
+        <BaseURL>a/</BaseURL>
+        <SegmentBase indexRange="800-1500"><Initialization range="0-799"/></SegmentBase>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+  <UTCTiming schemeIdUri="urn:mpeg:dash:utc:direct:2014" value="2026-01-01T00:00:00Z"/>
+</MPD>
