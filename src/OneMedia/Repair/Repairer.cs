@@ -42,19 +42,10 @@ public static class Repairer
             throw new UnsupportedMediaException("The format of " + input + " is not recognised.");
         }
 
-        using var reader = new RepairInput(source, cancellationToken);
-        MediaLimits limits = MediaLimits.Default;
         RepairReport report;
         try
         {
-            report = name switch
-            {
-                "matroska" => MatroskaRepair.Run(reader, output, limits, cancellationToken),
-                "avi" => AviRepair.Run(reader, output, limits, cancellationToken),
-                "mpegts" => TsRepair.Run(reader, output, limits, cancellationToken),
-                "isobmff" => IsoRepair.Run(reader, output, limits, cancellationToken),
-                _ => throw new UnsupportedMediaException("There is no repairer for " + name + " yet."),
-            };
+            report = RunEngine(name, source, output, MediaLimits.Default, cancellationToken);
         }
         catch
         {
@@ -68,6 +59,20 @@ public static class Repairer
         }
 
         return report;
+    }
+
+    // Runs the repairer for a format by name; the fuzz targets use it to reach one engine without going through the sniffer.
+    internal static RepairReport RunEngine(string name, IMediaSource source, string output, MediaLimits limits, CancellationToken cancellationToken)
+    {
+        using var reader = new RepairInput(source, cancellationToken);
+        return name switch
+        {
+            "matroska" => MatroskaRepair.Run(reader, output, limits, cancellationToken),
+            "avi" => AviRepair.Run(reader, output, limits, cancellationToken),
+            "mpegts" => TsRepair.Run(reader, output, limits, cancellationToken),
+            "isobmff" => IsoRepair.Run(reader, output, limits, cancellationToken),
+            _ => throw new UnsupportedMediaException("There is no repairer for " + name + " yet."),
+        };
     }
 
     private static void DeleteQuietly(string path)

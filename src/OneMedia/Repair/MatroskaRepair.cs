@@ -11,7 +11,7 @@ namespace RecursiveAI.OneMedia.Repair;
 /// </summary>
 internal static class MatroskaRepair
 {
-    private const long MaxMetaElement = 64L * 1024 * 1024;
+    private const long MaxMetaElement = 16L * 1024 * 1024;
 
     private sealed class Element
     {
