@@ -5,6 +5,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Added
+- Privacy strip (`PrivacyStrip`, `Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`, `docs/strip.md`): strips the location and device identifiers listed in `docs/strip.md` (tag systems, Exif, XMP, telemetry tracks and known text tracks) into a new file by default, without changing media payload bytes, and reports what it found and could not remove. It does not search free text, unknown vendor atoms or trailers; `docs/strip-review.md` records an independent review and the places it does not reach.
 - Capture-date writes (`CaptureTimeWriter`, `CaptureTimeOptions`, `CaptureTimeReport`, `Media.SetCaptureTime`, `onemedia tags <file> --capture-time <iso8601>`, `docs/date-writes.md`): set the time a recording was made in every date field a file carries, each in its own notation and zone semantics (MP4/MOV/3GP header times, `©day`, `creationdate`, XMP and Exif dates; Matroska `DateUTC` and tags; RIFF INFO and BWF origination; ID3, Vorbis and ASF dates), with a report of what was written (old and new text), what was left and why, and which dates still disagree (telemetry GPS times are never rewritten). Payload bytes are unchanged. `TagEdits.SetNative` on `xmp` accepts `xmp:`, `photoshop:` and `exif:` properties and on `udta` a `©` atom.
 
 ### Fixed
