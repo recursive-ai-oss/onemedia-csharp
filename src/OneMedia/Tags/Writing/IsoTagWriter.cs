@@ -92,7 +92,9 @@ internal static class IsoTagWriter
         }
 
         bool wroteText = anyUdtaText || didMdta;
-        if (!didIlst && options.Wants(TagSystems.ITunes) && (!wroteText || edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture)))
+        // A capture-time write sets header fields and named native keys only; it creates no item list of its own.
+        bool touchesItems = edits.TouchedFields.Count > 0 || edits.PictureEdits.Any() || edits.NativeFor(TagSystems.ITunes).Any();
+        if (!didIlst && touchesItems && options.Wants(TagSystems.ITunes) && (!wroteText || edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture)))
         {
             // Pictures cannot live in udta or in key-table metadata: with only those in the file, an item list is created for them alone.
             TagEdits forList = wroteText ? PicturesOnly(edits) : edits;
@@ -107,6 +109,11 @@ internal static class IsoTagWriter
             {
                 reports.Add(xmp);
             }
+        }
+
+        if (edits.HeaderDate is { } headerDate)
+        {
+            CaptureDatePatches.Iso(src, moov, headerDate, editor, limits);
         }
 
         EditPlan plan = editor.Build(ct);

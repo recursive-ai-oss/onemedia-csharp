@@ -212,6 +212,11 @@ internal static class MatroskaTagWriter
             reports.Insert(0, rep with { Written = written, Removed = removed, Conversions = conv, Created = created });
         }
 
+        if (edits.HeaderDate is { } headerDate)
+        {
+            CaptureDatePatches.MatroskaInfo(src, seg, headerDate, editor, add: true);
+        }
+
         EditPlan plan = editor.Build(ct);
         return new TagWritePlan(plan, new TagWriteReport(reports, []));
     }

@@ -60,6 +60,7 @@ static int Run(string[] args)
     Console.Error.WriteLine(PlayableCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
+    Console.Error.WriteLine("       onemedia tags <file> --capture-time <iso8601> [--header-times utc|local] [--out new-file | --replace | --in-place]   set the capture time in every date field");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     return 2;
 }

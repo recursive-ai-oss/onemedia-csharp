@@ -187,14 +187,19 @@ internal static class AsfTagWriter
                 continue;
             }
 
-            if (c.Id == AsfGuids.FileProperties && fileDelta != 0 && c.Size >= ObjectHeader + 24)
+            if (c.Id == AsfGuids.FileProperties && (fileDelta != 0 || edits.HeaderDate is not null) && c.Size >= ObjectHeader + 32)
             {
-                byte[] fp = new byte[ObjectHeader + 24];
+                byte[] fp = new byte[ObjectHeader + 32];
                 src.ReadExactly(c.Offset, fp, ct);
                 long oldFileSize = BinaryPrimitives.ReadInt64LittleEndian(fp.AsSpan(40));
                 if (oldFileSize == length)
                 {
                     BinaryPrimitives.WriteInt64LittleEndian(fp.AsSpan(40), length + fileDelta);
+                }
+
+                if (edits.HeaderDate is { } headerDate)
+                {
+                    CaptureDatePatches.AsfCreation(fp, headerDate);
                 }
 
                 list.AddData(fp);
