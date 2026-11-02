@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Linq;
 using RecursiveAI.OneMedia.Metadata;
+using RecursiveAI.OneMedia.Tags.Xmp;
 
 namespace RecursiveAI.OneMedia.Tags;
 
@@ -375,6 +376,15 @@ public static class CaptureTimeWriter
             }
         }
 
+        // ffmpeg's own key for the date given with -metadata date=; ExifTool lists it as a capture date.
+        foreach (string k in new[] { "date", qt + "date" })
+        {
+            if (Old(TagSystems.QuickTimeKeys, k) is not null)
+            {
+                Native(TagSystems.QuickTimeKeys, k, iso, withOffset);
+            }
+        }
+
         LeaveIfPresent(TagSystems.QuickTimeKeys, "year", "holds a year only");
         LeaveIfPresent(TagSystems.ThreeGpp, "yrrc", "holds a recording year only");
 
@@ -426,6 +436,12 @@ public static class CaptureTimeWriter
             Native(TagSystems.VorbisComment, "DATE", DateText.Local(when), zoneless);
         }
 
+        // ffmpeg writes the creation time of Ogg and FLAC files as CREATION_TIME, in UTC; ExifTool and ffprobe list it as the creation time.
+        if (Old(TagSystems.VorbisComment, "CREATION_TIME") is not null)
+        {
+            Native(TagSystems.VorbisComment, "CREATION_TIME", DateText.Utc(when), "UTC");
+        }
+
         // RIFF: INFO and bext
         if (Old(TagSystems.RiffInfo, "ICRD") is not null || (file.Format == MediaFormatId.Wav && options.AddMissing && Old(TagSystems.RiffInfo, "IDIT") is null && Old(TagSystems.Bext, "OriginationDate") is null))
         {
@@ -451,8 +467,21 @@ public static class CaptureTimeWriter
                 continue;
             }
 
-            string key = c.Source["xmp:".Length..];
-            if (key is "xmp:CreateDate" or "photoshop:DateCreated" or "exif:DateTimeOriginal" && done.Add("xmp:" + key))
+            // Sources read xmp:<namespace URI>#<property>.
+            string uri = c.Source["xmp:".Length..];
+            string key = uri switch
+            {
+                XmpNamespaces.Xmp + "#CreateDate" => "xmp:CreateDate",
+                XmpNamespaces.Photoshop + "#DateCreated" => "photoshop:DateCreated",
+                XmpNamespaces.Exif + "#DateTimeOriginal" => "exif:DateTimeOriginal",
+                _ => "",
+            };
+            if (key.Length > 0)
+            {
+                done.Add(c.Source);
+            }
+
+            if (key.Length > 0 && done.Add("xmp:" + key))
             {
                 edits.SetNative(TagSystems.Xmp, key, iso);
                 written.Add(new DateFieldWrite(TagSystems.Xmp, key, c.RawValue, iso, withOffset));

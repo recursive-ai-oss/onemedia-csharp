@@ -50,6 +50,42 @@ public sealed class CaptureTimeTests
         Assert.All(report.Written, w => Assert.False(string.IsNullOrEmpty(w.NewValue)));
     }
 
+    [Theory]
+    [InlineData("tags_udta.mov")]
+    [InlineData("et_xmp_gps.mp4")]
+    [InlineData("tags_ilst.mp4")]
+    [InlineData("tags_keys_android.mp4")]
+    [InlineData("mkvmerge_global.mkv")]
+    public void EveryDateCandidateOfTheResultNamesTheWrittenInstant(string fixture)
+    {
+        (byte[] result, CaptureTimeReport report) = Apply(File.ReadAllBytes(WriterTestSupport.Fixture("metadata", fixture)), When);
+        using MediaFile m = Open(result);
+        Assert.True(Reads(m, When), $"{fixture}: resolved {m.CaptureTime.Best}");
+        Assert.Empty(report.Disagreements);
+        foreach (FactCandidate<MediaDateTime> c in m.CaptureTime.Candidates)
+        {
+            Assert.True(c.Value.ToDateTimeOffset() is { } i ? i == When : c.Value.Value == When.DateTime, $"{fixture}: {c.Source} reads {c.RawValue}");
+        }
+    }
+
+    [Fact]
+    public void AMovieHeaderOfZeroesIsLeftUnset()
+    {
+        (_, CaptureTimeReport report) = Apply(File.ReadAllBytes(WriterTestSupport.Fixture("metadata", "tags_udta.mov")), When);
+        Assert.Contains(report.Left, l => l.System == "tkhd" && l.Reason.StartsWith("unset", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Id3v23FilesGetTheYearDayMonthAndTimeFrames()
+    {
+        (byte[] result, _) = Apply(File.ReadAllBytes(WriterTestSupport.Fixture("audio-es", "tagged", "id3v23-basic.mp3")), When);
+        using MediaFile m = Open(result);
+        Assert.Equal("2024", m.Native["id3v2", "TYER"]!.Text);
+        Assert.Equal("0105", m.Native["id3v2", "TDAT"]!.Text);
+        Assert.Equal("1230", m.Native["id3v2", "TIME"]!.Text);
+        Assert.True(Reads(m, When), $"resolved {m.CaptureTime.Best}");
+    }
+
     [Fact]
     public void EveryHeaderOfAnMp4HoldsTheInstantInUtc()
     {

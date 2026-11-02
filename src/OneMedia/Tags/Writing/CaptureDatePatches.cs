@@ -144,9 +144,9 @@ internal static class CaptureDatePatches
 
         ulong oldCreation = Read(b, at + 4, width);
         ulong oldModification = Read(b, at + 4 + width, width);
-        if (oldCreation == 0 && !always)
+        if (oldCreation == 0 && oldModification == 0 && !always)
         {
-            // A zero is how writers say "not set"; it is not a date to correct.
+            // Two zeros are how writers say "not set"; that is not a date to correct.
             d.Left.Add(new DateFieldLeft(name, "creation_time" + suffix, "0", "unset (0); left unset"));
             return;
         }

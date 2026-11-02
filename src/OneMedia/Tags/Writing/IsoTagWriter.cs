@@ -589,6 +589,37 @@ internal static class IsoTagWriter
             }
         }
 
+        // Native edits name one © atom by its four-character code (a capture-time write sets ©day this way).
+        foreach (TagEdit n in edits.NativeFor(TagSystems.QuickTimeUserData))
+        {
+            if (n.Key is not { Length: 4 } code || code[0] != '\u00a9')
+            {
+                continue;
+            }
+
+            uint nativeType = BoxTypes.Make(code);
+            BoxNode? current = atoms.FirstOrDefault(a => a.Type == nativeType);
+            if (n.Kind == TagEditKind.RemoveNative)
+            {
+                if (current is not null)
+                {
+                    editor.Remove(current);
+                }
+
+                continue;
+            }
+
+            byte[] atomBox = QuickTimeText(code, n.Values[0]);
+            if (current is not null)
+            {
+                editor.Replace(current, atomBox);
+            }
+            else
+            {
+                editor.AppendChild(udta, atomBox);
+            }
+        }
+
         return new SystemWriteReport(TagSystems.QuickTimeUserData, written, removed, not, [], false);
     }
 

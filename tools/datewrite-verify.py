@@ -13,7 +13,7 @@ import argparse, concurrent.futures as cf, json, os, re, subprocess, sys
 from datetime import datetime, timedelta, timezone
 
 DATE = re.compile(r"(\d{4})[:\-](\d\d)[:\-](\d\d)(?:[ T](\d\d):(\d\d):(\d\d)(?:\.\d+)?)?\s*(Z|UTC|[+-]\d\d:?\d\d)?")
-SKIP_KEYS = re.compile(r"(Duration|TimeScale|TimeCode|SelectionTime|PreviewTime|PosterTime|CurrentTime|FileModif|FileAccess|FileInode|FilePerm|ModifyDate_\w*File)", re.I)
+SKIP_KEYS = re.compile(r"(Brand|Duration|TimeScale|TimeCode|SelectionTime|PreviewTime|PosterTime|CurrentTime|FileModif|FileAccess|FileInode|FilePerm|ModifyDate_\w*File)", re.I)
 SKIP_GROUPS = ("System", "ExifTool", "File")
 
 
@@ -61,6 +61,12 @@ def verdict(text, when):
     return "match" if abs(wall - utc_wall) < timedelta(seconds=1) or abs(wall - local_wall) < timedelta(seconds=1) else "DIFF"
 
 
+def label_only(text, when):
+    """True when a field shows the written wall clock but labels it UTC (MediaInfo does that for zone-less fields)."""
+    p = parse(text)
+    return bool(p and p[1] == timedelta(0) and abs(p[0] - when.replace(tzinfo=None)) < timedelta(seconds=1))
+
+
 def exif_fields(path):
     rc, out, err = run(["exiftool", "-j", "-G1", "-a", "-s", "-api", "largefilesupport=1", path])
     try:
@@ -105,6 +111,8 @@ def date_fields(fields, when):
         if SKIP_KEYS.search(k):
             continue
         r = verdict(v, when)
+        if r == "DIFF" and label_only(v, when):
+            r = "label"
         if r:
             rows.append({"field": k, "value": v[:80], "verdict": r})
     return rows
@@ -172,7 +180,7 @@ def main():
             files += [l.strip() for l in open(f[1:]) if l.strip()]
         else:
             files.append(f)
-    t = dict(files=0, errors=0, resolver_fail=0, payload_fail=0, valid_worse=0, fields=0, matched=0, diff=0, files_with_diff=0, written=0)
+    t = dict(label=0, files=0, errors=0, resolver_fail=0, payload_fail=0, valid_worse=0, fields=0, matched=0, diff=0, files_with_diff=0, written=0)
     detail = open(args.detail, "w") if args.detail else None
     with cf.ThreadPoolExecutor(args.jobs) as ex:
         for line, row in ex.map(lambda p: one(args, p), files):
@@ -183,8 +191,9 @@ def main():
                 continue
             allrows = [r for k in ("exiftool", "mediainfo", "ffprobe") for r in row[k]]
             nd = sum(r["verdict"] == "DIFF" for r in allrows)
+            t["label"] += sum(r["verdict"] == "label" for r in allrows)
             t["fields"] += len(allrows)
-            t["matched"] += len(allrows) - nd
+            t["matched"] += sum(r["verdict"] == "match" for r in allrows)
             t["diff"] += nd
             t["files_with_diff"] += nd > 0
             t["written"] += len(row["written"])

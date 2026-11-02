@@ -135,7 +135,8 @@ internal static class AudioStreamMetadata
 
             string? time = Text(tag, "TIME", "TIM");
             string composed = $"{year}-{dayMonth[2..4]}-{dayMonth[..2]}" + (time is { Length: 4 } ? $"T{time[..2]}:{time[2..4]}" : string.Empty);
-            if (MediaDateTime.TryParse(composed, out MediaDateTime dt, out bool dateOnly))
+            // The date parser wants seconds with a time of day; TIME holds none.
+            if (MediaDateTime.TryParse(time is { Length: 4 } ? composed + ":00" : composed, out MediaDateTime dt, out bool dateOnly))
             {
                 Id3Frame? f = tag.Frames.FirstOrDefault(x => x.Id is "TYER" or "TYE");
                 facts.CaptureTime.Add(56, new FactCandidate<MediaDateTime>(dt, "id3v2:TYER+TDAT" + (time is null ? string.Empty : "+TIME"), composed, dateOnly ? "ID3v2.3 year, day and month; date only" : "ID3v2.3 year, day, month, hour and minute", dt.Certainty, f?.Range ?? default));
