@@ -37,6 +37,8 @@ internal static class CaptionTargets
         ex.Extract(input[1..], into);
         _ = CaptionData.TryGetFromItuT35(input[1..], out _);
         _ = CaptionData.TryGetFromMpeg2UserData(input[1..], out _);
+        into.Clear();
+        _ = CaptionData.TryGetFromLegacyMpeg2UserData(input[1..], into);
         Span<CcTriplet> tmp = stackalloc CcTriplet[31];
         _ = CaptionData.ParseCcData(input[1..], tmp);
     }
