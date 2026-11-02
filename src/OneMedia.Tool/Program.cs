@@ -27,6 +27,11 @@ static int Run(string[] args)
         return RemuxCommand.Run(args[1..]);
     }
 
+    if (args.Length >= 1 && args[0] == "repair")
+    {
+        return RepairCommand.Run(args[1..]);
+    }
+
     if (args.Length >= 1 && args[0] == "playable")
     {
         return PlayableCommand.Run(args[1..]);
@@ -74,6 +79,7 @@ static int Run(string[] args)
     Console.Error.WriteLine("       onemedia info <file> [--json] [--no-sidecars] [--telemetry] [--file-times]   format, duration, tracks, facts with every candidate, and defects (sidecars beside the file count as evidence; --telemetry also decodes GPS telemetry into the facts; --file-times adds the file's last-write time as a last-resort capture time)");
     Console.Error.WriteLine(RemuxCommand.Usage);
     Console.Error.WriteLine(PlayableCommand.Usage);
+    Console.Error.WriteLine(RepairCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
     Console.Error.WriteLine("       onemedia tags <file> --check [--absent field,field]   look for leftover bytes in ID3v2 padding (exit 1 if found; with no edits, --replace/--out/--in-place zero them);");
