@@ -220,6 +220,22 @@ seed() {
             { printf '\006'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
           done ;;
+    cc-data) # The first byte picks the carriage (0 H.264, 1 HEVC, 2 MPEG-2; the rest of the value is the NAL length size); the rest is one video sample.
+          { printf '\000\000\000\000\001\006\004\012\265\000\061GA94\003\301\377\374\224\057\375\200\200\377\200'; } > "$corpus/h264-annexb.seed"
+          { printf '\012\000\000\000\012\006\004\012\265\000\061GA94\003\301\377\374\224\057\375\200\200\377\200'; } > "$corpus/h264-len4.seed"
+          { printf '\001\000\000\001\104\001\004\012\265\000\061GA94\003\301\377\374\224\057\375\200\200\377\200'; } > "$corpus/hevc-annexb.seed"
+          { printf '\002\000\000\001\262GA94\003\301\377\374\224\057\375\200\200\377\000\000\001\000'; } > "$corpus/mpeg2.seed"
+          { printf '\002\000\000\001\262\003\201\010\254\245\220\000\000\000\001\000'; } > "$corpus/scte20.seed"
+          { printf '\002\000\000\001\262CC\001\370\202\377\200\200\377\224\046\000\000\001\000'; } > "$corpus/dvd.seed"
+          { printf '\002\000\000\001\262\002\011\200\200\002\012\224\046\010 \000\000\001\000'; } > "$corpus/display-order.seed" ;;
+    cea608) # The first byte: bit 0 clear requires odd parity; then groups of three bytes (two caption bytes, then the field in the low bit).
+          { printf '\000\224\040\000\224\256\000\224\160\000\311\343\000\224\057\000'; } > "$corpus/popon.seed"
+          { printf '\001\024\045\000\024\160\000\110\151\000\024\055\000\024\055\000'; } > "$corpus/rollup.seed" ;;
+    cea708) # Groups of three bytes (type in the low bit, two data bytes): one DTVCC packet with a service block, windows and text.
+          { printf '\001\102\042\000\101\102\000\230\040\000\016\000\000\001\103\104\000\015\000'; } > "$corpus/packet.seed"
+          { printf '\001\104\145\000\230\000\000\203\000\000\001\110\111\000\216\000'; } > "$corpus/windows.seed" ;;
+    scc) printf 'Scenarist_SCC V1.0\n\n00:00:01;00\t9420 9420 94ae 94ae 9470 9470 c8e5 ecec ef80 942f 942f\n\n00:00:03;00\t942c 942c\n' > "$corpus/pop.seed"
+         printf '00:00:00:00\t9425 9425 94ad 94ad c1c2 \n' > "$corpus/rollup.seed" ;;
   esac
   if [ -z "$(ls -A "$corpus")" ]; then printf 'xxxxxxxxxx' > "$corpus/empty.seed"; fi
 }

@@ -338,6 +338,7 @@ public static class SubtitleFormats
         SrtFormat.Instance,
         SbvFormat.Instance,
         LrcFormat.Instance,
+        RecursiveAI.OneMedia.Captions.Scc.SccSubtitleFormat.Instance,
     ];
 
     /// <summary>SubRip (<c>.srt</c>).</summary>

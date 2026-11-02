@@ -96,6 +96,13 @@ public sealed record RemuxReport(
     /// </summary>
     public IReadOnlyList<int> LostMediaTracks { get; init; } = [];
 
+    /// <summary>
+    /// One line per video track whose samples hold closed-caption data (ATSC A/53 <c>cc_data</c>: CEA-608/708 in H.264/HEVC SEI or MPEG-2
+    /// user data) that the remux carried. The captions live inside the video samples, which are copied byte for byte, so they need no
+    /// separate handling. Empty when none was seen.
+    /// </summary>
+    public IReadOnlyList<string> CarriedCaptions { get; init; } = [];
+
     /// <summary>True when anything other than a caller's own choice (<see cref="LossReason.Deselected"/>) did not carry over.</summary>
     public bool HasLosses
     {
