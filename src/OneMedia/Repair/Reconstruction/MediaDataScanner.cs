@@ -240,7 +240,14 @@ internal sealed class MediaDataScanner
                     return false;
                 }
 
-                if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok
+                Status status = TryOne(f, pos + gap, out FrameInfo info);
+                if (status == Status.Partial)
+                {
+                    // The input ends inside a sample of a known track: the run holds up to the end.
+                    return usedMust;
+                }
+
+                if (status == Status.Ok
                     && ChainStep(pos + gap + info.Length, framers, stepsLeft - 1, usedMust || ReferenceEquals(f, must), must, maxGap, ref budget))
                 {
                     return true;
