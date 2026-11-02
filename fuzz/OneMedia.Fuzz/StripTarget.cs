@@ -4,6 +4,7 @@ using System.IO;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Mebx;
 using RecursiveAI.OneMedia.Privacy;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Fuzz;
 

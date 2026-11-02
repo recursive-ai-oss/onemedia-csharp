@@ -5,6 +5,7 @@ using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Matroska;
 using RecursiveAI.OneMedia.Riff;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Fuzz;
 
