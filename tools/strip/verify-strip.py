@@ -83,6 +83,8 @@ def forms(strings, floats, hexes, pairs):
     for a, b in pairs:
         for scale in (1e7, 1e6):
             ia, ib = round(a * scale), round(b * scale)
+            if not (-2**31 <= ia < 2**31 and -2**31 <= ib < 2**31):
+                continue
             out[f'i32pair-be:{ia},{ib}'] = struct.pack('>ii', ia, ib)
             out[f'i32pair-le:{ia},{ib}'] = struct.pack('<ii', ia, ib)
         out[f'f32pair-be:{a},{b}'] = struct.pack('>ff', a, b)
