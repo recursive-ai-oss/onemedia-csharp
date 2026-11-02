@@ -105,7 +105,7 @@ confidence at Medium and adds a note (another track whose framing is unknown, or
 - **Audio:** cumulative samples at the sample-rate timescale (frame length from the codec: 160 for AMR-NB, 320 for AMR-WB, 1152 or 576 for MPEG
   audio, 1536 for AC-3, 1024 for AAC, the packet size for PCM). Priming comes from the reference.
 - **Picture order (H.264 picture_order_cnt_type 0, HEVC):** POC is reconstructed from the slice headers (H.264 §8.2.1, H.265 §8.3.1), restarted at
-  each IDR; the step between display positions is the gcd of POC differences. Presentation times follow, decode times are in file order, and the
+  each IDR; the step between display positions is the gcd of the gaps between the sorted counts of each coded video sequence (differences between decode-order neighbours can all be multiples of the real step in a deep reference pyramid). Presentation times follow, decode times are in file order, and the
   reorder delay is written as an edit list (the video track's priming), the way ffmpeg and x264 write B-frame files. Field pictures and POC type 1
   keep decode order with a note; AV1 temporal units are already in output order.
 
@@ -148,6 +148,11 @@ bytes), and the window is a fixed size.
   so the rebuilt track has more, shorter samples than the original (their bytes are the original's).
 - AAC with more than two channels: OneAudio's frame probe does not take multichannel configurations, so such a track is dropped with a note
   and its bytes stay unframed (observed on a 5.1 Blender clip: 14 % of its media data).
+- AAC without a reference: the sample rate (and so the time of every audio sample) is a guess from the frames, 44.1 kHz first; a 48 kHz recording
+  rebuilt this way has the right bytes and wrong audio times, which is why its confidence is Low. A reference removes the guess.
+- Irregular sample durations of the original (a first picture held for several frames, repeated-frame durations in `stts`) cannot be told from the
+  stream: video times use one frame period, so later samples can be offset from the original by those holds while bytes, keyframes and order are
+  equal (observed on a Blender clip: sample 0 lasts 11 frames and two later samples 2 frames each).
 - Dependence on a reference for PCM and for video without in-band parameter sets is by design (see above).
 
 ## Checks
