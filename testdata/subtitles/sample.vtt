@@ -1,0 +1,26 @@
+WEBVTT
+
+STYLE
+::cue { color: yellow }
+
+REGION
+id:fred
+width:40%
+lines:3
+regionanchor:0%,100%
+viewportanchor:10%,90%
+scroll:up
+
+NOTE a comment
+
+intro
+00:00:01.000 --> 00:00:03.500 region:fred align:start
+<v Alice>Hello, <b>world</b>!</v>
+
+00:00:04.000 --> 00:00:06.250 line:0 position:10%,line-left size:80% align:center
+<i>Second</i> &amp; <c.red>red</c> &lt;tag&gt;
+<ruby>漢<rt>kan</rt></ruby>字
+
+00:00:07.000 --> 00:00:09.000
+<00:00:07.000>one <00:00:07.500>two <00:00:08.000>three
+

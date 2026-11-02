@@ -35,6 +35,7 @@
     <!-- Small fixtures and their ffprobe packet listings. -->
     <None Include="../../testdata/isobmff/*" Link="testdata/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/isobmff/family/*" Link="testdata/isobmff/family/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/subtitles/*" Link="testdata/subtitles/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/mpeg/*" Link="testdata/mpeg/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Synthetic GPMF, CAMM and mebx files made by tools/gen-telemetry-fixtures.py. -->
     <None Include="../../testdata/telemetry/*" Link="testdata/telemetry/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
@@ -51,6 +52,8 @@
     <None Include="../../testdata/fuzz/sidecars/*" Link="testdata/fuzz/sidecars/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/tags/*" Link="testdata/fuzz/tags/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/isobmff/*" Link="testdata/fuzz/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/subs-webvtt/*" Link="testdata/fuzz/subs-webvtt/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/subs-ass/*" Link="testdata/fuzz/subs-ass/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/registry/*" Link="testdata/fuzz/registry/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/writer-riff/*" Link="testdata/fuzz/writer-riff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/writer-ebml/*" Link="testdata/fuzz/writer-ebml/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

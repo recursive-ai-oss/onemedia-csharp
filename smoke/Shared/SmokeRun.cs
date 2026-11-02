@@ -130,6 +130,7 @@ internal static class SmokeRun
         PlaybackSmoke.Run(Check);
         TelemetrySmoke.Run(Check);
         StripSmoke.Run(Check);
+        SubtitleSmoke.Run(Check);
         TelemetrySmoke.RunSidecar(Check);
         WriterSmoke.Run(Check);
         TagWriteSmoke.Run(Check);

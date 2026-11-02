@@ -50,6 +50,11 @@ static int Run(string[] args)
         return TagsCommand.Run(args[1..]);
     }
 
+    if (args.Length >= 1 && args[0] == "subs")
+    {
+        return SubsCommand.Run(args[1..]);
+    }
+
     if (args.Length >= 1 && args[0] == "strip")
     {
         return StripCommand.Run(args[1..]);
@@ -70,6 +75,7 @@ static int Run(string[] args)
     Console.Error.WriteLine("       onemedia tags <file> --capture-time <iso8601> [--header-times utc|local] [--out new-file | --replace | --in-place]   set the capture time in every date field");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     Console.Error.WriteLine(StripCommand.Usage);
+    Console.Error.WriteLine(SubsCommand.Usage);
     return 2;
 }
 
