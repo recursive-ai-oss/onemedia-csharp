@@ -48,7 +48,7 @@ internal static class RepairCommand
 
         try
         {
-            RepairReport r = Media.Repair(input, output, reference, AacReconstructionProbe.Options());
+            RepairReport r = AacReconstructionProbe.Repair(input, output, reference);
             Console.WriteLine($"{r.Status}: {r.Format}, {r.InputLength} bytes in, {r.OutputLength} bytes out, confidence {r.Confidence}, {r.DroppedBytes} bytes dropped");
             foreach (RepairItem i in r.Items)
             {

@@ -13,8 +13,9 @@ which input ranges were used or skipped.
 here. The common `RepairReport` carries an item `Rebuilt moov`, one `Dropped` item per skipped range, one `RepairTrackReport` per track (samples,
 partial samples dropped, confidence, the track's input ranges), the reconstruction's notes as warnings and the whole `ReconstructionReport` in
 `RepairReport.Reconstruction`. Status is `Repaired`, or `PartiallyRepaired` when a track came back empty or under 90 % of the media data was
-framed; `Unrepairable` (no output) when nothing could be framed or under 2 % of the media data could (typically codec setup that matched by coincidence, or a reference from another recording), with the reason as a warning. The core package has no AAC probe: pass
-`AacReconstructionProbe.Options()` from the audio package as the `reconstruction` argument (the tool does) to recover AAC tracks.
+framed; `Unrepairable` (no output) when nothing could be framed or under 2 % of the media data could (typically codec setup that matched by coincidence, or a reference from another recording), with the reason as a warning. The core package has no AAC probe: `Media.Repair` therefore recovers AAC only
+through `AacReconstructionProbe.Repair(input, output, reference)` in the audio package, `onemedia repair`, or `Repairer.Repair(..., reconstruction)`
+with `AacReconstructionProbe.Options()`.
 
 Index repair of intact files and truncated Matroska/AVI are not part of this; see the repair notes of those formats.
 

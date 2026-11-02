@@ -71,6 +71,29 @@ public sealed class AacReconstructionTests
     }
 
     [Fact]
+    public void TheAudioPackagesRepairEntryRecoversAacWhereMediaRepairDoesNot()
+    {
+        byte[] healthy = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "isobmff", "bframes_aac.mp4"));
+        string dir = Path.Combine(Path.GetTempPath(), "aacrepair-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string input = Path.Combine(dir, "cut.mp4");
+            string reference = Path.Combine(dir, "ref.mp4");
+            File.WriteAllBytes(input, Cut(healthy, 0.7));
+            File.WriteAllBytes(reference, healthy);
+            var plain = Media.Repair(input, Path.Combine(dir, "plain.mp4"), reference);
+            var withAac = AacReconstructionProbe.Repair(input, Path.Combine(dir, "aac.mp4"), reference);
+            Assert.DoesNotContain(plain.Tracks, t => t.Codec == "aac" && t.Packets > 0);
+            Assert.Contains(withAac.Tracks, t => t.Codec == "aac" && t.Packets > 0);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void WithoutTheProbeTheAacTrackIsReportedAsLost()
     {
         byte[] healthy = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "isobmff", "bframes_aac.mp4"));

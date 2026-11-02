@@ -78,7 +78,7 @@ public static class Repairer
     /// <exception cref="UnsupportedMediaException">The format is not recognised, or has no repairer.</exception>
     /// <exception cref="MediaLimitExceededException">The data exceeds a limit.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
-    public static RepairReport Repair(IMediaSource input, Stream output, IMediaSource? reference, ReconstructionOptions? reconstruction = null, MediaLimits? limits = null, CancellationToken cancellationToken = default)
+    public static RepairReport Repair(IMediaSource input, Stream output, IMediaSource? reference, ReconstructionOptions? reconstruction, MediaLimits? limits = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);

@@ -27,6 +27,18 @@ public sealed class AacReconstructionProbe : IAudioFrameProbe
     /// <returns>Options with <see cref="ReconstructionOptions.AudioProbes"/> set to <see cref="Probes"/>.</returns>
     public static ReconstructionOptions Options() => new() { AudioProbes = Probes };
 
+    /// <summary>
+    /// Repairs a damaged file into a new file like <see cref="Media.Repair(string, string, string?)"/>, and also recovers AAC tracks when a
+    /// truncated MP4/MOV/3GP is rebuilt from its media data.
+    /// </summary>
+    /// <param name="input">The damaged file.</param>
+    /// <param name="output">The new file; refused if it exists.</param>
+    /// <param name="reference">A healthy file from the same device, or null.</param>
+    /// <param name="cancellationToken">Cancels the repair; the partly written output is removed.</param>
+    /// <returns>What was rebuilt, dropped and kept.</returns>
+    public static RecursiveAI.OneMedia.Repair.RepairReport Repair(string input, string output, string? reference = null, CancellationToken cancellationToken = default) =>
+        RecursiveAI.OneMedia.Repair.Repairer.Repair(input, output, reference, Options(), cancellationToken);
+
     /// <inheritdoc />
     public CodecId Codec => CodecId.Aac;
 
