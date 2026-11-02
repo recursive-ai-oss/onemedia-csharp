@@ -11,6 +11,6 @@ PORT=$((20000 + RANDOM % 20000))
 trap 'kill $SRV 2>/dev/null' EXIT
 sleep 1
 cd "$D/app"
-# The validator keeps what it fetched in its cache (a database table) and reuses it for the next run, whatever the URL; every run starts with an empty cache.
-php artisan cache:clear > /dev/null 2>&1
+# The validator keeps state in its SQLite database (cache and queue tables) that later runs pick up; every run starts from a freshly migrated one.
+rm -f database/database.sqlite; touch database/database.sqlite; php artisan migrate --force > /dev/null 2>&1
 if [ $# -eq 0 ]; then php artisan app:analyze-manifest --all "http://127.0.0.1:$PORT/manifest.mpd"; else php artisan app:analyze-manifest "http://127.0.0.1:$PORT/manifest.mpd" "$@"; fi
