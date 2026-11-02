@@ -13,7 +13,7 @@ its tracks (`media.Tracks`) and its tags (`media.Tags`, `media.Native`).
 | `track.Year` | `media.Tags.Date` (string as stored); `media.CaptureTime` for video |
 | `track.TrackNumber`, `DiscNumber` | `media.Tags.TrackNumber`, `DiscNumber` (`int?`) |
 | `track.Duration` (seconds) | `media.Duration` (`TimeSpan?`), `media.ExactDuration` |
-| `track.Bitrate` (KBps), `track.ChannelsArrangement.NbChannels` | `media.Audio.BitRate` (bit/s), `media.Audio.Audio.Value.Channels`; also `.SampleRate` |
+| `track.Bitrate` (KBps), `track.ChannelsArrangement.NbChannels` | `media.Audio.BitRate` (bit/s), `media.Audio.Channels`; also `.SampleRate` |
 | `track.AdditionalFields["key"]` | `media.Native[system, key]`, `media.Native.Find(system, key)` (system named, e.g. `QuickTime`, `ID3v2`, `RIFF`) |
 | `track.EmbeddedPictures` | `media.Tags.Pictures`; `SetPicture`, `RemovePictures` |
 | `track.Lyrics`, `track.Chapters` | `media.Tags.Lyrics`; chapters through the native layer |

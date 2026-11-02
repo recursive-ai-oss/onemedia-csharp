@@ -13,7 +13,7 @@ usually read for (when, where, what device) as facts with their evidence, and ke
 | `QuickTimeMetadataHeaderDirectory` `TagCreationDate` with offset (`TryGetDateTimeOffset`) | `media.CaptureTime.Value.ToDateTimeOffset()`; offset kept in `MediaDateTime.OffsetMinutes` and `Certainty` |
 | QuickTime location dates and the location tags in the directories | `media.Location` (`Fact<GeoLocation>`: latitude, longitude, altitude) |
 | Exif IFD0 `Make`/`Model` (the README's example) | `media.Device.Make`, `Model`, `Software`, `Serial` |
-| movie dimensions, frame rate | `media.Video.Video`: `Width`, `Height`, `FrameRateNumerator/Denominator`, `RotationDegrees` |
+| movie dimensions, frame rate | `media.Video`: `Width`, `Height`, `FrameRate`, `RotationDegrees` (exact rate: `media.Video.Video`) |
 | `directory.Tags`, `tag.Name`, `tag.Description` | `media.Native[system, key]`, `media.Native.Find(system, key)` (`NativeTag`) |
 | errors a directory reports | `media.Defects` (typed, with byte offsets) |
 | Exif/XMP/IPTC in JPEG, PNG, RAW | out of scope: OneMedia reads video and audio containers (and the Exif blocks they embed) |

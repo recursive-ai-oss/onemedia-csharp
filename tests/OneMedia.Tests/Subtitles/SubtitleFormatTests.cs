@@ -75,6 +75,17 @@ public class SubtitleFormatTests
     }
 
     [Fact]
+    public void TtmlStyleWithUnparsedColourOverInheritedColourWritesEachAttributeOnce()
+    {
+        // Found by fuzzing: style s1 inherits yellow from s0 and keeps its own unparseable colour raw; both were written.
+        SubtitleDocument doc = SubtitleFormats.Ttml.Read(File.ReadAllBytes(System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "subs-ttml", "duplicate-color.ttml")));
+        SubtitleOutput written = SubtitleFormats.Ttml.Write(doc);
+        var xml = new System.Xml.XmlDocument { XmlResolver = null };
+        xml.LoadXml(written.Text);
+        Assert.Equal(doc.Cues.Count, SubtitleFormats.Ttml.Read(written.Data).Cues.Count);
+    }
+
+    [Fact]
     public void TtmlWriteIsStableAndWellFormed()
     {
         SubtitleDocument doc = SubtitleFormats.Ttml.Read(Bytes("sample.ttml"));

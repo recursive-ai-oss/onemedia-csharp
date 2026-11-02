@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml" xmlns:tts="http://www.w3.org/ns/ttml#styling" xmlns:ttp="http://www.w3.org/ns/ttm?l#parameter" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xml:lang="en" ttp:timeBase="media">
+  <head>
+    <metadata><ttm:title>Sample</ttm:title><ttm:agent xml:id="a1" type="person"><ttm:name type="alias">Alice</ttm:name></ttm:agent></metadata>
+    <styling>
+      <style xml:id="s0" tts:color="yellow" tts:fontiegWht="bold"/>
+      <style xml:id="s1" style="s0" tts:fontStyle="italic" tts:id="s0" tts:color="yell)w" tts:fontWeight="bold"/>
+      <style xml:id="s3" style="s1" tts:fontStyle="italic" tts:textAlign="center"/>
+    </styling>
+  </head>
+  <body>
+    <div>
+      <p begin="1s" end="2s" style="s1">Hi</p>
+    </div>
+  </body>
+</tt>

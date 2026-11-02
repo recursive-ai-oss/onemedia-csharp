@@ -25,6 +25,7 @@
     <None Include="../../testdata/telemetry/*" Link="testdata/telemetry/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/strip/*" Link="testdata/strip/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/strip/review/*" Link="testdata/strip/review/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/subs-ttml/*" Link="testdata/fuzz/subs-ttml/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/telemetry-file/*" Link="testdata/fuzz/telemetry-file/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- The browser profile tables as text. -->
     <None Include="../../testdata/playback/*" Link="testdata/playback/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

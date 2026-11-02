@@ -277,6 +277,27 @@ public sealed record MediaTrack
     /// <summary>Video parameters; null for other kinds or when the container gives none.</summary>
     public VideoTrackInfo? Video { get; init; }
 
+    /// <summary>Coded width in pixels, before pixel aspect ratio and rotation: <see cref="Video"/>'s <c>Width</c>. Null when the track has no video info. 0 when the container does not say.</summary>
+    public int? Width => Video?.Width;
+
+    /// <summary>Coded height in pixels: <see cref="Video"/>'s <c>Height</c>. Null when the track has no video info. 0 when the container does not say.</summary>
+    public int? Height => Video?.Height;
+
+    /// <summary>Clockwise rotation to apply for display (0, 90, 180 or 270): <see cref="Video"/>'s <c>RotationDegrees</c>. Null when the track has no video info.</summary>
+    public int? RotationDegrees => Video?.RotationDegrees;
+
+    /// <summary>
+    /// Nominal frame rate in frames per second, a display value (use <see cref="Video"/>'s numerator and denominator for exact arithmetic). Null when the track has
+    /// no video info or the container gives no rate (zero or variable).
+    /// </summary>
+    public double? FrameRate => Video is { FrameRateNumerator: > 0, FrameRateDenominator: > 0 } v ? (double)v.FrameRateNumerator / v.FrameRateDenominator : null;
+
+    /// <summary>Samples per second per channel, in Hz: <see cref="Audio"/>'s <c>SampleRate</c>. Null when the track has no audio info. 0 when the container does not say.</summary>
+    public int? SampleRate => Audio?.SampleRate;
+
+    /// <summary>Channel count: <see cref="Audio"/>'s <c>Channels</c>. Null when the track has no audio info. 0 when the container does not say.</summary>
+    public int? Channels => Audio?.Channels;
+
     /// <summary>Average bit rate in bits per second as declared, or 0.</summary>
     public long BitRate { get; init; }
 
