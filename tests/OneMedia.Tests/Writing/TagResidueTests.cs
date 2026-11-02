@@ -226,7 +226,21 @@ public sealed class TagResidueTests : IDisposable
         Assert.True(Contains(path));
         using (MediaFile m = Media.Open(path))
         {
-            m.Save();
+            if (OperatingSystem.IsWindows())
+            {
+                // Windows does not let a save replace a file this MediaFile still holds open; the original stays untouched.
+                Assert.Throws<FileInUseException>(() => m.Save());
+                Assert.True(Contains(path));
+            }
+            else
+            {
+                m.Save();
+            }
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            TagWriter.Save(path, new TagEdits());
         }
 
         Assert.False(Contains(path));
