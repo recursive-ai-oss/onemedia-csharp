@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<tt
+  xmlns="http://www.w3.org/ns/ttml"
+  xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+  xmlns:tts="http://www.w3.org/ns/ttml#styling"
+  xmlns:ttp="http://www.w3.org/ns/ttml#parameter"
+  ttp:cellResolution="384 288"
+  xml:lang="">
+  <head>
+    <layout>
+      <region xml:id="Default"
+        tts:origin="3% 0%"
+        tts:extent="97% 97%"
+        tts:displayAlign="after"
+        tts:textAlign="center"
+        tts:fontSize="16c"
+        tts:fontFamily="Arial"
+        tts:overflow="visible" />
+    </layout>
+  </head>
+  <body>
+    <div>
+      <p
+        begin="00:00:00.500"
+        end="00:00:01.500"><span region="Default">Plain first cue</span></p>
+      <p
+        begin="00:00:02.000"
+        end="00:00:03.250"><span region="Default">Bold, italic and underlined</span></p>
+      <p
+        begin="00:00:03.250"
+        end="00:00:04.000"><span region="Default">Back to back, two<br/>lines</span></p>
+      <p
+        begin="00:00:05.000"
+        end="00:00:07.000"><span region="Default">Red text with ünïcödé and 日本語</span></p>
+      <p
+        begin="00:00:05.500"
+        end="00:00:06.000"><span region="Default">Overlaps the previous cue</span></p>
+    </div>
+  </body>
+</tt>

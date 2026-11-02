@@ -74,6 +74,8 @@ internal sealed class MatroskaReader
     private bool _bInvisible;
     private bool _bDisposable;
     private byte[] _out = [];
+    private byte[] _additional = [];
+    private int _additionalLength;
     private long[] _sizes = new long[8];
     private bool _seekHeadChainFollowed;
 
@@ -922,6 +924,7 @@ internal sealed class MatroskaReader
         }
         else
         {
+            _additionalLength = 0;
             SetUpBlock(0, size, key: null, durationUnits: -1, discardPaddingNs: 0, simple: true);
         }
 
@@ -994,10 +997,14 @@ internal sealed class MatroskaReader
         long duration = -1;
         long discardPadding = 0;
         bool hasReference = false;
+        _additionalLength = 0;
         while (c.MoveNext())
         {
             switch (c.Id)
             {
+                case MatroskaIds.BlockAdditions:
+                    ReadAdditions(c.Payload, c.PayloadOffset);
+                    break;
                 case MatroskaIds.Block when blockStart < 0:
                     blockStart = (int)(c.PayloadOffset - _blkFileOffset);
                     blockLength = c.Payload.Length;
@@ -1026,6 +1033,52 @@ internal sealed class MatroskaReader
         }
 
         SetUpBlock(blockStart, blockLength, key: !hasReference, duration, discardPadding, simple: false);
+    }
+
+    /// <summary>The BlockAdditional of the block just delivered whose BlockAddID is 1 (the default), or empty. Valid until the next packet.</summary>
+    public ReadOnlySpan<byte> LastBlockAdditional => _additional.AsSpan(0, _additionalLength);
+
+    // RFC 9559 §5.1.3.5.2: BlockAdditions holds BlockMore elements, each a BlockAddID (default 1) and a BlockAdditional. Only the first with id 1 is kept;
+    // text subtitles are the users (WebVTT cue settings), and their additions are a few hundred bytes at most, so the copy is bounded by the block buffer.
+    private void ReadAdditions(ReadOnlySpan<byte> additions, long offset)
+    {
+        EbmlChildren more = new(additions, offset, _defects);
+        while (more.MoveNext())
+        {
+            if (more.Id != MatroskaIds.BlockMore)
+            {
+                continue;
+            }
+
+            EbmlChildren parts = new(more.Payload, more.PayloadOffset, _defects);
+            ulong id = 1;
+            ReadOnlySpan<byte> data = default;
+            bool have = false;
+            while (parts.MoveNext())
+            {
+                if (parts.Id == MatroskaIds.BlockAddId)
+                {
+                    _ = Ebml.TryReadUnsigned(parts.Payload, out id);
+                }
+                else if (parts.Id == MatroskaIds.BlockAdditional)
+                {
+                    data = parts.Payload;
+                    have = true;
+                }
+            }
+
+            if (have && id == 1)
+            {
+                if (_additional.Length < data.Length)
+                {
+                    _additional = new byte[Math.Max(data.Length, 64)];
+                }
+
+                data.CopyTo(_additional);
+                _additionalLength = data.Length;
+                return;
+            }
+        }
     }
 
     /// <summary>

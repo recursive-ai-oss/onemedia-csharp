@@ -435,8 +435,36 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     // call instead of returning packets from a position someone else moved. Silent empty output is never the result.
     private bool _readStarted;
     private int _generation;
+    private List<RecursiveAI.OneMedia.Subtitles.SubtitleTrack>? _subtitles;
 
     private IReadOnlyList<TelemetryChannel>? _telemetry;
+
+    /// <summary>
+    /// The text subtitle tracks of the file (MP4, MOV and 3GP timed text, WebVTT and TTML in ISO; Matroska SubRip, ASS and WebVTT; WebM WebVTT), in
+    /// container order, each with its cues. Tracks in other forms (bitmaps, transport stream subtitles) are not listed; <see cref="Tracks"/> has them.
+    /// </summary>
+    public IReadOnlyList<RecursiveAI.OneMedia.Subtitles.SubtitleTrack> Subtitles
+    {
+        get
+        {
+            if (_subtitles is null)
+            {
+                List<RecursiveAI.OneMedia.Subtitles.SubtitleTrack> list = [];
+                foreach (MediaTrack t in Tracks)
+                {
+                    RecursiveAI.OneMedia.Subtitles.TextTrackFormat f = RecursiveAI.OneMedia.Subtitles.TextTracks.FormatOf(t);
+                    if (f != RecursiveAI.OneMedia.Subtitles.TextTrackFormat.Unknown)
+                    {
+                        list.Add(new RecursiveAI.OneMedia.Subtitles.SubtitleTrack(this, t, f));
+                    }
+                }
+
+                _subtitles = list;
+            }
+
+            return _subtitles;
+        }
+    }
 
     /// <summary>
     /// The decoded telemetry of the file (GoPro GPMF, Google CAMM, Apple <c>mebx</c> tracks), one channel per sensor or key, read on first use and kept.
@@ -463,6 +491,9 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <returns>The reader; dispose it before reading the file another way.</returns>
     /// <exception cref="ArgumentException">The track is not a telemetry track.</exception>
     public TelemetryTrackReader OpenTelemetry(MediaTrack track) => TelemetryTrackReader.Open(this, track);
+
+    /// <summary>The generation of the read in progress, for readers that must notice another read taking over.</summary>
+    internal int CurrentReadGeneration => _generation;
 
     /// <summary>Starts a read: returns the file to its beginning if it was read before, and returns the read's generation. Other tracks must already be switched off.</summary>
     internal int BeginRead()

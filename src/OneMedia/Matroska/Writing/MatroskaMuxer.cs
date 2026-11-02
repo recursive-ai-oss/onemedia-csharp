@@ -86,7 +86,7 @@ public sealed class MatroskaMuxer : IMuxer
     private readonly List<CuePoint> _cues = new(1024);
     private readonly EbmlBuffer _scratch = new(4096);
     private byte[] _head = new byte[256];
-    private readonly byte[] _tail = new byte[48];
+    private byte[] _tail = new byte[48];
 
     /// <summary>Creates a muxer over an output stream. Declare the tracks with <see cref="AddTrack"/> before the first packet. Nothing is written until the first Cluster is closed (live: until the first packet).</summary>
     /// <param name="output">Where the file goes. Seekable unless <see cref="MatroskaMuxOptions.Live"/> is set. It starts at the stream's current position.</param>
@@ -301,7 +301,22 @@ public sealed class MatroskaMuxer : IMuxer
     /// <exception cref="MediaLimitExceededException">The packet is larger than <see cref="MediaLimits.MaxPacketBytes"/>.</exception>
     /// <exception cref="IOException">The output failed.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
-    public void WritePacket(in PacketInfo info, ReadOnlySpan<byte> data, CancellationToken cancellationToken = default)
+    public void WritePacket(in PacketInfo info, ReadOnlySpan<byte> data, CancellationToken cancellationToken = default) =>
+        WritePacket(in info, data, default, cancellationToken);
+
+    /// <summary>
+    /// Writes one packet with a BlockAdditional (BlockAddID 1) stored beside its Block in a BlockGroup (RFC 9559 §5.1.3.5.2). S_TEXT/WEBVTT keeps the
+    /// cue settings, identifier and preceding comments there (<see cref="MatroskaWebVttAdditions"/>). The other rules are those of the overload without it.
+    /// </summary>
+    /// <param name="info">The packet's timing, flags and track index.</param>
+    /// <param name="data">The packet's bytes. Copied before the call returns.</param>
+    /// <param name="blockAdditional">The BlockAdditional bytes; empty writes none. Copied before the call returns.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="MuxRefusedException">As for the overload without additions.</exception>
+    /// <exception cref="MediaLimitExceededException">The packet is larger than <see cref="MediaLimits.MaxPacketBytes"/>.</exception>
+    /// <exception cref="IOException">The output failed.</exception>
+    /// <exception cref="OperationCanceledException">Cancellation was requested.</exception>
+    public void WritePacket(in PacketInfo info, ReadOnlySpan<byte> data, ReadOnlySpan<byte> blockAdditional, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_finished)
@@ -429,6 +444,7 @@ public sealed class MatroskaMuxer : IMuxer
             Length = data.Length,
             DtsUnits = dtsUnits,
             SharesTs = _lastTs[ti] == ts,
+            Additional = blockAdditional.IsEmpty ? null : blockAdditional.ToArray(),
         };
         _lastTs[ti] = ts;
         long end = durUnits >= 0 ? ts + durUnits : ts;
@@ -958,11 +974,16 @@ public sealed class MatroskaMuxer : IMuxer
             _head = new byte[64 + laceLen];
         }
 
+        if (p.Additional is { } extra && _tail.Length < extra.Length + 64)
+        {
+            _tail = new byte[extra.Length + 64];
+        }
+
         Span<byte> head = _head;
         Span<byte> tail = _tail;
         long body = numberLen + 3 + laceLen + payloadBytes;
         bool needsDuration = p.DurUnits >= 0 && !(defaultNs > 0 && Math.Abs(DurationNs(in p) - defaultNs) <= 1);
-        bool group = needsDuration || p.DiscardPaddingNs != 0;
+        bool group = needsDuration || p.DiscardPaddingNs != 0 || p.Additional is not null;
         tailLen = 0;
         int n = 0;
         if (!group)
@@ -986,6 +1007,24 @@ public sealed class MatroskaMuxer : IMuxer
             if (p.DiscardPaddingNs != 0)
             {
                 tailLen += WriteIntElement(tail[tailLen..], MatroskaIds.DiscardPadding, p.DiscardPaddingNs);
+            }
+
+            if (p.Additional is { } additional)
+            {
+                // RFC 9559 §5.1.3.5.2: BlockAdditions > BlockMore > (BlockAddID, BlockAdditional). The id is written although 1 is the default, as the
+                // WebVTT mapping asks for id 1 explicitly.
+                long more = 3 + 1 + EbmlWriter.SizeLength(additional.Length) + additional.Length;
+                tailLen += EbmlWriter.WriteId(tail[tailLen..], MatroskaIds.BlockAdditions);
+                tailLen += EbmlWriter.WriteSize(tail[tailLen..], 1 + EbmlWriter.SizeLength(more) + more);
+                tail[tailLen++] = (byte)MatroskaIds.BlockMore;
+                tailLen += EbmlWriter.WriteSize(tail[tailLen..], more);
+                tail[tailLen++] = (byte)MatroskaIds.BlockAddId;
+                tail[tailLen++] = 0x81;
+                tail[tailLen++] = 1;
+                tail[tailLen++] = (byte)MatroskaIds.BlockAdditional;
+                tailLen += EbmlWriter.WriteSize(tail[tailLen..], additional.Length);
+                additional.CopyTo(tail[tailLen..]);
+                tailLen += additional.Length;
             }
 
             long inner = 1 + EbmlWriter.SizeLength(body) + body + tailLen;
@@ -1089,6 +1128,7 @@ public sealed class MatroskaMuxer : IMuxer
         public bool Invisible;
         public bool Disposable;
         public bool Cue;
+        public byte[]? Additional;
     }
 
     private struct CuePoint

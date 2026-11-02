@@ -1,0 +1,20 @@
+1
+00:00:00,500 --> 00:00:01,500
+Plain first cue
+
+2
+00:00:02,000 --> 00:00:03,250
+<b>Bold</b>, <i>italic</i> and <u>underlined</u>
+
+3
+00:00:03,250 --> 00:00:04,000
+Back to back, two
+lines
+
+4
+00:00:05,000 --> 00:00:07,000
+<font color="#ff0000">Red</font> text with ünïcödé and 日本語
+
+5
+00:00:05,500 --> 00:00:06,000
+Overlaps the previous cue

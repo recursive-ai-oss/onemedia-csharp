@@ -23,6 +23,9 @@ public interface IPacketFeed : IDisposable
     /// <param name="packet">The packet; its data is valid until the next call.</param>
     /// <returns>False at the end of the feed.</returns>
     bool TryRead(out PacketView packet);
+
+    /// <summary>The BlockAdditional (BlockAddID 1) of the packet <see cref="TryRead"/> just returned, for Matroska output; empty (the default) when it has none.</summary>
+    ReadOnlySpan<byte> LastAdditional => default;
 }
 
 /// <summary>Replaces the packets of one input track by those of a feed.</summary>
@@ -101,7 +104,7 @@ internal sealed class PacketFeeds
                     break;
                 }
 
-                session.WritePacket(p.Info, p.Data, cancellationToken);
+                session.WritePacket(p.Info, p.Data, f.LastAdditional, cancellationToken);
             }
         }
     }
