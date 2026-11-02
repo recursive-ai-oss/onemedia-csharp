@@ -194,8 +194,10 @@ public sealed class WriterFixTests : IDisposable
         using MemoryMediaSource src = new(file);
         DefectLog log = new();
         ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, log)!;
+        // The tree is read lazily: the defect appears once the editor has walked it.
+        EditPlan plan = new ChunkEditor(cf, src).Build();
         Assert.Contains(log, d => d.Severity >= DefectSeverity.Warning);
-        Assert.Equal(file, WriterTestSupport.Apply(new ChunkEditor(cf, src).Build(), file));
+        Assert.Equal(file, WriterTestSupport.Apply(plan, file));
     }
 
     /// <summary>A fuzz find from the first fix: a nested BW64 whose ds64 size runs far past the end of the file is refused, not planned as a copy of bytes that do not exist.</summary>
