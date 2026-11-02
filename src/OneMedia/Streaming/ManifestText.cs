@@ -26,6 +26,11 @@ internal static class ManifestText
             micro -= 1_000_000;
         }
 
+        if (whole == 0 && micro == 0)
+        {
+            negative = false; // a value that rounds to zero is written as zero, never as "-0.000"
+        }
+
         string fraction = micro.ToString("D6", CultureInfo.InvariantCulture).TrimEnd('0');
         if (fraction.Length < 3)
         {
