@@ -423,7 +423,8 @@ internal sealed class MediaDataScanner
     {
         if (f.Kind != TrackKind.Video || info.Length < 32)
         {
-            return Chain(pos + info.Length, order, 2, null, MaxChainGap);
+            // A sample of a few bytes (a silent audio frame) parses by chance inside other data far more easily than a long one: it needs a longer run after it.
+            return Chain(pos + info.Length, order, info.Length < 16 ? 4 : 2, null, MaxChainGap);
         }
 
         long after = pos + info.Length;

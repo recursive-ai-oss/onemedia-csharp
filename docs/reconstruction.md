@@ -69,7 +69,7 @@ NAL validity checks (ITU-T H.264 §7.3.1.2, §7.4.1; H.265 §7.3.1.2):
 4. frame_num continues the last reference picture's (H.264 §7.4.3: it increments by one after a reference picture, modulo the maximum).
 5. After a gap no track explains, a video access unit is accepted only if the next one follows within 256 KiB with a continuing frame_num (or
    the data ends); a non-video sample needs a chain of two samples, each of which may follow up to 32 bytes of something unframed (the
-   tiny samples of a descriptor or timecode track that sits between audio frames, such as GoPro's 16-byte `fdsc` items).
+   tiny samples of a descriptor or timecode track that sits between audio frames, such as GoPro's 16-byte `fdsc` items). A candidate shorter than 16 bytes (a silent audio frame, which parses by chance inside other data far more easily) needs a chain of four. When the same gap has followed three samples in a row, the next sample is looked for where that gap ends before every position is tried, so bytes inside a regular small item that parse as a tiny sample are not taken for one.
 
 The last access unit is accepted when its NAL chain ends exactly at the end of the file and it passes the same checks as any other (a later missing slice of the
 same picture cannot be told). One that would run past the end is dropped and reported as `PartialSample`.
@@ -85,8 +85,9 @@ same picture cannot be told). One that would run past the end is dropped and rep
 | PCM | a fixed run | bytes between other tracks' samples, cut at the reference's usual packet size; no check is possible, confidence Medium |
 | GoPro `gpmd` | a KLV block | GPMF key/size structure |
 
-Without a reference an audio track is **discovered** at a sample boundary when the candidate framer chains six samples in a row (and the known
-tracks' samples fit around them). Discovery (no gaps allowed) tries MPEG audio layer III (layers I and II have no sample entry in the ISO muxer), AC-3, AMR-NB, AMR-WB, then the adapter's guesses, at positions where the previous sample ended.
+Without a reference an audio track is **discovered** at a sample boundary when the candidate framer chains six samples in a row with no bytes
+between them (allowing gaps here let guessed AAC setups "find" a track inside PCM and video, so a recording that interleaves a small unknown track
+with its sound keeps its video but loses the sound without a reference). Discovery (no gaps allowed) tries MPEG audio layer III (layers I and II have no sample entry in the ISO muxer), AC-3, AMR-NB, AMR-WB, then the adapter's guesses, at positions where the previous sample ended.
 
 ### Interleave and gaps
 
@@ -143,6 +144,8 @@ bytes), and the window is a fixed size.
   metadata tracks).
 - `tmcd` timecode tracks (4-byte samples), GoPro `fdsc` (16-byte samples) and other tracks without content to check are skipped and show
   up as `Unframed` ranges; they push the recovered fraction down by their share of the media data (about 1 % in the GoPro samples).
+- GoPro `gpmd` samples that hold more than one top-level `DEVC` item (the hero6 file with a Bluetooth remote) are cut into one sample per item,
+  so the rebuilt track has more, shorter samples than the original (their bytes are the original's).
 - AAC with more than two channels: OneAudio's frame probe does not take multichannel configurations, so such a track is dropped with a note
   and its bytes stay unframed (observed on a 5.1 Blender clip: 14 % of its media data).
 - Dependence on a reference for PCM and for video without in-band parameter sets is by design (see above).
