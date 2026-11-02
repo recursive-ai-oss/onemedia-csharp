@@ -75,6 +75,7 @@ internal static class IsoStrip
         }
 
         ScrubTracks(file, options, secrets, sink, ct);
+        ScrubLeadingGap(source, file, options, secrets, sink, ct);
         sink.AddNote("Subtitle and text tracks are not inspected: position text that a recorder stores in them stays.");
         sink.AddNote("Key names in a QuickTime metadata key table (keys box) and in mebx sample entries stay; their values are gone.");
         sink.AddNote("Layout is unchanged: every changed range keeps its length and no other byte moved.");
@@ -291,6 +292,66 @@ internal static class IsoStrip
         {
             sink.Note(r.Category, TagSystems.Xmp, r.Key, x.TrackId, x.PacketRange.Offset, x.PacketRange.Length, StripAction.Rewritten, r.Bytes);
         }
+    }
+
+    // GoPro cameras write a settings block (firmware, lens and camera serial numbers, the position) at the start of the media data, before the first
+    // sample of any track. No track refers to it, so it is searched for the values the labelled fields held.
+    private const long MaxGapBytes = 1 << 20;
+
+    private static void ScrubLeadingGap(FileMediaSource source, MediaFile file, StripOptions options, List<Secret> secrets, StripSink sink, CancellationToken ct)
+    {
+        if (secrets.Count == 0 || file.Demuxer is not { } demuxer)
+        {
+            return;
+        }
+
+        long start = -1, pos = 0;
+        for (int i = 0; i < 64 && pos < source.Length && BoxReader.TryRead(source, pos, source.Length, true, null, out BoxHeader h, ct); i++)
+        {
+            if (h.Type == BoxTypes.Mdat)
+            {
+                start = h.PayloadOffset;
+                break;
+            }
+
+            pos = h.End;
+        }
+
+        if (start < 0)
+        {
+            return;
+        }
+
+        long first = long.MaxValue;
+        foreach (MediaTrack track in demuxer.Tracks)
+        {
+            foreach (MediaTrack t in demuxer.Tracks)
+            {
+                demuxer.SetTrackEnabled(t.Index, t.Index == track.Index);
+            }
+
+            int generation = file.BeginRead();
+            if (demuxer.TryReadPacket(out PacketView view) && !view.Info.SourceRange.IsNone)
+            {
+                first = Math.Min(first, view.Info.SourceRange.Offset);
+            }
+
+            file.EnsureCurrentRead(generation);
+        }
+
+        foreach (MediaTrack t in demuxer.Tracks)
+        {
+            demuxer.SetTrackEnabled(t.Index, true);
+        }
+
+        if (first <= start || first - start > MaxGapBytes)
+        {
+            return;
+        }
+
+        byte[] gap = new byte[first - start];
+        source.ReadExactly(start, gap, ct);
+        TelemetryScrub.BySecrets(gap, start, "mdat-gap", 0, options.Categories, secrets, sink);
     }
 
     private static void ScrubTracks(MediaFile file, StripOptions options, List<Secret> secrets, StripSink sink, CancellationToken ct)
