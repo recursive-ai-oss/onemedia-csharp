@@ -358,13 +358,14 @@ public class RepairTests
     [InlineData("mpegts")]
     [InlineData("avi2")]
     [InlineData("isobmff2")]
+    [InlineData("isobmff3")]
     public void FuzzReprosRaiseTypedErrorsOrConsistentReports(string format)
     {
         byte[] data = File.ReadAllBytes(Data("fuzz-" + format + ".bin"));
         using MemoryStream output = new();
         try
         {
-            RepairReport r = Repairer.RunEngine(format.TrimEnd('2'), new MemoryMediaSource(data), output, MediaLimits.Default, CancellationToken.None);
+            RepairReport r = Repairer.RunEngine(format.TrimEnd('2', '3'), new MemoryMediaSource(data), output, MediaLimits.Default, CancellationToken.None);
             Assert.Equal(r.OutputWritten, output.Length > 0);
         }
         catch (MediaException)

@@ -376,7 +376,7 @@ internal static partial class IsoRepair
                     else if (o > uint.MaxValue)
                     {
                         report.Warn($"Track {t.Id} needs 64-bit chunk offsets (co64); rewriting the movie box is not done here.");
-                        return report.Build(RepairStatus.PartiallyRepaired, 0);
+                        return report.Build(RepairStatus.Unrepairable, 0);
                     }
                     else
                     {
