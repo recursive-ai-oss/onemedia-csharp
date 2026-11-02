@@ -66,7 +66,7 @@ matches when the file stores no maker; `SoftwareShapes` match a firmware string 
 
 DJI, Sony, Canon and Panasonic have no row: no sample file or document available to this build says anything about their header times that the defaults
 do not already assume. Sony and DJI sidecars carry their own times (below); Panasonic and Sony AVCHD times come from MDPM with their own zone field.
-Add a row only with the evidence that settles it. Rows are data: pass a different `DeviceProfileTable` to `DefaultFactResolver`.
+Evidence beats a profile: when attached GPS telemetry shows the header time is already UTC (within ten minutes of the first fix's UTC time), a "header is local" row is not applied and the reason says so. In the sample set this matters for one clip: `karma.mp4` has the HERO5 firmware family but its header equals GPS UTC; without GPS telemetry the firmware row would misread it as local. Two other files (HERO7, Fusion) have header clocks that were never set (2016, 2017 against GPS dates of 2019 and 2018), so no header time is trustworthy there; the GPS candidate is the only good one. Add a row only with the evidence that settles it. Rows are data: pass a different `DeviceProfileTable` to `DefaultFactResolver`.
 
 ## Embedded Exif
 

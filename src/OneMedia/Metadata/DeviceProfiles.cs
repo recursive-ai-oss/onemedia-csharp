@@ -128,7 +128,7 @@ public sealed class DeviceProfileTable
         // The movie files carry no maker or model of their own (the model sits in the GPMF track); the FIRM atom's firmware string does: HD5.02.02.00.00,
         // HD6.01.01.60.00, HD7.01.01.80.00, HD8.01.01.20.00, H19.03.01.30.00 (MAX) and FS1.04.01.70.00 (Fusion) in the ten sample files.
         new DeviceProfile("gopro-firmware", null, null, HeaderTimeIsLocal: true, ProfileBasis.ObservedInFiles,
-            "Ten GoPro sample files (HERO5 to HERO8, MAX, Fusion): the FIRM atom has the shape letter-letter-digit or letter-digit-digit, then four dotted two-digit groups; mvhd is local time in the files that carry GPS UTC times.")
+            "Ten GoPro sample files (HERO5 to HERO8, MAX, Fusion): the FIRM atom has the shape letter-letter-digit or letter-digit-digit, then four dotted two-digit groups; mvhd is local time in 8 of the 9 files whose clock was set and that carry GPS UTC times; the ninth (a Karma clip, firmware HD5) has mvhd equal to GPS UTC, which the resolver detects when telemetry is attached.")
         { SoftwareShapes = ["AA9.99.99.99.99", "A99.99.99.99.99"] },
 
         // Documented: the QuickTime header times are seconds since 1904 and, per the file format, UTC; Apple devices follow it and additionally write

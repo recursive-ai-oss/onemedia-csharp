@@ -100,6 +100,22 @@ public class FactResolverTests
     }
 
     [Fact]
+    public void GpsEvidenceThatTheHeaderIsUtcOverridesALocalTimeProfile()
+    {
+        FactCandidate<MediaDateTime> mvhd = new(new MediaDateTime(new DateTime(2017, 4, 17, 19, 27, 57, DateTimeKind.Utc), null, TimeZoneCertainty.Utc), "mvhd", "3", "seconds since 1904", TimeZoneCertainty.Utc);
+        GpsSample fix = new(MediaTime.Zero, MediaTime.Unknown, ByteRange.None, 33, -117, Fix: GpsFixKind.Fix3D, GpsTime: new DateTime(2017, 4, 17, 19, 27, 57, 526, DateTimeKind.Utc));
+        FactCandidate<string> fw = new("HD5.02.02.00.00", "udta:FIRM", "HD5.02.02.00.00", "text");
+        MediaFacts f = Resolve(new FactEvidence { CaptureTime = [mvhd], Software = [fw], Telemetry = [new TelemetryChannel(TelemetryKind.Gps, "gpmf", "GPS5", [fix])] });
+        Assert.Equal(TimeZoneCertainty.Utc, f.CaptureTime.Candidates.Single(c => c.Source == "mvhd").Certainty);
+        Assert.Contains("not applied", f.CaptureTime.Resolution!.Reason, StringComparison.Ordinal);
+
+        // A GPS time eight hours away confirms the profile.
+        GpsSample far = fix with { GpsTime = new DateTime(2017, 4, 18, 3, 28, 0, DateTimeKind.Utc) };
+        f = Resolve(new FactEvidence { CaptureTime = [mvhd], Software = [fw], Telemetry = [new TelemetryChannel(TelemetryKind.Gps, "gpmf", "GPS5", [far])] });
+        Assert.Equal(TimeZoneCertainty.Local, f.CaptureTime.Candidates.Single(c => c.Source == "mvhd").Certainty);
+    }
+
+    [Fact]
     public void FileNameAndFileSystemAreLastAndOnlyWhenGiven()
     {
         FactEvidence e = new() { CaptureTime = [Time("mvhd", "2023-04-05T10:00:00Z")] };

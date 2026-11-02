@@ -256,17 +256,40 @@ public sealed class DefaultFactResolver : IFactResolver
     private static Fact<MediaDateTime> ResolveCaptureTime(FactEvidence e, DeviceProfile? profile)
     {
         List<(CaptureTimeTier Tier, int Order, FactCandidate<MediaDateTime> Candidate)> items = [];
+
+        // Evidence beats a profile: when a GPS time in the file says the header already is UTC (they agree within ten minutes), a profile that calls the
+        // header local does not apply to this file. Observed: a GoPro Karma clip with the same firmware family as local-time HERO5 files whose header equals its GPS UTC.
+        bool profileApplies = profile is { HeaderTimeIsLocal: true };
+        bool overridden = false;
+        if (profileApplies)
+        {
+            foreach (TelemetryChannel stream in e.Telemetry)
+            {
+                if (stream.Kind == TelemetryKind.Gps && TryGpsStart(stream, out FactCandidate<MediaDateTime>? gps))
+                {
+                    foreach (FactCandidate<MediaDateTime> c in e.CaptureTime)
+                    {
+                        if (IsHeaderSource(c.Source) && c.Certainty == TimeZoneCertainty.Utc && Math.Abs(c.Value.Value.Ticks - gps.Value.Value.Ticks) < 10L * 60 * 10_000_000)
+                        {
+                            profileApplies = false;
+                            overridden = true;
+                        }
+                    }
+                }
+            }
+        }
+
         foreach (FactCandidate<MediaDateTime> c in e.CaptureTime)
         {
             FactCandidate<MediaDateTime> use = c;
-            if (profile is { HeaderTimeIsLocal: true } && IsHeaderSource(c.Source) && c.Certainty == TimeZoneCertainty.Utc)
+            if (profileApplies && IsHeaderSource(c.Source) && c.Certainty == TimeZoneCertainty.Utc)
             {
                 // The header's UTC reading is a guess made by the container reader; the profile knows better for this device.
                 use = c with
                 {
                     Value = new MediaDateTime(DateTime.SpecifyKind(c.Value.Value, DateTimeKind.Unspecified), null, TimeZoneCertainty.Local),
                     Certainty = TimeZoneCertainty.Local,
-                    Interpretation = c.Interpretation + $"; device profile '{profile.Id}': this device stores local time here",
+                    Interpretation = c.Interpretation + $"; device profile '{profile!.Id}': this device stores local time here",
                 };
             }
 
@@ -317,7 +340,7 @@ public sealed class DefaultFactResolver : IFactResolver
 
         if (profile is not null)
         {
-            reason += $"; device profile '{profile.Id}' applied";
+            reason += overridden ? $"; device profile '{profile.Id}' not applied: a GPS time in the file shows the header is UTC" : $"; device profile '{profile.Id}' applied";
         }
 
         return Fact.Create<MediaDateTime>(ordered, new FactResolution($"capture-time.tier-{(int)winnerTier}", reason, Name));
