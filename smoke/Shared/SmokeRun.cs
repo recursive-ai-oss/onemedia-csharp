@@ -142,6 +142,7 @@ internal static class SmokeRun
         MatroskaMuxSmoke.Run(Check);
         MuxSmoke.Run(Check);
         RemuxSmoke.Run(Check);
+        ReconstructSmoke.Run(Check);
         EditSmoke.Run(Check);
         RepairSmoke.Run(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.
