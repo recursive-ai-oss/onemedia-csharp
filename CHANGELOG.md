@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- The unit-test suite runs in headless Chromium on the browser-wasm runtime (`tests/OneMedia.Tests.Browser`, `tools/wasm-suite`, `docs/platforms.md`), and a CI job runs it. In that runtime `FileMediaSource.ReadAsync` completes in place, and the readers written as synchronous code (MPEG-TS/PS, AVI, DV, FLAC, FLV, WAV and the other audio files) refuse a source that answers later with a `NotSupportedException` instead of waiting for ever.
+
 ## [0.7.0-preview.1] - 2026-11-02
 
 HLS and DASH packaging, HLS/DASH presentations and growing files as sources. Everything in 0.6.0-preview.1 stays; repair, subtitles, captions, capture facts, telemetry and timed events are still previews.
