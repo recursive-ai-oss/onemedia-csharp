@@ -136,6 +136,19 @@ The first open in a process includes JIT time: about 17–23 ms for MP4 and 12�
 
 Every parser is fuzzed (600 seconds per target when its code last changed; for this release the targets whose code changed since 0.6.0-preview.1, the manifest and presentation targets among them, were run again for 600 seconds, no open crash); damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
 
+## Migrating from…
+
+One page per tool maps its common calls or flags to OneMedia calls and lists the behaviour differences (typed defects, evidence lists,
+lossless writes, reports). No shims. Every snippet is compiled and run by `samples/OneMedia.Samples`, which also holds the happy-path
+tasks, one or two lines each.
+
+- [FFMpegCore, ffprobe, ffmpeg](docs/migration/ffmpeg-ffprobe.md)
+- [TagLib#](docs/migration/taglib-sharp.md)
+- [ATL.NET](docs/migration/atl-net.md)
+- [MetadataExtractor](docs/migration/metadataextractor.md)
+- [MediaInfo](docs/migration/mediainfo.md)
+- [ExifTool](docs/migration/exiftool.md)
+
 ## Packages
 
 | Package | What it is |
