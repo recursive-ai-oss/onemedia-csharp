@@ -288,13 +288,12 @@ internal static class PackagingManifests
             Id = t.Name,
             Bandwidth = Math.Max(t.Track.PeakBitsPerSecond, 1),
             Codecs = t.Track.Codecs,
-            MimeType = t.Track.Kind == TrackKind.Video ? "video/mp4" : "audio/mp4",
+            // mimeType and startWithSAP are on the adaptation set: the schematron rules of ISO/IEC 23009-1 §5.3.7.2 want a common attribute on one level only.
             Width = d.Video?.Width ?? 0,
             Height = d.Video?.Height ?? 0,
             FrameRate = fps,
             SampleAspectRatio = sar,
             AudioSamplingRate = d.Audio?.SampleRate ?? 0,
-            StartWithSap = 1,
             BaseUrls = baseUrls,
             Descriptors = descriptors,
             SegmentTemplate = template,
@@ -339,7 +338,7 @@ internal static class PackagingManifests
                 Language = s.Language,
                 Descriptors = [new DashDescriptor("Role", "urn:mpeg:dash:role:2011", s.Forced ? "forced-subtitle" : "subtitle")],
                 // A text/vtt file is one segment: the representation is the file (DASH-IF guidelines, sidecar subtitles).
-                Representations = [new DashRepresentation { Id = text[i].Name, Bandwidth = 256, MimeType = "text/vtt", BaseUrls = [$"{text[i].Name}/subs.vtt"] }],
+                Representations = [new DashRepresentation { Id = text[i].Name, Bandwidth = 256, BaseUrls = [$"{text[i].Name}/subs.vtt"] }],
             });
         }
 
@@ -367,7 +366,8 @@ internal static class PackagingManifests
         DashMpd mpd = new()
         {
             Type = live ? DashPresentationType.Dynamic : DashPresentationType.Static,
-            Profiles = options.SingleFile ? "urn:mpeg:dash:profile:isoff-on-demand:2011" : "urn:mpeg:dash:profile:isoff-live:2011",
+            // A sidecar text file has no segment template, which the live profile requires of every representation (ISO/IEC 23009-1 ¥8.4.2), so a presentation with sidecar subtitles claims the full profile.
+            Profiles = text.Count > 0 ? "urn:mpeg:dash:profile:full:2011" : options.SingleFile ? "urn:mpeg:dash:profile:isoff-on-demand:2011" : "urn:mpeg:dash:profile:isoff-live:2011",
             MinBufferTime = options.MinBufferTime,
             MediaPresentationDuration = live ? null : end,
             MaxSegmentDuration = longest,
