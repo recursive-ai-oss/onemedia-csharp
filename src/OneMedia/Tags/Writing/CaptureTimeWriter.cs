@@ -352,14 +352,17 @@ public static class CaptureTimeWriter
         const string zoneless = "local wall clock of the stated offset; the field has no zone";
 
         // ISO BMFF / QuickTime
+        // Windows reads the user-data ©day as a UTC clock and mis-applies a trailing offset (observed: "+02:00" moved the shown time by two minutes, "+0200" by
+        // two hours the wrong way), so ©day is written as UTC with a Z. The offset stays in the mdta creationdate.
+        const string utcZone = "UTC with a Z; Windows mis-reads an offset in this field";
         if (Old(TagSystems.ITunes, "\u00a9day") is not null)
         {
-            Native(TagSystems.ITunes, "\u00a9day", iso, withOffset);
+            Native(TagSystems.ITunes, "\u00a9day", DateText.Utc(when), utcZone);
         }
 
         if (Old(TagSystems.QuickTimeUserData, "\u00a9day") is not null)
         {
-            Native(TagSystems.QuickTimeUserData, "\u00a9day", iso, withOffset);
+            Native(TagSystems.QuickTimeUserData, "\u00a9day", DateText.Utc(when), utcZone);
         }
 
         const string qt = "com.apple.quicktime.";
