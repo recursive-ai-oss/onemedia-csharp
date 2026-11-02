@@ -13,7 +13,7 @@ rm -rf "$S"; mkdir -p "$S/snap" "$WORK/logs"
 dotnet build "$ROOT/src/OneMedia.Tool/OneMedia.Tool.csproj" -c Release -v quiet -clp:NoSummary -m:4 -p:NuGetAudit=false > "$WORK/logs/build.log" 2>&1 || { tail -5 "$WORK/logs/build.log"; exit 1; }
 SECONDS_TOTAL="${SOAK_SECONDS:-$((HOURS * 3600))}"
 mkfifo "$S/pipe"
-"$FFMPEG" -v error -f lavfi -i "testsrc2=size=320x180:rate=10" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t "$SECONDS_TOTAL" \
+"$FFMPEG" -v error -y -f lavfi -i "testsrc2=size=320x180:rate=10" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t "$SECONDS_TOTAL" \
   -c:v libx264 -preset ultrafast -g 20 -keyint_min 20 -sc_threshold 0 -b:v 150k -pix_fmt yuv420p -c:a aac -b:a 32k -f matroska "$S/pipe" &
 FF=$!
 dotnet "$WORK/artifacts/bin/OneMedia.Tool/release/onemedia.dll" package - "$S/out" --live --segment "$SEG" --window 6 < "$S/pipe" > "$S/package.log" 2>&1 &
