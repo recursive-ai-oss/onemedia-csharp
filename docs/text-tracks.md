@@ -15,7 +15,7 @@ Normative notes for how subtitle text tracks inside containers map to and from t
 | `S_TEXT/WEBVTT` | Matroska | CodecID | yes | yes | ISO: `wvtt` |
 | `D_WEBVTT/*` | WebM (also Matroska) | CodecID | yes | yes | ISO: `wvtt`; WebM always gets `D_WEBVTT/SUBTITLES` |
 
-`TextTracks.FormatOf(track)` names the format, `TextTrackDecoder` turns packets into a `SubtitleDocument`, `TextTrackEncoder` does the reverse and reports what the format could not carry. `MediaFile.Subtitles` lists the text tracks with lazily read cues. Remux converts a text track only when the target container cannot hold the input format; everything else passes through byte for byte.
+`TextTracks.FormatOf(track)` names the format, `TextTrackDecoder` turns packets into a `SubtitleDocument`, `TextTrackEncoder` does the reverse and reports what the format could not carry. `MediaFile.ContainerSubtitles` lists the text and bitmap tracks with lazily read cues, without reading media data; `MediaFile.Subtitles` adds teletext pages and embedded captions (see `subtitles.md`, "One list"). Remux converts a text track only when the target container cannot hold the input format; everything else passes through byte for byte.
 
 ## Cue times
 

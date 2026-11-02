@@ -1,4 +1,8 @@
+using System.Linq;
 using RecursiveAI.OneMedia.Captions;
+using RecursiveAI.OneMedia.Captions.Cea608;
+using RecursiveAI.OneMedia.Captions.Teletext;
+using RecursiveAI.OneMedia.Codecs.Captions;
 using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Metadata.Telemetry;
@@ -196,6 +200,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
                 // Everything cached came from the old file.
                 _metadata = null;
                 _subtitles = null;
+                _containerSubtitles = null;
                 _telemetry = null;
                 _resolved = null;
             }
@@ -510,30 +515,135 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<TelemetryChannel>? _telemetry;
 
-    /// <summary>
-    /// The text subtitle tracks of the file (MP4, MOV and 3GP timed text, WebVTT and TTML in ISO; Matroska SubRip, ASS and WebVTT; WebM WebVTT), in
-    /// container order, each with its cues. Tracks in other forms (bitmaps, transport stream subtitles) are not listed; <see cref="Tracks"/> has them.
-    /// </summary>
-    public IReadOnlyList<SubtitleTrack> Subtitles
-    {
-        get
-        {
-            if (_subtitles is null)
-            {
-                List<SubtitleTrack> list = [];
-                foreach (MediaTrack t in Tracks)
-                {
-                    TextTrackFormat f = TextTracks.FormatOf(t);
-                    if (f != TextTrackFormat.Unknown)
-                    {
-                        list.Add(new SubtitleTrack(this, t, f));
-                    }
-                }
+    private List<SubtitleTrack>? _containerSubtitles;
 
-                _subtitles = list;
+    /// <summary>
+    /// The subtitle tracks the container itself lists, without reading any media data: text tracks (MP4, MOV and 3GP timed text, WebVTT and TTML in ISO;
+    /// Matroska SubRip, ASS and WebVTT; WebM WebVTT) and bitmap tracks (PGS, VobSub, DVB subtitles), in container order. Cheap: nothing beyond what opening read.
+    /// Captions inside video and teletext pages are not here; see <see cref="Subtitles"/>.
+    /// </summary>
+    public IReadOnlyList<SubtitleTrack> ContainerSubtitles => _containerSubtitles ??= ListContainerSubtitles();
+
+    private List<SubtitleTrack> ListContainerSubtitles()
+    {
+        List<SubtitleTrack> list = [];
+        foreach (MediaTrack t in Tracks)
+        {
+            TextTrackFormat f = TextTracks.FormatOf(t);
+            if (f != TextTrackFormat.Unknown)
+            {
+                list.Add(new SubtitleTrack(this, t, f));
+            }
+            else if (BitmapSubtitles.CanDecode(t))
+            {
+                MediaTrack track = t;
+                list.Add(new SubtitleTrack(this, t, SubtitleKind.Bitmap, t.CodecTag ?? t.Codec.Name, null, null, () => BitmapSubtitles.ReadTrack(this, track)));
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// Every subtitle source the file carries, in one list with one cue model: the <see cref="ContainerSubtitles"/> (text and bitmap tracks), then the
+    /// teletext subtitle pages (one entry per page found, per teletext stream), then the CEA-608 channels and CEA-708 services that carry captions, in
+    /// track order. Each entry has its <see cref="SubtitleTrack.Kind"/>, language, codec and cues.
+    /// </summary>
+    /// <remarks>
+    /// <b>Cost.</b> Listing teletext pages and embedded captions has to look at the media data: the first access reads every teletext packet and every
+    /// H.264, HEVC or MPEG-2 video sample (and each <c>c608</c> track) of the file once, front to back, and keeps the decoded caption screens in memory;
+    /// other tracks' payloads are skipped where the container allows. That is a full read of the video for a file with caption-capable video, so use
+    /// <see cref="ContainerSubtitles"/> when only the tracks matter. The scan runs on the first access and the result is kept; opening the file and
+    /// reading its metadata never scan. A file opened from an asynchronous source, or whose source cannot rewind after an earlier read, lists the
+    /// container tracks only.
+    /// </remarks>
+    /// <exception cref="MediaLimitExceededException">The data asks for more than the limits allow.</exception>
+    public IReadOnlyList<SubtitleTrack> Subtitles => _subtitles ??= ListAllSubtitles();
+
+    private List<SubtitleTrack> ListAllSubtitles()
+    {
+        List<SubtitleTrack> list = [.. ContainerSubtitles];
+        if (_sync is null)
+        {
+            return list;
+        }
+
+        try
+        {
+            AddTeletext(list);
+            AddEmbeddedCaptions(list);
+        }
+        catch (MediaReadStateException e) when (e.Reason == MediaReadStateReason.CannotRewind)
+        {
+            // A source that cannot rewind lists what it can.
+        }
+
+        return list;
+    }
+
+    private void AddTeletext(List<SubtitleTrack> list)
+    {
+        IDemuxer demuxer = _sync!;
+        bool any = false;
+        foreach (MediaTrack t in Tracks)
+        {
+            any |= TeletextExtractor.IsTeletext(t);
+        }
+
+        if (!any)
+        {
+            return;
+        }
+
+        BeginRead();
+        IReadOnlyList<TeletextTrackSubtitles> found;
+        try
+        {
+            found = TeletextExtractor.ReadAll(demuxer);
+        }
+        finally
+        {
+            foreach (MediaTrack t in demuxer.Tracks)
+            {
+                demuxer.SetTrackEnabled(t.Index, true);
+            }
+        }
+
+        foreach (TeletextTrackSubtitles ts in found)
+        {
+            MediaTrack carrier = Tracks[ts.TrackIndex];
+            foreach (TeletextSubtitleTrack page in ts.Subtitles)
+            {
+                TeletextSubtitleTrack p = page;
+                string label = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{p.Page.Magazine}{p.Page.Number:X2}");
+                list.Add(new SubtitleTrack(this, carrier, SubtitleKind.Teletext, TeletextExtractor.CodecName, label, p.Language, () => p.Document));
+            }
+        }
+    }
+
+    private void AddEmbeddedCaptions(List<SubtitleTrack> list)
+    {
+        foreach (MediaTrack t in Tracks)
+        {
+            bool c608 = CaptionExtractor.IsClosedCaptionTrack(t);
+            if (!c608 && !(t.Kind == TrackKind.Video && CaptionExtractor.ForTrack(t) is not null))
+            {
+                continue;
             }
 
-            return _subtitles;
+            EmbeddedCaptions captions = EmbeddedCaptions.Read(this, t);
+            string? language = t.Language;
+            foreach (Cea608Channel channel in captions.Cea608.Select(c => c.Channel).Distinct().Order())
+            {
+                Cea608Channel ch = channel;
+                list.Add(new SubtitleTrack(this, t, SubtitleKind.Cea608, "cea608", ch.ToString(), language, () => CaptionCues.FromCea608(captions.Cea608, ch, language).Document));
+            }
+
+            foreach (int service in captions.Cea708.Select(c => c.Service).Distinct().Order())
+            {
+                int sv = service;
+                list.Add(new SubtitleTrack(this, t, SubtitleKind.Cea708, "cea708", "service " + sv.ToString(System.Globalization.CultureInfo.InvariantCulture), language, () => CaptionCues.FromCea708(captions.Cea708, sv, language).Document));
+            }
         }
     }
 

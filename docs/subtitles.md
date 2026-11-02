@@ -120,3 +120,23 @@ API are compared with ours (`tools/subtitles/vtt-browser-check.py`). Observed de
 - LRC has no end time; compared on start times and text. ffmpeg keeps enhanced `<mm:ss.xx>` word tags as text and gives the last line
   no usable end; we read them as word timing and end the last line after 5 s.
 - ffmpeg shows ruby annotation text inline when converting WebVTT (`漢kan字`); we keep the base text and the annotation separately.
+
+## One list: `MediaFile.Subtitles`
+
+Every subtitle source a media file carries is a `SubtitleTrack` with a `Kind`, `Codec`, `Label`, `Language`, the carrying `Track` and its cues (`Document`/`Cues`, read on first use and kept):
+
+| Kind | What | `Label` | Found by |
+|---|---|---|---|
+| `Text` | tx3g, QuickTime text, `wvtt`, `stpp`, Matroska SubRip/ASS/WebVTT, WebM WebVTT | none | the track list |
+| `Bitmap` | PGS, VobSub, DVB subtitles in Matroska, TS and PS | none | the track list |
+| `Teletext` | one subtitle page of a teletext stream | page, `888` | a scan of the teletext stream |
+| `Cea608` | one channel with caption screens, in H.264/HEVC/MPEG-2 video or a `c608` track | `CC1`..`CC4`, `Text1`..`Text4` | a scan of the video |
+| `Cea708` | one DTVCC service with caption screens | `service N` | a scan of the video |
+
+- `ContainerSubtitles` is the first two rows: no media data is read. `Subtitles` is all of them: the container tracks, then teletext pages, then 608 channels and 708 services in track order.
+- **I/O cost of `Subtitles`.** Teletext pages and captions can only be found by reading the data. The first access to `Subtitles` reads each teletext stream and each caption-capable video track (and `c608` track) once, front to back, other tracks' payloads skipped, and keeps the decoded caption screens in memory. For a file with H.264, HEVC or MPEG-2 video that is a full read of the video. Opening a file and reading its metadata never scan, so probe I/O is unchanged (4.38 GB moov-last MP4: 1,069,403 B / 7 requests over HTTP, 165,681 B / 34 reads by strace; 4.45 GB MKV: 37,108 B / 12 and 69,806 B / 20, the same as before).
+- A file opened from an asynchronous source, or whose source cannot rewind after an earlier read, lists the container tracks only.
+- 608 language is not carried by the stream: it is the `c608` track's language, else null. 708 language and teletext language come from the stream when it declares one (teletext: the PMT descriptor).
+- Every kind is read into the same `SubtitleDocument`, so `Subtitles.Write(entry.Document, "out.vtt")` converts any of them (bitmap entries have image cues and no text; the report says so).
+- `Subtitles.Read(path)` also reads `.sup` (PGS), `.idx` with its `.sub`, and a bare `.sub` program stream. They are registered as read-only formats (`PgsSubtitleFormat`, `VobSubSubtitleFormat`: `CanWrite` false, found by `SubtitleFormats.Find("sup")` and, from bytes, `Sniff`). A `.idx` read from bytes alone is refused because the pictures are in the `.sub`.
+- `onemedia subs info <media>` lists the entries; `onemedia subs <media> --to out.srt [--track n]` extracts one; `--all --to <dir>` extracts every entry (bitmap entries as PNG files and an `index.tsv`).
