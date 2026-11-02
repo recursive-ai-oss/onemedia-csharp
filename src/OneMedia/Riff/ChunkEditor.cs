@@ -204,7 +204,9 @@ public sealed class ChunkEditor
         return slot;
     }
 
-    private bool Fits(long remainder) => remainder == 0 || remainder >= ChunkBuilder.HeaderSize(_file.Layout);
+    // A remainder is padding only when it is empty or a whole aligned chunk. A last chunk that lacks its pad byte makes the slot one byte short of aligned, and the
+    // remainder then cannot be a chunk; the edit takes the growth path instead.
+    private bool Fits(long remainder) => remainder == 0 || (remainder >= ChunkBuilder.HeaderSize(_file.Layout) && remainder % (_file.Layout == ChunkLayout.Wave64 ? 8 : 2) == 0);
 
     private ChunkNode? NextSibling(ChunkNode n)
     {

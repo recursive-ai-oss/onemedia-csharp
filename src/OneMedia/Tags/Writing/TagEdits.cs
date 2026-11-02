@@ -73,7 +73,10 @@ public sealed class TagEdits
     public IReadOnlyList<TagEdit> Edits => _edits;
 
     /// <summary>True when no edit was made.</summary>
-    public bool IsEmpty => _edits.Count == 0;
+    public bool IsEmpty => _edits.Count == 0 && HeaderDate is null;
+
+    /// <summary>The binary capture-date fields (movie, track and media header times, Matroska DateUTC, ASF creation date, Exif blocks) a capture-time write sets; null for plain tag edits.</summary>
+    internal CaptureDateEdit? HeaderDate { get; set; }
 
     /// <summary>Sets a field to one value.</summary>
     /// <param name="field">The field.</param>

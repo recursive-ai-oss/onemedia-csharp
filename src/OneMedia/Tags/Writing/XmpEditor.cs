@@ -107,6 +107,38 @@ internal static class XmpEditor
             desc.Add(new XElement(ns + name, new XElement(Rdf + kind, change.Select(v => new XElement(Rdf + "li", v)))));
         }
 
+        // Native edits name a property as prefix:Name (xmp:CreateDate, photoshop:DateCreated, exif:DateTimeOriginal); the property is set as a simple text value.
+        foreach (TagEdit n in edits.NativeFor(TagSystems.Xmp))
+        {
+            int colon = n.Key!.IndexOf(':', StringComparison.Ordinal);
+            XNamespace? nns = colon <= 0 ? null : n.Key[..colon] switch
+            {
+                "xmp" => XmpBasic,
+                "photoshop" => (XNamespace)XmpNamespaces.Photoshop,
+                "exif" => (XNamespace)XmpNamespaces.Exif,
+                _ => null,
+            };
+            if (nns is null)
+            {
+                conv.Add($"{n.Key}: the XMP prefix is not one of xmp, photoshop or exif; not written");
+                continue;
+            }
+
+            string local = n.Key[(colon + 1)..];
+            foreach (XElement d in rdf.Elements(Rdf + "Description"))
+            {
+                d.Attribute(nns + local)?.Remove();
+                d.Elements(nns + local).Remove();
+            }
+
+            if (n.Kind == TagEditKind.SetNative)
+            {
+                EnsurePrefix(desc, nns, n.Key[..colon]);
+                desc.Add(new XElement(nns + local, n.Values[0]));
+                conv.Add($"{n.Key}: set");
+            }
+        }
+
         byte[] body = Serialise(root);
         byte[] begin = Encoding.UTF8.GetBytes("<?xpacket begin=\"\uFEFF\" id=\"" + PacketId + "\"?>\n");
         byte[] end = Encoding.UTF8.GetBytes("\n<?xpacket end=\"w\"?>");

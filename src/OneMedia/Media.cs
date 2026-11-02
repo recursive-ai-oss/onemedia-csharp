@@ -88,4 +88,13 @@ public static partial class Media
     /// <exception cref="IOException">The output exists, or a file cannot be read or written.</exception>
     /// <exception cref="UnsupportedMediaException">The input is not recognised.</exception>
     public static Playback.MakePlayableReport MakePlayable(string input, string output, Playback.BrowserProfile profile) => Playback.PlayableMaker.MakePlayable(input, output, profile);
+
+    /// <summary>Sets the capture time of a recording in every date field the file carries, each in its own notation and zone semantics, and writes a new file. Payload bytes are copied unchanged.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The new file; refused if it exists.</param>
+    /// <param name="when">The capture time with the offset the recorder was in.</param>
+    /// <returns>Every field written with its old and new text, the fields left and why, and the dates that still disagree.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="when"/> is outside 1904 to 2262.</exception>
+    /// <exception cref="UnsupportedMediaException">The format has no capture-date writer.</exception>
+    public static Tags.CaptureTimeReport SetCaptureTime(string input, string output, DateTimeOffset when) => Tags.CaptureTimeWriter.SaveAs(input, output, when);
 }

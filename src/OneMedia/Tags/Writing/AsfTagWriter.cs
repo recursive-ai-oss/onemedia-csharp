@@ -65,7 +65,7 @@ internal static class AsfTagWriter
             }
 
             long size = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(hdr.AsSpan(16)), long.MaxValue);
-            if (size < ObjectHeader || at + size > headerSize)
+            if (size < ObjectHeader || size > headerSize - at)
             {
                 throw new UnsupportedMediaException("An object inside the ASF header has an invalid size; tags cannot be written safely.");
             }
@@ -187,14 +187,19 @@ internal static class AsfTagWriter
                 continue;
             }
 
-            if (c.Id == AsfGuids.FileProperties && fileDelta != 0 && c.Size >= ObjectHeader + 24)
+            if (c.Id == AsfGuids.FileProperties && (fileDelta != 0 || edits.HeaderDate is not null) && c.Size >= ObjectHeader + 32)
             {
-                byte[] fp = new byte[ObjectHeader + 24];
+                byte[] fp = new byte[ObjectHeader + 32];
                 src.ReadExactly(c.Offset, fp, ct);
                 long oldFileSize = BinaryPrimitives.ReadInt64LittleEndian(fp.AsSpan(40));
                 if (oldFileSize == length)
                 {
                     BinaryPrimitives.WriteInt64LittleEndian(fp.AsSpan(40), length + fileDelta);
+                }
+
+                if (edits.HeaderDate is { } headerDate)
+                {
+                    CaptureDatePatches.AsfCreation(fp, headerDate);
                 }
 
                 list.AddData(fp);
@@ -239,7 +244,7 @@ internal static class AsfTagWriter
             }
 
             long size = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(h.AsSpan(16)), long.MaxValue);
-            if (size < ObjectHeader || at + size > ext.Offset + ext.Size)
+            if (size < ObjectHeader || size > ext.Offset + ext.Size - at)
             {
                 return null;
             }

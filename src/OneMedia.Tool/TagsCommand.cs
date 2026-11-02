@@ -20,6 +20,8 @@ internal static class TagsCommand
         bool replace = false;
         bool inPlace = false;
         bool check = false;
+        string? captureTime = null;
+        bool? headerLocal = null;
         string coverType = nameof(PictureType.FrontCover);
         string? cover = null;
         try
@@ -55,6 +57,19 @@ internal static class TagsCommand
                         break;
                     case "--remove-covers":
                         edits.RemovePictures();
+                        break;
+                    case "--capture-time" when i + 1 < args.Length:
+                        captureTime = args[++i];
+                        break;
+                    case "--header-times" when i + 1 < args.Length:
+                        string mode = args[++i];
+                        if (mode is not ("utc" or "local"))
+                        {
+                            Console.Error.WriteLine("--header-times expects utc or local");
+                            return 2;
+                        }
+
+                        headerLocal = mode == "local";
                         break;
                     case "--system" when i + 1 < args.Length:
                         systems.Add(args[++i]);
@@ -94,6 +109,17 @@ internal static class TagsCommand
 
                 Console.WriteLine(residue.Count == 0 ? "clean: no leftover removed or stale values found" : "leftovers found: save the file to zero them: onemedia tags <file> --replace");
                 return residue.Count == 0 ? 0 : 1;
+            }
+
+            if (captureTime is not null)
+            {
+                if (!edits.IsEmpty)
+                {
+                    Console.Error.WriteLine("--capture-time cannot be combined with --set, --remove or cover options; run them separately");
+                    return 2;
+                }
+
+                return SetCaptureTime(path, captureTime, headerLocal, output, replace, inPlace);
             }
 
             if (edits.IsEmpty && output is null && !replace && !inPlace)
@@ -141,6 +167,59 @@ internal static class TagsCommand
             Console.Error.WriteLine(e.Message);
             return 1;
         }
+    }
+
+    // An ISO 8601 date-time with an offset or Z; without one the time is taken as UTC.
+    private static int SetCaptureTime(string path, string text, bool? headerLocal, string? output, bool replace, bool inPlace)
+    {
+        if (!DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset when))
+        {
+            Console.Error.WriteLine("--capture-time expects an ISO 8601 date-time such as 2024-05-01T12:30:00+02:00");
+            return 2;
+        }
+
+        CaptureTimeOptions options = new() { HeaderTimesAreLocal = headerLocal };
+        CaptureTimeReport report;
+        if (output is not null)
+        {
+            report = CaptureTimeWriter.SaveAs(path, output, when, options);
+        }
+        else if (replace)
+        {
+            report = CaptureTimeWriter.Save(path, when, options);
+        }
+        else if (inPlace)
+        {
+            report = CaptureTimeWriter.SaveInPlace(path, when, options);
+        }
+        else
+        {
+            report = CaptureTimeWriter.Plan(path, when, options).Report;
+            Console.WriteLine("plan only (no --out, --replace or --in-place): nothing was written");
+        }
+
+        Console.WriteLine("header times: " + report.HeaderTimesBasis);
+        foreach (DateFieldWrite w in report.Written)
+        {
+            Console.WriteLine($"written  {w.System} {w.Field}: {w.OldValue ?? "(none)"} -> {w.NewValue}   [{w.Semantics}]");
+        }
+
+        foreach (DateFieldLeft l in report.Left)
+        {
+            Console.WriteLine($"left     {l.System} {l.Field}: {l.Value ?? "(none)"}   [{l.Reason}]");
+        }
+
+        foreach (DateDisagreement d in report.Disagreements)
+        {
+            Console.WriteLine($"differs  {d.Source}: {d.RawValue}   [{d.Note}]");
+        }
+
+        if (report.Write is { } w2)
+        {
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{w2.Mode}: {w2.BytesWritten} byte(s) written, {w2.BytesCopied} copied"));
+        }
+
+        return 0;
     }
 
     private static bool TryField(string name, out CommonField field) =>

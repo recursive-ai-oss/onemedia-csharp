@@ -92,7 +92,9 @@ internal static class IsoTagWriter
         }
 
         bool wroteText = anyUdtaText || didMdta;
-        if (!didIlst && options.Wants(TagSystems.ITunes) && (!wroteText || edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture)))
+        // A capture-time write sets header fields and named native keys only; it creates no item list of its own.
+        bool touchesItems = edits.TouchedFields.Count > 0 || edits.PictureEdits.Any() || edits.NativeFor(TagSystems.ITunes).Any();
+        if (!didIlst && touchesItems && options.Wants(TagSystems.ITunes) && (!wroteText || edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture)))
         {
             // Pictures cannot live in udta or in key-table metadata: with only those in the file, an item list is created for them alone.
             TagEdits forList = wroteText ? PicturesOnly(edits) : edits;
@@ -107,6 +109,11 @@ internal static class IsoTagWriter
             {
                 reports.Add(xmp);
             }
+        }
+
+        if (edits.HeaderDate is { } headerDate)
+        {
+            CaptureDatePatches.Iso(src, moov, headerDate, editor, limits);
         }
 
         EditPlan plan = editor.Build(ct);
@@ -579,6 +586,37 @@ internal static class IsoTagWriter
                 }
 
                 written.Add(f);
+            }
+        }
+
+        // Native edits name one © atom by its four-character code (a capture-time write sets ©day this way).
+        foreach (TagEdit n in edits.NativeFor(TagSystems.QuickTimeUserData))
+        {
+            if (n.Key is not { Length: 4 } code || code[0] != '\u00a9')
+            {
+                continue;
+            }
+
+            uint nativeType = BoxTypes.Make(code);
+            BoxNode? current = atoms.FirstOrDefault(a => a.Type == nativeType);
+            if (n.Kind == TagEditKind.RemoveNative)
+            {
+                if (current is not null)
+                {
+                    editor.Remove(current);
+                }
+
+                continue;
+            }
+
+            byte[] atomBox = QuickTimeText(code, n.Values[0]);
+            if (current is not null)
+            {
+                editor.Replace(current, atomBox);
+            }
+            else
+            {
+                editor.AppendChild(udta, atomBox);
             }
         }
 

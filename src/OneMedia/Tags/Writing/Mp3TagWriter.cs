@@ -716,12 +716,18 @@ internal static class Mp3TagWriter
 
         if (version == 3 && id == "TYER" && joined.Length > 4)
         {
-            conv.Add("Date: ID3v2.3 stores the year in TYER; the day and month go to TDAT");
-            frames.RemoveAll(x => x.Id == "TDAT");
+            conv.Add("Date: ID3v2.3 stores the year in TYER; the day and month go to TDAT and the hour and minute to TIME");
+            frames.RemoveAll(x => x.Id is "TDAT" or "TIME");
             if (joined.Length >= 10 && joined[4] == '-' && joined[7] == '-')
             {
                 frames[frames.IndexOf(frames.First(x => x.Id == "TYER"))] = new FrameOut("TYER", FrameBytes("TYER", [0, .. Encoding.Latin1.GetBytes(joined[..4])], 3), "TYER", null);
                 frames.Add(new FrameOut("TDAT", FrameBytes("TDAT", [0, .. Encoding.Latin1.GetBytes(string.Concat(joined.AsSpan(8, 2), joined.AsSpan(5, 2)))], 3), "TDAT", null));
+
+                // ID3v2.3 §4.2.1: TIME holds hour and minute as HHMM.
+                if (joined.Length >= 16 && joined[10] is 'T' or ' ' && joined[13] == ':' && char.IsAsciiDigit(joined[11]) && char.IsAsciiDigit(joined[12]) && char.IsAsciiDigit(joined[14]) && char.IsAsciiDigit(joined[15]))
+                {
+                    frames.Add(new FrameOut("TIME", FrameBytes("TIME", [0, .. Encoding.Latin1.GetBytes(string.Concat(joined.AsSpan(11, 2), joined.AsSpan(14, 2)))], 3), "TIME", null));
+                }
             }
             else
             {

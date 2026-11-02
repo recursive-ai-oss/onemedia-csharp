@@ -45,6 +45,7 @@
     <None Include="../../testdata/playback/*" Link="testdata/playback/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Tagged fixtures and the rendered mapping table. -->
     <None Include="../../testdata/metadata/*" Link="testdata/metadata/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/datewrite/*" Link="testdata/datewrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/facts/*" Link="testdata/facts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/exif/*" Link="testdata/fuzz/exif/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/sidecars/*" Link="testdata/fuzz/sidecars/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
@@ -57,6 +58,7 @@
     <None Include="../../testdata/fuzz/asf/*" Link="testdata/fuzz/asf/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/riff-wav/*" Link="testdata/fuzz/riff-wav/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/review/*" Link="testdata/review/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/fuzz/datewrite/*" Link="testdata/fuzz/datewrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/tagwrite/*" Link="testdata/fuzz/tagwrite/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/pcm/*" Link="testdata/pcm/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../docs/tag-mapping.md" Link="docs/tag-mapping.md" CopyToOutputDirectory="PreserveNewest" />
