@@ -22,6 +22,7 @@
     <Project Path="tools/OneMedia.TelemetryCheck/OneMedia.TelemetryCheck.csproj" />
     <Project Path="tools/OneMedia.WriterCheck/OneMedia.WriterCheck.csproj" />
     <Project Path="tools/OneMedia.TagWriteCheck/OneMedia.TagWriteCheck.csproj" />
+    <Project Path="tools/OneMedia.BitmapSubsCheck/OneMedia.BitmapSubsCheck.csproj" />
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench/OneMedia.Bench/OneMedia.Bench.csproj" />

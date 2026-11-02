@@ -125,6 +125,18 @@ seed() {
               { printf "\\$(printf '%03o' $((b | 2)))"; cat "$f"; } > "$corpus/$(basename "$f").seed"
               { printf "\\$(printf '%03o' $((b | 1)))"; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
             done ;;
+    bitmap-pgs) # The first byte picks the path (bit 0: a whole .sup file, else container packets); the rest is the stream.
+          for f in "$here"/testdata/bitmapsubs/*.sup; do
+            [ -f "$f" ] || continue
+            { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\000'; tail -c +14 "$f" | head -c 4000; } > "$corpus/$(basename "$f")-packets.seed"
+          done ;;
+    bitmap-spu|bitmap-dvb|bitmap-idx) # SPU: a DVD sub-picture unit (the first one in each .sub); DVB: PES payloads; idx: an index, a NUL, then a program stream.
+          case "$target" in
+            bitmap-dvb) for f in "$here"/testdata/bitmapsubs/*.pes; do [ -f "$f" ] && cp "$f" "$corpus/$(basename "$f").seed"; done ;;
+            bitmap-idx) { cat "$here/testdata/bitmapsubs/vobsub.idx"; printf '\000'; cat "$here/testdata/bitmapsubs/vobsub.sub"; } > "$corpus/vobsub.seed" ;;
+            *) for f in "$here"/testdata/bitmapsubs/*.spu; do [ -f "$f" ] && cp "$f" "$corpus/$(basename "$f").seed"; done ;;
+          esac ;;
     tagwrite) # The whole file is the input: one fixture of each format the tag writer edits.
               for f in "$here"/testdata/audio-es/plain.mp3 "$here"/testdata/audio-es/tagged/*.mp3 "$here"/testdata/audio/aac.m4a "$here"/testdata/audio/aac.mka "$here"/testdata/audio/flac.flac \
                        "$here"/testdata/audio/opus.ogg "$here"/testdata/audio/vorbis.ogg "$here"/testdata/pcm/bwf-v0.wav "$here"/testdata/pcm/*.aif* "$here"/testdata/asf/*.wma "$here"/testdata/asf/*.wmv "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mkv; do

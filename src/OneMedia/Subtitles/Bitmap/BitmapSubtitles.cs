@@ -134,6 +134,20 @@ internal static class BitmapSupport
         limits.CheckAllocation((width * height * 4) + usedBytes, offset);
     }
 
+    // The end of a cue that the next display set (at `next`) closes, not later than its own planned end `planned` when that is known.
+    // Streams whose time stamps run backwards would give an end before the start; the cue then ends where it starts and a defect says so.
+    internal static MediaTime ClosedAt(SubtitleCue cue, MediaTime next, MediaTime planned, DefectLog defects, long offset)
+    {
+        MediaTime end = planned.IsKnown && planned < next ? planned : next;
+        if (end < cue.Start)
+        {
+            defects.Add(DefectKind.InvalidOrder, DefectSeverity.Warning, offset, "A bitmap subtitle is closed by a display set with an earlier time stamp.", "bitmap.time.order");
+            return cue.Start;
+        }
+
+        return end;
+    }
+
     internal static MediaTime Ticks90k(long ticks) => new(ticks, 90000);
 
     // Time arithmetic that does not fail on mixed time bases: exact in 90 kHz when the left base divides it, else rounded in the left base.

@@ -102,7 +102,7 @@ public sealed class VobSubDecoder
                     case 0x02:
                         if (open is not null)
                         {
-                            cues.Add(open with { End = when });
+                            cues.Add(open with { End = MediaTime.Max(when, open.Start) });
                             open = null;
                         }
 
@@ -148,7 +148,7 @@ public sealed class VobSubDecoder
             {
                 if (open is not null)
                 {
-                    cues.Add(open with { End = when });
+                    cues.Add(open with { End = MediaTime.Max(when, open.Start) });
                 }
 
                 open = haveArea && havePixels

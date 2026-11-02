@@ -265,7 +265,8 @@ public sealed class DvbSubtitleDecoder
             _cluts[id] = clut;
         }
 
-        bool bt709 = BitmapSupport.UseBt709(_matrix, _displayH);
+        // EN 300 743 7.2.4 note 2 defines Y, Cr, Cb as ITU-R BT.601 whatever the display size, and ffmpeg agrees (observed on 1080-line streams), so Auto means BT.601 here.
+        bool bt709 = _matrix == YCbCrMatrix.Bt709;
         int p = 2;
         while (p + 2 <= s.Length)
         {
@@ -423,7 +424,7 @@ public sealed class DvbSubtitleDecoder
 
         if (_open is not null)
         {
-            _ready.Add(_open with { End = MediaTime.Min(_pageTime, _openTimeOut) });
+            _ready.Add(_open with { End = BitmapSupport.ClosedAt(_open, _pageTime, _openTimeOut, _defects, offset) });
             _open = null;
         }
 

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Writes test bitmap-subtitle streams and compares our decoded pictures with the RGBA frames ffmpeg renders for the same file
+       (tools/run-bitmapsubs-diff.sh drives both). Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.BitmapSubsCheck</RootNamespace>
+    <AssemblyName>OneMedia.BitmapSubsCheck</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CA1303;CA1305;CA1307;CA1310;CA2201;IDE0005</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Linq" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <Compile Include="../../tests/OneMedia.Tests/Subtitles/BitmapSubtitleEncoders.cs" Link="BitmapSubtitleEncoders.cs" />
+  </ItemGroup>
+
+</Project>

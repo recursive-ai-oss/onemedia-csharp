@@ -497,7 +497,7 @@ public sealed class PgsDecoder
         // The new display set ends whatever was showing.
         if (_open is not null)
         {
-            _ready.Add(_open with { End = MediaTime.Min(_pcsTime, _open.End.IsKnown ? _open.End : _pcsTime) });
+            _ready.Add(_open with { End = BitmapSupport.ClosedAt(_open, _pcsTime, _open.End, _defects, offset) });
             _open = null;
         }
 
