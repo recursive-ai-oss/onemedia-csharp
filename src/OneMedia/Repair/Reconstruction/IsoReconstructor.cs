@@ -465,7 +465,12 @@ public static class IsoReconstructor
                     i = p + 1;
                 }
 
-                at += n - 8;
+                if (at + n >= length)
+                {
+                    break; // the whole rest of the file has been searched
+                }
+
+                at += n - 8; // overlap, so a header split across two reads is still seen
             }
 
             return -1;

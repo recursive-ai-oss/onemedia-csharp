@@ -229,10 +229,11 @@ public sealed record ReconstructionOptions
     public (int Numerator, int Denominator) AssumedFrameRate { get; init; } = (30, 1);
 
     /// <summary>
-    /// Bytes of sound from which a guessed audio setup is judged (the guess must frame this many samples in a row). Default 8 samples.
+    /// How many samples in a row a guessed audio setup (no reference file) must frame before it is accepted, counted up to the scan's
+    /// internal confirmation chain of 6. Default 8, so in practice the chain of 6 decides.
     /// </summary>
     public int GuessConfirmSamples { get; init; } = 8;
 
-    /// <summary>Settings for the muxer limits: tracks and sample-table entries come from <see cref="Limits"/>.</summary>
+    /// <summary>The kind of file to write (MP4, MOV, 3GP...). When null, the kind follows the major brand of the input's file type box, else MP4.</summary>
     public IsoFileKind? Kind { get; init; }
 }
