@@ -11,14 +11,14 @@ internal static class TelemetrySmoke
 {
     public static void Run(Action<string, bool> check)
     {
-        foreach ((string name, TelemetryFormat format) in new[] { ("gpmf-synthetic.mp4", TelemetryFormat.Gpmf), ("camm-all-types.mp4", TelemetryFormat.Camm), ("mebx-synthetic.mp4", TelemetryFormat.Mebx) })
+        foreach ((string name, TelemetryFormat format) in new[] { ("gpmf-synthetic.mp4", TelemetryFormat.Gpmf), ("camm-all-types.mp4", TelemetryFormat.Camm), ("mebx-synthetic.mp4", TelemetryFormat.Mebx), ("dji-text.mp4", TelemetryFormat.DjiText), ("djmd-real.mp4", TelemetryFormat.Djmd), ("mdpm-gps.mts", TelemetryFormat.Mdpm) })
         {
             using MediaFile media = MediaFile.Open(new MemoryMediaSource(Resource(name)));
             int tracks = 0;
             int items = 0;
             foreach (MediaTrack t in media.Tracks)
             {
-                if (TelemetryTrackReader.FormatOf(t) != format)
+                if (TelemetryTrackReader.FormatOf(media, t) != format)
                 {
                     continue;
                 }
@@ -39,6 +39,12 @@ internal static class TelemetrySmoke
 
             check("telemetry " + name, tracks == 1 && items > 5 && gps);
         }
+    }
+
+    public static void RunSidecar(Action<string, bool> check)
+    {
+        IReadOnlyList<TelemetryChannel> channels = Metadata.Telemetry.Dji.DjiSrt.Read(Resource("dji-formats.srt"));
+        check("telemetry dji-formats.srt", channels.Count >= 5 && channels[0].Samples.Count == 5);
     }
 
     private static byte[] Resource(string name)

@@ -340,7 +340,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     public IReadOnlyList<TelemetryChannel> Telemetry => _telemetry ??= TelemetryChannels.Read(this);
 
     /// <summary>Opens a track's telemetry for one-at-a-time reading in constant memory (see <see cref="TelemetryTrackReader"/>).</summary>
-    /// <param name="track">A telemetry track: <see cref="TelemetryTrackReader.FormatOf"/> is not <c>None</c>.</param>
+    /// <param name="track">A telemetry track: <see cref="TelemetryTrackReader.FormatOf(MediaFile, MediaTrack)"/> is not <c>None</c>.</param>
     /// <returns>The reader; dispose it before reading the file another way.</returns>
     /// <exception cref="ArgumentException">The track is not a telemetry track.</exception>
     public TelemetryTrackReader OpenTelemetry(MediaTrack track) => TelemetryTrackReader.Open(this, track);
