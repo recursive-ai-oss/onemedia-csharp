@@ -124,6 +124,21 @@ internal static partial class MetadataCompare
         return 0;
     }
 
+    private static MediaFacts Resolved(MediaMetadata m, string file)
+    {
+        FactEvidence evidence = FactEvidence.FromContainer(m.Facts);
+        foreach (string sidecar in SidecarLookup.Find(file))
+        {
+            using FileStream fs = File.OpenRead(sidecar);
+            if (Sidecars.Read(fs) is { } set)
+            {
+                evidence = evidence.With(set);
+            }
+        }
+
+        return DefaultFactResolver.Instance.Resolve(evidence);
+    }
+
     private static string Clean(string s) => s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
 
     private static void CompareFile(MediaFormatRegistry registry, string file, List<Row> rows)
@@ -211,7 +226,8 @@ internal static partial class MetadataCompare
         // common view (MediaInfo: the General section only; its other sections describe single streams)
         Dictionary<string, List<string>> miGeneral = mi.Where(kv => kv.Key.StartsWith("General:", StringComparison.Ordinal)).ToDictionary(kv => kv.Key, kv => kv.Value);
         CommonTags c = m.Tags;
-        MediaFacts f0 = m.Facts;
+        // The resolved facts: container candidates and the sidecars beside the file, ordered by the default resolver (what media.CaptureTime and the rest report).
+        MediaFacts f0 = Resolved(m, file);
         Common(rows, name, "Title", c.Title, etMovie, ["Title"], miGeneral, ["Title", "Movie"]);
         // QuickTime names the writer "author"; MediaInfo calls it Performer, like the artist.
         Common(rows, name, "Artist", c.Artist ?? c.Author, etMovie, ["Artist", "Performer", "Author"], miGeneral, ["Performer"]);
@@ -229,7 +245,7 @@ internal static partial class MetadataCompare
         Common(rows, name, "Cover", c.Pictures.Count > 0 ? "yes" : null, etMovie, ["CoverArt", "Picture"], miGeneral, ["Cover"], presence: true);
 
         // facts
-        MediaFacts f = m.Facts;
+        MediaFacts f = f0;
         if (f.Duration.Best is { } d)
         {
             double ours = (double)d.Value.Ticks / d.Value.Timescale;

@@ -305,7 +305,11 @@ internal static class IoHarness
 
         RecursiveAI.OneMedia.Metadata.MediaMetadata m = provider.ReadMetadata();
         _ = m.Tags.Title;
-        _ = m.Facts.CaptureTime.Best;
+        // The resolved facts (what media.CaptureTime, .Location and .Device report) add no reads: the resolver works on candidates already in memory.
+        RecursiveAI.OneMedia.Metadata.MediaFacts resolved = RecursiveAI.OneMedia.Metadata.DefaultFactResolver.Instance.Resolve(RecursiveAI.OneMedia.Metadata.FactEvidence.FromContainer(m.Facts));
+        _ = resolved.CaptureTime.Best;
+        _ = resolved.Location.Best;
+        _ = resolved.Device.Serial.Best;
         return ", metadata: " + m.NativeTags.Count + " native tags";
     }
 
