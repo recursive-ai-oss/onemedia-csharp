@@ -15,11 +15,13 @@ Both deliver the same demuxer shape as every other format: tracks, then packets 
 - The playlist or manifest is parsed by the manifest model in `RecursiveAI.OneMedia.Streaming` (strict reader for DASH, lenient reader for HLS: what the standard forbids but servers write is a defect in the open options' defect log, with a `hls.*` code, and reading goes on).
 - Each segment is fetched through a caller-supplied `IPresentationResolver` as one ranged read (a segment with a byte range is one range of its resource), with its initialization segment in front for fragmented MP4. The container reader that recognises the segment demultiplexes it. The two most recent resources stay open; everything else is released.
 - A multivariant playlist or an MPD offers variants; `PresentationOptions.VariantIndex` picks one (default the first). A separate HLS audio group, and each DASH adaptation set, become further tracks; their packets are interleaved by decode time.
+- `PresentationVariant.Bandwidth` is the variant's declared bits per second: for HLS `AVERAGE-BANDWIDTH` when the `EXT-X-STREAM-INF` entry has one, otherwise `BANDWIDTH` (which RFC 8216 §4.3.4.2 defines as the peak); for DASH the Representation's `@bandwidth`. It is 0 for a media playlist opened on its own. Variants are listed in playlist order, not sorted by bandwidth.
 - Local files go through `FilePresentationResolver`, which refuses any location outside the playlist's directory. HTTP, blob storage and the browser's `Blob` are the caller's resolver (`DelegatePresentationResolver`); the library has no network code.
 
 ### Time
 
 - Packet times are those the segments state (an MPEG-TS PTS, a fragment's `baseMediaDecodeTime`), in the track's own timescale. Nothing is re-timed.
+- The duration of an HLS presentation is the exact sum of the `EXTINF` values, which are decimal numbers (RFC 8216 §4.3.2.1) read without rounding; segment durations of 10.4 s five times are 52 s, not 50 s. It is unknown for a playlist without `EXT-X-ENDLIST`.
 - HLS `EXT-X-DISCONTINUITY`: the times of the segments after the break are shifted so they continue where the previous ones ended, and the first packet of each track after the break carries `PacketAttributes.Discontinuity`.
 - DASH: `Period@start` less `presentationTimeOffset` is added to the times a segment states (zero for a single period starting at 0). The adapter takes the offset from the template, list or base once per representation; the segment's own `Time` is not used to place packets, so the offset is applied once.
 - Seeking lands at the start of the segment containing the target; the first packet can be earlier than the target by up to one segment.

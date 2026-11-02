@@ -340,6 +340,85 @@ public sealed class ReconstructionTests
         Assert.StartsWith("The rebuilt tracks cannot be written", IsoReconstructor.RefusalToException(offset, hasReference: false, sized).Message, StringComparison.Ordinal);
     }
 
+    // A 64x64 AV1 sequence header OBU (reduced still-picture header, AV1 specification §5.5) followed by a shown key frame OBU: one temporal unit
+    // that parses on its own. Bit by bit so the layout can be checked against the specification.
+    private static byte[] FakeAv1TemporalUnit()
+    {
+        List<bool> bits = [];
+        void Put(int value, int count)
+        {
+            for (int i = count - 1; i >= 0; i--)
+            {
+                bits.Add(((value >> i) & 1) != 0);
+            }
+        }
+
+        Put(0, 3);      // seq_profile
+        Put(0, 1);      // still_picture
+        Put(1, 1);      // reduced_still_picture_header
+        Put(0, 5);      // seq_level_idx[0]
+        Put(7, 4);      // frame_width_bits_minus_1
+        Put(7, 4);      // frame_height_bits_minus_1
+        Put(63, 8);     // max_frame_width_minus_1
+        Put(63, 8);     // max_frame_height_minus_1
+        Put(0, 3);      // use_128x128_superblock, enable_filter_intra, enable_intra_edge_filter
+        Put(0, 3);      // enable_superres, enable_cdef, enable_restoration
+        Put(0, 1);      // high_bitdepth
+        Put(0, 1);      // mono_chrome
+        Put(0, 1);      // color_description_present_flag
+        Put(0, 1);      // color_range
+        Put(0, 2);      // chroma_sample_position
+        Put(0, 1);      // separate_uv_delta_q
+        Put(0, 1);      // film_grain_params_present
+        Put(1, 1);      // trailing_one_bit
+        while (bits.Count % 8 != 0)
+        {
+            bits.Add(false);
+        }
+
+        byte[] seq = new byte[bits.Count / 8];
+        for (int i = 0; i < bits.Count; i++)
+        {
+            if (bits[i])
+            {
+                seq[i / 8] |= (byte)(0x80 >> (i % 8));
+            }
+        }
+
+        // obu_header: type 1 (sequence header), has_size_field; then type 6 (frame) whose first byte says show_existing_frame 0, KEY_FRAME, show_frame 1.
+        return [0x0A, (byte)seq.Length, .. seq, 0x32, 4, 0x10, 0, 0, 0];
+    }
+
+    [Fact]
+    public void H264DataThatHoldsOneStrayAv1UnitIsNotRebuiltAsAnAv1Track()
+    {
+        // A recording whose video parameter sets lived only in the lost movie box (x264 writes them nowhere else) and no reference file.
+        // Somewhere in the video bytes is a run that parses as one AV1 temporal unit; the scan used to take it for the video track, and the
+        // rebuild then wrote a bogus AV1 track (or died on its made-up frame size) instead of saying a reference file is needed.
+        byte[] healthy = File.ReadAllBytes(Fixture("bframes_aac.mp4"));
+        byte[] cut = Cut(healthy, 0.7);
+        int mdat = cut.AsSpan().IndexOf("mdat"u8) + 4;
+        FakeAv1TemporalUnit().CopyTo(cut, mdat + 48);
+
+        // Nothing but a bogus AV1 track could have come out of this file; the right answer is the typed failure that asks for a reference file.
+        ReconstructionException e = Assert.Throws<ReconstructionException>(() => Rebuild(cut, null));
+        Assert.Equal(ReconstructionFailure.NoSamples, e.Failure);
+        Assert.StartsWith("No video parameter sets were found", e.Message, StringComparison.Ordinal);
+        Assert.Contains("reference file from the same device is needed", e.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(65536, 64)]
+    [InlineData(64, 70000)]
+    public void AVideoSizeTheSampleEntryCannotHoldSaysTheParameterSetsAreMissing(int width, int height)
+    {
+        // A size made up from stray bytes is as unusable as none, and the muxer refuses both with the same text.
+        MediaTrack track = new() { Index = 0, Kind = TrackKind.Video, Codec = CodecId.Av1, Timescale = 90000, Video = new VideoTrackInfo(width, height) };
+        MuxRefusedException refusal = new(MuxRefusalReason.InvalidTrack, "Track 0: a video track needs a width and height between 1 and 65535.", 0, CodecId.Av1);
+        Assert.StartsWith("The stream carries no video parameter sets", IsoReconstructor.RefusalToException(refusal, hasReference: false, track).Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void WithoutAnyMediaDataTheFailureIsTyped()
     {

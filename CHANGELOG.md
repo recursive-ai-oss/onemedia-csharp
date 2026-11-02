@@ -4,6 +4,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- The duration of an HLS presentation rounded each `EXTINF` to a whole second while adding them up, so a 52.208 s stream read 51 s. `EXTINF` values are decimals and are now summed exactly (a DASH period's start, when derived from the previous period, had the same rounding). `docs/streaming-sources.md` also states that `PresentationVariant.Bandwidth` is `AVERAGE-BANDWIDTH` when present and `BANDWIDTH` otherwise.
+- Reconstructing a recording with no reference file, when the video's parameter sets lived only in the lost movie box, could still end with the muxer's "a video track needs a width and height" text. The scan took a few stray bytes inside the H.264 data for an AV1 sequence header; it now needs a frame size and a second well-formed temporal unit behind it, so the rebuild says that a reference file is needed. A frame size the sample entry cannot hold (over 65535) now also gets that lead message.
+
 ### Added
 
 - The unit-test suite runs in headless Chromium on the browser-wasm runtime (`tests/OneMedia.Tests.Browser`, `tools/wasm-suite`, `docs/platforms.md`), and a CI job runs it. In that runtime `FileMediaSource.ReadAsync` completes in place, and the readers written as synchronous code (MPEG-TS/PS, AVI, DV, FLAC, FLV, WAV and the other audio files) refuse a source that answers later with a `NotSupportedException` instead of waiting for ever.

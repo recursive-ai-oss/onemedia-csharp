@@ -183,11 +183,12 @@ public static class IsoReconstructor
         MuxReport muxReport;
         try
         {
-            muxReport = Mux(input, output, setups, timing, scanner.Samples, muxOptions, loc.PayloadEnd, cancellationToken);
+            muxReport = Mux(input, output, setups, timing, scanner.Samples, muxOptions, loc.PayloadEnd, reference is not null, cancellationToken);
         }
         catch (MuxRefusedException e)
         {
-            throw RefusalToException(e, reference is not null, e.TrackIndex >= 0 && e.TrackIndex < setups.Count ? setups[e.TrackIndex].Track : null);
+            // A refusal that did not come from a declared track (a packet written out of order, a limit): no track to blame.
+            throw RefusalToException(e, reference is not null, null);
         }
 
         List<ReconstructedTrack> tracks = [];
@@ -275,7 +276,7 @@ public static class IsoReconstructor
     // That is the reason a person can act on, so it comes first and the muxer's own wording follows as the detail.
     internal static ReconstructionException RefusalToException(MuxRefusedException e, bool hasReference, MediaTrack? track)
     {
-        if (!hasReference && e.Reason == MuxRefusalReason.InvalidTrack && track is { Kind: TrackKind.Video } && track.Video is not { Width: > 0, Height: > 0 })
+        if (!hasReference && e.Reason == MuxRefusalReason.InvalidTrack && track is { Kind: TrackKind.Video } && track.Video is not { Width: > 0 and <= 65535, Height: > 0 and <= 65535 })
         {
             return new ReconstructionException(ReconstructionFailure.OutputNotSuitable, "The stream carries no video parameter sets (SPS/PPS), so the video track's size and codec setup cannot be recovered; a reference file from the same device is needed. Detail: " + e.Message);
         }
@@ -866,6 +867,26 @@ public static class IsoReconstructor
             return false;
         }
 
+        // This runs at every byte of the first 8 MiB, and a byte of 0x0A or 0x12 inside H.264 or audio data followed by a few bytes that
+        // happen to parse is not rare. A real stream continues with another well-formed temporal unit (or ends exactly here), and has a frame size.
+        if (sh.MaxFrameWidth <= 0 || sh.MaxFrameHeight <= 0)
+        {
+            return false;
+        }
+
+        long after = p + info.Length;
+        Av1ObuFramer next = new() { MaxSample = f.MaxSample };
+        ReadOnlySpan<byte> rest = w.Get(after, 1 << 20);
+        if (!rest.IsEmpty)
+        {
+            // The recording is cut off, so the last unit may be partial; one that is wrong from its first bytes is not a stream.
+            FrameStatus status = next.TryFrame(rest, w.ReachesEnd(after, rest.Length), out _);
+            if (status is not (FrameStatus.Ok or FrameStatus.Partial))
+            {
+                return false;
+            }
+        }
+
         ArrayBufferWriter<byte> cfg = new();
         Av1CodecConfigurationRecord.FromSequenceHeader(sh, f.SequenceHeaderObu).Write(cfg);
         setup = new TrackSetup
@@ -1383,7 +1404,7 @@ public static class IsoReconstructor
 
     // ----- Writing -------------------------------------------------------------------------------------------------------------
 
-    private static MuxReport Mux(IMediaSource input, Stream output, List<TrackSetup> setups, List<TrackTiming> timing, List<SampleRec> samples, IsoMuxOptions options, long limit, CancellationToken ct)
+    private static MuxReport Mux(IMediaSource input, Stream output, List<TrackSetup> setups, List<TrackTiming> timing, List<SampleRec> samples, IsoMuxOptions options, long limit, bool hasReference, CancellationToken ct)
     {
         using IsoMuxer mux = new(output, options);
         int[] next = new int[setups.Count];
@@ -1405,7 +1426,17 @@ public static class IsoReconstructor
             }
 
             MediaTrack track = BuildTrack(setups[i], timing[i], samples);
-            outIndex[i] = mux.AddTrack(track, setups[i].Options);
+            try
+            {
+                outIndex[i] = mux.AddTrack(track, setups[i].Options);
+            }
+            catch (MuxRefusedException e)
+            {
+                // The muxer numbers tracks by the ones declared so far, which skips setups that recovered nothing, so its index is not
+                // an index into setups. The track that was refused is the one just built.
+                throw RefusalToException(e, hasReference, track);
+            }
+
             declared[i] = true;
         }
 

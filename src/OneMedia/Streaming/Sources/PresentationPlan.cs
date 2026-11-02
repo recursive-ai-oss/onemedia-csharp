@@ -5,7 +5,10 @@ namespace RecursiveAI.OneMedia.Streaming.Sources;
 /// <see cref="PresentationOptions.VariantIndex"/>.
 /// </summary>
 /// <param name="Index">Position in <see cref="PresentationDemuxer.Variants"/>.</param>
-/// <param name="Bandwidth">Peak or average bits per second as declared; 0 when the playlist gives none.</param>
+/// <param name="Bandwidth">
+/// Bits per second as declared. For an HLS multivariant playlist it is <c>AVERAGE-BANDWIDTH</c> when the entry has one and <c>BANDWIDTH</c> (the
+/// peak, RFC 8216 §4.3.4.2) otherwise; for a DASH Representation it is its <c>@bandwidth</c>. 0 when none is given (a media playlist read on its own).
+/// </param>
 /// <param name="Codecs">The <c>CODECS</c> or <c>codecs</c> string as declared (RFC 6381 form), or null.</param>
 /// <param name="Width">Declared picture width in pixels; 0 when not declared.</param>
 /// <param name="Height">Declared picture height in pixels; 0 when not declared.</param>

@@ -83,7 +83,7 @@ internal static class DashReader
             MediaTime duration = period.Duration
                 ?? (p + 1 < periods.Count && periods[p + 1].Start is { } next ? next.Subtract(start, MediaRounding.NearestAwayFromZero)
                 : mpdDuration.IsKnown ? mpdDuration.Subtract(start, MediaRounding.NearestAwayFromZero) : MediaTime.Unknown);
-            nextPeriodStart = duration.IsKnown ? start.Add(duration, MediaRounding.NearestAwayFromZero) : start;
+            nextPeriodStart = duration.IsKnown ? ManifestText.ExactSum(start, duration) : start;
             Uri periodBase = ApplyBase(mpdBase, period.BaseUrls);
             Dictionary<TrackKind, int> ordinal = [];
             bool firstOfPeriod = true;
