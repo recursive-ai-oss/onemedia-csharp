@@ -125,6 +125,41 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Opens a file that another process is still appending to (a fragmented MP4, a live Matroska, a transport stream, an FLV) and reads it as it grows.
+    /// Reading reaches the current end, waits for more under <paramref name="policy"/>, and ends when the policy gives up or says the writer is done.
+    /// </summary>
+    /// <remarks>
+    /// The file is read once, front to back, like any source that cannot seek. A progressive MP4/MOV whose movie box comes after the media data
+    /// cannot be read until it is finished and raises <see cref="MediaFormatException"/> with code <c>isobmff.moov-not-written</c> in its message's defect.
+    /// </remarks>
+    /// <param name="path">The file; if it does not exist yet, opening waits for it under the policy.</param>
+    /// <param name="policy">When to wait and when to stop.</param>
+    /// <param name="registry">The formats to try; <see cref="MediaFormats.Default"/> when null.</param>
+    /// <param name="options">Limits and defect log.</param>
+    /// <param name="cancellationToken">Cancels the waits while opening; reading is cancelled through the token given to the demuxer's own calls.</param>
+    /// <returns>The opened file; the caller disposes it.</returns>
+    /// <exception cref="FileNotFoundException">The file did not appear before the policy gave up.</exception>
+    /// <exception cref="UnsupportedMediaException">The format cannot be read from a source that cannot seek.</exception>
+    /// <exception cref="MediaFormatException">The data is not valid, or a progressive MP4 has no movie box yet.</exception>
+    public static MediaFile OpenGrowing(string path, Streaming.Sources.GrowthPolicy policy, MediaFormatRegistry? registry = null, MediaOpenOptions? options = null, CancellationToken cancellationToken = default) =>
+        Open(Streaming.Sources.GrowingFileSource.Open(path, policy, cancellationToken), registry, options, cancellationToken);
+
+    /// <summary>
+    /// Opens an HLS or DASH presentation whose playlist and segments are fetched through a resolver (HTTP range requests, blob storage), as one media file read
+    /// with <see cref="PacketsAsync"/>.
+    /// </summary>
+    /// <param name="location">The absolute location of the playlist or manifest.</param>
+    /// <param name="resolver">Maps a location to a ranged source.</param>
+    /// <param name="options">Variant choice and live behaviour.</param>
+    /// <param name="open">Limits and defect log.</param>
+    /// <param name="cancellationToken">Cancels the open.</param>
+    /// <returns>The opened file; the caller disposes it.</returns>
+    /// <exception cref="UnsupportedMediaException">The resource is neither playlist nor manifest, or a segment is in no registered format.</exception>
+    /// <exception cref="MediaFormatException">The playlist or the first segment is malformed.</exception>
+    public static async ValueTask<MediaFile> OpenPresentationAsync(Uri location, Streaming.Sources.IPresentationResolver resolver, Streaming.Sources.PresentationOptions? options = null, MediaOpenOptions? open = null, CancellationToken cancellationToken = default) =>
+        new(null, await Streaming.Sources.PresentationSource.OpenAsync(location, resolver, options, open, cancellationToken).ConfigureAwait(false));
+
     private MediaMetadata? _metadata;
 
     // The path of the file this was opened from, when it was opened from one; tag writes need it.

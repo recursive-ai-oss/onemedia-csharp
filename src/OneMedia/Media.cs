@@ -45,6 +45,20 @@ public static partial class Media
     public static ValueTask<MediaFile> OpenAsync(long length, Func<long, Memory<byte>, CancellationToken, ValueTask<int>> readRange, CancellationToken cancellationToken = default) =>
         MediaFile.OpenAsync(new RangedMediaSource(length, readRange), cancellationToken: cancellationToken);
 
+    /// <summary>Opens a file that is still being written (fragmented MP4, live Matroska, MPEG-TS, FLV) and reads it as it grows, waiting at the current end under the policy.</summary>
+    /// <param name="path">The file.</param>
+    /// <param name="policy">When to wait for more and when to stop.</param>
+    /// <returns>The opened file; its packets can be read once, front to back.</returns>
+    /// <exception cref="MediaFormatException">A progressive MP4 whose movie box has not been written yet needs the finished file.</exception>
+    public static MediaFile OpenGrowing(string path, Streaming.Sources.GrowthPolicy policy) => MediaFile.OpenGrowing(path, policy);
+
+    /// <summary>Opens an HLS or DASH presentation through a resolver that fetches its playlist and segments (HTTP range requests, blob storage) for asynchronous reading.</summary>
+    /// <param name="location">The absolute location of the playlist or manifest.</param>
+    /// <param name="resolver">Maps a location to a ranged source.</param>
+    /// <param name="cancellationToken">Cancels the open.</param>
+    /// <returns>The opened file.</returns>
+    public static ValueTask<MediaFile> OpenPresentationAsync(Uri location, Streaming.Sources.IPresentationResolver resolver, CancellationToken cancellationToken = default) => MediaFile.OpenPresentationAsync(location, resolver, null, null, cancellationToken);
+
     /// <summary>Judges whether a file plays in a browser profile.</summary>
     /// <param name="path">The file.</param>
     /// <param name="profile">The browser profile, for example <see cref="Playback.BrowserProfiles.Chrome"/>.</param>

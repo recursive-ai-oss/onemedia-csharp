@@ -284,3 +284,17 @@ matroska	info-open	file=atlantis405-test.mkv	ignore	ours	ac3-header-channels: th
 *	streams	file=bad_length.aifc	ignore	ours	garbage-frame-count: the pinned ffprobe fails on the file; ours reads 0 frames (docs/pcm-files.md).
 *	streams	file=o2_728	ignore	ours	ffprobe rejects this AIFF-C ("could not find COMM tag or invalid block_align value"); ours reads it tolerantly (docs/pcm-files.md).
 
+hls	pos	*	ignore	ours	segment-relative-position: a packet of a presentation lies in one of many segment resources, so ours carries no source range; ffprobe prints the position inside the segment (docs/streaming-sources.md).
+dash	pos	*	ignore	ours	segment-relative-position, as for hls.
+hls	pts	kind=audio	tolerance=2	ffprobe	ffprobe-retimes-audio: its HLS demuxer re-derives packed audio times and lands 1 or 2 ticks (90 kHz) off the times in the segments; ffprobe on the segment alone gives ours (docs/streaming-sources.md).
+hls	dts	kind=audio	tolerance=2	ffprobe	ffprobe-retimes-audio, as for pts.
+hls	*	file=hls-ts-a/	ignore	ours	ffprobe-first-packet-repeated: for an audio-only playlist ffprobe 8.1.3 gives the first packet the time of the second and shifts every later time by one frame; sizes and hashes agree, and ffprobe on the first segment alone gives ours (docs/streaming-sources.md).
+dash	count	file=dash-av-timeline	ignore	ours	ffprobe-drops-an-audio-packet: ffprobe 8.1.3 lists 259 of the 260 audio packets; the six segments read one by one with ffprobe total 260 (docs/streaming-sources.md).
+dash	count	file=dash-hevc	ignore	ours	ffprobe-drops-an-audio-packet, as for dash-av-timeline.
+dash	count	file=dash-seg3	ignore	ours	ffprobe-drops-an-audio-packet, as for dash-av-timeline.
+dash	count	file=dash-streaming	ignore	ours	ffprobe-drops-an-audio-packet, as for dash-av-timeline.
+dash	*	file=dash-av-list/	ignore	ours	ffprobe-skips-first-segment: it does not read a SegmentList without a template and starts at the second segment of each track (125 of 150 video, 215 of 260 audio); each init+segment read on its own agrees with ours (docs/streaming-sources.md).
+dash	dts	codec=vp9	ours-na	neither	dts-unknown-for-video: Matroska stores presentation times only; ffprobe prints the pts as the dts, as for a Matroska file.
+dash	duration	codec=opus	ours-na	neither	duration-from-codec: a WebM block without BlockDuration; ffprobe derives the Opus frame length, ours stays unknown, as for a Matroska file.
+dash	count	file=dash-2reps	ignore	ours	ffprobe-drops-an-audio-packet, as for dash-av-timeline.
+dash	count	file=dash-100	ignore	ours	ffprobe-drops-an-audio-packet, as for dash-av-timeline.

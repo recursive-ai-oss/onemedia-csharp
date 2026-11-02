@@ -23,6 +23,8 @@ public sealed record MediaLimits
     private int _maxLacedFrames = 4096;
     private int _maxDefects = 1000;
     private int _maxCues = 1_000_000;
+    private int _maxSegments = 1_000_000;
+    private long _maxSegmentBytes = 256L << 20;
 
     /// <summary>The default limits.</summary>
     public static MediaLimits Default { get; } = new();
@@ -122,6 +124,27 @@ public sealed record MediaLimits
     /// <param name="offset">Byte offset of that cue.</param>
     /// <exception cref="MediaLimitExceededException"><paramref name="count"/> is above <see cref="MaxCues"/>.</exception>
     public void CheckCues(long count, long offset) => Check(nameof(MaxCues), MaxCues, count, offset);
+
+    /// <summary>Most segments one HLS or DASH presentation may list across its renditions. Default 1 million.</summary>
+    public int MaxSegments { get => _maxSegments; init => _maxSegments = Positive(value); }
+
+    /// <summary>Throws unless a presentation may list <paramref name="count"/> segments.</summary>
+    /// <param name="count">Segments listed so far, including the one about to be added.</param>
+    /// <param name="offset">Byte offset in the playlist or manifest where the entry starts.</param>
+    /// <exception cref="MediaLimitExceededException"><paramref name="count"/> is above <see cref="MaxSegments"/>.</exception>
+    public void CheckSegments(long count, long offset) => Check(nameof(MaxSegments), MaxSegments, count, offset);
+
+    /// <summary>
+    /// Largest media segment (with its initialization segment) a presentation source holds in memory while it demultiplexes it.
+    /// Default 256 MiB. A segment is read whole, then released when the next one starts, so memory does not grow with the presentation.
+    /// </summary>
+    public long MaxSegmentBytes { get => _maxSegmentBytes; init => _maxSegmentBytes = Positive(value); }
+
+    /// <summary>Throws unless a segment of <paramref name="bytes"/> may be held in memory.</summary>
+    /// <param name="bytes">Segment length in bytes.</param>
+    /// <param name="offset">Offset of the segment in its resource.</param>
+    /// <exception cref="MediaLimitExceededException"><paramref name="bytes"/> is negative or above <see cref="MaxSegmentBytes"/>.</exception>
+    public void CheckSegmentBytes(long bytes, long offset) => Check(nameof(MaxSegmentBytes), MaxSegmentBytes, bytes, offset);
 
     private static void Check(string name, long limit, long requested, long offset)
     {

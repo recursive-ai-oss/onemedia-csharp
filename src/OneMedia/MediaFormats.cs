@@ -24,6 +24,16 @@ public static class MediaFormats
     /// <returns>A new registry.</returns>
     public static MediaFormatRegistry Create()
     {
+        MediaFormatRegistry registry = CreateContainers();
+        registry.Add(new Streaming.Sources.PresentationFormat());
+        return registry;
+    }
+
+    /// <summary>The containers segments of a presentation are recognised as: everything in <see cref="Create"/> except playlists and manifests, which cannot nest.</summary>
+    internal static MediaFormatRegistry SegmentFormats { get; } = CreateContainers();
+
+    private static MediaFormatRegistry CreateContainers()
+    {
         MediaFormatRegistry registry = new();
         registry.Add(new IsoBmffFormat());
         registry.Add(new MatroskaFormat());

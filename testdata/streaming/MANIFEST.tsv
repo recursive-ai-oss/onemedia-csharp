@@ -1,0 +1,8 @@
+hls-ts-av	hls	index.m3u8	8.0.1-3ubuntu2	3
+hls-fmp4-av	hls	index.m3u8	8.0.1-3ubuntu2	4
+hls-ts-single	hls	index.m3u8	8.0.1-3ubuntu2	2
+hls-fmp4-single	hls	index.m3u8	8.0.1-3ubuntu2	2
+dash-av-timeline	dash	manifest.mpd	8.0.1-3ubuntu2	7
+dash-av-number	dash	manifest.mpd	8.0.1-3ubuntu2	8
+dash-av-list	dash	manifest.mpd	8.0.1-3ubuntu2	7
+dash-av-single	dash	manifest.mpd	8.0.1-3ubuntu2	3

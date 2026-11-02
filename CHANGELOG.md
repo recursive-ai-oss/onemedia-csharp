@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- HLS and DASH presentations as sources (`PresentationSource`, `PresentationDemuxer`, `IPresentationResolver`, `Media.OpenPresentationAsync`; `Media.Open` also opens a local playlist or manifest): the segments of a chosen variant read as one media file with continuous times, discontinuity flags, several renditions interleaved, protected presentations reported, memory bounded by the largest segment (`MediaLimits.MaxSegmentBytes`, `MaxSegments`). Equal to ffprobe packet for packet on 34 generated presentations except for documented ffprobe behaviours (`docs/streaming-sources.md`).
+- Growing files as sources (`GrowingFileSource`, `GrowthPolicy`, `Media.OpenGrowing`): fragmented MP4, live Matroska, MPEG-TS and FLV are read as they are written, in about 50 MiB over 683 MB.
+- `onemedia` harness commands `presdiff`, `growing` and `presio`; fuzz target `presentation`.
+
 ## [0.6.0-preview.1] - 2026-11-02
 
 Repair and reconstruction, MPEG-TS/M2TS and WAV/BWF/RF64 writing, a fix for QuickTime PCM byte order, and the subtitle speed rows. Everything in 0.4.0-preview.1 stays; subtitles, captions, capture facts, telemetry and timed events are still previews.

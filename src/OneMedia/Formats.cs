@@ -46,6 +46,15 @@ public readonly record struct MediaFormatId(string Name)
     /// <summary>Raw DV (IEC 61834 / SMPTE 314M frames, no container).</summary>
     public static MediaFormatId Dv => new("dv");
 
+    /// <summary>What the sniffer for HLS playlists and DASH manifests reports: a text resource that lists segments rather than holding media.</summary>
+    public static MediaFormatId Presentation => new("presentation");
+
+    /// <summary>An HLS presentation (RFC 8216 playlist and the segments it lists), the format of a <see cref="Streaming.Sources.PresentationDemuxer"/> opened from a playlist.</summary>
+    public static MediaFormatId Hls => new("hls");
+
+    /// <summary>A DASH presentation (an MPD and the segments it lists), the format of a <see cref="Streaming.Sources.PresentationDemuxer"/> opened from a manifest.</summary>
+    public static MediaFormatId Dash => new("dash");
+
     /// <inheritdoc />
     public override string ToString() => Name ?? string.Empty;
 }
