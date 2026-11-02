@@ -79,7 +79,7 @@ internal static class TagWriteTarget
                 pos += p.Length;
             }
 
-            if (Opens(file) && !Opens(result))
+            if (Opens(file) && Established(file) && !Opens(result))
             {
                 throw new InvalidOperationException("a file that opened no longer opens after the tag write");
             }
@@ -95,6 +95,41 @@ internal static class TagWriteTarget
         {
             // A native key that is not an element path is the caller's mistake, not a finding in the parser.
             return null;
+        }
+    }
+
+    // A raw audio stream (MP3, ADTS, AC-3 behind or without a tag) that merely happens to contain a sync pattern opens by chance, and which format
+    // claims it can depend on the bytes of the tag that the writer changes. The reopen check therefore applies to containers, and to streams with at least
+    // two confirmed frames.
+    private static bool Established(byte[] f)
+    {
+        ReadOnlySpan<byte> h = f;
+        bool container = h.Length >= 12 && (h[4..8].SequenceEqual("ftyp"u8) || h[4..8].SequenceEqual("moov"u8) || h[4..8].SequenceEqual("mdat"u8) || h[4..8].SequenceEqual("free"u8)
+            || h[..4].SequenceEqual(new byte[] { 0x1A, 0x45, 0xDF, 0xA3 }) || h[..4].SequenceEqual("RIFF"u8) || h[..4].SequenceEqual("RF64"u8) || h[..4].SequenceEqual("FORM"u8)
+            || h[..4].SequenceEqual("OggS"u8) || h[..4].SequenceEqual("fLaC"u8) || h[..4].SequenceEqual(new byte[] { 0x30, 0x26, 0xB2, 0x75 }));
+        if (container)
+        {
+            return true;
+        }
+
+        try
+        {
+            using MemoryMediaSource src = new(f);
+            using MediaFile m = MediaFile.Open(src, null, new MediaOpenOptions { Limits = Limits });
+            int n = 0;
+            if (m.Demuxer is { } d)
+            {
+                while (n < 2 && d.TryReadPacket(out _))
+                {
+                    n++;
+                }
+            }
+
+            return n >= 2;
+        }
+        catch (MediaException)
+        {
+            return false;
         }
     }
 

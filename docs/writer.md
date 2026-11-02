@@ -73,6 +73,12 @@ real size is stated once content moves. An unedited or same-layout edit leaves t
   Unix permission bits of the original are kept). A failure or cancellation deletes the temp file; a killed process leaves the original untouched and at most one stray temp file
   that is never the target.
   - **Open handles and Windows.** The source handle `Save` itself uses is closed before the rename, because Windows cannot replace a file while any handle to it is open. `FileMediaSource` opens files with delete sharing, so a reader (`MediaFile`) opened on the same path does not by itself block other opens, but Windows can still refuse to rename over a file that another handle holds. In that case `Save` throws `FileInUseException` (an `IOException`): the original is complete and unchanged, and the temporary file is removed. Dispose the reader and save again, or use `SaveAs`. Linux and macOS replace the name atomically and the reader keeps reading the old file. No native calls are used to force a replacement, so the Windows outcome with an open reader is either a clean replacement or this exception, never a half state.
+  - **What the replacement is, on Linux and macOS.** The result is a new file: it has a new inode and modification time, the original's permission bits (`chmod`), and the owner and group of the
+    user running the save. Extended attributes, ACLs, SELinux labels, hard links and the creation time of the original are **not** carried over (no native calls are made), and a read-only file in a
+    writable folder is replaced like any other. A symbolic link is followed: the file it points to is replaced (a temporary file beside that file) and the link stays a link. Two saves of
+    the same path at once each write their own temporary file and the later rename wins; there is no lock. The folder itself is not `fsync`ed after the rename, so after a power loss (not a
+    killed process) the old name may still point at the old file.
+  - **A plan is checked against the file by length only.** If another program changes the file after it was planned and leaves its length alone, the copied ranges come from the changed file.
 - `SaveInPlace(plan, path)` writes only the changed ranges of a same-layout plan, in place. A plan that is not same-layout throws `PaddingRequiredException` (bytes
   required, bytes available) before the first byte is written. It is **not atomic**: a crash in the middle leaves a mix of old and new bytes in the edited ranges. Use `Save` when that matters.
 - Every entry point takes a `CancellationToken`.

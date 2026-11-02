@@ -45,6 +45,14 @@ public static class TagWriter
         options ??= TagWriteOptions.Default;
         MediaLimits limits = options.Limits ?? MediaLimits.Default;
         TagFamily family = Sniff(source, out long audioStart);
+        if (edits.IsEmpty && family != TagFamily.None)
+        {
+            // Nothing was asked for, so nothing changes: not even an old ID3v2 tag is upgraded or an extended header dropped.
+            PieceList same = new();
+            same.AddCopy(0, source.Length);
+            return new TagWritePlan(same.ToPlan(source.Length, 0, 0, 0), new TagWriteReport([], []));
+        }
+
         return family switch
         {
             TagFamily.Iso => IsoTagWriter.Plan(source, edits, options, limits, cancellationToken),
