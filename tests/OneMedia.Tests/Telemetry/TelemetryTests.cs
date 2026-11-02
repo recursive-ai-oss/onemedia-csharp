@@ -330,6 +330,20 @@ public class TelemetryTests
     }
 
     [Fact]
+    public void ALongChunkOfEqualSizedSamplesIsSeekedInConstantTime()
+    {
+        // Found by fuzzing: 655,360 one-byte samples in a single chunk. Locating a sample summed the sizes before it in the chunk, and finding the
+        // sample a seek lands on walked back one sample at a time, so opening the track took about 80 seconds.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "telemetry-file", "stts-huge-run-constant-size-chunk.bin"));
+        Task opened = Task.Run(() =>
+        {
+            using MediaFile media = MediaFile.Open(new MemoryMediaSource(input.AsSpan(1).ToArray()));
+            _ = media.Telemetry;
+        });
+        Assert.True(opened.Wait(TimeSpan.FromSeconds(30)));
+    }
+
+    [Fact]
     public void ImplausibleGpsTimesGiveNoTime()
     {
         // Found by fuzzing: a GPS9 day count far outside any calendar made the sample's time a DateTime that cannot exist.
