@@ -115,8 +115,24 @@ def png(n, seed):
 open('a.png', 'wb').write(png(20 * 1024 * 1024, 31))
 open('b.png', 'wb').write(png(24 * 1024 * 1024, 37))
 PY
-  cp "$HERE/testdata/metadata/tags_ilst.mp4" src.mp4
-  MP4Box -moovpad 67108864 -add src.mp4 -new padded.mp4 >/dev/null 2>&1; ls -l padded.mp4 | awk '{print "padded file bytes", $5}'
+  # A moov-last MP4 (so growing the movie box moves no chunk), with a 64 MiB free box added at the end of the movie box.
+  ffmpeg -v error -y -f lavfi -i testsrc2=size=320x240:rate=25:duration=3 -c:v mpeg4 src.mp4
+  python3 - <<'PY'
+import struct
+b = bytearray(open('src.mp4', 'rb').read())
+p = 0
+while p + 8 <= len(b):
+    size, t = struct.unpack('>I4s', b[p:p + 8])
+    if t == b'moov':
+        assert p + size == len(b), 'moov is not last'
+        pad = 64 * 1024 * 1024
+        b[p:p + 4] = struct.pack('>I', size + pad)
+        b += struct.pack('>I4s', pad, b'free') + bytes(pad - 8)
+        break
+    p += size
+open('padded.mp4', 'wb').write(b)
+PY
+  ls -l padded.mp4 | awk '{print "padded file bytes", $5}'
   TAGS padded.mp4 --cover a.png --in-place | tail -1
   cp padded.mp4 base.mp4; h0=$(sha base.mp4)
   cp base.mp4 ref.mp4; s=$(date +%s%N); TAGS ref.mp4 --cover b.png --in-place | tail -1; e=$(date +%s%N); ref=$(sha ref.mp4); total_ms=$(( (e - s) / 1000000 )); say "uninterrupted in-place: ${total_ms} ms"

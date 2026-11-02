@@ -1227,5 +1227,32 @@ public sealed class WriterReviewTests
             Directory.Delete(dir, true);
         }
     }
+
+    /// <summary>
+    /// After one growing edit (which is where the writers leave padding behind), edits at the edge of that padding: every length that fits in place
+    /// gives the same bytes as a copy, every other length refuses and leaves the file as it was.
+    /// </summary>
+    [Theory]
+    [InlineData("asf/wmav2-tagged.wma", "wma")]
+    [InlineData("audio/aac.mka", "mka")]
+    [InlineData("pcm/bwf-v0.wav", "wav")]
+    [InlineData("pcm/aiff-id3.aiff", "aiff")]
+    [InlineData("metadata/tags_ilst.mp4", "mp4")]
+    [InlineData("audio/opus.ogg", "ogg")]
+    [InlineData("audio-es/tagged/id3v24-basic.mp3", "mp3")]
+    public void InPlaceEditsAtTheEdgeOfThePaddingTheWriterLeftBehind(string rel, string ext)
+    {
+        byte[] file = Fx(rel);
+        if (ext == "mp3")
+        {
+            file = FirstTagOnly(file);
+        }
+
+        Outcome first = Edit("padded." + rel.Replace('/', '_'), file, TitleArtist(new string('p', 300)), null, ext);
+        Assert.NotNull(first.Result);
+        (string fits, int tried) = Boundary("padded:" + rel, first.Result!, ext, 1500, 1, len => TitleArtist(Chars(len)));
+        Assert.True(tried > 0);
+        Console.WriteLine($"BOUNDARY padded {rel}: title lengths that fit in place: {(fits.Length == 0 ? "none" : fits)} of 0..1500");
+    }
 }
 
