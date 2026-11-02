@@ -4,6 +4,15 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.3.0-preview.2] - 2026-11-02
+
+Fixes for 0.3.0-preview.1, plus early previews of capture facts and telemetry. The previews are checked against ExifTool on published sample files and on files we generate, not yet on a corpus of device recordings; their behaviour may change.
+
+### Added
+
+- Preview: timed telemetry (`MediaFile.Telemetry`, a pull reader in `RecursiveAI.OneMedia.Metadata.Telemetry`, `docs/telemetry.md`): GoPro GPMF, Google CAMM, QuickTime timed metadata (`mebx`), DJI per-frame text and `djmd` tracks, and AVCHD MDPM GPS, decoded to typed per-sample channels (GPS, accelerometer, gyroscope, orientation, camera settings, raw items with byte ranges) without allocating per sample.
+- Preview: capture facts as evidence (`IFactResolver`, `DefaultFactResolver`, `FactEvidence`, `docs/facts.md`): capture time, location and device resolved from every candidate with its source, raw value, time-zone certainty and byte range, in a documented precedence; a replaceable resolver; device profiles as data; an Exif reader for Exif blocks inside video; XMP, Sony clip XML and DJI SRT sidecars as evidence (`MediaFile.AddSidecar`, `AddSidecarsBesideFile`); telemetry GPS time and position as candidates; CLI `info` shows the candidates.
+
 ### Fixed
 
 - Privacy: removing frames from the end of an ID3v2 tag in an MP3 left the removed frames' bytes in the file as stale "padding", so a removed location, comment or serial number survived the edit. The writer now treats padding that does not read as zeros as changed and rewrites it. The RIFF (WAV/AIFF ID3 chunk, `bext`), APE, Vorbis comment (Ogg), FLAC, MP4 and Matroska writers were checked the same way and do not take that shortcut (test `FieldsRemovedInPlaceLeaveNoStaleBytesInTheFile`, which fails on MP3 without the fix and passes on all eight formats with it).
