@@ -256,6 +256,13 @@ public class SubtitleFormatTests
         SubtitleDocument source = SubtitleFormats.Read(Bytes(file));
         foreach (SubtitleFormat target in SubtitleFormats.All)
         {
+            if (target.Name == "scc")
+            {
+                // SCC carries CEA-608 captions (32 columns, frame-quantised times, a fixed character set); its losses are
+                // covered by the caption tests, not by this text-and-times round trip.
+                continue;
+            }
+
             SubtitleOutput output = target.Write(source);
             SubtitleDocument back = target.Read(output.Data);
             if (target.Name == "lrc")
