@@ -12,6 +12,8 @@ key=${GUEST_SSH_KEY:?set GUEST_SSH_KEY}; port=${GUEST_SSH_PORT:-2222}; user=${GU
 opts=(-i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
 G() { ssh "${opts[@]}" -p "$port" "$user@127.0.0.1" "$@"; }
 mkdir -p "$res"
+# The forwarded port accepts connections long before the guest answers; wait for a command to run.
+for i in $(seq 1 120); do G hostname >/dev/null 2>&1 && break; sleep 5; done
 G 'powershell -NoProfile -Command "Remove-Item -Recurse -Force C:\datecheck -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force C:\datecheck\files | Out-Null"'
 scp -q -r "${opts[@]}" -P "$port" "$src"/. "$user@127.0.0.1:C:/datecheck/files/" || { echo copy failed; exit 2; }
 scp -q "${opts[@]}" -P "$port" "$(dirname "$0")/read-dates.ps1" "$user@127.0.0.1:C:/datecheck/read-dates.ps1" || exit 2
