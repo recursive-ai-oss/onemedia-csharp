@@ -506,6 +506,15 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         }
     }
 
+    private IReadOnlyList<TimedEvents.EventChannel>? _events;
+
+    /// <summary>
+    /// The timed event streams of the file: QuickTime timecode tracks, SCTE 35 splice information and ID3 timed metadata in transport streams,
+    /// and <c>emsg</c> events in fragmented MP4, each with its events typed and timed on the packet clock. Listing is cheap; a stream's
+    /// <see cref="TimedEvents.EventChannel.Events"/> read its packets on first use. Empty when the file has none.
+    /// </summary>
+    public IReadOnlyList<TimedEvents.EventChannel> Events => _events ??= TimedEvents.MediaEvents.List(this);
+
     /// <summary>Opens a track's telemetry for one-at-a-time reading in constant memory (see <see cref="TelemetryTrackReader"/>).</summary>
     /// <param name="track">A telemetry track: <see cref="TelemetryTrackReader.FormatOf(MediaFile, MediaTrack)"/> is not <c>None</c>.</param>
     /// <returns>The reader; dispose it before reading the file another way.</returns>

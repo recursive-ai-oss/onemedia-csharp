@@ -18,6 +18,7 @@
     <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
     <Compile Include="../../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
     <Compile Include="../../tests/OneMedia.Tests/Captions/TeletextBuilder.cs" Link="Shared/TeletextBuilder.cs" />
+    <Compile Include="../../tests/OneMedia.Tests/Events/EventBuilder.cs" Link="Shared/EventBuilder.cs" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
     <EmbeddedResource Include="../../testdata/bitmapsubs/pgs.sup" LogicalName="bitmap-pgs.sup" />

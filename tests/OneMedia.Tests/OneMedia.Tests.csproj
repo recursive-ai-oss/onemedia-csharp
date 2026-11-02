@@ -36,6 +36,7 @@
     <None Include="../../testdata/isobmff/*" Link="testdata/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/isobmff/family/*" Link="testdata/isobmff/family/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/subtitles/*" Link="testdata/subtitles/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/events/*" Link="testdata/events/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/mpeg/*" Link="testdata/mpeg/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Cue sources and the text-track files that ffmpeg, MP4Box and mkvmerge wrote from them (tools/gen-texttrack-fixtures.sh). -->
     <None Include="../../testdata/text/*" Link="testdata/text/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

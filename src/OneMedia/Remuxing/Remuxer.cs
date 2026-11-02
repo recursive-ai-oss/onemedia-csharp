@@ -489,6 +489,16 @@ public static class Remuxer
             {
                 session.AddLoss(new RemuxLoss(LossKind.Chapter, LossReason.NotWritten, -1, "chapters", $"{m.Chapters.Count} chapters."));
             }
+
+            // In-band event messages (emsg) sit between the segments, not in a track, so no track loss would name them. Timecode tracks and
+            // transport stream event PIDs are tracks and are reported with the other tracks.
+            foreach (TimedEvents.EventChannel c in input.Events)
+            {
+                if (c.Track is null)
+                {
+                    session.AddLoss(new RemuxLoss(LossKind.Structure, LossReason.NotWritten, -1, "emsg", $"{c.Events.Count} event messages of scheme {c.Scheme} (value \"{c.Value}\"); the muxers do not write emsg boxes."));
+                }
+            }
         }
         catch (Exception e) when (e is MediaException or MediaReadStateException or InvalidOperationException)
         {

@@ -96,6 +96,10 @@ seed() {
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
           done ;;
+    events-file) # The whole input is a transport stream or an ISO file with timed events.
+          for f in "$here"/testdata/events/*.ts "$here"/testdata/events/*.mp4 "$here"/testdata/events/*.mov; do
+            [ -f "$f" ] && cp "$f" "$corpus/$(basename "$f").seed"
+          done ;;
     exif) # The whole input is a TIFF/Exif block (its first byte also picks how far a header may be searched for).
           for f in "$here"/testdata/facts/*.tiff; do
             [ -f "$f" ] && cp "$f" "$corpus/$(basename "$f").seed"

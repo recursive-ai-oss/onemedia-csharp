@@ -55,6 +55,11 @@ static int Run(string[] args)
         return SubsCommand.Run(args[1..]);
     }
 
+    if (args.Length >= 1 && args[0] == "events")
+    {
+        return EventsCommand.Run(args[1..]);
+    }
+
     if (args.Length >= 1 && args[0] == "strip")
     {
         return StripCommand.Run(args[1..]);
@@ -76,6 +81,7 @@ static int Run(string[] args)
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     Console.Error.WriteLine(StripCommand.Usage);
     Console.Error.WriteLine(SubsCommand.Usage);
+    Console.Error.WriteLine(EventsCommand.Usage);
     return 2;
 }
 
@@ -197,6 +203,11 @@ static void WriteText(MediaFile media)
         }
 
         Console.WriteLine(sb.ToString());
+    }
+
+    foreach (string line in EventsCommand.Summary(media))
+    {
+        Console.WriteLine(line);
     }
 
     foreach (CommonField field in Enum.GetValues<CommonField>())

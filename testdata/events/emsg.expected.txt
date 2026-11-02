@@ -1,0 +1,4 @@
+urn:scte:scte35:2013:bin	1001	7	180000/90000	5400000
+https://aomedia.org/emsg/ID3	1	1	22050000/44100000	0
+urn:mpeg:dash:event:2012	1	2	56081000/44100000	4294967295
+https://aomedia.org/emsg/ID3	1	2	49466000/44100000	0

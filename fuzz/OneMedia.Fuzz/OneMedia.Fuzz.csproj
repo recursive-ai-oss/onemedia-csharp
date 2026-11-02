@@ -11,6 +11,7 @@
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <!-- The teletext seed writer reuses the test project's packet builders. -->
     <Compile Include="../../tests/OneMedia.Tests/Captions/TeletextBuilder.cs" Link="TeletextBuilder.cs" />
+    <Compile Include="../../tests/OneMedia.Tests/Events/EventBuilder.cs" Link="EventBuilder.cs" />
   </ItemGroup>
 
 </Project>

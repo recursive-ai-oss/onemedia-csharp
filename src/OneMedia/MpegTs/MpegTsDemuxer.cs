@@ -56,6 +56,9 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     private int _transportStreamId = -1;
     private MediaMetadata? _metadata;
     private readonly TsServiceInfo _info = new();
+    private readonly Action<ReadOnlySpan<byte>, long> _onCueSection;
+    private int _cueTrack;
+    private long _clock = -1; // the PTS (or DTS) of the latest PES header seen, unwrapped; -1 before the first
 
     private enum PidKind { None, Pat, Pmt, Sdt, Eit, Pes }
 
@@ -95,6 +98,8 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         public required TrackAssembler Assembler;
         public int StreamType;
         public int Program;
+        /// <summary>True for splice information (SCTE 35) streams, which carry private sections, not PES packets.</summary>
+        public bool CarriesSections;
         public long FirstPts = -1, LastPts = -1;
         public long LastDuration;
     }
@@ -109,6 +114,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         _prefix = prefix;
         _firstPacket = firstPacket;
         _onSection = OnSection;
+        _onCueSection = OnCueSection;
         _pids[0] = new PidState(0, PidKind.Pat) { Sections = new SectionAssembler() };
         _pids[0x11] = new PidState(0x11, PidKind.Sdt) { Sections = new SectionAssembler() };
         _pids[0x12] = new PidState(0x12, PidKind.Eit) { Sections = new SectionAssembler() };
@@ -881,7 +887,11 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         }
 
         ReadOnlySpan<byte> payload = ts[pos..];
-        if (st.Kind == PidKind.Pes)
+        if (st.Kind == PidKind.Pes && _trackStates[st.TrackIndex].CarriesSections)
+        {
+            HandleCueSections(st, payload, start, offset);
+        }
+        else if (st.Kind == PidKind.Pes)
         {
             st.RandomAccess = randomAccess;
             HandlePes(st, payload, start, offset, randomAccess);
@@ -936,11 +946,59 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         }
     }
 
+    // SCTE 35 (stream type 0x86) puts splice_info_section()s straight into transport packet payloads, with a pointer_field, like PSI (§9.2 of that
+    // standard); there is no PES header. Each complete section becomes one packet. Its Pts is the splice time on the stream's PTS clock when the
+    // command states one, and its Dts is the PTS clock as last seen in the stream when the section passed, so a reader can place both.
+    private void HandleCueSections(PidState st, ReadOnlySpan<byte> payload, bool start, long offset)
+    {
+        if (!_enabled.AsSpan().IsEmpty && st.TrackIndex < _enabled.Length && !_enabled[st.TrackIndex])
+        {
+            return;
+        }
+
+        st.Sections ??= new SectionAssembler();
+        _cueTrack = st.TrackIndex;
+        st.Sections.Push(payload, start, offset, _defects, _onCueSection);
+    }
+
+    private void OnCueSection(ReadOnlySpan<byte> section, long offset)
+    {
+        if (section.Length < 14 || section[0] != 0xFC)
+        {
+            return;
+        }
+
+        MediaTime arrival = _clock >= 0 ? new MediaTime(_clock, TrackAssembler.Clock) : MediaTime.Unknown;
+        MediaTime pts = arrival;
+        if (TimedEvents.Scte35Section.TryPeekAdjustedPts(section, out long adjusted))
+        {
+            // The adjusted time has 33 bits: take the value congruent to it that lies nearest the stream clock.
+            long value = adjusted;
+            if (_clock >= 0)
+            {
+                const long Wrap = 1L << 33;
+                long d = _clock - adjusted + (Wrap / 2);
+                long k = d >= 0 ? d / Wrap : -((-d + Wrap - 1) / Wrap);
+                value = adjusted + (k * Wrap);
+            }
+
+            pts = new MediaTime(value, TrackAssembler.Clock);
+        }
+
+        _queue.Enqueue(new PacketInfo(_cueTrack, pts, arrival, MediaTime.Unknown, PacketAttributes.Keyframe, new ByteRange(offset, 0), section.Length), section);
+    }
+
     private void HandlePes(PidState st, ReadOnlySpan<byte> payload, bool start, long offset, bool randomAccess)
     {
         TrackState track = _trackStates[st.TrackIndex];
         if (!_enabled.AsSpan().IsEmpty && st.TrackIndex < _enabled.Length && !_enabled[st.TrackIndex])
         {
+            // The payload of a switched-off track is skipped, but its PES timestamps still tell the stream clock that splice messages are placed against.
+            if (start && PesHeader.TryParse(payload, false, out PesHeader skipped) > 0 && (skipped.Pts >= 0 || skipped.Dts >= 0))
+            {
+                _clock = skipped.Pts >= 0 ? st.Unwrap.Unwrap(skipped.Pts) : st.Unwrap.Unwrap(skipped.Dts);
+            }
+
             return;
         }
 
@@ -980,6 +1038,11 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
 
         long pts = h.Pts >= 0 ? st.Unwrap.Unwrap(h.Pts) : -1;
         long dts = h.Dts >= 0 ? st.Unwrap.Unwrap(h.Dts) : -1;
+        if (pts >= 0 || dts >= 0)
+        {
+            _clock = pts >= 0 ? pts : dts;
+        }
+
         PesStamp stamp = new(pts, dts, st.HeaderOffset, st.RandomAccess);
         if (st.TrackIndex == WatchTrack && (pts >= 0 || dts >= 0))
         {
@@ -1178,7 +1241,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
             TsStreamKind kind = TsStreamTypes.Resolve(streamType, descriptors.Span, hdmv);
             int index = _trackStates.Count;
             TrackAssembler assembler = CreateAssembler(kind, streamType, index);
-            _trackStates.Add(new TrackState { Pid = pid, Kind = kind, Assembler = assembler, StreamType = streamType, Program = programIndex });
+            _trackStates.Add(new TrackState { Pid = pid, Kind = kind, Assembler = assembler, StreamType = streamType, Program = programIndex, CarriesSections = kind.Codec.Name == "scte-35" });
             _pids[pid] = new PidState(pid, PidKind.Pes) { TrackIndex = index, ProgramIndex = programIndex };
             prog.TrackIndexes.Add(index);
         }
@@ -1257,6 +1320,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     internal void ResetForSeek(long offset)
     {
         _queue.Clear();
+        _clock = -1;
         _eof = false;
         foreach (PidState? s in _pids)
         {

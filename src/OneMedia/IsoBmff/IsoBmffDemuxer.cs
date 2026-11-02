@@ -129,6 +129,9 @@ public sealed class IsoBmffDemuxer : IDemuxer, IMetadataProvider
         return false;
     }
 
+    /// <summary>The seekable source the demuxer reads from, or null for a forward-only open (used to walk top-level boxes for event messages).</summary>
+    internal IMediaSource? Source => _source;
+
     /// <inheritdoc />
     public MediaFormatId Format => MediaFormatId.IsoBmff;
 
