@@ -145,6 +145,36 @@ public sealed class ReconstructionTests
         Assert.Contains(report.SkippedRanges, s => s.Reason == SkippedReason.PartialSample);
     }
 
+    // A recorder that interleaves a small descriptor track (16-byte samples nobody can frame) with the sound: the sound is still found.
+    [Fact]
+    public void SamplesOfAnUnknownSmallTrackBetweenFramesDoNotHideTheFrames()
+    {
+        byte[] healthy = AmrFile(300);
+        List<Packet> original = Packets(healthy);
+        using MemoryStream mdat = new();
+        byte[] junk = new byte[16];
+        junk[0] = 0x47; // a table-of-contents byte with non-zero padding bits: not an AMR frame
+        junk[1] = 0x50;
+        foreach (Packet p in original)
+        {
+            mdat.Write(junk);
+            mdat.Write(p.Data);
+        }
+
+        using MemoryStream file = new();
+        file.Write(healthy, 0, 28); // the file type box of the fixture builder
+        byte[] header = new byte[8];
+        System.Text.Encoding.ASCII.GetBytes("mdat", header.AsSpan(4));
+        file.Write(header);
+        file.Write(mdat.ToArray(), 0, (int)(mdat.Length * 6 / 10));
+
+        (ReconstructionReport report, byte[] output) = Rebuild(file.ToArray(), healthy);
+        List<Packet> rebuilt = Packets(output);
+        AssertPrefix(original, rebuilt, TrackKind.Audio);
+        Assert.InRange(OfKind(rebuilt, TrackKind.Audio).Count, 150, 190);
+        Assert.True(report.UsedBytes > 0);
+    }
+
     // The H.264 fixture has five frames and an MP3 track: video comes from the reference's avcC, the MP3 frames from their own headers.
     [Fact]
     public void VideoAndMp3ComeBackFromTheMediaDataWithAReference()

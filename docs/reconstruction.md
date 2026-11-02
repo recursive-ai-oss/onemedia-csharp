@@ -68,7 +68,8 @@ NAL validity checks (ITU-T H.264 §7.3.1.2, §7.4.1; H.265 §7.3.1.2):
    widths.
 4. frame_num continues the last reference picture's (H.264 §7.4.3: it increments by one after a reference picture, modulo the maximum).
 5. After a gap no track explains, a video access unit is accepted only if the next one follows within 256 KiB with a continuing frame_num (or
-   the data ends); a non-video sample needs a chain of two samples.
+   the data ends); a non-video sample needs a chain of two samples, each of which may follow up to 32 bytes of something unframed (the
+   tiny samples of a descriptor or timecode track that sits between audio frames, such as GoPro's 16-byte `fdsc` items).
 
 The last access unit is accepted when its NAL chain ends exactly at the end of the file and it passes the same checks as any other (a later missing slice of the
 same picture cannot be told). One that would run past the end is dropped and reported as `PartialSample`.
@@ -78,14 +79,14 @@ same picture cannot be told). One that would run past the end is dropped and rep
 | Codec | Sample | Checks |
 |---|---|---|
 | AMR-NB/WB | one frame with its table-of-contents byte | RFC 4867 §5.3: F=0, defined frame type, Q=1, padding bits 0 |
-| MP3/MP2 | one frame | header parse (ISO/IEC 11172-3 / 13818-3), sample rate and layer equal the track's, frame length from the header |
+| MP3 (and MP2 with a reference) | one frame | header parse (ISO/IEC 11172-3 / 13818-3), sample rate and layer equal the track's, frame length from the header |
 | AC-3 / E-AC-3 | one sync frame | ETSI TS 102 366 §5.3 sync word, frame size from the header, sample rate equal |
 | AAC | one raw_data_block | `AacFrameProbe` (OneAudio 1.7) through `RecursiveAI.OneMedia.Audio`; without the adapter an AAC reference track is dropped with a note |
 | PCM | a fixed run | bytes between other tracks' samples, cut at the reference's usual packet size; no check is possible, confidence Medium |
 | GoPro `gpmd` | a KLV block | GPMF key/size structure |
 
 Without a reference an audio track is **discovered** at a sample boundary when the candidate framer chains six samples in a row (and the known
-tracks' samples fit around them). Discovery tries MPEG audio, AC-3, AMR-NB, AMR-WB, then the adapter's guesses, at positions where the previous sample ended.
+tracks' samples fit around them). Discovery (no gaps allowed) tries MPEG audio layer III (layers I and II have no sample entry in the ISO muxer), AC-3, AMR-NB, AMR-WB, then the adapter's guesses, at positions where the previous sample ended.
 
 ### Interleave and gaps
 
@@ -140,7 +141,10 @@ bytes), and the window is a fixed size.
 - HEVC open-GOP leading pictures and dependent slice segments follow the slice-header rules above; real-device files with exotic structure are not
   yet in the test set (the device corpus would add real interleave patterns, field/MBAFF H.264, HEVC from phones, and dashcam streams with unusual
   metadata tracks).
-- `tmcd` timecode tracks (4-byte samples) and other tracks without framing are skipped.
+- `tmcd` timecode tracks (4-byte samples), GoPro `fdsc` (16-byte samples) and other tracks without content to check are skipped and show
+  up as `Unframed` ranges; they push the recovered fraction down by their share of the media data (about 1 % in the GoPro samples).
+- AAC with more than two channels: OneAudio's frame probe does not take multichannel configurations, so such a track is dropped with a note
+  and its bytes stay unframed (observed on a 5.1 Blender clip: 14 % of its media data).
 - Dependence on a reference for PCM and for video without in-band parameter sets is by design (see above).
 
 ## Checks

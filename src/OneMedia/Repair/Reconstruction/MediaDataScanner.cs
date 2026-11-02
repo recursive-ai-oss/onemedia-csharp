@@ -174,8 +174,12 @@ internal sealed class MediaDataScanner
         Ok,
     }
 
-    // Looks for a run of ChainSteps samples from pos that the given framers explain, one after the other.
-    private bool Chain(long pos, IReadOnlyList<TrackFramer> framers, int steps, TrackFramer? must)
+    // Bytes of samples of a track no framer knows (a 16-byte descriptor track, a 4-byte timecode track) that may sit between two samples of
+    // the tracks that are framed. A chain of samples tolerates a gap of up to this many bytes after its first sample.
+    private const int MaxChainGap = 32;
+
+    // Looks for a run of `steps` samples from pos that the given framers explain, one after the other (with up to maxGap unframed bytes allowed in front of each).
+    private bool Chain(long pos, IReadOnlyList<TrackFramer> framers, int steps, TrackFramer? must, int maxGap = 0)
     {
         foreach (TrackFramer f in framers)
         {
@@ -187,7 +191,7 @@ internal sealed class MediaDataScanner
 
         try
         {
-            return ChainCore(pos, framers, steps, must);
+            return ChainCore(pos, framers, steps, must, maxGap);
         }
         finally
         {
@@ -201,7 +205,7 @@ internal sealed class MediaDataScanner
         }
     }
 
-    private bool ChainCore(long pos, IReadOnlyList<TrackFramer> framers, int steps, TrackFramer? must)
+    private bool ChainCore(long pos, IReadOnlyList<TrackFramer> framers, int steps, TrackFramer? must, int maxGap)
     {
         bool usedMust = must is null;
         for (int i = 0; i < steps; i++)
@@ -212,14 +216,25 @@ internal sealed class MediaDataScanner
             }
 
             bool matched = false;
-            foreach (TrackFramer f in framers)
+            // Each sample may follow a few bytes of something unframed. Discovering a track allows none, since a wrong guess about
+            // arbitrary data (PCM) must not be confirmed by chance.
+            int gaps = maxGap;
+            for (int gap = 0; gap <= gaps && !matched; gap++)
             {
-                if (TryOne(f, pos, out FrameInfo info) == Status.Ok)
+                if (pos + gap >= _end)
                 {
-                    pos += info.Length;
-                    usedMust |= ReferenceEquals(f, must);
-                    matched = true;
-                    break;
+                    return usedMust && (i > 0 || maxGap > 0);
+                }
+
+                foreach (TrackFramer f in framers)
+                {
+                    if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok)
+                    {
+                        pos += gap + info.Length;
+                        usedMust |= ReferenceEquals(f, must);
+                        matched = true;
+                        break;
+                    }
                 }
             }
 
@@ -356,7 +371,7 @@ internal sealed class MediaDataScanner
     {
         if (f.Kind != TrackKind.Video || info.Length < 32)
         {
-            return Chain(pos + info.Length, order, 2, null);
+            return Chain(pos + info.Length, order, 2, null, MaxChainGap);
         }
 
         long after = pos + info.Length;
@@ -546,7 +561,7 @@ internal sealed class MediaDataScanner
     private IEnumerable<(TrackFramer, GuessedAudioSetup, CodecId, int, int)> Candidates(byte[] head)
     {
         // MPEG audio: the header itself says the rate and layer, so the framer is exact.
-        if (Codecs.MpegAudio.MpegAudioFrameHeader.TryParse(head, out Codecs.MpegAudio.MpegAudioFrameHeader mp) && mp.FrameLength > 0 && !AlreadyHave(CodecId.Mp3))
+        if (Codecs.MpegAudio.MpegAudioFrameHeader.TryParse(head, out Codecs.MpegAudio.MpegAudioFrameHeader mp) && mp.FrameLength > 0 && mp.Layer == 3 && !AlreadyHave(CodecId.Mp3))
         {
             yield return (AudioFramers.MpegAudio(mp.SamplesPerFrame, mp.SampleRate, mp.Layer), default, mp.Layer == 3 ? CodecId.Mp3 : CodecId.Mp2, mp.SampleRate, mp.Channels);
         }

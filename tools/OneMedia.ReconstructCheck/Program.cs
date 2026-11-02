@@ -37,12 +37,77 @@ internal static class Program
             foreach (MediaTrack t in d.Tracks)
             {
                 Console.WriteLine($"{t.Index} {t.Kind} {t.Codec} tag={t.CodecTag} fmt={t.Configuration.Format} cfg={Convert.ToHexString(t.Configuration.Data.Span[..Math.Min(8, t.Configuration.Data.Length)])} ts={t.Timescale} priming={t.Edit.Priming}");
-                if (t.Codec == CodecId.Aac)
-                {
-                    Console.WriteLine("framer: " + (AacReconstructionProbe.Instance.CreateFramer(t.Configuration.Data.Span) is null ? "null" : "ok"));
-                }
             }
 
+            // For every AAC track: does the probe frame each packet of the healthy file exactly as the file's own sample table does?
+            foreach (MediaTrack t in d.Tracks.Where(x => x.Codec == CodecId.Aac))
+            {
+                ReadOnlyMemory<byte> asc = t.Configuration.Data;
+                if (RecursiveAI.OneMedia.Codecs.Aac.EsDescriptor.TryParse(asc, out RecursiveAI.OneMedia.Codecs.Aac.EsDescriptor? es) && es is not null && !es.DecoderSpecificInfo.IsEmpty)
+                {
+                    asc = es.DecoderSpecificInfo;
+                }
+
+                IAudioFramer? framer = AacReconstructionProbe.Instance.CreateFramer(asc.Span);
+                Console.WriteLine($"aac track {t.Index} asc={Convert.ToHexString(asc.Span)} framer={(framer is null ? "null" : "ok")}");
+                if (framer is null)
+                {
+                    continue;
+                }
+
+                using FileMediaSource src = FileMediaSource.Open(args[1]);
+                using IsoBmffDemuxer d2 = IsoBmffDemuxer.Open(FileMediaSource.Open(args[1]));
+                int total = 0, frame = 0, same = 0, incomplete = 0, notAac = 0;
+                while (d2.TryReadPacket(out PacketView p) && total < 2000)
+                {
+                    if (p.Info.TrackIndex != t.Index)
+                    {
+                        continue;
+                    }
+
+                    total++;
+                    // The packet followed by zeros, as it would be inside the media data.
+                    // The packet in its place in the file, followed by whatever really follows it (the next packet or another track).
+                    byte[] buf = new byte[Math.Min(1 << 16, src.Length - p.Info.SourceRange.Offset)];
+                    src.Read(p.Info.SourceRange.Offset, buf);
+                    AudioFrameResult r = framer.Probe(buf, out int len);
+                    frame += r == AudioFrameResult.Frame ? 1 : 0;
+                    same += r == AudioFrameResult.Frame && len == p.Data.Length ? 1 : 0;
+                    incomplete += r == AudioFrameResult.Incomplete ? 1 : 0;
+                    notAac += r == AudioFrameResult.NotFrame ? 1 : 0;
+                    if (r != AudioFrameResult.Frame || len != p.Data.Length)
+                    {
+                        if (total - same < 4)
+                        {
+                            Console.WriteLine($"  packet {total - 1}: size={p.Data.Length} result={r} len={len}");
+                        }
+                    }
+                }
+
+                Console.WriteLine($"  probed {total}: frame={frame} exact={same} incomplete={incomplete} notAac={notAac}");
+            }
+
+            return 0;
+        }
+
+        if (args.Length == 4 && args[0] == "aacat")
+        {
+            // aacat FILE REFERENCE OFFSET: what the AAC probe built from the reference's setup says about the bytes at OFFSET of FILE.
+            using IsoBmffDemuxer rd = IsoBmffDemuxer.Open(FileMediaSource.Open(args[2]));
+            MediaTrack at = rd.Tracks.First(x => x.Codec == CodecId.Aac);
+            ReadOnlyMemory<byte> asc = at.Configuration.Data;
+            if (RecursiveAI.OneMedia.Codecs.Aac.EsDescriptor.TryParse(asc, out RecursiveAI.OneMedia.Codecs.Aac.EsDescriptor? e2) && e2 is not null)
+            {
+                asc = e2.DecoderSpecificInfo;
+            }
+
+            IAudioFramer f = AacReconstructionProbe.Instance.CreateFramer(asc.Span)!;
+            using FileMediaSource fs = FileMediaSource.Open(args[1]);
+            long off = long.Parse(args[3], CultureInfo.InvariantCulture);
+            byte[] b = new byte[(int)Math.Min(1 << 16, fs.Length - off)];
+            fs.Read(off, b);
+            AudioFrameResult res = f.Probe(b, out int n);
+            Console.WriteLine($"{res} length={n} first={Convert.ToHexString(b.AsSpan(0, 16))}");
             return 0;
         }
 

@@ -180,7 +180,15 @@ public static class IsoReconstructor
             MinorVersion = ftyp.Minor,
             Limits = options.Limits,
         };
-        MuxReport muxReport = Mux(input, output, setups, timing, scanner.Samples, muxOptions, loc.PayloadEnd, cancellationToken);
+        MuxReport muxReport;
+        try
+        {
+            muxReport = Mux(input, output, setups, timing, scanner.Samples, muxOptions, loc.PayloadEnd, cancellationToken);
+        }
+        catch (MuxRefusedException e)
+        {
+            throw new ReconstructionException(ReconstructionFailure.OutputNotSuitable, "The rebuilt tracks cannot be written to an ISO file: " + e.Message);
+        }
 
         List<ReconstructedTrack> tracks = [];
         long[] counts = new long[setups.Count];
