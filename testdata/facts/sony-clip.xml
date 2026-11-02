@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NonRealTimeMeta xmlns="urn:schemas-professionalDisc:nonRealTimeMeta:ver.2.00" lastUpdate="2016-01-03T06:12:00-04:00">
+ <Duration value="120"/>
+ <LtcChangeTable tcFps="24" halfStep="false"><LtcChange frameCount="0" value="00000000" status="increment"/></LtcChangeTable>
+ <CreationDate value="2016-01-03T06:12:00-04:00"/>
+ <Device manufacturer="Sony" modelName="FDR-AX100" serialNo="1234567890"/>
+</NonRealTimeMeta>
