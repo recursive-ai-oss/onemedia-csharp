@@ -14,6 +14,53 @@ if (args.Length < 2)
     return 2;
 }
 
+if (args[0] == "seeds" && args.Length >= 3)
+{
+    // Fuzz seeds in the texttrack-* input layout: selector, config length (16 bit), config, additional length, additional, packet.
+    using MediaFile seedFile = Media.Open(args[1]);
+    string stem = System.IO.Path.GetFileNameWithoutExtension(args[1]);
+    int n = 0;
+    foreach (MediaTrack t in seedFile.Tracks)
+    {
+        if (TextTracks.FormatOf(t) == TextTrackFormat.Unknown)
+        {
+            seedFile.Demuxer!.SetTrackEnabled(t.Index, false);
+        }
+    }
+
+    while (seedFile.Demuxer!.TryReadPacket(out PacketView p))
+    {
+        MediaTrack t = seedFile.Tracks[p.Info.TrackIndex];
+        TextTrackFormat f = TextTracks.FormatOf(t);
+        (string dir, byte sel) = f switch
+        {
+            TextTrackFormat.Tx3g => ("texttrack-tx3g", (byte)0),
+            TextTrackFormat.QuickTimeText => ("texttrack-tx3g", (byte)1),
+            TextTrackFormat.WebVttIso => ("texttrack-wvtt", (byte)0),
+            TextTrackFormat.XmlSubtitleIso => ("texttrack-stpp", (byte)0),
+            TextTrackFormat.SubRip => ("texttrack-matroska", (byte)0),
+            TextTrackFormat.Ass => ("texttrack-matroska", (byte)1),
+            TextTrackFormat.WebVtt => ("texttrack-matroska", (byte)2),
+            _ => ("texttrack-matroska", (byte)3),
+        };
+        ReadOnlySpan<byte> config = t.Configuration.Data.Span;
+        ReadOnlySpan<byte> add = seedFile.Demuxer is RecursiveAI.OneMedia.Matroska.MatroskaDemuxer m ? m.LastBlockAdditional : default;
+        using System.IO.MemoryStream ms = new();
+        ms.WriteByte(sel);
+        ms.WriteByte((byte)(config.Length >> 8));
+        ms.WriteByte((byte)config.Length);
+        ms.Write(config[..Math.Min(config.Length, 0xFFFF)]);
+        ms.WriteByte((byte)Math.Min(add.Length, 255));
+        ms.Write(add[..Math.Min(add.Length, 255)]);
+        ms.Write(p.Data);
+        string folder = System.IO.Path.Combine(args[2], dir);
+        System.IO.Directory.CreateDirectory(folder);
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(folder, $"{stem}-{n++}.seed"), ms.ToArray());
+    }
+
+    return 0;
+}
+
 if (args[0] == "cues")
 {
     using MediaFile cueFile = Media.Open(args[1]);

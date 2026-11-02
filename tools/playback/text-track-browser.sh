@@ -11,5 +11,5 @@ dotnet "$TOOL" remux in-srt.mkv tx3g.mp4 --overwrite >/dev/null
 dotnet "$TOOL" remux in-vtt.mkv wvtt.mp4 --overwrite >/dev/null
 dotnet "$TOOL" remux in-vtt.mkv text.webm --format webm --overwrite >/dev/null
 dotnet "$TOOL" remux in-srt.mkv srt.mkv --overwrite >/dev/null
-ffprobe -v error -show_entries stream=codec_name -of csv=p=0 tx3g.mp4 wvtt.mp4 text.webm | tr '\n' ' '; echo
+for f in tx3g.mp4 wvtt.mp4 text.webm srt.mkv; do echo "$f: $(ffprobe -v error -select_streams s -show_entries stream=codec_name,codec_tag_string -of csv=p=0 $f || true)"; done
 "$PY" "$R/tools/playback/text-track-browser.py" "$W" tx3g.mp4 wvtt.mp4 text.webm srt.mkv
