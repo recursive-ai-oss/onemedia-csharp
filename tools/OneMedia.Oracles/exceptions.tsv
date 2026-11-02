@@ -125,7 +125,6 @@ mpegts	info-codec	file=mpeg1-mp2.ts	ignore	ours	mpeg1-video-detected: the PMT sa
 mpegts	info-open	file=res_change_ffmpeg_aspect	ignore	ours	ffprobe-open-fails (see the packet rule).
 mpegts	info-open	file=h264-aac-garbage	ignore	ours	ffprobe-open-fails (see the packet rule).
 mpegts	info-duration	file=block_green	ignore	ours	broken-timestamps: the stream's stamps jump; the pinned ffprobe reports a duration of about six hours for a 13 s clip, ours stays unknown rather than report one.
-mpegts	duration	file=avchd_lite	ignore	ours	declared-rate: the sequence parameter set declares 59.94 frames per second but the camera stamped the frames 3003 ticks apart (the file is a speed-problem report); ours states the declared rate, ffprobe the measured one.
 mpegts	pos	*	ours-na	neither	pos-in-shared-PES: ffprobe gives a later access unit of a PES packet the packet's position; ours gives the position to the first unit only (the source range names the PES start).
 mpegps	pos	*	ours-na	neither	pos-in-shared-PES.
 mpegts	count	file=HD-h264	ignore	ours	cut-tail: the corpus copy ends inside the last audio frame; ffprobe lists the incomplete frame (observed: last packet 1458 of 1536 bytes, 1420 of 1536, 133 of 512, 580 of 672), ours stops before it and reports Truncated.

@@ -35,7 +35,10 @@ Sniffers for the raw video kinds answer `Likely`, not `Certain`: an Annex B stre
   `frame_num` width and `frame_mbs_only_flag` come from the sequence parameter set). A field lasts half a frame (rounded down); the second field of a pair that has no stamp of its own
   is half a frame (rounded up) after the first, in both `pts` and `dts`. MPEG-2 field pictures are paired by `temporal_reference` and opposite parity and make one packet.
 - **Durations.** A video packet lasts one frame at the rate the sequence header declares (rounded down to a whole 90 kHz tick); an MPEG-2 picture with `repeat_first_field` lasts
-  1.5 frames (progressive sequences: 2 or 3 frames, §6.3.10). Streams without a declared rate take the distance to the next decode time.
+  1.5 frames (progressive sequences: 2 or 3 frames, §6.3.10). An H.264 picture whose picture timing SEI has `pic_struct` 5 or 6 lasts 1.5 frames, 7 (frame doubling) two
+  and 8 (frame tripling) three (Annex D, Table D-1; found with `avchd_lite_14s_playback_speed_problems.MTS`, declared 59.94 frames per second, every picture
+  doubled, so 3003 ticks apart). The declared rate stays in the track's frame rate; stamp spacing alone never overrides it (ffprobe 7.0.2 agrees on a stream
+  with 3600-tick spacing and a 1800-tick declaration but no `pic_struct`). Streams without a declared rate take the distance to the next decode time.
   The container duration is the audio and video range: a subtitle or data stream that starts early does not move it (found with `dean00007.mts`, whose subtitle starts 66 ms early).
 - **Duration** = latest `pts + duration` minus earliest `pts` over all tracks, read from the last 1 MiB when the source is seekable; forward-only sources report none.
 - **Keyframes.** From the bitstream: H.264 IDR pictures and recovery point SEI messages (the SEI is unescaped before its payload sizes are read), HEVC IRAP pictures, MPEG-2 I pictures,
