@@ -5,7 +5,7 @@
     <AssemblyName>onemedia</AssemblyName>
     <RootNamespace>RecursiveAI.OneMedia.Tool</RootNamespace>
     <PackageId>$(PackagePrefix)OneMedia.Tool</PackageId>
-    <Description>The onemedia command line tool: inspect media containers, edit tags, remux, trim, make files playable, strip location and device identifiers, and convert and extract subtitles. Repair and packaging are planned and not in this preview. Containers, metadata, subtitles; no decoding. Unaffiliated with other products or companies named OneMedia.</Description>
+    <Description>The onemedia command line tool: inspect media containers, edit tags, remux, trim, make files playable, strip location and device identifiers, repair damaged files and rebuild cut-off recordings, and convert and extract subtitles. Packaging (HLS/DASH, TS muxing, WAV writing) is planned and not in this preview. Containers, metadata, subtitles; no decoding. Unaffiliated with other products or companies named OneMedia.</Description>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>onemedia</ToolCommandName>

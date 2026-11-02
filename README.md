@@ -1,12 +1,12 @@
 # OneMedia
 
-**Containers, metadata, subtitles; no decoding.** A managed .NET library for media containers, with no dependency beyond the .NET base class library. This preview reads and writes containers, edits metadata, and has first previews of subtitles and captions, capture facts, telemetry, timed events and a privacy strip. OneMedia is unaffiliated with other products or companies named OneMedia.
+**Containers, metadata, subtitles; no decoding.** A managed .NET library for media containers, with no dependency beyond the .NET base class library. This preview reads and writes containers, edits metadata, repairs damaged files and rebuilds cut-off recordings, and has first previews of subtitles and captions, capture facts, telemetry, timed events and a privacy strip. OneMedia is unaffiliated with other products or companies named OneMedia.
 
 The goal is the depth of libavformat, GPAC, mkvtoolnix, MediaInfo and ExifTool in one library you can call from C#: demux and mux, lossless tag editing, evidence-backed capture time and place, subtitles and captions, repair, and HLS/DASH packaging. It never decodes or encodes an audio or video sample; audio decoding is handed to [OneAudio](https://github.com/recursive-ai-oss/oneaudio-csharp) through the `RecursiveAI.OneMedia.Audio` adapter.
 
 ## Status
 
-**Preview, version `0.4.0-preview.1`: reading every container below (MP4/MOV/3GP, Matroska/WebM, MPEG-TS/PS and elementary streams, ASF, AVI, DV, Ogg, FLAC, FLV, MP3/ADTS/AC-3/AMR, WAV/AIFF/CAF), writing MP4/MOV/3GP/fragmented MP4/CMAF and Matroska/WebM, remux, faststart, trim, split and concat without re-encoding, tag editing, browser playability (`CanPlay`, `MakePlayable`, now with AAC and FLAC audio targets), a privacy strip for location and device identifiers, and capture-date writes.** Also in this release, as **previews** (below): capture facts as evidence, telemetry, timed events, and subtitles and captions (sidecars, container text tracks, CEA-608/708, SCC, teletext, bitmap subtitles). Repair, MPEG-TS and WAV writing and HLS/DASH packaging are planned and not in this release. The tables below list what works and how it was checked; gaps are listed, not hidden.
+**Preview, version `0.6.0-preview.1`: reading every container below (MP4/MOV/3GP, Matroska/WebM, MPEG-TS/PS and elementary streams, ASF, AVI, DV, Ogg, FLAC, FLV, MP3/ADTS/AC-3/AMR, WAV/AIFF/CAF), writing MP4/MOV/3GP/fragmented MP4/CMAF and Matroska/WebM, remux, faststart, trim, split and concat without re-encoding, tag editing, browser playability (`CanPlay`, `MakePlayable`, now with AAC and FLAC audio targets), a privacy strip for location and device identifiers, capture-date writes, and **repair** (rebuilding the indexes of damaged Matroska/WebM, AVI, MP4/MOV, fragmented MP4 and MPEG-TS files, and reconstructing truncated MP4/MOV/3GP recordings, always into a new file with a report).** Also in this release, as **previews** (below): capture facts as evidence, telemetry, timed events, and subtitles and captions (sidecars, container text tracks, CEA-608/708, SCC, teletext, bitmap subtitles). MPEG-TS and WAV writing and HLS/DASH packaging are planned and not in this release. The tables below list what works and how it was checked; gaps are listed, not hidden.
 
 ```csharp
 using RecursiveAI.OneMedia;
@@ -24,7 +24,7 @@ using var pcm = media.Decode();   // the audio track, decoded by OneAudio
 
 `onemedia info <file>` (or `--json`) prints tracks, codecs (RFC 6381 strings), tags and facts with their candidate sources.
 
-### Support (0.4)
+### Support (0.6)
 
 | Format | Read | Write | Tag edit | Packets vs ffprobe 7.0.2 | Probe + metadata I/O (local reads), ours vs ffprobe / MediaInfo / ExifTool | Documented deviations |
 |---|---|---|---|---|---|---|
@@ -63,6 +63,17 @@ Every operation copies compressed data unchanged and streams in constant memory;
 | Privacy strip (`Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`; [docs/strip.md](docs/strip.md)) | **Strips the location and device identifiers listed in [docs/strip.md](docs/strip.md) and reports what it found and could not remove. It does not search free text, unknown vendor atoms or trailers.** New file by default; ISO files keep their layout; media payload bytes unchanged | Independent review ([docs/strip-review.md](docs/strip-review.md)): 10 GoPro files stripped to 0 position or serial bytes (two coincidental 4-byte hits in accelerometer data) and 20 of 20 audio/video payload hashes identical; on a 65-file adversarial set 39 files were fully clean and 26 still held a secret in a form the strip does not look for (free text, unlisted names, unread placements, two cases it now reports); 0 outputs worse than their input in ffprobe 7.0.2 and MP4Box 26.07. Do not rely on it as proof that a file is clean |
 | Capture-date writes (`Media.SetCaptureTime`, `onemedia tags --capture-time`; [docs/date-writes.md](docs/date-writes.md)) | Sets the recording time in every date field a file carries, each in its own notation and zone, with a report of what was written, what was left and which dates still disagree | Read back in ExifTool 13.60, MediaInfo 26.10 and ffprobe 7.0.2. **Windows Explorer and Photos (Windows 11) and macOS AVFoundation were checked:** they show the `mvhd` date, not `©day` or Apple's `creationdate`. **Apple Photos and Google Photos display checks are pending** (they need a GUI session and an account) |
 | Timed events (`MediaFile.Events`, `onemedia events`; [docs/events.md](docs/events.md)) | `tmcd` timecode with exact SMPTE mapping, SCTE 35 splice information in MPEG-TS and `emsg`, timed ID3 in MPEG-TS and `emsg` | **Preview.** `tmcd` equals ffprobe's `timecode` tag on 24 ffmpeg-written files and their remuxes; SCTE 35 equals TSDuck 3.44 on a generated stream (11 sections) and a real capture (18 sections); timed ID3 in TS equals ffprobe packets on 6 of 6; `emsg` equals MP4Box on 4 of 4. The SCTE 35 standard needs an account and was not available, so the section layout rests on public descriptions and TSDuck's output; ffprobe 7.0.2 shows the SCTE 35 stream with no packets, so it cannot be a packet oracle |
+
+### Repair and reconstruction (0.6, preview)
+
+`Media.Repair(input, output[, reference])` and `onemedia repair <in> <out> [--reference <file>]` write a **new file** and return a `RepairReport` (status, every structure rebuilt, fixed, dropped or guessed with its input byte range and a confidence, per-track packets kept and dropped, warnings). The input is never modified, payload bytes are copied unchanged, and a healthy file is reported `NothingToRepair`.
+
+| Case | What it does | Limits |
+|---|---|---|
+| Damaged index of Matroska/WebM, AVI/OpenDML, MP4/MOV, fragmented MP4, MPEG-TS ([docs/repair.md](docs/repair.md)) | Rebuilds SeekHead, Cues, durations and cluster sizes (Matroska); `idx1`, OpenDML indexes and counts (AVI); `stco`/`co64`, durations and a cut-off `mdat` (MP4); `mfra`, `mehd` and a single `sidx` (fMP4); drops damaged PES packets and renumbers continuity counters (TS) | Checked on damaged variants made from healthy files (Matroska 17, AVI 16, MP4 13, fragmented MP4 14, TS 12 per source file) against ffprobe 7.0.2, with packets compared. **A TS file cut at 90 % keeps one cut frame** (observed in two sweep cases; see the limits in [docs/repair.md](docs/repair.md)). **M2TS (192-byte packets) has no oracle sweep**: ffmpeg 7.0.2 crashes on those files. ASF, FLV and Ogg are not repaired |
+| Truncated MP4/MOV/3GP, movie box missing or cut ([docs/reconstruction.md](docs/reconstruction.md)) | Walks the media data and cuts it into samples with the codecs' own framing (H.264, HEVC, AV1, AAC, AMR, MP3, AC-3, PCM, GoPro metadata); writes the playable prefix, with each track's confidence and the input ranges its samples came from | **PCM audio, and video without in-stream parameter sets, need a reference file from the same device.** **5.1 AAC is dropped** (the frame probe does not take more than two channels). **Without a reference the AAC sample rate is a guess (44.1 kHz first) and the track is reported at Low confidence**; audio times may then be off. **AAC through the happy path needs the `.Audio` entry `AacReconstructionProbe.Repair` or the CLI**; `Media.Repair` in the core package has no AAC probe. Irregular frame durations of the original cannot be told from the stream. Fragmented files and an `mdat` split into several boxes are walked only up to the first `mdat` |
+
+**Checked on generated files, published samples and 10 GoPro clips, not on a corpus of device recordings.** Cut-off copies were made at 11 cut points of healthy files (some with the `mdat` size field or the `moov` zeroed), reconstructed with and without a reference, and compared with the original's packets (bytes, key flags, times) and ffmpeg 7.0.2 and MP4Box 26.07; the method is in [docs/reconstruction.md](docs/reconstruction.md). Real device recordings may have layouts the framing rules do not cover.
 
 ### Subtitles and captions (0.4, preview)
 
@@ -113,7 +124,7 @@ The probe and tag-read rows were measured again for 0.2 ([x64](docs/bench-result
 
 The first open in a process includes JIT time: about 17–23 ms for MP4 and 12–16 ms for Matroska, against 10–14 ms and about 3 ms for those libraries.
 
-Every parser is fuzzed (70 targets, 600 seconds each for this release, no open crash); damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
+Every parser is fuzzed (75 targets, 600 seconds each for this release, no open crash); damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
 
 ## Packages
 

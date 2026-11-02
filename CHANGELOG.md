@@ -4,12 +4,26 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
-- Subtitle parse and convert speed is published against SubtitlesParser 1.5.1 and the Subtitle Edit core library 5.3.0: on 14 rows (20,000 and 100,000 cues) the geometric mean of our median over the fastest comparator is 0.47× on x64 and 0.52× on arm64, the worst row 1.21× on both ([docs/bench-results/0.5-x64.md](docs/bench-results/0.5-x64.md), [0.5-arm64.md](docs/bench-results/0.5-arm64.md)); SRT parsing and 100,000-cue ASS parsing are near Subtitle Edit's speed, not ahead of it.
+## [0.6.0-preview.1] - 2026-11-02
+
+Repair and reconstruction, and the subtitle speed rows. Everything in 0.4.0-preview.1 stays; subtitles, captions, capture facts, telemetry and timed events are still previews.
+
+**Read this first.**
+- **Repair is a preview.** It was checked on generated files, published samples and 10 GoPro clips, not on a corpus of device recordings (`docs/repair.md`, `docs/reconstruction.md`).
+- **Reconstruction of truncated MP4/MOV/3GP recordings has limits:** PCM audio, and video without in-stream parameter sets, need a reference file from the same device; 5.1 AAC is dropped; without a reference the AAC sample rate is a guess and the track is reported at Low confidence; AAC through `Media.Repair` needs the audio package's `AacReconstructionProbe.Repair` (the `onemedia` tool does this for you).
+- **Index repair limits:** a TS file cut at 90 % keeps one cut frame (seen in two sweep cases); M2TS has no oracle sweep because ffmpeg 7.0.2 crashes on those files; ASF, FLV and Ogg are not repaired.
+- MPEG-TS and WAV writing and HLS/DASH packaging are planned and not in this release.
 
 ### Added
 
 - Preview: repair (`Media.Repair`, `Repairer`, `RepairReport`, `onemedia repair <in> <out> [--reference <file>]`, `docs/reconstruction.md`). `onemedia repair` rebuilds the indexes of damaged MKV/WebM, AVI/OpenDML, MP4/MOV, fMP4 and MPEG-TS into a new file with a report; a progressive MP4 whose recording was cut off loses only the samples that are not there. The input is never modified and payload bytes are copied unchanged.
-- Preview: reconstruction of truncated MP4/MOV/3GP recordings (`IsoReconstructor`, `ReconstructionReport`; also reached through `Media.Repair` when the movie box is missing or cut off). The media data is walked and cut into samples by the codecs' own framing (H.264, HEVC and AV1 video; AAC through the audio package, AMR, MP3, AC-3 and PCM audio; GoPro metadata), and a new file is written with the playable prefix of the recording. The report gives each track's confidence and the input byte ranges its samples came from, and lists what was left out. Limits: PCM audio and video without in-stream parameter sets need a reference file from the same device (`--reference`); AAC with more than two channels (5.1) is dropped because the frame probe does not take it; without a reference the AAC sample rate is a guess (44.1 kHz first), so audio times may be off and the track is reported at Low confidence; the original's irregular frame durations cannot be told from the stream. Checked on ffmpeg-written files, GoPro samples and Blender movies against ffmpeg 7.0.2 and MP4Box 26.07; a 4 GB cut rebuilds in constant memory.
+- Preview: reconstruction of truncated MP4/MOV/3GP recordings (`IsoReconstructor`, `ReconstructionReport`; also reached through `Media.Repair` when the movie box is missing or cut off; AAC tracks are recovered when the file is repaired through `AacReconstructionProbe.Repair` in `RecursiveAI.OneMedia.Audio` or through the CLI). The media data is walked and cut into samples by the codecs' own framing (H.264, HEVC and AV1 video; AAC through the audio package, AMR, MP3, AC-3 and PCM audio; GoPro metadata), and a new file is written with the playable prefix of the recording. The report gives each track's confidence and the input byte ranges its samples came from, and lists what was left out. Limits: PCM audio and video without in-stream parameter sets need a reference file from the same device (`--reference`); AAC with more than two channels (5.1) is dropped because the frame probe does not take it; without a reference the AAC sample rate is a guess (44.1 kHz first), so audio times may be off and the track is reported at Low confidence; the original's irregular frame durations cannot be told from the stream. Checked on ffmpeg-written files, GoPro samples and Blender movies against ffmpeg 7.0.2 and MP4Box 26.07 (method in `docs/reconstruction.md`).
+
+### Changed
+
+- Subtitle parse and convert speed is published against SubtitlesParser 1.5.1 and the Subtitle Edit core library 5.3.0: on 14 rows (20,000 and 100,000 cues) the geometric mean of our median over the fastest comparator is 0.47× on x64 and 0.52× on arm64, the worst row 1.21× on both ([docs/bench-results/0.5-x64.md](docs/bench-results/0.5-x64.md), [0.5-arm64.md](docs/bench-results/0.5-arm64.md)); SRT parsing and 100,000-cue ASS parsing are near Subtitle Edit's speed, not ahead of it.
+- README, package pages and the tool and package descriptions say that repair is in this preview and that packaging (HLS/DASH, TS muxing, WAV writing) is not.
+- `docs/repair.md` lists the known limits of its checks.
 
 ## [0.4.0-preview.1] - 2026-11-02
 
