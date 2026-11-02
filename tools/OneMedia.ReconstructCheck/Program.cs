@@ -264,7 +264,7 @@ internal static class Program
             int j = -1;
             for (int k = 0; k < ot.Count; k++)
             {
-                if (!used[k] && ot[k].Kind == rt[i].Kind && ot[k].Codec == rt[i].Codec)
+                if (!used[k] && ot[k].Kind == rt[i].Kind && ot[k].Codec == rt[i].Codec && (ot[k].Kind != TrackKind.Data || ot[k].CodecTag == rt[i].CodecTag))
                 {
                     j = k;
                     break;

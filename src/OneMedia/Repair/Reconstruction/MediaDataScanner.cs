@@ -205,46 +205,50 @@ internal sealed class MediaDataScanner
         }
     }
 
+    // Depth-first: a framer that accepts at one gap may lead nowhere while another position a few bytes on does, so every candidate is tried.
     private bool ChainCore(long pos, IReadOnlyList<TrackFramer> framers, int steps, TrackFramer? must, int maxGap)
     {
-        bool usedMust = must is null;
-        for (int i = 0; i < steps; i++)
+        int budget = 4096; // upper bound on framer trials for one chain, so damaged data cannot make a confirmation expensive
+        return ChainStep(pos, framers, steps, must is null, must, maxGap, ref budget);
+    }
+
+    private bool ChainStep(long pos, IReadOnlyList<TrackFramer> framers, int stepsLeft, bool usedMust, TrackFramer? must, int maxGap, ref int budget)
+    {
+        if (stepsLeft == 0)
         {
-            if (pos >= _end)
+            return usedMust;
+        }
+
+        if (pos >= _end)
+        {
+            return usedMust; // the input ends on a sample boundary
+        }
+
+        // Each sample may follow a few bytes of something unframed. Discovering a track allows none, since a wrong guess about
+        // arbitrary data (PCM) must not be confirmed by chance.
+        for (int gap = 0; gap <= maxGap; gap++)
+        {
+            if (pos + gap >= _end)
             {
-                return usedMust; // the input ends on a sample boundary
+                return usedMust && maxGap > 0;
             }
 
-            bool matched = false;
-            // Each sample may follow a few bytes of something unframed. Discovering a track allows none, since a wrong guess about
-            // arbitrary data (PCM) must not be confirmed by chance.
-            int gaps = maxGap;
-            for (int gap = 0; gap <= gaps && !matched; gap++)
+            foreach (TrackFramer f in framers)
             {
-                if (pos + gap >= _end)
+                if (--budget < 0)
                 {
-                    return usedMust && (i > 0 || maxGap > 0);
+                    return false;
                 }
 
-                foreach (TrackFramer f in framers)
+                if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok
+                    && ChainStep(pos + gap + info.Length, framers, stepsLeft - 1, usedMust || ReferenceEquals(f, must), must, maxGap, ref budget))
                 {
-                    if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok)
-                    {
-                        pos += gap + info.Length;
-                        usedMust |= ReferenceEquals(f, must);
-                        matched = true;
-                        break;
-                    }
+                    return true;
                 }
-            }
-
-            if (!matched)
-            {
-                return false;
             }
         }
 
-        return usedMust;
+        return false;
     }
 
     public void Run()
