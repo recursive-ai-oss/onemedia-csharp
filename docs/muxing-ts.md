@@ -65,6 +65,9 @@ no delimiters or parameter sets the muxer added, no ADTS header). Documented dif
 - Transport stream inputs with damage (duplicate packets, error flags, garbage, truncation, continuity gaps) read differently in ffprobe and in this library's reader; `tools/OneMedia.TsMuxCheck` (our reader on both sides) is equal.
 - A truncated last sample of the input (flagged corrupt by ffprobe, with a NAL length past its end) is not written.
 - Two samples at one decode time in the input (`frag_every_frame`) are written with equal PES times; ffmpeg reports each pair as "non monotonically increasing dts" on both.
+- A Matroska file whose H.264 track has B-frames but whose block times are in decode order (old `V_MS/VFW/FOURCC` writers; ffprobe reports no PTS for it, and ffmpeg itself refuses to copy it into a transport stream) has no
+  presentation times to carry. The remux layer takes the block times as both PTS and DTS, so players see frames in decode order; finding the real order needs the picture order counts from the slice headers, which this muxer does not read.
+- A transport stream input whose teletext packets are read without time stamps (one capture with a large clock offset between teletext and video) has those packets skipped at the start; the report says so.
 - ffmpeg's `-f null` reports an error for streams whose SPS timing makes the frame rate look halved; the same happens on a raw H.264 extraction of the input.
 
 ## Memory and I/O
