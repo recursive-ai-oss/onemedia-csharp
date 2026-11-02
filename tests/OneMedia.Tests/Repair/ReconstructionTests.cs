@@ -325,6 +325,22 @@ public sealed class ReconstructionTests
     }
 
     [Fact]
+    public void AVideoTrackWithoutASizeSaysTheParameterSetsAreMissingBeforeTheMuxerDetail()
+    {
+        MediaTrack noSize = new() { Index = 0, Kind = TrackKind.Video, Codec = CodecId.H264, Timescale = 90000, Video = new VideoTrackInfo(0, 0) };
+        MuxRefusedException refusal = new(MuxRefusalReason.InvalidTrack, "Track 0: a video track needs a width and height between 1 and 65535.", 0, CodecId.H264);
+        ReconstructionException e = IsoReconstructor.RefusalToException(refusal, hasReference: false, noSize);
+        Assert.StartsWith("The stream carries no video parameter sets (SPS/PPS)", e.Message, StringComparison.Ordinal);
+        Assert.Contains("reference file from the same device is needed. Detail: Track 0: a video track needs", e.Message, StringComparison.Ordinal);
+
+        // With a reference file the advice would be wrong, and other refusals keep their own text.
+        Assert.StartsWith("The rebuilt tracks cannot be written", IsoReconstructor.RefusalToException(refusal, hasReference: true, noSize).Message, StringComparison.Ordinal);
+        MuxRefusedException offset = new(MuxRefusalReason.InvalidTrack, "Track 0: a time offset or duration does not fit 32 bits.", 0, CodecId.H264);
+        MediaTrack sized = noSize with { Video = new VideoTrackInfo(640, 360) };
+        Assert.StartsWith("The rebuilt tracks cannot be written", IsoReconstructor.RefusalToException(offset, hasReference: false, sized).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WithoutAnyMediaDataTheFailureIsTyped()
     {
         byte[] junk = new byte[4096];

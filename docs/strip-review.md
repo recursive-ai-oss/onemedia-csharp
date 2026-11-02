@@ -17,7 +17,7 @@ those are fixed.
   text in 27 spellings and in UTF-16; a fragmented file with `udta`/`meta` in a `traf`; trailers, NMEA atoms, unknown tracks) plus WAV (INFO, `bext`, ID3 chunk),
   MP3 (ID3v2, ID3v1), FLAC, Ogg Opus, chained Ogg, and Matroska (global, track-targeted and nested tags; a Tags element after the last Cluster without a SeekHead
   entry; track name, title, subtitle).
-- **Independent search** (`search.py`, `review-check.py`; not the unit's `verify-strip.py`): each secret in about 65 byte forms (ASCII, lower case, UTF-16 LE/BE, hex, base64,
+- **Separate search** (`search.py`, `review-check.py`; not the unit's `verify-strip.py`): each secret in about 65 byte forms (ASCII, lower case, UTF-16 LE/BE, hex, base64,
   text with 4–6 decimals, European comma, DMS and NMEA text, float32/64 both orders, int32 at 1e7 and 1e6 both orders, 16.16 fixed, TIFF rationals, UTM/MGRS/plus
   code, full-width digits), searched in input and output. On the GoPro corpus the secrets are taken from the original by ExifTool (`-ee -a -G3 -u -n`: 30 coordinates
   and 2–3 serial strings per file) and searched in the output's bytes; the output is read back with ExifTool 13.60 `-ee -a -G3 -u` and MediaInfo 26.10 `--Full`.

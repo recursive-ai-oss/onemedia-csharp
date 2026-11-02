@@ -165,6 +165,48 @@ public class RepairTests
         Assert.True(missing > 0);
     }
 
+    // EBML element: the ID bytes, a size as a 4-byte vint, the payload.
+    private static byte[] El(byte[] id, params byte[][] parts)
+    {
+        int n = parts.Sum(x => x.Length);
+        byte[] size = [(byte)(0x10 | (n >> 24)), (byte)(n >> 16), (byte)(n >> 8), (byte)n]; // a 4-byte size (RFC 8794 §4)
+
+        return [.. id, .. size, .. parts.SelectMany(x => x)];
+    }
+
+    [Fact]
+    public void MatroskaReportListsTracksByNumberAndCountsFramesOfLacedBlocks()
+    {
+        byte[] Entry(byte number) => El([0xAE], El([0xD7], [number]), El([0x83], [number == 1 ? (byte)2 : (byte)1]), El([0x86], "V_UNCOMPRESSED"u8.ToArray()));
+        // Track 7 is listed before track 1. The block of track 1 uses fixed-size lacing (flags 0x04) for three frames; track 7 has two plain blocks.
+        byte[] laced = [0x81, 0x00, 0x00, 0x84 | 0x00, 0x02, 1, 1, 1];
+        byte[] plain7a = [0x87, 0x00, 0x00, 0x80, 9];
+        byte[] plain7b = [0x87, 0x00, 0x21, 0x80, 9];
+        byte[] mkv =
+        [
+            .. El([0x1A, 0x45, 0xDF, 0xA3], El([0x42, 0x82], "matroska"u8.ToArray())),
+            .. El([0x18, 0x53, 0x80, 0x67],
+                El([0x15, 0x49, 0xA9, 0x66], El([0x2A, 0xD7, 0xB1], [0x0F, 0x42, 0x40])),
+                El([0x16, 0x54, 0xAE, 0x6B], Entry(7), Entry(1)),
+                El([0x1F, 0x43, 0xB6, 0x75], El([0xE7], [0]), El([0xA3], laced), El([0xA3], plain7a), El([0xA3], plain7b))),
+        ];
+        string input = Write(mkv, ".mkv");
+        string output = Temp(".mkv");
+        try
+        {
+            RepairReport r = Media.Repair(input, output);
+            Assert.True(r.Tracks.Count == 2, r.Status + " " + string.Join(" | ", r.Warnings) + " " + string.Join(" | ", r.Items.Select(i => i.Detail)));
+            Assert.Equal([1, 7], r.Tracks.Select(x => x.Track));
+            Assert.Equal(3, r.Tracks[0].Packets);
+            Assert.Equal(2, r.Tracks[1].Packets);
+        }
+        finally
+        {
+            File.Delete(input);
+            File.Delete(output);
+        }
+    }
+
     [Fact]
     public void MatroskaDurationZeroIsSetFromTheBlocks()
     {

@@ -61,9 +61,9 @@ public enum RepairAction
 public sealed record RepairItem(RepairAction Action, string Structure, int Track, ByteRange Range, string Detail, RepairConfidence Confidence);
 
 /// <summary>What the repair made of one track.</summary>
-/// <param name="Track">Track index (container order).</param>
+/// <param name="Track">Track index (container order; for Matroska the track number, listed in ascending order).</param>
 /// <param name="Codec">Short codec name, or empty when unknown.</param>
-/// <param name="Packets">Packets in the output.</param>
+/// <param name="Packets">Packets in the output, as a demuxer lists them: for Matroska every frame of a laced block counts, so the number equals the packets of the repaired file.</param>
 /// <param name="DroppedPackets">Packets left out because they were cut off or broken.</param>
 /// <param name="Confidence">How far the track's rebuilt structures can be trusted.</param>
 /// <param name="Ranges">Input byte ranges the track's recovered packets were read from, merged where adjacent. May be empty when the repair does not track them.</param>

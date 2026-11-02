@@ -16,6 +16,10 @@ HLS and DASH packaging, HLS/DASH presentations and growing files as sources. Eve
 ### Fixed
 
 - A playlist read leniently could hold a `FRAME-RATE` or `VIDEO-RANGE` value with a comma or a space (it had been quoted in the input); writing it bare split it into other attributes, so the playlist did not rewrite to itself. Such a value is now written quoted. Found by the `hls-playlist` fuzz target.
+- Reconstructing a recording without a reference file, when the video's parameter sets lived only in the lost movie box (x264 writes them nowhere else), failed with an internal note ("Track 0: a video track needs a width and height between 1 and 65535"). The error now says first that the stream carries no SPS/PPS and a reference file from the same device is needed, with the old text as detail.
+- The repair report for Matroska/WebM listed tracks in the order of the Tracks element (a file with track 7 listed early put it out of place) and counted blocks, where ffprobe counts frames (a laced block holds several). Tracks are now in ascending track-number order and `RepairTrackReport.Packets` counts frames.
+- Remux to MPEG-TS/M2TS listed only the time shift in `Changes`. It now also says that packet bytes differ from the input by design (ADTS headers added to AAC; length prefixes became Annex B start codes with parameter sets in-band), and `docs/muxing-ts.md` and `docs/remux.md` say so.
+- README: the section "Writer limits that were fixed in this release" now says which release fixed them (the 0.3 previews). `docs/strip-review.md` calls its second search "Separate search", not "independent".
 
 ### Added
 

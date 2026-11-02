@@ -260,7 +260,10 @@ internal static class MatroskaRepair
         }
 
         healthy &= !anyRewrite;
-        foreach (TrackInfo t in tracks)
+        // In track-number order, whatever order the Tracks element lists them in.
+        List<TrackInfo> byNumber = [.. tracks];
+        byNumber.Sort(static (x, y) => x.Number.CompareTo(y.Number));
+        foreach (TrackInfo t in byNumber)
         {
             report.Tracks.Add(new RepairTrackReport((int)t.Number, t.Codec, t.Packets, 0, RepairConfidence.High, [new ByteRange(segData, lastClusterEnd - segData)]));
         }
@@ -523,7 +526,7 @@ internal static class MatroskaRepair
         long limit = declared >= 0 ? Math.Min(c.ContentStart + declared, input.Length) : input.Length;
         long cp = c.ContentStart;
         bool truncatedChild = false;
-        var blocks = new List<(long Track, long Rel, bool Key, long Dur, long Pos)>();
+        var blocks = new List<(long Track, long Rel, bool Key, long Dur, long Pos, int Frames)>();
         while (cp < limit)
         {
             ct.ThrowIfCancellationRequested();
@@ -576,9 +579,9 @@ internal static class MatroskaRepair
                     c.HasCrc = cp == c.ContentStart && size == 4; // RFC 8794 §11.3: the CRC-32 is the first child
                     break;
                 case MatroskaIds.SimpleBlock:
-                    if (TryBlockHeader(input.Peek(cp + hdr, 16), out long trk, out int rel, out byte flags))
+                    if (TryBlockHeader(input.Peek(cp + hdr, 16), out long trk, out int rel, out byte flags, out int frames))
                     {
-                        blocks.Add((trk, rel, (flags & 0x80) != 0, 0, cp - c.ContentStart));
+                        blocks.Add((trk, rel, (flags & 0x80) != 0, 0, cp - c.ContentStart, frames));
                     }
 
                     break;
@@ -599,7 +602,7 @@ internal static class MatroskaRepair
         c.Rewrite = declared < 0 || c.ContentStart + declared != c.KeptEnd;
 
         // register blocks
-        foreach ((long track, long rel, bool key, long dur, long pos) in blocks)
+        foreach ((long track, long rel, bool key, long dur, long pos, int frames) in blocks)
         {
             TrackInfo? t = tracks.Find(x => x.Number == track);
             if (t is null && !tracksSeen)
@@ -610,7 +613,7 @@ internal static class MatroskaRepair
 
             if (t is not null)
             {
-                t.Packets++;
+                t.Packets += frames; // a laced block holds several frames; the report counts frames, as a demuxer lists packets
             }
 
             long start = c.Timestamp + rel;
@@ -641,7 +644,7 @@ internal static class MatroskaRepair
         return c;
     }
 
-    private static void ScanBlockGroup(RepairInput input, long groupOffset, int groupHeader, long groupSize, long clusterContent, List<(long Track, long Rel, bool Key, long Dur, long Pos)> blocks)
+    private static void ScanBlockGroup(RepairInput input, long groupOffset, int groupHeader, long groupSize, long clusterContent, List<(long Track, long Rel, bool Key, long Dur, long Pos, int Frames)> blocks)
     {
         long p = groupOffset + groupHeader;
         long end = p + groupSize;
@@ -649,6 +652,7 @@ internal static class MatroskaRepair
         int rel = 0;
         bool have = false;
         bool reference = false;
+        int frames = 1;
         long dur = 0;
         while (p < end)
         {
@@ -658,7 +662,7 @@ internal static class MatroskaRepair
                 break;
             }
 
-            if (id == MatroskaIds.Block && TryBlockHeader(s[hdr..], out trk, out rel, out _))
+            if (id == MatroskaIds.Block && TryBlockHeader(s[hdr..], out trk, out rel, out _, out frames))
             {
                 have = true;
             }
@@ -676,16 +680,17 @@ internal static class MatroskaRepair
 
         if (have)
         {
-            blocks.Add((trk, rel, !reference, dur, groupOffset - clusterContent));
+            blocks.Add((trk, rel, !reference, dur, groupOffset - clusterContent, frames));
         }
     }
 
     // Block header (RFC 9559 §10.1): track number as a vint, a signed 16-bit time relative to the Cluster, one flags byte.
-    private static bool TryBlockHeader(ReadOnlySpan<byte> s, out long track, out int rel, out byte flags)
+    private static bool TryBlockHeader(ReadOnlySpan<byte> s, out long track, out int rel, out byte flags, out int frames)
     {
         track = 0;
         rel = 0;
         flags = 0;
+        frames = 1;
         if (!Ebml.TryReadVint(s, out ulong t, out int l) || s.Length < l + 3)
         {
             return false;
@@ -694,6 +699,12 @@ internal static class MatroskaRepair
         track = (long)t;
         rel = BinaryPrimitives.ReadInt16BigEndian(s[l..]);
         flags = s[l + 2];
+        // RFC 9559 §10.3: with lacing the byte after the flags is the number of frames minus one.
+        if ((flags & 0x06) != 0 && s.Length > l + 3)
+        {
+            frames = s[l + 3] + 1;
+        }
+
         return true;
     }
 

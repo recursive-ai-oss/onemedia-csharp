@@ -38,6 +38,8 @@ Media bytes are copied; framing is added or converted through the codec layer, e
 | Matroska `V_MS/VFW/FOURCC` H.264/HEVC | the record or Annex B parameter sets after the 40-byte bitmap header, as above |
 | AAC, raw access units | ADTS header from the AudioSpecificConfig (`esds` unwrapped), ADTS frames are copied |
 | MPEG-1/2 video | copied (stream type 0x01/0x02) |
+
+**Packet bytes differ from the input by design** whenever the input is not already in transport-stream framing: ADTS headers are added to raw AAC access units, and length-prefixed H.264/HEVC/VVC becomes Annex B with start codes, parameter sets in-band and (by default) an access unit delimiter. The remux report says so in `Changes`, one entry per affected track. Compare payloads after the reverse repackaging (below), not byte for byte.
 | MP1/2/3 | copied, stream type 0x03, or 0x04 under 32 kHz; pieces under 32 bytes (QuickTime stores MP3 in chunks as small as one byte) are gathered into one PES of up to 2048 bytes stamped with the first piece's time (noted) |
 | AC-3, E-AC-3 | PES stream_id 0xBD, stream type 0x06 with the AC-3 (0x6A) or enhanced AC-3 (0x7A) descriptor |
 | DVB subtitles, teletext | PES payloads as given, stream type 0x06, subtitling (0x59) or teletext (0x56) descriptor with the default page ids (noted: the reader does not hand over the real ones) |

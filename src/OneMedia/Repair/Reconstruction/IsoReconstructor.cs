@@ -187,7 +187,7 @@ public static class IsoReconstructor
         }
         catch (MuxRefusedException e)
         {
-            throw new ReconstructionException(ReconstructionFailure.OutputNotSuitable, "The rebuilt tracks cannot be written to an ISO file: " + e.Message);
+            throw RefusalToException(e, reference is not null, e.TrackIndex >= 0 && e.TrackIndex < setups.Count ? setups[e.TrackIndex].Track : null);
         }
 
         List<ReconstructedTrack> tracks = [];
@@ -269,6 +269,18 @@ public static class IsoReconstructor
             scanner.SkippedCount,
             scanner.UsedBytes,
             notes);
+    }
+
+    // A video track with no size has nothing to take it from: the parameter sets lived in the lost movie box (x264 writes them nowhere else).
+    // That is the reason a person can act on, so it comes first and the muxer's own wording follows as the detail.
+    internal static ReconstructionException RefusalToException(MuxRefusedException e, bool hasReference, MediaTrack? track)
+    {
+        if (!hasReference && e.Reason == MuxRefusalReason.InvalidTrack && track is { Kind: TrackKind.Video } && track.Video is not { Width: > 0, Height: > 0 })
+        {
+            return new ReconstructionException(ReconstructionFailure.OutputNotSuitable, "The stream carries no video parameter sets (SPS/PPS), so the video track's size and codec setup cannot be recovered; a reference file from the same device is needed. Detail: " + e.Message);
+        }
+
+        return new ReconstructionException(ReconstructionFailure.OutputNotSuitable, "The rebuilt tracks cannot be written to an ISO file: " + e.Message);
     }
 
     private sealed class TrackSetup

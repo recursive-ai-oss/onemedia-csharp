@@ -28,6 +28,7 @@ A final Cluster cut in the middle of a block loses that block (reported as `Drop
 the next Cluster header whose size fits; a truncated element other than a Cluster ends the scan; a missing or cut `Tracks` is `Unrepairable`.
 A CRC-32 child of a Cluster whose content changed is left out; a Cluster `Position` that no longer matches is patched in place. Chained Segments are not
 followed. Limit: zero fill that completes the declared size of a cut block cannot be told from data.
+The report lists tracks in ascending track-number order and counts frames, not blocks: a laced block adds as many packets as it holds frames, as a demuxer (ffprobe) lists them.
 
 ## AVI / OpenDML (Microsoft AVI RIFF reference, OpenDML 1.02)
 
