@@ -54,6 +54,18 @@ public sealed class PackagerTests : IDisposable
         return joined;
     }
 
+    // A segment is held in memory while it is built, so it is bounded by MaxSegmentBytes rather than growing with the bit rate.
+    [Theory]
+    [InlineData(SegmentFormat.Cmaf)]
+    [InlineData(SegmentFormat.MpegTs)]
+    public void ASegmentLargerThanMaxSegmentBytesIsRefused(SegmentFormat format)
+    {
+        PackagingOptions small = new() { SegmentFormat = format, SegmentDuration = new MediaTime(6, 1), Limits = new MediaLimits { MaxSegmentBytes = 10_000 } };
+        Assert.Throws<MediaLimitExceededException>(() => Packager.Package(Fixture("gop1s-bframes-aac.mp4"), Out("limited-" + format), small));
+        PackagingOptions roomy = small with { Limits = new MediaLimits { MaxSegmentBytes = 10_000_000 } };
+        Assert.NotEmpty(Packager.Package(Fixture("gop1s-bframes-aac.mp4"), Out("roomy-" + format), roomy).Tracks);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

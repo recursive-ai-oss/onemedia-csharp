@@ -66,6 +66,13 @@ internal sealed class Paged<T> : IDisposable where T : unmanaged
     }
 }
 
+/// <summary>Implemented by a destination stream that can size its buffer ahead of a large write.</summary>
+internal interface IWriteSizeHint
+{
+    /// <summary>The next writes will add up to <paramref name="count"/> bytes.</summary>
+    void ExpectBytes(long count);
+}
+
 /// <summary>
 /// A buffered writer onto the destination stream that counts what it has written, so the muxer never asks the stream for its position
 /// (the stream may not be seekable) and small packets do not become small writes.
@@ -108,6 +115,16 @@ internal sealed class OutputBuffer : IDisposable
 
         data.CopyTo(buffer.AsSpan(_used));
         _used += data.Length;
+    }
+
+    /// <summary>Tells a destination that wants to know (a segment buffer) how many bytes the next writes will add up to, so it can size itself once.</summary>
+    public void Expect(long count)
+    {
+        if (_stream is IWriteSizeHint hint)
+        {
+            FlushBuffer();
+            hint.ExpectBytes(count);
+        }
     }
 
     public void WriteZeros(long count)

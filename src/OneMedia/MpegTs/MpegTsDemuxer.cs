@@ -25,7 +25,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
     /// How far the front is searched for the first PAT and PMT when the first <see cref="ProbeLimitBytes"/> hold none (streams captured
     /// mid-way, or muxed with the tables far apart). When none turns up at all, the streams are guessed from their PES stream ids.
     /// </summary>
-    public const int ProbeLimitWithoutTablesBytes = 24_000_000;
+    public const int ProbeLimitWithoutTablesBytes = 6_000_000;
 
     /// <summary>How much of the end of a seekable source is read to find the duration.</summary>
     public const int TailBytes = 1 << 20;
@@ -357,11 +357,15 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
 
     private void Probe(CancellationToken cancellationToken)
     {
+        // The probe may read the front twice (once to find the tables, once to describe the streams from their first frames); the second
+        // pass is answered from memory, so no range is requested from the source twice.
+        _input.BeginCache(ProbeLimitWithoutTablesBytes + (2 * 256 * 1024));
         ProbeFront(cancellationToken);
         if (_programs.Count == 0 && _candidates.Count > 0 && _input.CanSeek)
         {
             // No PAT in the front: the stream was cut from the middle of a broadcast or is muxed without tables. As players do, take the
             // PES streams as they come, by their stream id, and read the front again so each stream's first frame describes it.
+            _defects.Add(DefectKind.MissingRequired, DefectSeverity.Info, _firstPacket, $"No program tables in the first {_input.Position - _firstPacket} bytes; the streams are described from their PES stream ids.", "ts.tables-not-found");
             AddGuessedTracks();
             ResetForSeek(_firstPacket);
             ProbeFront(cancellationToken);
@@ -375,6 +379,7 @@ public sealed class MpegTsDemuxer : IDemuxer, IMetadataProvider
         }
 
         Freeze();
+        _input.EndCache();
     }
 
     private void ProbeFront(CancellationToken cancellationToken)

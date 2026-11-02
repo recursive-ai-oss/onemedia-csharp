@@ -113,50 +113,9 @@ public sealed record SegmenterReport(IReadOnlyList<SegmentedTrack> Tracks, IRead
 /// </remarks>
 public sealed class CmafSegmenter : IDisposable
 {
-    private sealed class Capture : Stream
-    {
-        private byte[] _buffer = new byte[1 << 16];
-        private int _length;
-
-        public ReadOnlySpan<byte> Bytes => _buffer.AsSpan(0, _length);
-
-        public void Reset() => _length = 0;
-
-        public override bool CanRead => false;
-
-        public override bool CanSeek => false;
-
-        public override bool CanWrite => true;
-
-        public override long Length => _length;
-
-        public override long Position { get => _length; set => throw new NotSupportedException(); }
-
-        public override void Flush() { }
-
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
-        public override void SetLength(long value) => throw new NotSupportedException();
-
-        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
-
-        public override void Write(ReadOnlySpan<byte> buffer)
-        {
-            if (_length + buffer.Length > _buffer.Length)
-            {
-                Array.Resize(ref _buffer, (int)Math.Min(Math.Max((long)_buffer.Length * 2, (long)_length + buffer.Length), Array.MaxLength));
-            }
-
-            buffer.CopyTo(_buffer.AsSpan(_length));
-            _length += buffer.Length;
-        }
-    }
-
     private readonly record struct Held(PacketInfo Info, byte[] Data, int Length, MediaTime Time);
 
-    private sealed class Lane(int index, MediaTrack input, SegmentedTrack info)
+    private sealed class Lane(int index, MediaTrack input, SegmentedTrack info, MediaLimits limits)
     {
         public int Index { get; } = index;
 
@@ -166,7 +125,7 @@ public sealed class CmafSegmenter : IDisposable
 
         public Remuxing.RemuxSession Session { get; set; } = null!;
 
-        public Capture Output { get; } = new();
+        public SegmentCapture Output { get; } = new(limits, 1 << 16);
 
         public Queue<Held> Queue { get; } = new();
 
@@ -217,7 +176,7 @@ public sealed class CmafSegmenter : IDisposable
                 continue;
             }
 
-            Lane lane = new(_lanes.Count, t, new SegmentedTrack(_lanes.Count, t));
+            Lane lane = new(_lanes.Count, t, new SegmentedTrack(_lanes.Count, t), _options.Limits);
             _lanes.Add(lane);
             _byInput[t.Index] = lane;
         }
