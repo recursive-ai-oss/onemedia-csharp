@@ -119,9 +119,9 @@ EBML and chunk editors refuse (`ArgumentException`) an addition inside an elemen
 A removed value must not stay in the file. Every writer except ID3v2 writes its padding as generated zeros on every edit. ID3v2 padding is also zeroed
 by every save of an MP3 or other ID3v2-led audio file: `Save`, `SaveAs` and `SaveInPlace`, with edits for other fields and with none. An edit that leaves the
 live frames as they are still reads the whole padding and rewrites it when it holds anything but zeros. `TagWriter.CheckResidue(path)` and `onemedia tags <file> --check`
-list what is left: non-zero bytes in ID3v2 padding, a frame inside the padding, a frame right after the tag where audio should start. They report where, never what.
+list what is left: non-zero bytes in ID3v2 padding, a frame inside the padding, a frame right after the tag where audio should start. They report where, never what. They do not look at fields still in the tag; `TagWriter.FindPresent(path, fields)` and `--check --absent field,field` do: they list each listed field that any tag system of the file still holds (exit 1 when there is one).
 A field that an old version failed to remove (0.3.0-preview.1 left removed trailing ID3 frames in place as ordinary frames) cannot be told from a tag that is wanted:
-remove the field again and save. Tests: `TagResidueTests` (every way of saving, on eight formats; crafted leftovers).
+remove the field again and save, then check with `--absent`. Tests: `TagResidueTests` (every way of saving, on eight formats; crafted leftovers).
 
 ## Not done
 

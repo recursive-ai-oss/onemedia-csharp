@@ -24,6 +24,11 @@ internal static class BitmapSubtitleSmoke
             check($"bitmap dvb {depth}-bit", cues.Count == 1 && cues[0].Images[0].Width == 70 && cues[0].End == new MediaTime(5000, 1000));
         }
 
+        // The same bytes through the format registry, which now lists the bitmap formats read-only.
+        byte[] pgsBytes = Resource("bitmap-pgs.sup");
+        SubtitleDocument viaRegistry = SubtitleFormats.Read(pgsBytes);
+        check("bitmap registry", viaRegistry.Format == "pgs" && viaRegistry.Cues.Count == pgs.Cues.Count && SubtitleFormats.Find("sup") is { CanWrite: false });
+
         byte[] png = SubtitleImagePng.Encode(pgs.Cues[0].Images[0]);
         check("bitmap png", png.Length > 40 && png[1] == (byte)'P');
     }

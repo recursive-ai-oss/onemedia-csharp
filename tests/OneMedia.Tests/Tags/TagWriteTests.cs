@@ -174,6 +174,36 @@ public sealed class TagWriteTests
     }
 
     [Fact]
+    public void SavingThroughAnOpenMediaFileReplacesTheFileAndTheSameObjectReadsTheNewValue()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "onemedia-tagwrite-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "t.m4a");
+            File.Copy(WriterTestSupport.Fixture("audio/aac.m4a"), path);
+            using MediaFile m = Media.Open(path);
+            int tracks = m.Tracks.Count;
+            m.Tags.Title = "Saved through the open file";
+            Assert.NotNull(m.Save().Write);
+            Assert.Equal("Saved through the open file", m.Tags.Title);
+            Assert.Equal(tracks, m.Tracks.Count);
+            Assert.True(m.Tags.Pending.IsEmpty);
+            // The reopened file still reads packets, and a second save works too.
+            Assert.True(m.Packets(m.Tracks[0]).Any());
+            m.Tags.Title = "Second";
+            m.Save();
+            using MediaFile again = Media.Open(path);
+            Assert.Equal("Second", again.Tags.Title);
+            Assert.Equal(["t.m4a"], Directory.GetFiles(dir).Select(Path.GetFileName).ToArray());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void TheCommonViewStagesEditsAndTheMediaFileSavesThem()
     {
         string dir = Path.Combine(Path.GetTempPath(), "onemedia-tagwrite-" + Guid.NewGuid().ToString("N")[..8]);

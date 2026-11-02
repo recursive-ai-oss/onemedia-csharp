@@ -10,19 +10,22 @@ namespace RecursiveAI.OneMedia;
 /// </summary>
 public static class Subtitles
 {
-    /// <summary>Reads a subtitle file in whichever format its content shows (SRT, WebVTT, ASS/SSA, TTML, SBV, LRC).</summary>
+    /// <summary>
+    /// Reads a subtitle file in whichever format its content shows (SRT, WebVTT, ASS/SSA, TTML, SBV, LRC, SCC, and the bitmap formats: PGS <c>.sup</c>, VobSub
+    /// <c>.idx</c> with the <c>.sub</c> beside it, or a bare <c>.sub</c>; those give image cues).
+    /// </summary>
     /// <param name="path">The file.</param>
     /// <returns>The cue model.</returns>
     /// <exception cref="UnsupportedMediaException">The content is not a recognised subtitle format.</exception>
     /// <exception cref="MediaLimitExceededException">The file is larger than <see cref="MediaLimits.MaxAllocationBytes"/> or holds too many cues.</exception>
     /// <exception cref="IOException">The file cannot be read.</exception>
-    public static SubtitleDocument Read(string path) => SubtitleFormats.Read(SubtitleFiles.ReadBytes(path));
+    public static SubtitleDocument Read(string path) => SubtitleFiles.Read(path);
 
     /// <summary>Reads a subtitle file asynchronously. See <see cref="Read(string)"/>.</summary>
     /// <param name="path">The file.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     public static async Task<SubtitleDocument> ReadAsync(string path, CancellationToken cancellationToken = default) =>
-        SubtitleFormats.Read(await SubtitleFiles.ReadBytesAsync(path, cancellationToken).ConfigureAwait(false));
+        SubtitleFiles.Read(path, await SubtitleFiles.ReadBytesAsync(path, cancellationToken).ConfigureAwait(false));
 
     /// <summary>Writes a document to a new file in the format its extension names.</summary>
     /// <param name="document">The document.</param>
@@ -58,6 +61,15 @@ public static class Subtitles
 // File access for the happy path, kept apart so the layers above stay free of paths.
 internal static class SubtitleFiles
 {
+    internal static SubtitleDocument Read(string path) => Read(path, ReadBytes(path));
+
+    // A VobSub index needs its .sub from beside it, so bitmap files go by path; everything else is decided by the bytes.
+    internal static SubtitleDocument Read(string path, byte[] data)
+    {
+        SubtitleFormat? format = SubtitleFormats.Sniff(data);
+        return format is PgsSubtitleFormat or VobSubSubtitleFormat ? BitmapSubtitles.ReadFile(path) : SubtitleFormats.Read(data);
+    }
+
     internal static byte[] ReadBytes(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);

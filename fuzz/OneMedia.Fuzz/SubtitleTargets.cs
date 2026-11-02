@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMedia.Captions;
@@ -36,7 +37,7 @@ internal static class SubtitleTargets
             return;
         }
 
-        foreach (SubtitleFormat target in SubtitleFormats.All)
+        foreach (SubtitleFormat target in SubtitleFormats.All.Where(f => f.CanWrite))
         {
             SubtitleOutput output = target.Write(doc);
             if (!ReferenceEquals(target, format) || target.Name == "lrc")

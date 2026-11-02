@@ -76,7 +76,8 @@ static int Run(string[] args)
     Console.Error.WriteLine(PlayableCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
-    Console.Error.WriteLine("       onemedia tags <file> --check   look for leftover removed or stale values (exit 1 if found); with no edits, --replace/--out/--in-place zero them");
+    Console.Error.WriteLine("       onemedia tags <file> --check [--absent field,field]   look for leftover bytes in ID3v2 padding (exit 1 if found; with no edits, --replace/--out/--in-place zero them);");
+    Console.Error.WriteLine("                                                         --absent also exits 1 and names each listed field that is still present in any tag system");
     Console.Error.WriteLine("       onemedia tags <file> --capture-time <iso8601> [--header-times utc|local] [--out new-file | --replace | --in-place]   set the capture time in every date field");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
     Console.Error.WriteLine(StripCommand.Usage);

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using RecursiveAI.OneMedia.Captions;
 
@@ -12,7 +13,7 @@ internal static class SubtitleSmoke
         SubtitleDocument doc = SubtitleFormats.Read(srt);
         check("subtitles sniff and read", doc.Format == "srt" && doc.Cues.Count == 2);
         bool all = true;
-        foreach (SubtitleFormat format in SubtitleFormats.All)
+        foreach (SubtitleFormat format in SubtitleFormats.All.Where(f => f.CanWrite))
         {
             SubtitleOutput output = format.Write(doc);
             SubtitleDocument back = format.Read(output.Data);

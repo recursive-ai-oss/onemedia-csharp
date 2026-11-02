@@ -90,7 +90,7 @@ public static class BitmapSubtitles
                 return ReadVobSub(ReadAll(idxPath, limits), data, options, defects);
             }
 
-            return Document("vobsub", VobSubReader.ReadProgramStream(data, options, defects), options?.Language);
+            return ReadProgramStream(data, options, defects);
         }
 
         throw new UnsupportedMediaException("The file is not a PGS .sup, a VobSub .idx/.sub pair or a DVD sub-picture program stream.");
@@ -228,6 +228,19 @@ public static class BitmapSubtitles
             ReferenceHeight = h,
         };
     }
+
+    // A bare DVD sub-picture program stream, decoded without an index.
+    internal static SubtitleDocument ReadProgramStream(ReadOnlySpan<byte> data, BitmapSubtitleOptions? options, DefectLog? defects) =>
+        Document("vobsub", VobSubReader.ReadProgramStream(data, options, defects), options?.Language);
+
+    // The first segment of a .sup file: "PG", PTS, DTS, then a segment type (0x14 palette, 0x15 object, 0x16 composition, 0x17 window, 0x80 end).
+    internal static bool LooksLikePgs(ReadOnlySpan<byte> data) =>
+        data.Length >= 13 && data[0] == (byte)'P' && data[1] == (byte)'G' && data[10] is 0x14 or 0x15 or 0x16 or 0x17 or 0x80;
+
+    // A DVD program stream starts with a pack header (ISO/IEC 13818-1 §2.5.3.3: 00 00 01 BA).
+    internal static bool LooksLikeProgramStream(ReadOnlySpan<byte> data) => data.Length >= 4 && data[0] == 0 && data[1] == 0 && data[2] == 1 && data[3] == 0xBA;
+
+    internal static bool LooksLikeIndex(ReadOnlySpan<byte> data) => LooksLikeIndex(data[..Math.Min(data.Length, 512)].ToArray());
 
     private static bool LooksLikeIndex(byte[] data)
     {

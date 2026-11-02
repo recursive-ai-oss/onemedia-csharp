@@ -20,6 +20,7 @@ internal static class TagsCommand
         bool replace = false;
         bool inPlace = false;
         bool check = false;
+        List<CommonField> absent = [];
         string? captureTime = null;
         bool? headerLocal = null;
         string coverType = nameof(PictureType.FrontCover);
@@ -86,6 +87,19 @@ internal static class TagsCommand
                     case "--check":
                         check = true;
                         break;
+                    case "--absent" when i + 1 < args.Length:
+                        foreach (string name in args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        {
+                            if (!TryField(name, out CommonField a))
+                            {
+                                Console.Error.WriteLine("unknown field " + name);
+                                return 2;
+                            }
+
+                            absent.Add(a);
+                        }
+
+                        break;
                     default:
                         Console.Error.WriteLine("unknown option " + args[i]);
                         return 2;
@@ -99,6 +113,12 @@ internal static class TagsCommand
                 edits.SetPicture(image, mime, Enum.TryParse(coverType, true, out PictureType t) ? t : PictureType.FrontCover);
             }
 
+            if (absent.Count > 0 && !check)
+            {
+                Console.Error.WriteLine("--absent is a check: use it with --check");
+                return 2;
+            }
+
             if (check)
             {
                 IReadOnlyList<TagResidue> residue = TagWriter.CheckResidue(path);
@@ -107,8 +127,25 @@ internal static class TagsCommand
                     Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{r.System}: {r.Kind} at {r.Offset}, {r.Length} byte(s): {r.Detail}"));
                 }
 
-                Console.WriteLine(residue.Count == 0 ? "clean: no leftover removed or stale values found" : "leftovers found: save the file to zero them: onemedia tags <file> --replace");
-                return residue.Count == 0 ? 0 : 1;
+                IReadOnlyList<CommonValue> present = absent.Count > 0 ? TagWriter.FindPresent(path, absent) : [];
+                foreach (CommonValue v in present)
+                {
+                    Console.WriteLine($"{v.Field}: still present in {v.Source.System}:{v.Source.Key}");
+                }
+
+                string covered = "no leftovers in ID3v2 padding";
+                if (residue.Count > 0)
+                {
+                    Console.WriteLine($"leftovers found: save the file to zero them: onemedia tags {Quote(path)} --replace");
+                }
+                else if (present.Count == 0)
+                {
+                    Console.WriteLine(absent.Count > 0
+                        ? $"{covered}; fields absent in every tag system: {string.Join(", ", absent.Distinct())}"
+                        : $"{covered}; fields still present in the tag are not checked (use --absent field,field to check them)");
+                }
+
+                return residue.Count == 0 && present.Count == 0 ? 0 : 1;
             }
 
             if (captureTime is not null)
@@ -221,6 +258,8 @@ internal static class TagsCommand
 
         return 0;
     }
+
+    private static string Quote(string path) => path.Contains(' ', StringComparison.Ordinal) ? "\"" + path + "\"" : path;
 
     private static bool TryField(string name, out CommonField field) =>
         Enum.TryParse(name.Replace("-", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal), true, out field);

@@ -246,7 +246,7 @@ public abstract class SubtitleFormat
     /// <param name="options">Encoding options; null for detection.</param>
     /// <exception cref="MediaLimitExceededException">A limit was exceeded.</exception>
     /// <exception cref="MediaFormatException">The bytes are not this format at all.</exception>
-    public SubtitleDocument Read(ReadOnlySpan<byte> data, DefectLog? defects = null, MediaLimits? limits = null, SubtitleReadOptions? options = null)
+    public virtual SubtitleDocument Read(ReadOnlySpan<byte> data, DefectLog? defects = null, MediaLimits? limits = null, SubtitleReadOptions? options = null)
     {
         limits ??= MediaLimits.Default;
         defects ??= new DefectLog(limits);
@@ -339,6 +339,8 @@ public static class SubtitleFormats
         SbvFormat.Instance,
         LrcFormat.Instance,
         RecursiveAI.OneMedia.Captions.Scc.SccSubtitleFormat.Instance,
+        PgsSubtitleFormat.Instance,
+        VobSubSubtitleFormat.Instance,
     ];
 
     /// <summary>SubRip (<c>.srt</c>).</summary>
@@ -480,6 +482,17 @@ public static class SubtitleFormats
     /// <returns>The format, or null when nothing matches.</returns>
     public static SubtitleFormat? Sniff(ReadOnlySpan<byte> data)
     {
+        // Binary formats first: their bytes are not text.
+        if (BitmapSubtitles.LooksLikePgs(data))
+        {
+            return PgsSubtitleFormat.Instance;
+        }
+
+        if (BitmapSubtitles.LooksLikeProgramStream(data))
+        {
+            return VobSubSubtitleFormat.Instance;
+        }
+
         ReadOnlySpan<byte> head = data.Length > 8192 ? data[..8192] : data;
         string text = SubtitleText.Decode(head, null, new DefectLog(), out _, out _, tolerateTruncatedEnd: true);
         return Sniff(text);
