@@ -102,5 +102,19 @@ kill)
   done
   say "rounds=$rounds original=$orig complete=$done_ neither=$bad stray temp files seen=$strays"
   ;;
+report)
+  # What the write-back report claims against what ExifTool and MediaInfo read back, for one edit set per fixture.
+  cd "$W" && rm -rf rep && mkdir rep && cd rep
+  for f in metadata/tags_ilst.mp4 metadata/tags_keys.mov isobmff/bframes_aac.mp4 audio/aac.m4a metadata/mkvmerge_global.mkv audio/opus.webm audio/flac.flac audio/opus.ogg audio/vorbis.ogg \
+           pcm/bwf-v0.wav pcm/aiff-id3.aiff audio-es/tagged/id3v24-basic.mp3 audio-es/tagged/id3v1-only.mp3 audio-es/tagged/apev2-only.mp3 asf/wmav2-tagged.wma; do
+    b=$(basename "$f"); cp "$HERE/testdata/$f" "$b"
+    echo "=== $f"
+    exiftool -a -G1 -s "$b" 2>/dev/null | grep -iE 'title|artist|album|genre|comment|date|year|track|description' | sort > "$b.before"
+    TAGS "$b" --set title="Titre é中" --set artist="Artiste" --set album="Album" --set genre=Rock --set date=2024-05-06 --set tracknumber=7 --set comment="Un commentaire" --remove composer --replace
+    exiftool -a -G1 -s "$b" 2>/dev/null | grep -iE 'title|artist|album|genre|comment|date|year|track|description' | sort > "$b.after"
+    echo "-- exiftool after (changed lines)"; diff "$b.before" "$b.after" | grep '^>' | cut -c1-110
+    echo "-- mediainfo general/audio fields"; mediainfo "$b" 2>/dev/null | grep -iE '^(Track name|Performer|Album|Genre|Comment|Recorded date|Track name/Position|Composer)\s' | cut -c1-110
+  done
+  ;;
 *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

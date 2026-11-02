@@ -95,6 +95,8 @@ EBML and chunk editors refuse (`ArgumentException`) an addition inside an elemen
 
 ## Choices worth knowing
 
+- **An edit that asks for nothing changes nothing.** `TagEdits` with no entries plans one copy of the whole file (for any writable format): an old ID3v2.2 tag is not upgraded and an extended header is not dropped. Editing a field to the value it already has is an edit and may normalise the tag (the first re-application of an edit can change a few bytes, the next ones do not).
+
 - **AIFF text chunks are UTF-8.** `NAME`, `AUTH`, `(c) ` and `ANNO` are written as UTF-8 and read back as UTF-8 by OneMedia; the AIFF specification leaves the encoding open, and a reader that
   assumes Latin-1 (ATL.NET does) shows non-ASCII text differently. ASCII text is the same in both.
 - **WebM gets no cover art.** The WebM profile has no Attachments element, so a picture edit on a `webm` file is reported as not written.

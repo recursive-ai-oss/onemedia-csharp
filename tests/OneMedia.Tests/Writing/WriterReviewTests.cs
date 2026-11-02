@@ -238,6 +238,31 @@ public sealed class WriterReviewTests
         return r;
     }
 
+    private static readonly byte[] Marker = Encoding.ASCII.GetBytes("VENDOR-MARKER-0123456789-ABCDEF");
+
+    /// <summary>An unknown box of a made-up type holding <see cref="Marker"/>, inside the movie box (its size and the chunk offsets behind it follow).</summary>
+    private static byte[] VendorBoxInMoov(byte[] file)
+    {
+        Box moov = Find(file, "moov");
+        byte[] vendor = Bx("vndr", Marker);
+        long end = moov.Offset + moov.Size;
+        byte[] r = [.. file.AsSpan(0, (int)end), .. vendor, .. file.AsSpan((int)end)];
+        BinaryPrimitives.WriteUInt32BigEndian(r.AsSpan((int)moov.Offset), (uint)(moov.Size + vendor.Length));
+        ShiftChunkOffsets(r, end, vendor.Length);
+        return r;
+    }
+
+    /// <summary>An unknown top-level box right after ftyp, and a uuid box at the end.</summary>
+    private static byte[] VendorBoxesTop(byte[] file)
+    {
+        Box ftyp = Find(file, "ftyp");
+        long end = ftyp.Offset + ftyp.Size;
+        byte[] vendor = Bx("vndr", Marker);
+        byte[] r = [.. file.AsSpan(0, (int)end), .. vendor, .. file.AsSpan((int)end)];
+        ShiftChunkOffsets(r, end, vendor.Length);
+        return [.. r, .. Bx("uuid", new byte[16], Marker)];
+    }
+
     public static TheoryData<string> IsoBases =>
     [
         "isobmff/faststart.mp4", "isobmff/bframes_aac.mp4", "isobmff/video.3gp", "metadata/tags_ilst.mp4", "metadata/tags_udta.mov", "metadata/tags_keys.mov",
@@ -264,6 +289,9 @@ public sealed class WriterReviewTests
             ["moov64"] = Widen(baseFile, "moov"),
             ["moovlast+free"] = WithTrailing(MoovLast(baseFile), FreeBox(64)),
             ["moovlast+mdat64"] = Widen(MoovLast(baseFile), "mdat"),
+            ["vendorInMoov"] = VendorBoxInMoov(baseFile),
+            ["vendorTop"] = VendorBoxesTop(baseFile),
+            ["vendorTop+moovlast"] = VendorBoxesTop(MoovLast(baseFile)),
         };
         foreach ((string v, byte[] file) in variants)
         {
@@ -278,7 +306,10 @@ public sealed class WriterReviewTests
                 }
 
                 ReadsBack(name, o.Result, title);
-                // Opening the input and the output must give the same sample table: same packet count and sizes (the payload hash covers bytes).
+                if (v.StartsWith("vendor", StringComparison.Ordinal))
+                {
+                    Assert.True(o.Result.AsSpan().IndexOf(Marker) >= 0, $"{name}: the unknown box was lost");
+                }
             }
         }
     }
@@ -484,6 +515,17 @@ public sealed class WriterReviewTests
             }
 
             variants["voidInsideSegmentEnd"] = inside;
+            // An element whose id the tools do not know, placed at the end of the Segment.
+            byte[] vend = [0x41, 0x42, 0x20, .. Marker];
+            byte[] withVendor = WithTrailing(file, vend);
+            long grown = size + vend.Length;
+            withVendor[sizeAt] = 0x01;
+            for (int i = 0; i < 7; i++)
+            {
+                withVendor[sizeAt + 7 - i] = (byte)(grown >> (8 * i));
+            }
+
+            variants["vendorElementAtSegmentEnd"] = withVendor;
         }
 
         foreach ((string v, byte[] f) in variants)
@@ -495,6 +537,10 @@ public sealed class WriterReviewTests
                 if (o.Result is not null)
                 {
                     ReadsBack(name, o.Result, title);
+                    if (v.StartsWith("vendor", StringComparison.Ordinal))
+                    {
+                        Assert.True(o.Result.AsSpan().IndexOf(Marker) >= 0, $"{name}: the unknown element was lost");
+                    }
                 }
             }
         }
@@ -557,6 +603,7 @@ public sealed class WriterReviewTests
             ["infoAtEndOdd"] = Riff(Fmt(), Chunk("data", Pcm(1000)), ListInfo("INAM", "abc")),
             ["noInfoNoJunk"] = Riff(Fmt(), Chunk("data", Pcm(1000))),
             ["bigTailChunk"] = Riff(Fmt(), Chunk("data", Pcm(1000)), Chunk("zzzz", Pcm(333))),
+            ["vendorChunkOdd"] = Riff(Fmt(), Chunk("vndr", [.. Marker, 7]), Chunk("data", Pcm(1000)), Chunk("vnd2", [.. Marker, 9])),
         };
         foreach ((string n, byte[] f) in v)
         {
@@ -578,6 +625,10 @@ public sealed class WriterReviewTests
                     }
 
                     ReadsBack($"riff.{n}", o.Result, title);
+                    if (n.StartsWith("vendor", StringComparison.Ordinal))
+                    {
+                        Assert.True(o.Result.AsSpan().IndexOf(Marker) >= 0, $"{n}: the unknown chunk was lost");
+                    }
                 }
             }
         }
@@ -807,7 +858,7 @@ public sealed class WriterReviewTests
     // ---------- every fixture, several edit sets ----------
 
     private static readonly string[] MatrixDirs = ["audio-es/tagged", "audio-es", "audio", "xiph-flv", "pcm", "asf", "metadata", "isobmff"];
-    private static readonly string[] MatrixExts = [".mp3", ".m4a", ".mp4", ".mov", ".3gp", ".mka", ".mkv", ".webm", ".flac", ".ogg", ".opus", ".wav", ".aif", ".aiff", ".aifc", ".wma", ".wmv", ".asf"];
+    private static readonly string[] MatrixExts = [".mp3", ".ogv", ".flv", ".caf", ".aac", ".ac3", ".eac3", ".amr", ".awb", ".mp2", ".avi", ".m4a", ".mp4", ".mov", ".3gp", ".mka", ".mkv", ".webm", ".flac", ".ogg", ".opus", ".wav", ".aif", ".aiff", ".aifc", ".wma", ".wmv", ".asf"];
 
     public static TheoryData<string> MatrixFiles()
     {
@@ -831,6 +882,39 @@ public sealed class WriterReviewTests
         }
 
         return d;
+    }
+
+    private static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+        foreach (byte b in data)
+        {
+            crc ^= b;
+            for (int k = 0; k < 8; k++)
+            {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+            }
+        }
+
+        return ~crc;
+    }
+
+    /// <summary>A valid 1x1 PNG with a private ancillary chunk that makes it the requested size, so readers accept it as an image.</summary>
+    private static byte[] BigPng(int size)
+    {
+        byte[] one = SmallPng;
+        byte[] payload = new byte[size];
+        for (int i = 0; i < size; i++)
+        {
+            payload[i] = (byte)(i * 31);
+        }
+
+        byte[] chunk = new byte[12 + size];
+        BinaryPrimitives.WriteUInt32BigEndian(chunk, (uint)size);
+        "prVt"u8.CopyTo(chunk.AsSpan(4));
+        payload.CopyTo(chunk, 8);
+        BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(8 + size), Crc32(chunk.AsSpan(4, 4 + size)));
+        return [.. one.AsSpan(0, 33), .. chunk, .. one.AsSpan(33)];
     }
 
     private static readonly byte[] SmallPng = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
@@ -857,7 +941,7 @@ public sealed class WriterReviewTests
         TagEdits cover = new();
         cover.Set(CommonField.Title, "With cover");
         cover.Set(CommonField.Artist, "Review artist");
-        cover.SetPicture(new byte[200_000].Select((_, i) => (byte)(i * 31)).Prepend((byte)0xFF).ToArray(), "image/jpeg");
+        cover.SetPicture(BigPng(200_000), "image/png");
         TagEdits many = new();
         many.Set(CommonField.Title, "Many");
         many.Set(CommonField.Artist, "Review artist");
@@ -1060,4 +1144,88 @@ public sealed class WriterReviewTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Theory]
+    [InlineData("isobmff/frag.mp4")]
+    [InlineData("isobmff/frag_negcts.mp4")]
+    public void GrowingTheMovieBoxOfAFragmentedFileKeepsTheRandomAccessIndexPointingAtFragments(string rel)
+    {
+        byte[] f = Fx(rel);
+        Outcome o = Edit("frag." + rel.Replace('/', '_'), f, TitleArtist(new string('f', 4000)), null, "mp4");
+        Assert.NotNull(o.Result);
+        byte[] r = o.Result!;
+        List<Box> top = Boxes(r, 0, r.Length);
+        Box mfra = top.Single(x => x.Type == "mfra");
+        HashSet<long> moofs = top.Where(x => x.Type == "moof").Select(x => x.Offset).ToHashSet();
+        int entries = 0;
+        foreach (Box tfra in Boxes(r, mfra.Offset + 8, mfra.Offset + mfra.Size).Where(x => x.Type == "tfra"))
+        {
+            int p = (int)tfra.Offset + 8;
+            int version = r[p];
+            uint n = BinaryPrimitives.ReadUInt32BigEndian(r.AsSpan(p + 12));
+            uint lengths = BinaryPrimitives.ReadUInt32BigEndian(r.AsSpan(p + 8));
+            int tl = (int)((lengths >> 4) & 3) + 1, ml = (int)((lengths >> 2) & 3) + 1, sl = (int)(lengths & 3) + 1;
+            int stride = (version == 1 ? 16 : 8) + tl + ml + sl;
+            for (int i = 0; i < n; i++)
+            {
+                int e = p + 16 + i * stride;
+                long moofOffset = version == 1 ? (long)BinaryPrimitives.ReadUInt64BigEndian(r.AsSpan(e + 8)) : BinaryPrimitives.ReadUInt32BigEndian(r.AsSpan(e + 4));
+                Assert.True(moofs.Contains(moofOffset), $"{rel}: tfra entry {i} points at {moofOffset}, which is not a moof");
+                entries++;
+            }
+        }
+
+        Assert.True(entries > 0);
+        // The last box says how long the index is, counted from the file's end.
+        Box mfro = Boxes(r, mfra.Offset + 8, mfra.Offset + mfra.Size).Single(x => x.Type == "mfro");
+        Assert.Equal((uint)mfra.Size, BinaryPrimitives.ReadUInt32BigEndian(r.AsSpan((int)mfro.Offset + 12)));
+    }
+
+    /// <summary>
+    /// An ID3v2 tag with a very large padding area: how much memory the plan holds and how many bytes an in-place edit writes.
+    /// Run with ONEMEDIA_REVIEW_BIG=1.
+    /// </summary>
+    [Fact]
+    public void AnId3TagWithHugePaddingEditedInPlace()
+    {
+        if (Environment.GetEnvironmentVariable("ONEMEDIA_REVIEW_BIG") != "1")
+        {
+            return;
+        }
+
+        const int pad = 200 * 1024 * 1024;
+        byte[] plain = Fx("audio-es/plain.mp3");
+        byte[] audio = FirstTagOnly(plain).AsSpan(plain.Length - (plain.Length - 0)).ToArray();
+        int firstTag = 10 + ((plain[6] << 21) | (plain[7] << 14) | (plain[8] << 7) | plain[9]);
+        byte[] aud = plain.AsSpan(firstTag).ToArray();
+        _ = audio;
+        string dir = TempDir();
+        string path = Path.Combine(dir, "padded.mp3");
+        try
+        {
+            byte[] title = [(byte)'T', (byte)'I', (byte)'T', (byte)'2', 0, 0, 0, 6, 0, 0, 3, (byte)'a', (byte)'b', (byte)'c', (byte)'d', (byte)'e'];
+            int body = title.Length + pad;
+            using (FileStream fs = new(path, FileMode.CreateNew))
+            {
+                byte[] h = [(byte)'I', (byte)'D', (byte)'3', 4, 0, 0, (byte)((body >> 21) & 0x7F), (byte)((body >> 14) & 0x7F), (byte)((body >> 7) & 0x7F), (byte)(body & 0x7F)];
+                fs.Write(h);
+                fs.Write(title);
+                fs.SetLength(10 + body);
+                fs.Position = 10 + body;
+                fs.Write(aud);
+            }
+
+            TagEdits e = new();
+            e.Set(CommonField.Title, "xyz");
+            long before = GC.GetTotalAllocatedBytes(true);
+            TagWriteReport r = TagWriter.SaveInPlace(path, e);
+            long allocated = GC.GetTotalAllocatedBytes(true) - before;
+            Console.WriteLine($"HUGEPAD in-place: bytes written {r.Write!.BytesWritten}, managed bytes allocated {allocated}, padding available {r.Write.PaddingAvailable}");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
+
