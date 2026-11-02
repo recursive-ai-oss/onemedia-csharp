@@ -65,8 +65,8 @@ time zone Pacific (UTC-7 on that date). macOS 27.0.1 (26A434), time zone CST. "B
 
 | Format | Windows Explorer (Shell property → column) | Windows Photos (Info pane) | macOS |
 |---|---|---|---|
-| MP4 / MOV with `mvhd` set | `System.Media.DateEncoded` = 2024-04-30 22:30 UTC → "Media created" 4/30/2024 3:30 PM (before: 1/1/2020 7:04 PM = 03:04 UTC shown in UTC-8) | April 30, 2024 3:30 PM (before: January 1, 2020 7:04 PM) | AVFoundation `creationDate` 2024-04-30T22:30:00Z (before 2020-01-02T03:04:05Z); Spotlight `kMDItemContentCreationDate` shows the file-system time |
-| MOV with a `©day` in `udta` | `System.Photo.DateTaken` = 22:30 UTC → "Date taken" 4/30/2024 3:30 PM | the `mvhd` date, as above | not read |
+| MP4 / MOV with `mvhd` set | `System.Media.DateEncoded` = 2024-04-30 22:30 UTC → "Media created" 4/30/2024 15:30 (before: 1/1/2020 19:04 = 03:04 UTC shown in UTC-8) | April 30, 2024 15:30 (before: January 1, 2020 19:04) | AVFoundation `creationDate` 2024-04-30T22:30:00Z (before 2020-01-02T03:04:05Z); Spotlight `kMDItemContentCreationDate` shows the file-system time |
+| MOV with a `©day` in `udta` | `System.Photo.DateTaken` = 22:30 UTC → "Date taken" 4/30/2024 15:30 | the `mvhd` date, as above | not read |
 | MOV with `mdta` `creationdate` and a different `mvhd` | "Media created" = the `mvhd` date, the Apple `creationdate` is ignored | not tested separately | AVFoundation `creationDate` = the `mvhd` date (2022-01-01) |
 | MP4 / MOV whose `mvhd` is 0 | no "Media created"; `©day` still gives "Date taken" | file-system creation date (the day the file was copied), not `©day` | AVFoundation reports a year-12173 date for a 0 `mvhd` in a MOV and none in an MP4 |
 | FLAC | "Date released" shows the `DATE` text as written (2024-05-01T00:30:00) | not applicable | no date |
