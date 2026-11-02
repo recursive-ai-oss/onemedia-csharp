@@ -32,7 +32,6 @@ public sealed class Cea608Decoder
         public Mode Mode;
         public int RollRows;
         public int BaseRow = Rows - 1;
-        public bool RuResent;
         public int Row;
         public int Col;
         public byte Attr;
@@ -173,14 +172,6 @@ public sealed class Cea608Decoder
         {
             // Preamble address code.
             Channel pc = ChannelFor(field, dc, f.TextMode);
-            // Observed (ccextractor 0.96.5 on encoder output that sends RU, PAC, text for every line and no CR): a roll-up command that
-            // repeats the current mode followed by a PAC rolls the window up when the base row already holds text.
-            if (pc.Mode == Mode.RollUp && pc.RuResent && RowHasContent(pc.Shown, pc.BaseRow))
-            {
-                CarriageReturn(pc, field, f, time);
-            }
-
-            pc.RuResent = false;
             Pac(pc, c1, c2);
             return;
         }
@@ -346,7 +337,6 @@ public sealed class Cea608Decoder
             case 0x25 or 0x26 or 0x27: // RU2–RU4
                 f.TextMode = false;
                 ch = ChannelFor(field, dc, false);
-                ch.RuResent = ch.Mode == Mode.RollUp;
                 if (ch.Mode != Mode.RollUp)
                 {
                     Clear(ch.Shown);
@@ -479,19 +469,6 @@ public sealed class Cea608Decoder
         }
 
         ch.TextStart = MediaTime.Unknown;
-    }
-
-    private static bool RowHasContent(Cell[,] grid, int row)
-    {
-        for (int c = 0; c < Cols; c++)
-        {
-            if (grid[row, c].Ch != 0 && grid[row, c].Ch != ' ')
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static void Clear(Cell[,] grid) => Array.Clear(grid);

@@ -34,9 +34,8 @@ DVD GOP user data (`43 43 01 F8`), SCTE-20 (`03 81 …`) and the PixelTools "dis
   new text) is merged into it; anything else (scroll, erase, EOC, replaced row) ends the open screen at that pair's time and starts a new one.
   So a roll-up line typed over many pairs is one caption, and each CR yields the scrolled window as a new caption. Text channels emit one
   caption per line at its CR.
-* **Implied roll.** A roll-up command that repeats the mode already active, followed by a PAC while the base row holds text, rolls the window
-  up first. Encoders that send `RU, PAC, text` for every line without a CR (the PixelTools samples) rely on it; ccextractor 0.96.5 renders them
-  this way.
+* No implied roll: a roll-up command or PAC without a CR does not scroll; text written again on the same row overwrites it, as ccextractor does on
+  the PixelTools `atsc_field1` sample (`RU3, PAC, text` per line, no CR: one caption, "Have a Nice Day!g Insertion").
 * XDS (field 2): packets collected from start/continue/end codes with checksum verification; `ProgramName` and `NetworkName` are typed.
 
 ## CEA-708 decoding (`Cea708Decoder`)
@@ -88,7 +87,7 @@ Oracles: ccextractor 0.96.6 release AppImage (reports "0.96.5" on its banner), f
 Documented deviations (observed):
 
 * ccextractor and ffmpeg date an SCC pop-on caption at its **line's timecode**; we date it at the EOC pair that shows it. Text and order are equal.
-* ccextractor emits a roll-up window only when it is full (the 3-row sample: 2 cues where we emit 4, whose last two match its times); we emit each scrolled window.
+* ccextractor emits a roll-up window only when it is full (the 3-row sample: 2 cues where we emit one per scroll); we emit each scrolled window.
 * ccextractor 0.96.5 reads H.264 SEI captions from MP4 only with `-in=mp4`, dates the first caption of our written MP4 at 0.001 s instead of 1.001 s, and does not read HEVC SEI captions (garbage cues); ffmpeg reads both.
 * ccextractor appends `?` to some 708 lines and pads 608 lines to 32 columns; both are stripped by the comparer.
 
