@@ -39,6 +39,7 @@ TeletextTarget.Register(targets);
 BitmapSubtitleTargets.Register(targets);
 CaptionTargets.Register(targets);
 EventTargets.Register(targets);
+ReconstructTarget.Register(targets);
 RepairTarget.Register(targets);
 ManifestTargets.Register(targets);
 

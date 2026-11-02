@@ -76,6 +76,17 @@ public sealed class CaptureTimeTests
     }
 
     [Fact]
+    public void AMovieHeaderIsWrittenEvenWhenItsTimesWereZero()
+    {
+        // The movie header is the date applications display, so it is set whatever it held; only track and media headers of zeroes stay unset.
+        (byte[] result, CaptureTimeReport report) = Apply(File.ReadAllBytes(WriterTestSupport.Fixture("metadata", "tags_udta.mov")), When);
+        Assert.Contains(report.Written, w => w.System == "mvhd");
+        Assert.DoesNotContain(report.Left, l => l.System == "mvhd");
+        Assert.Contains(report.Left, l => l.System == "tkhd" && l.Reason.StartsWith("unset", StringComparison.Ordinal));
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
     public void Id3v23FilesGetTheYearDayMonthAndTimeFrames()
     {
         (byte[] result, _) = Apply(File.ReadAllBytes(WriterTestSupport.Fixture("audio-es", "tagged", "id3v23-basic.mp3")), When);

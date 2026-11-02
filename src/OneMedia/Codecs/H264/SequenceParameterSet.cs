@@ -64,6 +64,12 @@ public readonly record struct SequenceParameterSet
     /// <summary>log2_max_frame_num_minus4 + 4: the width in bits of frame_num in slice headers.</summary>
     public int Log2MaxFrameNum { get; init; }
 
+    /// <summary>pic_order_cnt_type (0, 1 or 2).</summary>
+    public int PicOrderCntType { get; init; }
+
+    /// <summary>log2_max_pic_order_cnt_lsb_minus4 + 4 when <see cref="PicOrderCntType"/> is 0, else 0.</summary>
+    public int Log2MaxPicOrderCntLsb { get; init; }
+
     /// <summary>frame_mbs_only_flag: false for streams that may code fields.</summary>
     public bool FrameMbsOnly { get; init; }
 
@@ -209,9 +215,11 @@ public readonly record struct SequenceParameterSet
             return false;
         }
 
+        uint log2PocLsbMinus4 = 0;
         if (pocType == 0)
         {
-            if (r.ReadUe() > 12)
+            log2PocLsbMinus4 = r.ReadUe();
+            if (log2PocLsbMinus4 > 12)
             {
                 return false;
             }
@@ -284,6 +292,8 @@ public readonly record struct SequenceParameterSet
             BitDepthChroma = bdChroma,
             MaxNumRefFrames = (int)refFrames,
             Log2MaxFrameNum = (int)log2MaxFrameNum + 4,
+            PicOrderCntType = (int)pocType,
+            Log2MaxPicOrderCntLsb = (int)log2PocLsbMinus4 + 4,
             FrameMbsOnly = frameMbsOnly,
             MbAdaptiveFrameField = mbaff,
             CodedWidth = (int)codedW,

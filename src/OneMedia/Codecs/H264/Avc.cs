@@ -15,6 +15,9 @@ public readonly record struct PictureParameterSet
     /// <summary>entropy_coding_mode_flag: true for CABAC, false for CAVLC.</summary>
     public bool EntropyCodingMode { get; init; }
 
+    /// <summary>bottom_field_pic_order_in_frame_present_flag.</summary>
+    public bool BottomFieldPicOrderInFramePresent { get; init; }
+
     /// <summary>num_slice_groups_minus1 + 1. Fields after it are left at defaults when this is above 1.</summary>
     public int SliceGroupCount { get; init; }
 
@@ -23,6 +26,15 @@ public readonly record struct PictureParameterSet
 
     /// <summary>weighted_bipred_idc.</summary>
     public int WeightedBipredIdc { get; init; }
+
+    /// <summary>26 + pic_init_qp_minus26, or -1 (0 for a default value) when the fields after the weighting flags were not read.</summary>
+    public int PicInitQp { get; init; }
+
+    /// <summary>deblocking_filter_control_present_flag.</summary>
+    public bool DeblockingFilterControlPresent { get; init; }
+
+    /// <summary>redundant_pic_cnt_present_flag.</summary>
+    public bool RedundantPicCntPresent { get; init; }
 
     /// <summary>Parses a picture parameter set.</summary>
     /// <param name="nal">The NAL unit including its header byte.</param>
@@ -40,7 +52,7 @@ public readonly record struct PictureParameterSet
         uint id = r.ReadUe();
         uint spsId = r.ReadUe();
         bool cabac = r.ReadFlag();
-        r.ReadBit(); // bottom_field_pic_order_in_frame_present_flag
+        bool bottomFieldPicOrder = r.ReadFlag(); // bottom_field_pic_order_in_frame_present_flag
         uint groupsMinus1 = r.ReadUe();
         if (r.Overrun || id > 255 || spsId > 31 || groupsMinus1 > 7)
         {
@@ -49,16 +61,28 @@ public readonly record struct PictureParameterSet
 
         bool weighted = false;
         int bipred = 0;
+        int picInitQp = -1;
+        bool deblockingControl = false;
+        bool redundantPicCnt = false;
         if (groupsMinus1 == 0)
         {
             r.ReadUe(); // num_ref_idx_l0_default_active_minus1
             r.ReadUe(); // num_ref_idx_l1_default_active_minus1
             weighted = r.ReadFlag();
             bipred = (int)r.ReadBits(2);
+            picInitQp = 26 + r.ReadSe();   // pic_init_qp_minus26
+            r.ReadSe();                    // pic_init_qs_minus26
+            r.ReadSe();                    // chroma_qp_index_offset
+            deblockingControl = r.ReadFlag();
+            r.ReadBit();                   // constrained_intra_pred_flag
+            redundantPicCnt = r.ReadFlag();
             if (r.Overrun)
             {
                 weighted = false;
                 bipred = 0;
+                picInitQp = -1;
+                deblockingControl = false;
+                redundantPicCnt = false;
             }
         }
 
@@ -67,9 +91,13 @@ public readonly record struct PictureParameterSet
             PpsId = (int)id,
             SpsId = (int)spsId,
             EntropyCodingMode = cabac,
+            BottomFieldPicOrderInFramePresent = bottomFieldPicOrder,
             SliceGroupCount = (int)groupsMinus1 + 1,
             WeightedPred = weighted,
             WeightedBipredIdc = bipred,
+            PicInitQp = picInitQp,
+            DeblockingFilterControlPresent = deblockingControl,
+            RedundantPicCntPresent = redundantPicCnt,
         };
         return true;
     }

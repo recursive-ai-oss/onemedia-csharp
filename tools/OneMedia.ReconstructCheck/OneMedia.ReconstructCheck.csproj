@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Reconstructs cut-off ISO files and compares the result with the healthy original; tools/run-reconstruct-checks.sh drives it. Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.ReconstructCheck</RootNamespace>
+    <AssemblyName>OneMedia.ReconstructCheck</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -81,7 +81,7 @@ Hostile DJI text, protobuf and SEI input never throws and adds no defect codes (
 
 ## Privacy
 
-**Privacy strip is not in this release.** Nothing here removes location or device data from telemetry tracks; `onemedia tags` and `TagWriter` edit tag fields only, and GPS or device identifiers inside telemetry tracks, Exif blocks and XMP stay in the file. Every location and device item keeps its `Range`, so a later strip operation can find and overwrite the bytes.
+The privacy strip (`PrivacyStrip`, `Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`) removes position and device identifiers from telemetry tracks in ISO files: in `gpmd` (GoPro GPMF) the position keys (`GPS5`, `GPS9`, `GPSU`, `GPSF`, `GPSP`, `GPSA`, `GPRI`, `GLPI`, `LNED`) and device identifiers (`CASN`, `MUID`, `LINF`, `CINF`) have their values zeroed and their keys renamed `EMPT`; in `camm` the position packet types (4, 5, 6) are zeroed and retyped; in `mebx` atoms whose key names a location or serial are zeroed; in DJI `djmd` protobuf the position and altitude fields are overwritten. Sample lengths and chunk offsets do not change, and each stripped stream is listed in the report. Other data tracks are searched only for the values read from removed fields, and free text, unknown vendor atoms and trailers are not examined. See [strip.md](strip.md) for the full list and the limits. `onemedia tags` and `TagWriter` edit tag fields only. Every location and device item keeps its `Range`.
 
 ## Verification
 

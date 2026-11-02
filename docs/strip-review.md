@@ -1,6 +1,6 @@
 # Privacy-strip review
 
-An independent attempt to break `PrivacyStrip` (`Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`) before it is advertised. The reviewer did not write
+The project's own attempt (not an external audit) to break `PrivacyStrip` (`Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`) before it is advertised. The reviewer was a separate pass within the project and did not write
 the strip. Every secret in the test files is invented (a position over open water, made-up serial numbers); nothing in the repo is real data.
 
 **Verdict: the strip can be advertised with its limits stated, not as "removes all location and identifiers".** It does what `docs/strip.md` lists, and after this

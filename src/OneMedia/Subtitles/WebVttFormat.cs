@@ -691,7 +691,9 @@ internal sealed class WebVttFormat : SubtitleFormat
 
         string? lineAlign = p.VerticalAlign switch
         {
-            SubtitleVerticalAlign.Top => "start",
+            // W3C WebVTT cue settings: the line alignment defaults to start, so a top cue needs no alignment. Writing ",start" anyway makes Chromium 140 drop
+            // the whole line setting (observed: the cue stays at the bottom); Chrome 155, Firefox 141 and WebKit 26 accept either form.
+            SubtitleVerticalAlign.Top => null,
             SubtitleVerticalAlign.Middle => "center",
             _ => null,
         };
@@ -724,7 +726,7 @@ internal sealed class WebVttFormat : SubtitleFormat
         }
         else if (p.VerticalAlign == SubtitleVerticalAlign.Top)
         {
-            sb.Append(" line:0,start");
+            sb.Append(" line:0");
             report.Add(cueIndex, SubtitleFeatures.Alignment, LossKind.Approximated, "Top alignment written as line 0.");
         }
         else if (p.VerticalAlign == SubtitleVerticalAlign.Middle)
