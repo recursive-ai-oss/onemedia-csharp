@@ -10,7 +10,7 @@ import sys
 
 bad = 0
 for n in sorted(os.listdir(sys.argv[2])):
-    if n.endswith('.report'):
+    if n.endswith(('.report', '.exif.txt', '.mi.txt')):
         continue
     a = open(os.path.join(sys.argv[1], n), 'rb').read()
     b = open(os.path.join(sys.argv[2], n), 'rb').read()
