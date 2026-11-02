@@ -46,6 +46,7 @@ internal static class RiffTagWriter
             if (options.Wants(TagSystems.RiffInfo) && (list is not null || options.Systems is not null || cf.Chunks.All(c => c.Id is not ("id3 " or "ID3 "))))
             {
                 reports.Add(EditInfo(cf, list, src, edits, editor, limits));
+                RemoveFromOtherInfoLists(cf, list, src, edits, editor, limits);
                 any = true;
             }
 
@@ -138,6 +139,50 @@ internal static class RiffTagWriter
     private static byte[] TextPayload(string s, bool nul) => nul ? [.. Encoding.UTF8.GetBytes(s), 0] : Encoding.UTF8.GetBytes(s);
 
     private static string TextOf(byte[] payload) => Encoding.UTF8.GetString(payload).TrimEnd('\0');
+
+    // A file can hold more than one LIST INFO chunk; the edit above works on the first. A removal that must reach every copy (the privacy strip) also
+    // takes the key out of the others.
+    private static void RemoveFromOtherInfoLists(ChunkFile cf, ChunkNode? first, IMediaSource src, TagEdits edits, ChunkEditor editor, MediaLimits limits)
+    {
+        HashSet<string> keys = [.. edits.NativeFor(TagSystems.RiffInfo).Where(e => e.Kind == TagEditKind.RemoveNative && e.Everywhere && e.Key is { Length: 4 }).Select(e => e.Key!)];
+        if (keys.Count == 0)
+        {
+            return;
+        }
+
+        foreach (ChunkNode other in cf.Chunks.Where(c => c.Id == "LIST" && c.FormType == "INFO" && !ReferenceEquals(c, first)))
+        {
+            List<(string Id, byte[] Payload)> items = [];
+            bool changed = false;
+            foreach (ChunkNode c in other.Chunks)
+            {
+                if (keys.Contains(c.Id))
+                {
+                    changed = true;
+                    continue;
+                }
+
+                limits.CheckTag(c.PayloadSize, c.Offset);
+                byte[] p = new byte[c.PayloadSize];
+                src.ReadExactly(c.Payload.Offset, p);
+                items.Add((c.Id, p));
+            }
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            if (items.Count == 0)
+            {
+                editor.Remove(other);
+            }
+            else
+            {
+                editor.Replace(other, ChunkBuilder.CreateList(cf.Layout, "INFO", items.SelectMany(i => ChunkBuilder.Create(cf.Layout, i.Id, i.Payload)).ToArray()));
+            }
+        }
+    }
 
     private static SystemWriteReport EditInfo(ChunkFile cf, ChunkNode? list, IMediaSource src, TagEdits edits, ChunkEditor editor, MediaLimits limits)
     {

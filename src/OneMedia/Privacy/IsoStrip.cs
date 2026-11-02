@@ -265,6 +265,13 @@ internal static class IsoStrip
             return;
         }
 
+        // XMP allows UTF-16 and UTF-32 packets (a byte order mark, or NUL bytes between the ASCII characters of the wrapper); the property scan reads UTF-8 only.
+        if (packet.Length >= 4 && (packet[1] == 0 || packet[3] == 0 || (packet[0] is 0xFE or 0xFF && packet[1] is 0xFE or 0xFF) || (packet[0] == 0 && packet[1] == 0)))
+        {
+            sink.Leftover(cats, TagSystems.Xmp, "packet", x.TrackId, x.PacketRange, "The XMP packet is not UTF-8; its properties were not inspected.");
+            return;
+        }
+
         List<XmpScrub.Removed> removed = [];
         byte[]? rewritten = XmpScrub.Scrub(packet, cats, removed, out string? error);
         if (error is not null)
@@ -362,6 +369,11 @@ internal static class IsoStrip
             {
                 // DJI's second protobuf track holds debug values in an undocumented layout and is not decoded, so it is not edited.
                 sink.Leftover(options.Categories, "dbgi", "debug track", track.Id, ByteRange.None, "The track's layout is not known; any position or serial number in it stays.");
+            }
+
+            if (format == TelemetryFormat.None && track.Kind == TrackKind.Data && track.CodecTag is not ("dbgi" or "tmcd"))
+            {
+                sink.AddNote("Data track " + track.Id + " (" + (track.CodecTag ?? "unknown") + ") has no known layout: only the values of fields removed elsewhere were searched for in it; a position or serial number stored in another form stays.");
             }
 
             if (format == TelemetryFormat.None && !otherData && !text)

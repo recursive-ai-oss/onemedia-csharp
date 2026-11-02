@@ -78,7 +78,7 @@ internal static class StripCommand
             Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message);
             return 1;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             Console.Error.WriteLine(ex.Message);
             return 1;

@@ -118,7 +118,7 @@ internal static class OtherStrip
                 matched.Add(tag);
                 if (seen.Add((tag.System, tag.Key)))
                 {
-                    edits.RemoveNative(tag.System, tag.Key);
+                    edits.RemoveNativeEverywhere(tag.System, tag.Key);
                 }
             }
         }
@@ -155,8 +155,57 @@ internal static class OtherStrip
         }
 
         ScanSubtitleTracks(file, options, left, ct);
+        if (file.Format == MediaFormatId.Matroska)
+        {
+            FindUnreadTags(source, file, cats, left, ct);
+        }
+
         notes.Add("Only tag fields and subtitle text are inspected in this format; position or serial data inside the other streams is not.");
         return new StripPlan(plan, new StripReport(cats, entries, left, notes));
+    }
+
+    // The Matroska reader finds Tags and Attachments through the SeekHead and the elements before the first Cluster; a writer that appends a Tags
+    // element after the last Cluster without a SeekHead entry hides it from the reader and so from the strip. One header read per top-level element
+    // (clusters are hopped over by size) finds such elements, which are then reported, not edited.
+    private static void FindUnreadTags(IMediaSource source, MediaFile file, StripCategories cats, List<StripLeftover> left, CancellationToken ct)
+    {
+        const uint Segment = 0x18538067, Tags = 0x1254C367;
+        byte[] head = new byte[16];
+        long at = 0;
+        long segmentEnd = source.Length;
+        bool inSegment = false;
+        for (int hops = 0; hops < 10_000_000 && at < segmentEnd; hops++)
+        {
+            ct.ThrowIfCancellationRequested();
+            int got = source.Read(at, head, ct);
+            if (got < 2 || !Matroska.Ebml.TryReadId(head.AsSpan(0, got), out uint id, out int idLength)
+                || !Matroska.Ebml.TryReadSize(head.AsSpan(idLength, got - idLength), out long size, out int sizeLength))
+            {
+                return;
+            }
+
+            long start = at + idLength + sizeLength;
+            if (id == Segment && !inSegment)
+            {
+                inSegment = true;
+                at = start;
+                segmentEnd = size < 0 ? source.Length : Math.Min(source.Length, start + size);
+                continue;
+            }
+
+            if (size < 0)
+            {
+                return; // an unknown-size element (live Cluster): the rest cannot be hopped over
+            }
+
+            if (inSegment && id == Tags && !file.Metadata.Containers.Any(c => !c.Range.IsNone && c.Range.Offset < start + size && c.Range.End > at))
+            {
+                left.Add(new StripLeftover(cats, TagSystems.Matroska, "Tags", 0, new ByteRange(at, start + size - at),
+                    "A Tags element that no SeekHead entry points to (after the last Cluster) is not read by the tag layer, so it was not inspected or edited."));
+            }
+
+            at = start + size;
+        }
     }
 
     // A subtitle block sits inside a cluster or chunk whose checksum or size a same-length edit would have to maintain, so text that looks like a

@@ -328,7 +328,7 @@ public class StripTests
             byte[] output = Run(tagged, original, null, out StripReport report);
             Assert.False(Contains(output, "Atlantis"u8));
             Assert.False(Contains(output, "MKVSERIAL42"u8));
-            Assert.True(report.IsComplete);
+            Assert.True(report.IsComplete, string.Join("; ", report.NotRemoved.Select(l => l.System + ":" + l.Name + " " + l.Range.Offset + " " + l.Reason)));
             using MediaFile after = MediaFile.Open(new MemoryMediaSource(output));
             Assert.Equal("Kept", after.Tags.Title);
             Assert.Equal(WriterTestSupport.PayloadHash(original), WriterTestSupport.PayloadHash(output));

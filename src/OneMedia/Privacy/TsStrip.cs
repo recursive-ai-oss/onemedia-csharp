@@ -98,17 +98,28 @@ internal static class TsStrip
                 break;
             }
 
-            for (int at = 0; at + stride <= got; at += stride)
+            int at = 0;
+            while (at + stride <= got)
             {
                 int p = at + prefix;
                 if (block[p] != 0x47)
                 {
-                    continue; // a lost sync byte: the packet is skipped, as the demuxer does
+                    // A lost sync byte (bytes dropped or inserted in the recording): look for the next place where sync bytes recur one packet apart and carry
+                    // on from there, so the packets after the damage are still searched. The bytes in between belong to no packet.
+                    int j = at + 1;
+                    while (j + stride <= got && !(block[j + prefix] == 0x47 && (j + prefix + stride >= got || block[j + prefix + stride] == 0x47)))
+                    {
+                        j++;
+                    }
+
+                    at = j + stride <= got ? j : Math.Max(at + 1, got - stride + 1);
+                    continue;
                 }
 
                 int pid = ((block[p + 1] & 0x1F) << 8) | block[p + 2];
                 if (!pids.TryGetValue(pid, out Pes? pes))
                 {
+                    at += stride;
                     continue;
                 }
 
@@ -129,6 +140,7 @@ internal static class TsStrip
 
                 if ((afc & 1) == 0 || payload >= 188)
                 {
+                    at += stride;
                     continue;
                 }
 
@@ -141,9 +153,10 @@ internal static class TsStrip
 
                 pes.Length += take;
                 pes.Full |= take < 188 - payload;
+                at += stride;
             }
 
-            pos += got - (got % stride);
+            pos += at;
         }
 
         foreach ((int pid, Pes pes) in pids)
