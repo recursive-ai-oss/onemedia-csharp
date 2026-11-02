@@ -13,7 +13,6 @@ namespace RecursiveAI.OneMedia.Fuzz;
 internal static class RepairTarget
 {
     private static readonly MediaLimits Limits = new() { MaxAllocationBytes = 4 << 20, MaxElementCount = 100_000, MaxStructureDepth = 24, MaxSampleTableEntries = 200_000, MaxCues = 100_000, MaxTracks = 64 };
-    private static readonly string OutputPath = Path.Combine(Path.GetTempPath(), "onemedia-fuzz-repair-" + Environment.ProcessId + ".bin");
 
     public static void Register(Dictionary<string, FuzzTarget> targets)
     {
@@ -25,24 +24,17 @@ internal static class RepairTarget
 
     private static void Run(string format, ReadOnlySpan<byte> input)
     {
-        File.Delete(OutputPath);
+        using MemoryStream output = new();
         try
         {
-            RepairReport r = Repairer.RunEngine(format, new MemoryMediaSource(input.ToArray()), OutputPath, Limits, CancellationToken.None);
-            if (r.OutputWritten != File.Exists(OutputPath) || (r.OutputWritten && new FileInfo(OutputPath).Length != r.OutputLength))
+            RepairReport r = Repairer.RunEngine(format, new MemoryMediaSource(input.ToArray()), output, Limits, CancellationToken.None);
+            if (r.OutputWritten != (output.Length > 0) || (r.OutputWritten && output.Length != r.OutputLength))
             {
-                throw new InvalidOperationException($"the report says {r.Status} with {r.OutputLength} bytes but the output file does not agree");
+                throw new InvalidOperationException($"the report says {r.Status} with {r.OutputLength} bytes but the output holds {output.Length}");
             }
         }
         catch (MediaException)
         {
-        }
-        catch (IOException)
-        {
-        }
-        finally
-        {
-            File.Delete(OutputPath);
         }
     }
 }

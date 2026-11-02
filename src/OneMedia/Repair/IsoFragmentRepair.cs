@@ -23,7 +23,7 @@ internal static partial class IsoRepair
         public long OutOffset;
     }
 
-    private static RepairReport RunFragmented(RepairInput input, string outputPath, MediaLimits limits, RepairReportBuilder report,
+    private static RepairReport RunFragmented(RepairInput input, Stream destination, MediaLimits limits, RepairReportBuilder report,
         List<BoxHeader> boxes, BoxHeader moov, long tail, CancellationToken ct)
     {
         limits.CheckAllocation(moov.Size, moov.Offset);
@@ -188,7 +188,7 @@ internal static partial class IsoRepair
         if (tail == 0 && !droppedTail && mehdOk && indexOk && oldMfra!.Value.Offset + oldMfra.Value.Size == input.Length)
         {
             report.Add(RepairAction.Kept, "mfra", -1, oldMfra.Value.Offset, oldMfra.Value.Size, "Every random access entry points at a fragment with the same decode time.", RepairConfidence.High);
-            using (RepairOutput copy = new(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None), ct))
+            using (RepairOutput copy = new(destination, ct))
             {
                 copy.Copy(input, 0, input.Length);
             }
@@ -198,10 +198,8 @@ internal static partial class IsoRepair
         }
 
         // ---- write
-        bool ok = false;
-        try
         {
-            using var output = new RepairOutput(new FileStream(outputPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 16), ct);
+            using var output = new RepairOutput(destination, ct);
             long outMoov = -1;
             bool sidxPlaced = false;
             var fragByMoof = new Dictionary<long, Fragment>();
@@ -306,15 +304,7 @@ internal static partial class IsoRepair
 
             AddFragmentTracks(report, trackIds, frags, 0);
             output.Flush();
-            ok = true;
             return report.Build(RepairStatus.Repaired, output.Position);
-        }
-        finally
-        {
-            if (!ok)
-            {
-                File.Delete(outputPath);
-            }
         }
     }
 

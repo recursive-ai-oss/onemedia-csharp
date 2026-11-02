@@ -54,7 +54,7 @@ internal static class MatroskaRepair
         public long Packets;
     }
 
-    public static RepairReport Run(RepairInput input, string outputPath, MediaLimits limits, CancellationToken ct)
+    public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct)
     {
         var report = new RepairReportBuilder("matroska", input.Length);
         if (!TryHeader(input.Peek(0, 16), out uint firstId, out int ebmlHdr, out long ebmlSize) || firstId != MatroskaIds.Ebml || ebmlSize < 0 || ebmlHdr + ebmlSize > input.Length)
@@ -269,7 +269,7 @@ internal static class MatroskaRepair
             report.Add(RepairAction.Kept, "Cues", -1, cuesEls[0].Offset, cuesEls[0].HeaderSize + cuesEls[0].PayloadSize, "Cues point at real Clusters and tracks.", RepairConfidence.High);
             report.Add(RepairAction.Kept, "SeekHead", -1, seekHeads[0].Offset, seekHeads[0].HeaderSize + seekHeads[0].PayloadSize, "Every entry points at the element it names.", RepairConfidence.High);
             report.Add(RepairAction.Kept, "Info", -1, info!.Offset, info.HeaderSize + info.PayloadSize, "The duration agrees with the last block.", RepairConfidence.High);
-            using (RepairOutput copy = new(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None), ct))
+            using (RepairOutput copy = new(destination, ct))
             {
                 copy.Copy(input, 0, input.Length);
             }
@@ -393,10 +393,8 @@ internal static class MatroskaRepair
             $"{cueCount} cue points built from the keyframes of {(tracks.Exists(t => t.Type == 1) ? "the first video track" : "the audio tracks")}" + (cuesEls.Count > 0 && !cuesOk ? "; the old Cues were invalid." : "."), RepairConfidence.High);
 
         // ---- write
-        bool ok = false;
-        try
         {
-            using var output = new RepairOutput(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16), ct);
+            using var output = new RepairOutput(destination, ct);
             output.Copy(input, 0, ebmlEnd);
             Span<byte> head = stackalloc byte[12]; // Segment ID (4) + 8-byte size
             EbmlWriter.WriteId(head, MatroskaIds.Segment);
@@ -421,16 +419,8 @@ internal static class MatroskaRepair
 
             output.Write(cues);
             output.Flush();
-            ok = true;
             RepairStatus status = RepairStatus.Repaired;
             return report.Build(status, output.Position);
-        }
-        finally
-        {
-            if (!ok)
-            {
-                TryDelete(outputPath);
-            }
         }
     }
 
@@ -1057,20 +1047,6 @@ internal static class MatroskaRepair
         else
         {
             output.Copy(input, from, to - from);
-        }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
         }
     }
 }

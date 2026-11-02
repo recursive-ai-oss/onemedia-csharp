@@ -27,7 +27,7 @@ internal static class TsRepair
         public int OutCc = -1;
     }
 
-    public static RepairReport Run(RepairInput input, string outputPath, MediaLimits limits, CancellationToken ct)
+    public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct)
     {
         var report = new RepairReportBuilder("mpegts", input.Length);
         if (!FindLayout(input, out int packetSize, out int prefix, out long first))
@@ -332,7 +332,7 @@ internal static class TsRepair
 
         if (!changed)
         {
-            using (RepairOutput copy = new(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None), ct))
+            using (RepairOutput copy = new(destination, ct))
             {
                 copy.Copy(input, 0, input.Length);
             }
@@ -341,10 +341,8 @@ internal static class TsRepair
         }
 
         // ---- write
-        bool ok = false;
-        try
         {
-            using var output = new RepairOutput(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16), ct);
+            using var output = new RepairOutput(destination, ct);
             byte[] buffer = new byte[packetSize];
             int wmark = 0;
             long wcum = 0;
@@ -386,15 +384,7 @@ internal static class TsRepair
             }
 
             output.Flush();
-            ok = true;
             return report.Build(RepairStatus.Repaired, output.Position);
-        }
-        finally
-        {
-            if (!ok)
-            {
-                File.Delete(outputPath);
-            }
         }
     }
 

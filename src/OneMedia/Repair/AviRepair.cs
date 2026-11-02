@@ -65,7 +65,7 @@ internal static class AviRepair
         public Item? OldIdx1;
     }
 
-    private sealed class Stream
+    private sealed class StreamState
     {
         public int Index;
         public AviStreamHeader Header;
@@ -77,7 +77,7 @@ internal static class AviRepair
         public string Codec = string.Empty;
     }
 
-    public static RepairReport Run(RepairInput input, string outputPath, MediaLimits limits, CancellationToken ct)
+    public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct)
     {
         var report = new RepairReportBuilder("avi", input.Length);
         ReadOnlySpan<byte> head = input.Peek(0, 16);
@@ -89,7 +89,7 @@ internal static class AviRepair
 
         // ---- scan
         var riffs = new List<Riff>();
-        var streams = new List<Stream>();
+        var streams = new List<StreamState>();
         Riff? current = null;
         long pos = 0;
         long dropped = 0;
@@ -252,7 +252,7 @@ internal static class AviRepair
             }
         }
 
-        foreach (Stream s in streams)
+        foreach (StreamState s in streams)
         {
             report.Tracks.Add(new RepairTrackReport(s.Index, s.Codec, s.Chunks, 0, s.Guess == KeyframeGuess.All ? RepairConfidence.High : RepairConfidence.Medium,
                 [new ByteRange(riffs[0].Movi!.ListOffset, riffs[^1].Movi?.End - riffs[0].Movi!.ListOffset ?? 0)]));
@@ -266,7 +266,7 @@ internal static class AviRepair
         if (!structureChanged && sizesOk && headerOk && idxOk && odmlOk && dropped == 0)
         {
             report.Add(RepairAction.Kept, "idx1", -1, riffs[0].OldIdx1!.Offset, riffs[0].OldIdx1!.Length, "Every index entry points at a chunk of the same size.", RepairConfidence.High);
-            using (RepairOutput copy = new(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None), ct))
+            using (RepairOutput copy = new(destination, ct))
             {
                 copy.Copy(input, 0, input.Length);
             }
@@ -315,10 +315,8 @@ internal static class AviRepair
         byte[] newHdrl = BuildHeaderList(hdrl, streams, firstRiffVideo, videoStream, openDml, ixCounts, riffs.Count, out long[] indxOffsets);
 
         // ---- write
-        bool ok = false;
-        try
         {
-            using var output = new RepairOutput(new FileStream(outputPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 16), ct);
+            using var output = new RepairOutput(destination, ct);
             long idx1Count = 0;
             long firstHdrlOut = 0;
             List<(uint Id, uint Flags, uint Offset, uint Size)>? pendingIdx1 = null;
@@ -400,22 +398,7 @@ internal static class AviRepair
 
                 report.Add(RepairAction.Rebuilt, "indx/ix##", -1, 0, 0, $"{total} standard index chunks built and pointed at by the super indexes.", RepairConfidence.High);
             }
-
-            ok = true;
             return report.Build(RepairStatus.Repaired, output.Position);
-        }
-        finally
-        {
-            if (!ok)
-            {
-                try
-                {
-                    File.Delete(outputPath);
-                }
-                catch (IOException)
-                {
-                }
-            }
         }
     }
 
@@ -435,7 +418,7 @@ internal static class AviRepair
         return (IsDigit(a) && IsDigit(b) && IsLetter(c) && IsLetter(d)) || (a == (byte)'i' && b == (byte)'x' && IsDigit(c) && IsDigit(d));
     }
 
-    private static long ScanMovi(RepairInput input, Movi m, long start, uint declared, List<Stream> streams, byte[] keyBuffer, RepairReportBuilder report, MediaLimits limits,
+    private static long ScanMovi(RepairInput input, Movi m, long start, uint declared, List<StreamState> streams, byte[] keyBuffer, RepairReportBuilder report, MediaLimits limits,
         CancellationToken ct, ref long dropped, ref bool structureChanged, ref bool sawGuess)
     {
         long declaredEnd = m.ListOffset + 8 + (long)declared;
@@ -510,7 +493,7 @@ internal static class AviRepair
                 }
                 else if (stream >= 0 && stream < streams.Count)
                 {
-                    Stream s = streams[stream];
+                    StreamState s = streams[stream];
                     bool key = true;
                     if (s.Guess != KeyframeGuess.All && size > 0 && s.Header.Type == AviStreamHeader.Vids)
                     {
@@ -620,7 +603,7 @@ internal static class AviRepair
         return false;
     }
 
-    private static void ParseHeaders(byte[] hdrl, List<Stream> streams, MediaLimits limits)
+    private static void ParseHeaders(byte[] hdrl, List<StreamState> streams, MediaLimits limits)
     {
         int p = 12;
         while (p + 8 <= hdrl.Length)
@@ -631,7 +614,7 @@ internal static class AviRepair
             if (id == FccList && p + 12 <= hdrl.Length && BinaryPrimitives.ReadUInt32LittleEndian(hdrl.AsSpan(p + 8)) == FccStrl)
             {
                 limits.CheckTracks(streams.Count + 1, p);
-                var s = new Stream { Index = streams.Count };
+                var s = new StreamState { Index = streams.Count };
                 CodecId codec = CodecId.Unknown;
                 int q = p + 12;
                 int e = p + total;
@@ -696,7 +679,7 @@ internal static class AviRepair
         return dropped == 0;
     }
 
-    private static bool HeaderCountsOk(byte[] hdrl, List<Stream> streams, long firstRiffVideo, int videoStream, bool openDml)
+    private static bool HeaderCountsOk(byte[] hdrl, List<StreamState> streams, long firstRiffVideo, int videoStream, bool openDml)
     {
         int p = 12;
         while (p + 8 <= hdrl.Length)
@@ -711,7 +694,7 @@ internal static class AviRepair
             p += (int)Math.Min(8L + size + (size & 1), hdrl.Length - p);
         }
 
-        foreach (Stream s in streams)
+        foreach (StreamState s in streams)
         {
             if (s.OldLength != StreamLength(s))
             {
@@ -724,7 +707,7 @@ internal static class AviRepair
         return true;
     }
 
-    private static uint StreamLength(Stream s) => s.Header.SampleSize > 0 ? (uint)(s.Bytes / s.Header.SampleSize) : (uint)s.Chunks;
+    private static uint StreamLength(StreamState s) => s.Header.SampleSize > 0 ? (uint)(s.Bytes / s.Header.SampleSize) : (uint)s.Chunks;
 
     private static bool Idx1Matches(RepairInput input, Riff riff, Item idx1)
     {
@@ -783,7 +766,7 @@ internal static class AviRepair
         return true;
     }
 
-    private static bool OdmlMatches(RepairInput input, List<Stream> streams, Rec[][] recs, List<Riff> riffs, MediaLimits limits)
+    private static bool OdmlMatches(RepairInput input, List<StreamState> streams, Rec[][] recs, List<Riff> riffs, MediaLimits limits)
     {
         // every stream with a super index: the sum of the entries it points at equals the stream's chunk count, and each ix entry names a chunk of that size
         var chunkLookup = new List<(long Offset, uint Size, int Stream)>();
@@ -879,7 +862,7 @@ internal static class AviRepair
 
     // ---------------------------------------------------------------- building
 
-    private static byte[] BuildHeaderList(byte[] hdrl, List<Stream> streams, long firstRiffVideo, int videoStream, bool openDml, int[] ixCounts, int riffCount, out long[] indxOffsets)
+    private static byte[] BuildHeaderList(byte[] hdrl, List<StreamState> streams, long firstRiffVideo, int videoStream, bool openDml, int[] ixCounts, int riffCount, out long[] indxOffsets)
     {
         var body = new List<byte>(hdrl.Length + 1024);
         indxOffsets = new long[streams.Count];
@@ -950,7 +933,7 @@ internal static class AviRepair
         return result;
     }
 
-    private static void PatchDmlh(byte[] odml, List<Stream> streams, int videoStream)
+    private static void PatchDmlh(byte[] odml, List<StreamState> streams, int videoStream)
     {
         long total = 0;
         int v = videoStream < 0 ? 0 : videoStream;
@@ -973,7 +956,7 @@ internal static class AviRepair
         }
     }
 
-    private static byte[] BuildStrl(byte[] strl, Stream? s, bool openDml, int ixCount, out long indxAt)
+    private static byte[] BuildStrl(byte[] strl, StreamState? s, bool openDml, int ixCount, out long indxAt)
     {
         var body = new List<byte>(strl.Length + 256);
         indxAt = -1;
@@ -1042,7 +1025,7 @@ internal static class AviRepair
         output.Patch(at, b);
     }
 
-    private static void PatchSuperIndex(RepairOutput output, long indxPos, Stream s, List<(long Pos, uint Size, uint Duration)> entries)
+    private static void PatchSuperIndex(RepairOutput output, long indxPos, StreamState s, List<(long Pos, uint Size, uint Duration)> entries)
     {
         // AVISUPERINDEX (OpenDML 1.02): wLongsPerEntry 4, bIndexSubType 0, bIndexType 0, nEntriesInUse, dwChunkId, 3 reserved, then {qwOffset, dwSize, dwDuration}
         byte[] b = new byte[24 + (16 * entries.Count)];
@@ -1059,7 +1042,7 @@ internal static class AviRepair
         output.Patch(indxPos + 8, b);
     }
 
-    private static uint ChunkIdFor(Stream s)
+    private static uint ChunkIdFor(StreamState s)
     {
         char t = s.Header.Type == AviStreamHeader.Vids ? 'd' : 'w';
         char u = s.Header.Type == AviStreamHeader.Vids ? 'c' : 'b';
@@ -1072,7 +1055,7 @@ internal static class AviRepair
         return (uint)('0' + (s.Index / 10 % 10)) | ((uint)('0' + (s.Index % 10)) << 8) | ((uint)t << 16) | ((uint)u << 24);
     }
 
-    private static void WriteMovi(RepairInput input, RepairOutput output, Riff riff, List<Stream> streams, Rec[] recs, bool first, bool openDml,
+    private static void WriteMovi(RepairInput input, RepairOutput output, Riff riff, List<StreamState> streams, Rec[] recs, bool first, bool openDml,
         List<(long Pos, uint Size, uint Duration)>[] superEntries, out List<(uint Id, uint Flags, uint Offset, uint Size)>? idx1Out, CancellationToken ct)
     {
         idx1Out = null;

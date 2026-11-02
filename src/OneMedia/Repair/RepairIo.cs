@@ -73,7 +73,7 @@ internal sealed class RepairInput : IDisposable
     public void Dispose() => ArrayPool<byte>.Shared.Return(_window);
 }
 
-/// <summary>An output stream that counts what it has written and copies input ranges through a pooled buffer.</summary>
+/// <summary>Wraps a caller-owned seekable output stream: counts what is written, copies input ranges through a pooled buffer, and patches earlier bytes.</summary>
 internal sealed class RepairOutput : IDisposable
 {
     private const int CopyBufferSize = 1024 * 1024;
@@ -128,8 +128,7 @@ internal sealed class RepairOutput : IDisposable
 
     public void Dispose()
     {
-        ArrayPool<byte>.Shared.Return(_buffer);
-        _stream.Dispose();
+        ArrayPool<byte>.Shared.Return(_buffer); // the stream belongs to the caller
     }
 }
 

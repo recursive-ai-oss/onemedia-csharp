@@ -42,7 +42,7 @@ internal static partial class IsoRepair
         public long[] FirstSampleSize = [];
     }
 
-    public static RepairReport Run(RepairInput input, string outputPath, MediaLimits limits, CancellationToken ct)
+    public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct)
     {
         var report = new RepairReportBuilder("isobmff", input.Length);
         var boxes = new List<BoxHeader>();
@@ -86,8 +86,8 @@ internal static partial class IsoRepair
         }
 
         return fragmented
-            ? RunFragmented(input, outputPath, limits, report, boxes, moov.Value, tail, ct)
-            : RunProgressive(input, outputPath, limits, report, boxes, moov.Value, tail, ct);
+            ? RunFragmented(input, destination, limits, report, boxes, moov.Value, tail, ct)
+            : RunProgressive(input, destination, limits, report, boxes, moov.Value, tail, ct);
     }
 
     // ---------------------------------------------------------------- boxes
@@ -187,7 +187,7 @@ internal static partial class IsoRepair
 
     // ---------------------------------------------------------------- progressive
 
-    private static RepairReport RunProgressive(RepairInput input, string outputPath, MediaLimits limits, RepairReportBuilder report,
+    private static RepairReport RunProgressive(RepairInput input, Stream destination, MediaLimits limits, RepairReportBuilder report,
         List<BoxHeader> boxes, BoxHeader moov, long tail, CancellationToken ct)
     {
         limits.CheckAllocation(moov.Size, moov.Offset);
@@ -409,7 +409,7 @@ internal static partial class IsoRepair
         if (patches.Count == 0 && tail == 0)
         {
             report.Add(RepairAction.Kept, "stco", -1, moov.Offset, moov.Size, "Chunk offsets point at media data and the durations agree with the sample tables.", RepairConfidence.High);
-            using (RepairOutput copy = new(new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None), ct))
+            using (RepairOutput copy = new(destination, ct))
             {
                 copy.Copy(input, 0, input.Length);
             }
@@ -417,10 +417,8 @@ internal static partial class IsoRepair
             return report.Build(beyond > 0 ? RepairStatus.PartiallyRepaired : RepairStatus.NothingToRepair, input.Length);
         }
 
-        bool ok = false;
-        try
         {
-            using var output = new RepairOutput(new FileStream(outputPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 16), ct);
+            using var output = new RepairOutput(destination, ct);
             output.Copy(input, 0, outLength);
             foreach ((long at, byte[] bytes) in patches)
             {
@@ -428,15 +426,7 @@ internal static partial class IsoRepair
             }
 
             output.Flush();
-            ok = true;
             return report.Build(beyond > 0 ? RepairStatus.PartiallyRepaired : RepairStatus.Repaired, output.Position);
-        }
-        finally
-        {
-            if (!ok)
-            {
-                File.Delete(outputPath);
-            }
         }
     }
 
