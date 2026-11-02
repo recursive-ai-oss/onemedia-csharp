@@ -128,7 +128,7 @@ but it holds a pool thread while it waits and is **not suitable for single-threa
 
 ## Differences from ffprobe 7.0.2
 
-The pinned ffprobe/ffmpeg 7.0.2 static build **crashes (segmentation fault)** on any transport stream that contains the SDT ffmpeg's own muxer writes. [Agent default] The packet
+The pinned ffprobe/ffmpeg 7.0.2 static build **crashes (segmentation fault)** on any transport stream that contains the SDT ffmpeg's own muxer writes. The packet
 differential therefore runs on copies with that table removed (`tools/corpus/ts_tools.py stripsdt`, kept under `generated/mpeg/tsx/`); the SDT itself is checked by the unit tests and by
 ExifTool and MediaInfo. Every other difference below is a scoped rule in `tools/OneMedia.Oracles/exceptions.tsv` (rule, follows, reason); a rule only excuses the difference it names.
 Sweep (`tools/run-mpeg-sweep.sh`): 149 files (generated transport, program and elementary streams, and the published samples), 54,785 ffprobe packets and 53,814 of ours (the difference is the classes below); 0 unexplained.

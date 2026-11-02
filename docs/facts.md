@@ -41,7 +41,7 @@ The resolver orders candidates by tier, then by the order the readers produced t
 | 6 | `FileSystem` | last-write time (when the file was saved, not recorded) |
 
 File name and file-system candidates exist only when the caller supplies them (`FactEvidence.FileName`, `FileSystemTimeUtc`; the happy path's
-`AddSidecarsBesideFile` turns them on). Telemetry GPS samples count only with a fix of 2D or 3D and a UTC year of 2000 or later (a receiver that has not
+`AddSidecarsBesideFile` turns them on; `MediaFile.UseFileSystemTime = false` leaves the last-write time out, because it changes with every copy or save). `onemedia info` leaves it out unless `--file-times` is given, so its output repeats from run to run. Telemetry GPS samples count only with a fix of 2D or 3D and a UTC year of 2000 or later (a receiver that has not
 locked reports its epoch). `Resolution.Reason` names the winner's tier, how many readings it beat, the runner-up, and the gap when both have a known instant and differ by more than 2 s.
 
 ## Location, device, the rest

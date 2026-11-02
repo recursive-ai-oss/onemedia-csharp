@@ -4,7 +4,7 @@ Decoders for the timed sensor data that cameras and phones store in a data track
 
 ## API
 
-- `media.Telemetry`: every telemetry track as typed `TelemetryChannel` lists (u41's model). Eager: it reads the whole track, so use the pull reader for long files.
+- `media.Telemetry`: every telemetry track as typed `TelemetryChannel` lists (the same model the fact resolver reads). Eager: it reads the whole track, so use the pull reader for long files.
 - `MediaFile.OpenTelemetry(track)` returns a `TelemetryTrackReader`; `TryRead(out TelemetryItem item)` is the pull path. It owns the file read position like the other readers, keeps one packet in memory, and allocates nothing per sample once its buffers have grown (test: decoders into a reused collector allocate 0 bytes over 200 repeats; pulling `hero5.mp4`, 22,861 samples, allocates 0 bytes after the first quarter of the file).
 - `TelemetryItem` is a struct: `Kind`, channel index, exact `MediaTime Time` and `Duration`, up to 14 `double` components, the source `Range` of the sample's bytes, and for GPS the fix and GPS time. `RawData(item)` returns the sample's bytes for items the decoder keeps raw.
 - `GpmfKlv`/`GpmfKlvReader` and `CammPacket`, `MebxKeyTable` expose the format layers.
@@ -32,7 +32,7 @@ KLV: 4-byte key, type, size, repeat (big-endian), data padded to 4 bytes; type 0
 
 ## CAMM
 
-Packet: u16 reserved, u16 type, little-endian. Types 0 to 7 decode as in the Google specification; other types are raw. `time_gps_epoch` is "time since the GPS epoch" in the specification. We read that as the GPS time scale (1980-01-06, leap seconds not counted) and convert to UTC with a leap-second table; the raw seconds stay in component 13. ExifTool reads the number as Unix time. No real CAMM device file was available to say which writers follow the specification [Agent default].
+Packet: u16 reserved, u16 type, little-endian. Types 0 to 7 decode as in the Google specification; other types are raw. `time_gps_epoch` is "time since the GPS epoch" in the specification. We read that as the GPS time scale (1980-01-06, leap seconds not counted) and convert to UTC with a leap-second table; the raw seconds stay in component 13. ExifTool reads the number as Unix time. No real CAMM device file was available to say which writers follow the specification, so this reading is a default that may change.
 
 ## mebx
 
@@ -81,7 +81,7 @@ Hostile DJI text, protobuf and SEI input never throws and adds no defect codes (
 
 ## Privacy
 
-Every location and device item keeps its `Range`, so a strip operation can find and overwrite the bytes.
+**Privacy strip is not in this release.** Nothing here removes location or device data from telemetry tracks; `onemedia tags` and `TagWriter` edit tag fields only, and GPS or device identifiers inside telemetry tracks, Exif blocks and XMP stay in the file. Every location and device item keeps its `Range`, so a later strip operation can find and overwrite the bytes.
 
 ## Verification
 

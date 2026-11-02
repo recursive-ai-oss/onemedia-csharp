@@ -502,6 +502,31 @@ public class FactsHappyPathTests
     }
 }
 
+public class FileTimeEvidenceTests
+{
+    [Fact]
+    public void TheLastWriteTimeIsOfferedOnlyWhileUseFileSystemTimeIsOn()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "onemedia-filetime-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string media = Path.Combine(dir, "C0001.mp4");
+            File.Copy(TagTestHelpers.Path("tags_ilst.mp4"), media);
+            using MediaFile f = Media.Open(media);
+            f.UseFileSystemTime = false;
+            f.AddSidecarsBesideFile();
+            Assert.DoesNotContain(f.CaptureTime.Candidates, c => c.Source == "filesystem");
+            f.UseFileSystemTime = true;
+            Assert.Contains(f.CaptureTime.Candidates, c => c.Source == "filesystem");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+}
+
 public class FactsFixtureTests
 {
     private static byte[] Fixture(string name) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "facts", name));

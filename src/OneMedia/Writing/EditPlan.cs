@@ -124,8 +124,9 @@ public readonly record struct WriteChange(string Description, ByteRange Source, 
 /// </summary>
 public sealed class EditPlan
 {
-    internal EditPlan(IReadOnlyList<OutputPiece> pieces, long sourceLength, IReadOnlyList<WriteChange> changes, long paddingUsed, long paddingAvailable, long paddingRequired)
+    internal EditPlan(IReadOnlyList<OutputPiece> pieces, long sourceLength, IReadOnlyList<WriteChange> changes, long paddingUsed, long paddingAvailable, long paddingRequired, string? shortfallIn = null)
     {
+        ShortfallIn = shortfallIn;
         Pieces = pieces;
         SourceLength = sourceLength;
         Changes = changes;
@@ -177,6 +178,12 @@ public sealed class EditPlan
     /// shortfalls, at least 1 per edit that did not fit). 0 when the plan fits.
     /// </summary>
     public long PaddingRequired { get; }
+
+    /// <summary>
+    /// Which part of the file lacks the room when the edit needs more than the padding gives (for example <c>APEv2 tag</c>: that tag grows and has no
+    /// padding, whatever padding another tag in the file has), or null when the plan does not say or fits.
+    /// </summary>
+    public string? ShortfallIn { get; }
 }
 
 /// <summary>What a write did.</summary>
@@ -263,6 +270,23 @@ public sealed class PaddingRequiredException : MediaException
         Required = required;
         Available = available;
     }
+
+    /// <summary>Creates the exception for a plan whose shortfall is in a named part of the file.</summary>
+    /// <param name="required">Bytes of padding still missing.</param>
+    /// <param name="available">Bytes of padding that were available beside the edited nodes.</param>
+    /// <param name="shortfallIn">The part of the file that lacks the room, for example <c>APEv2 tag</c>.</param>
+    public PaddingRequiredException(long required, long available, string? shortfallIn)
+        : base(shortfallIn is null
+            ? $"The edit does not fit in the existing padding: {required} more byte(s) of padding are needed ({available} available). Save to a new file instead."
+            : $"The edit does not fit in place: the {shortfallIn} would grow by {required} byte(s) and has no padding to take it (padding elsewhere in the file, {available} byte(s), cannot help). Save to a new file instead, or limit the edit to the tag systems that have room.")
+    {
+        Required = required;
+        Available = available;
+        ShortfallIn = shortfallIn;
+    }
+
+    /// <summary>The part of the file that lacks the room, or null when the edit simply needs more padding.</summary>
+    public string? ShortfallIn { get; }
 
     /// <summary>Bytes of additional padding the edit needed.</summary>
     public long Required { get; }
@@ -366,8 +390,8 @@ internal sealed class PieceList
     public void NoteChange(string description, ByteRange source, long outputStart) =>
         _changes.Add(new WriteChange(description, source, new ByteRange(outputStart, Length - outputStart)));
 
-    public EditPlan ToPlan(long sourceLength, long paddingUsed, long paddingAvailable, long paddingRequired) =>
-        new([.. _pieces], sourceLength, [.. _changes], paddingUsed, paddingAvailable, paddingRequired);
+    public EditPlan ToPlan(long sourceLength, long paddingUsed, long paddingAvailable, long paddingRequired, string? shortfallIn = null) =>
+        new([.. _pieces], sourceLength, [.. _changes], paddingUsed, paddingAvailable, paddingRequired, shortfallIn);
 
     /// <summary>CRC-32 (EBML polynomial) of the bytes this list will produce, streamed so nothing is held.</summary>
     public uint Crc32(IMediaSource source, CancellationToken cancellationToken)

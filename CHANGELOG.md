@@ -4,13 +4,28 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+Fixes for 0.3.0-preview.2, privacy first.
+
+### Privacy
+
+- Any save of an MP3 (or other ID3v2-led audio file) now zeroes leftovers in the ID3v2 padding: a frame or other non-zero bytes sitting after the live frames, whatever the edit. `Save`, `SaveAs` and `SaveInPlace` all do it, with edits for other fields and with no edits at all (before, a save with no edits copied the file unchanged, and an edit that left the live frames as they were kept the old padding). A plain save of a file with such leftovers, for example `onemedia tags file.mp3 --replace`, removes them, and so does the plain save a tool like `media.Save()` does.
+- New check: `TagWriter.CheckResidue` and `onemedia tags <file> --check` report leftover removed or stale values in ID3v2 padding (non-zero bytes, a frame inside the padding) and a frame right after the tag where audio should start; they name where the bytes are and never print them. `--check` exits 1 when it finds something and 0 when the file is clean. Other tag systems (APE, Vorbis comments and FLAC padding, `ilst`/`udta`, Matroska Tags and Void, RIFF INFO and `JUNK`, ASF) write their padding as generated zeros on every edit and are tested to leave no removed value behind; `--check` does not scan them.
+- A file that 0.3.0-preview.1 left with a removed field still in place holds that field as an ordinary frame of the tag. No version can tell it from a tag you meant to keep, so a save does not remove it. Open the file with this version, remove those fields again and save (`onemedia tags file.mp3 --remove comment --remove composer --replace`), then run `onemedia tags file.mp3 --check`.
+
+### Fixed
+
+- A refused in-place edit says where the room is missing. `onemedia tags file.mp3 --set title=x --in-place` on an MP3 with an ID3v2 tag and an APEv2 tag at the end is refused because the edit goes to both tags and the APE tag has no padding to grow into; the message used to blame "padding" and quote the ID3v2 tag's free bytes ("needs 19 byte(s), the file has 1070 of padding"). It now reads "The edit does not fit in place: the APEv2 tag would grow by 19 byte(s) and has no padding to take it ...", `PaddingRequiredException.ShortfallIn` names the part, and `--system id3v2` (`TagWriteOptions.Systems`) writes the edit in place. The refusal itself is unchanged from 0.3.0-preview.2.
+- `onemedia info` no longer offers the file's last-write time as a capture-time candidate unless asked, so its output repeats from run to run. Add `--file-times` for the old behaviour. The library's `MediaFile.UseFileSystemTime` (default true) controls the same candidate.
+- The AVI codec-string example in the preview.2 entry below said `avc1.64001E` for a Sintel file; that string is High profile level 3.0 (the small test fixtures). Sintel's own stream is High level 4.0, `avc1.640028`, which is what ffprobe 7.0.2 reports for it.
+- Public docs lost internal planning markers; `docs/telemetry.md` says that privacy strip is not in this release.
+
 ## [0.3.0-preview.2] - 2026-11-02
 
 Fixes for 0.3.0-preview.1, plus early previews of capture facts and telemetry. The previews are checked against ExifTool on published sample files and on files we generate, not yet on a corpus of device recordings; their behaviour may change.
 
 ### Privacy
 
-- In 0.3.0-preview.1, removing frames from the end of an ID3v2 tag in an MP3 in place could leave the removed frames' bytes in the file as padding, so a removed location, comment or serial number could survive. Fixed: an edit that removes trailing frames now overwrites them. **If you removed tags from MP3 files with 0.3.0-preview.1, save those files again with this version.** No other format was affected (checked on MP3, AIFF, WAV, FLAC, Opus, Ogg, MP4 and MKV).
+- In 0.3.0-preview.1, removing frames from the end of an ID3v2 tag in an MP3 in place did not remove them: the writer judged the edit unchanged and left the file as it was, so the removed frames stayed in the tag as valid frames, and readers such as ffprobe and ExifTool still showed the value. 0.3.0-preview.2 made an in-place removal of trailing frames take effect, but it did not clean files already affected or leftovers an earlier edit had left in the padding: saving such a file again kept them, and only removing the field again cleaned it. See 0.3.0-preview.3 for the fix and for what to do with a file affected by either version. No other format was affected (checked on MP3, AIFF, WAV, FLAC, Opus, Ogg, MP4 and MKV).
 
 ### Added
 
@@ -19,7 +34,7 @@ Fixes for 0.3.0-preview.1, plus early previews of capture facts and telemetry. T
 
 ### Fixed
 
-- AVI written by stream copy from an MP4 whose `avcC`/`hvcC`/`vvcC` record has an odd length (RIFF pads the `strf` chunk to an even size) is read again: the record ends at `biSize`, so the pad byte no longer defeats the parse. Such files get their codec string (`avc1.64001E`, not none) and remux to MP4 and Matroska with their video: an AVI whose record is present is carried as length-prefixed samples with that record instead of being searched for Annex B parameter sets.
+- AVI written by stream copy from an MP4 whose `avcC`/`hvcC`/`vvcC` record has an odd length (RIFF pads the `strf` chunk to an even size) is read again: the record ends at `biSize`, so the pad byte no longer defeats the parse. Such files get their codec string (for example `avc1.64001E` for High profile level 3.0, not none) and remux to MP4 and Matroska with their video: an AVI whose record is present is carried as length-prefixed samples with that record instead of being searched for Annex B parameter sets.
 - A remux, and `MakePlayable`, no longer report success when the picture was lost. `RemuxReport.LostMediaTracks` lists the wanted video tracks, and the audio tracks when none of them was written, that did not reach the output for any reason but the caller's own choice; `MakePlayable` returns `Failed` (no output file) with a `remux.dropped-track` blocker instead of `Made`, and `onemedia remux` prints a warning and exits with 3. Deselecting or dropping a track on request is still a choice, not a loss.
 - MP4/MOV written from Matroska (or any input whose frames are reordered and that has no edit list of its own) kept an edit list shorter than the presentation by the reorder delay, so players dropped the last one or two frames (sintel 1,251 of 1,253 frames decoded, test5 1,103 of 1,104). The edit's `segment_duration` now runs to the end of the last frame shown (ISO/IEC 14496-12 section 8.6.6).
 - Remux loss lines name the input track: the muxer's own message prefix ("Track 2:") counts the tracks it had accepted, not the input's numbering, so losses of input tracks 3 to 7 read "Track 2". They now read "Input track N:", as the change lines do.

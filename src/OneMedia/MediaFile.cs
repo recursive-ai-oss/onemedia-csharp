@@ -175,6 +175,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     private IFactResolver _resolver = DefaultFactResolver.Instance;
     private MediaFacts? _resolved;
     private bool _useFileEvidence;
+    private bool _useFileSystemTime = true;
 
     /// <summary>
     /// The facts resolver. Defaults to <see cref="DefaultFactResolver.Instance"/> (docs/facts.md); assign another <see cref="IFactResolver"/> to change how
@@ -217,6 +218,20 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(evidence);
         _extraEvidence.Add(evidence);
         _resolved = null;
+    }
+
+    /// <summary>
+    /// Whether <see cref="AddSidecarsBesideFile"/> also offers the file's last-write time as the last-resort capture-time candidate. Default true. The time
+    /// changes whenever the file is copied or saved, so a caller that wants repeatable output turns it off; the file-name candidate is not affected.
+    /// </summary>
+    public bool UseFileSystemTime
+    {
+        get => _useFileSystemTime;
+        set
+        {
+            _useFileSystemTime = value;
+            _resolved = null;
+        }
     }
 
     /// <summary>
@@ -271,7 +286,11 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
         if (_useFileEvidence && SourcePath is { } path)
         {
-            e = e with { FileName = Path.GetFileName(path), FileSystemTimeUtc = File.GetLastWriteTimeUtc(path) };
+            e = e with { FileName = Path.GetFileName(path) };
+            if (_useFileSystemTime)
+            {
+                e = e with { FileSystemTimeUtc = File.GetLastWriteTimeUtc(path) };
+            }
         }
 
         return e;

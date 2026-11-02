@@ -7,15 +7,15 @@
 #   tools/run-tagwrite-checks.sh inplace <family> [corpus-dir]
 #   tools/run-tagwrite-checks.sh large   <file>...                 one big file each: edit with peak memory
 #
-# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), OUT (default ~/onemedia/u30-tagwrite/out), JOBS (default 4),
+# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), OUT (default ~/onemedia/tagwrite/out), JOBS (default 4),
 # MAXSIZE (bytes, default 1 GiB).
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$HOME/dotnet10:${ONEMEDIA_ORACLES:-$HOME/onemedia/oracles/bin}:$PATH DOTNET_ROOT=$HOME/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
-OUT=${OUT:-$HOME/onemedia/u30-tagwrite/out}
-WORK=${WORK:-$HOME/onemedia/u30-tagwrite/work}
-BIN=${BIN:-$HOME/onemedia/u30-tagwrite/bin}
+OUT=${OUT:-$HOME/onemedia/tagwrite/out}
+WORK=${WORK:-$HOME/onemedia/tagwrite/work}
+BIN=${BIN:-$HOME/onemedia/tagwrite/bin}
 JOBS=${JOBS:-4}
 MAXSIZE=${MAXSIZE:-1073741824}
 CORPUS=${3:-$HOME/onemedia/corpus}
@@ -65,8 +65,8 @@ cross)
   # Edits each file of a family, then reads the result with ATL.NET and TagLib# (comparators only).
   fam=${2:?family}
   list_files "$fam" > "$OUT/$fam.list"
-  CROSS="dotnet $HOME/onemedia/u30-tagwrite/bin-cross/OneMedia.Bench.dll crossread"
-  (cd "$HERE" && dotnet build bench/OneMedia.Bench -c Release -v quiet -clp:NoSummary -m:4 -o "$HOME/onemedia/u30-tagwrite/bin-cross" 2>&1 | grep -E 'error|warning' | head -3)
+  CROSS="dotnet $HOME/onemedia/tagwrite/bin-cross/OneMedia.Bench.dll crossread"
+  (cd "$HERE" && dotnet build bench/OneMedia.Bench -c Release -v quiet -clp:NoSummary -m:4 -o "$HOME/onemedia/tagwrite/bin-cross" 2>&1 | grep -E 'error|warning' | head -3)
   mkdir -p "$WORK/cross"; : > "$OUT/$fam.cross.tsv"
   while read -r f; do
     o="$WORK/cross/$(basename "$f")"

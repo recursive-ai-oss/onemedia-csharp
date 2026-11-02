@@ -3,13 +3,13 @@
 # (ffprobe), decoded length (ffmpeg), tag agreement (ExifTool, ATL.NET, TagLib#), probe I/O (ffprobe, MediaInfo, ExifTool; over HTTP ranges and
 # with strace) and the pull-path allocation. Run from the repository root on the machine that holds the oracles and corpus.
 #   tools/audio-es/run-all.sh [STEP...]     steps: gen diff info decode tags io alloc  (default: all)
-# Results go to $OUT (default ~/onemedia/u12-mp3-es/results). A step that finds differences prints them and carries on.
+# Results go to $OUT (default ~/onemedia/mp3-es/results). A step that finds differences prints them and carries on.
 set -uo pipefail
 export PATH=~/dotnet10:$PATH DOTNET_ROOT=~/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 O="${ONEMEDIA_HOME:-$HOME/onemedia}"
 export ONEMEDIA_HOME="$O"
-OUT="${OUT:-$O/u12-mp3-es/results}"
-export ONEMEDIA_SCRATCH="${ONEMEDIA_SCRATCH:-$O/u12-mp3-es}"
+OUT="${OUT:-$O/mp3-es/results}"
+export ONEMEDIA_SCRATCH="${ONEMEDIA_SCRATCH:-$O/mp3-es}"
 ART="$ONEMEDIA_SCRATCH/artifacts"
 G="$O/corpus/generated/audio-es"
 export PATH="$O/oracles/bin:$PATH"

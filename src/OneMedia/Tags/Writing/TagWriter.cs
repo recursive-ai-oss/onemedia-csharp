@@ -47,7 +47,13 @@ public static class TagWriter
         TagFamily family = Sniff(source, out long audioStart);
         if (edits.IsEmpty && family != TagFamily.None)
         {
-            // Nothing was asked for, so nothing changes: not even an old ID3v2 tag is upgraded or an extended header dropped.
+            // Nothing was asked for, so nothing changes: not even an old ID3v2 tag is upgraded or an extended header dropped. The one exception is
+            // leftover bytes from earlier edits in ID3v2 padding, which are zeroed: they may be a value that was removed.
+            if (family == TagFamily.Mp3)
+            {
+                return Mp3TagWriter.CleanPlan(source, limits, cancellationToken);
+            }
+
             PieceList same = new();
             same.AddCopy(0, source.Length);
             return new TagWritePlan(same.ToPlan(source.Length, 0, 0, 0), new TagWriteReport([], []));
@@ -109,6 +115,30 @@ public static class TagWriter
         TagWritePlan plan = Plan(path, edits, options, cancellationToken);
         plan.Report.Write = SafeWriter.SaveInPlace(plan.Plan, path, cancellationToken);
         return plan.Report;
+    }
+
+    /// <summary>
+    /// Looks for bytes of removed or stale values that an earlier edit left in the file. For ID3v2 at the start of a file (MP3 and other ID3-led audio) it
+    /// reports padding that is not all zeros, frames sitting in the padding, and a frame right after the tag where audio should start. Other tag
+    /// systems write their padding as zeros on every edit and are not scanned. Saving the file with any edit, or none, removes what this finds in padding.
+    /// </summary>
+    /// <param name="path">The file.</param>
+    /// <param name="cancellationToken">Cancels the scan.</param>
+    /// <returns>What was found; empty when the file is clean or has no ID3v2 tag. Values are never copied into the result.</returns>
+    public static IReadOnlyList<TagResidue> CheckResidue(string path, CancellationToken cancellationToken = default)
+    {
+        using FileMediaSource source = FileMediaSource.Open(path);
+        return CheckResidue(source, cancellationToken);
+    }
+
+    /// <summary>Looks for leftover removed or stale values in a source; see <see cref="CheckResidue(string, CancellationToken)"/>.</summary>
+    /// <param name="source">The source.</param>
+    /// <param name="cancellationToken">Cancels the scan.</param>
+    /// <returns>What was found.</returns>
+    public static IReadOnlyList<TagResidue> CheckResidue(IMediaSource source, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return Mp3TagWriter.FindResidue(source, MediaLimits.Default, cancellationToken);
     }
 
     private enum TagFamily

@@ -19,6 +19,7 @@ internal static class TagsCommand
         string? output = null;
         bool replace = false;
         bool inPlace = false;
+        bool check = false;
         string coverType = nameof(PictureType.FrontCover);
         string? cover = null;
         try
@@ -67,6 +68,9 @@ internal static class TagsCommand
                     case "--in-place":
                         inPlace = true;
                         break;
+                    case "--check":
+                        check = true;
+                        break;
                     default:
                         Console.Error.WriteLine("unknown option " + args[i]);
                         return 2;
@@ -80,7 +84,19 @@ internal static class TagsCommand
                 edits.SetPicture(image, mime, Enum.TryParse(coverType, true, out PictureType t) ? t : PictureType.FrontCover);
             }
 
-            if (edits.IsEmpty)
+            if (check)
+            {
+                IReadOnlyList<TagResidue> residue = TagWriter.CheckResidue(path);
+                foreach (TagResidue r in residue)
+                {
+                    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{r.System}: {r.Kind} at {r.Offset}, {r.Length} byte(s): {r.Detail}"));
+                }
+
+                Console.WriteLine(residue.Count == 0 ? "clean: no leftover removed or stale values found" : "leftovers found: save the file to zero them: onemedia tags <file> --replace");
+                return residue.Count == 0 ? 0 : 1;
+            }
+
+            if (edits.IsEmpty && output is null && !replace && !inPlace)
             {
                 return Show(path);
             }
@@ -110,7 +126,9 @@ internal static class TagsCommand
         }
         catch (PaddingRequiredException e)
         {
-            Console.Error.WriteLine($"the edit needs {e.Required} byte(s) and the file has {e.Available} of padding; use --out or --replace");
+            Console.Error.WriteLine(e.ShortfallIn is null
+                ? $"the edit needs {e.Required} byte(s) and the file has {e.Available} of padding; use --out or --replace"
+                : $"{e.Message} Use --out or --replace, or --system to limit the edit.");
             return 1;
         }
         catch (MediaException e)

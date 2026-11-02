@@ -10,18 +10,18 @@
 #   tools/run-writer-checks.sh kill        <file> [rounds] kill -9 an atomic Save at several points
 #   tools/run-writer-checks.sh promote     <moov-last.mp4> grow a moov-first MP4 across 4 GiB (stco -> co64) and a plain WAVE across 4 GiB (-> RF64)
 #
-# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), OUT (default ~/onemedia/u25-writer/out), JOBS (default 6),
+# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), OUT (default ~/onemedia/writer/out), JOBS (default 6),
 # MAXSIZE (bytes, default 1 GiB: larger files are left to the "large" stage).
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$HOME/dotnet10:${ONEMEDIA_ORACLES:-$HOME/onemedia/oracles/bin}:$PATH DOTNET_ROOT=$HOME/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
-OUT=${OUT:-$HOME/onemedia/u25-writer/out}
-WORK=${WORK:-$HOME/onemedia/u25-writer/work}
+OUT=${OUT:-$HOME/onemedia/writer/out}
+WORK=${WORK:-$HOME/onemedia/writer/work}
 JOBS=${JOBS:-6}
 MAXSIZE=${MAXSIZE:-1073741824}
 CORPUS=${2:-$HOME/onemedia/corpus}
-BIN=$HOME/onemedia/u25-writer/bin
+BIN=$HOME/onemedia/writer/bin
 mkdir -p "$OUT" "$WORK" "$BIN"
 TOOL="dotnet $BIN/OneMedia.WriterCheck.dll"
 

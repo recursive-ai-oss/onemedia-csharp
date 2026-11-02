@@ -6,7 +6,7 @@
 set -u
 BIN=${BIN:?set BIN to the TelemetryCheck release dll}
 ORACLES=${ORACLES:-$HOME/onemedia/oracles/bin}
-OUT=${OUT:-$HOME/onemedia/u43-djimdpm/compare}
+OUT=${OUT:-$HOME/onemedia/djimdpm/compare}
 HERE=$(cd "$(dirname "$0")" && pwd)
 PATH=$ORACLES:$PATH
 mkdir -p "$OUT"
