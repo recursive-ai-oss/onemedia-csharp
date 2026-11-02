@@ -65,7 +65,21 @@ function Show-InPhotos([string]$full, [string]$shotBase) {
             foreach ($n in 'Info', 'File info', 'Information') {
                 $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::NameProperty), $n
                 $btn = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
-                if ($btn) { $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); $done = $true; $r.infoButton = $n; break }
+                if ($btn) {
+                    $r.infoButton = $n
+                    $p = $null
+                    if ($btn.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$p)) { $p.Invoke(); $done = $true; $r.infoVia = 'invoke' }
+                    elseif ($btn.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p)) { $p.Toggle(); $done = $true; $r.infoVia = 'toggle' }
+                    else {
+                        # No pattern: click the button's centre with the mouse.
+                        $pt = $btn.GetClickablePoint()
+                        Add-Type -Namespace Win32 -Name Mouse -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, int e);'
+                        [Win32.Mouse]::SetCursorPos([int]$pt.X, [int]$pt.Y) | Out-Null
+                        [Win32.Mouse]::mouse_event(2, 0, 0, 0, 0); [Win32.Mouse]::mouse_event(4, 0, 0, 0, 0)
+                        $done = $true; $r.infoVia = 'click'
+                    }
+                    break
+                }
             }
         }
         if (-not $done) { [System.Windows.Forms.SendKeys]::SendWait('^i'); $r.infoButton = 'keys' }
