@@ -362,6 +362,40 @@ public sealed record SubtitleStyle(string Name)
     public SubtitleList<SubtitleExtra> Extras { get; init; } = SubtitleList.Empty<SubtitleExtra>();
 }
 
+/// <summary>
+/// A decoded bitmap shown with a cue (PGS, VobSub and DVB subtitles). Pixels are 8-bit R, G, B, A in that byte order, rows top to
+/// bottom, <see cref="Stride"/> bytes apart. Equality compares the pixel bytes.
+/// </summary>
+/// <param name="X">Left edge, in pixels of the display size.</param>
+/// <param name="Y">Top edge, in pixels of the display size.</param>
+/// <param name="Width">Width in pixels.</param>
+/// <param name="Height">Height in pixels.</param>
+/// <param name="Stride">Bytes from the start of one row to the next; at least <c>Width * 4</c>.</param>
+/// <param name="Pixels">The pixel bytes, at least <c>Stride * Height</c> long.</param>
+public sealed record SubtitleImage(int X, int Y, int Width, int Height, int Stride, byte[] Pixels)
+{
+    /// <summary>Width of the video or display frame that <see cref="X"/> and <see cref="Y"/> refer to; 0 when unknown.</summary>
+    public int DisplayWidth { get; init; }
+
+    /// <summary>Height of the video or display frame that <see cref="X"/> and <see cref="Y"/> refer to; 0 when unknown.</summary>
+    public int DisplayHeight { get; init; }
+
+    /// <summary>True when colour channels are already multiplied by alpha; false (the default) means straight alpha.</summary>
+    public bool IsPremultiplied { get; init; }
+
+    /// <summary>Format-specific information such as the object id or palette id the bitmap came from.</summary>
+    public SubtitleList<SubtitleExtra> Extras { get; init; } = SubtitleList.Empty<SubtitleExtra>();
+
+    /// <inheritdoc />
+    public bool Equals(SubtitleImage? other) =>
+        other is not null && X == other.X && Y == other.Y && Width == other.Width && Height == other.Height && Stride == other.Stride
+        && DisplayWidth == other.DisplayWidth && DisplayHeight == other.DisplayHeight && IsPremultiplied == other.IsPremultiplied
+        && Pixels.AsSpan().SequenceEqual(other.Pixels) && Extras.Equals(other.Extras);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(X, Y, Width, Height, Stride, Pixels.Length, IsPremultiplied);
+}
+
 /// <summary>One subtitle or caption: a stretch of time and the text shown during it.</summary>
 public sealed record SubtitleCue
 {
@@ -397,6 +431,9 @@ public sealed record SubtitleCue
 
     /// <summary>Format-specific information kept for same-format writing.</summary>
     public SubtitleList<SubtitleExtra> Extras { get; init; } = SubtitleList.Empty<SubtitleExtra>();
+
+    /// <summary>Bitmaps shown by the cue (several for a PGS composition). Empty for text cues; a bitmap cue may have no <see cref="Text"/>.</summary>
+    public SubtitleList<SubtitleImage> Images { get; init; } = SubtitleList.Empty<SubtitleImage>();
 
     /// <summary>End minus start, in this cue's start timescale (rounded toward zero when the timescales differ).</summary>
     public MediaTime Duration => End.Subtract(Start, MediaRounding.TowardZero);

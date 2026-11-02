@@ -155,7 +155,7 @@ internal static class SubsCommand
             }
 
             var parts = new List<string>();
-            for (long bit = 1; bit <= (long)SubtitleFeatures.Header; bit <<= 1)
+            for (long bit = 1; bit <= (long)SubtitleFeatures.Images; bit <<= 1)
             {
                 var f = (SubtitleFeatures)bit;
                 if ((affected & f) != 0)

@@ -78,6 +78,9 @@ public enum SubtitleFeatures : long
 
     /// <summary>Document title and header fields.</summary>
     Header = 1 << 22,
+
+    /// <summary>Bitmap images shown with a cue.</summary>
+    Images = 1 << 23,
 }
 
 /// <summary>How a conversion treated something the target format cannot carry exactly.</summary>
@@ -538,7 +541,7 @@ internal static class SubtitleLoss
             SubtitleCue cue = doc.Cues[i];
             SubtitleFeatures used = Used(cue);
             SubtitleFeatures missing = used & ~can;
-            for (long bit = 1; bit != 0 && bit <= (long)SubtitleFeatures.Header; bit <<= 1)
+            for (long bit = 1; bit != 0 && bit <= (long)SubtitleFeatures.Images; bit <<= 1)
             {
                 if ((missing & (SubtitleFeatures)bit) != 0)
                 {
@@ -615,6 +618,11 @@ internal static class SubtitleLoss
         if (cue.Mode != CaptionMode.None)
         {
             used |= SubtitleFeatures.CaptionMode;
+        }
+
+        if (cue.Images.Count > 0)
+        {
+            used |= SubtitleFeatures.Images;
         }
 
         if (cue.Placement is { } p)
@@ -730,6 +738,7 @@ internal static class SubtitleLoss
         SubtitleFeatures.Styles => $"The style name is not carried by {format}.",
         SubtitleFeatures.Id => $"The cue identifier is not carried by {format}.",
         SubtitleFeatures.CaptionMode => $"The caption mode is not carried by {format}.",
+        SubtitleFeatures.Images => $"Image cue dropped: {format} carries text only.",
         _ => $"{feature} is not carried by {format}.",
     };
 

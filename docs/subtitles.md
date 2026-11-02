@@ -25,3 +25,6 @@ Rules:
   place it on the character grid; colours, italics and underline are spans.
 - Extras belong to the format named in them. Writers of other formats ignore them and the conversion report counts them as dropped.
 - Time is never a `double`; positions and sizes are display values and are `double`.
+- A bitmap cue (PGS, VobSub, DVB) carries `Images`: RGBA pixels (straight alpha unless `IsPremultiplied`), a position on a stated
+  display size, and the source object/palette ids in `Extras`. Several images per cue are allowed; text is optional. Text formats
+  drop images and the conversion report says "Image cue dropped".
