@@ -363,19 +363,26 @@ internal sealed class MediaDataScanner
                 continue;
             }
 
+            if (partial is not null)
+            {
+                // The input ends inside this sample. A framer reports this only for a sample that starts within its largest allowed size
+                // of the end, and the rest of the input is that sample's bytes, so nothing after it is scanned for tiny chance matches.
+                if (unframedStart >= 0)
+                {
+                    AddSkipped(unframedStart, pos, SkippedReason.Unframed, -1);
+                    unframedStart = -1;
+                }
+
+                AddSkipped(pos, _end, SkippedReason.PartialSample, partial.Track);
+                pos = _end;
+                break;
+            }
+
             if (justJumped)
             {
                 // The jump found nothing: scan from the start of the gap, positions one by one, as usual.
                 justJumped = false;
                 pos = unframedStart;
-            }
-
-            if (partial is not null && unframedStart < 0)
-            {
-                // The input ends inside this sample.
-                AddSkipped(pos, _end, SkippedReason.PartialSample, partial.Track);
-                pos = _end;
-                break;
             }
 
             if (unframedStart < 0)
