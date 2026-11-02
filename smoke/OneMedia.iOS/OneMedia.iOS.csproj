@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>$(PackagePrefix)OneMedia.IosSmoke</AssemblyName>
+    <RootNamespace>$(PackagePrefix)OneMedia.IosSmoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <ApplicationId>ai.recursive.onemedia.smoke</ApplicationId>
+    <!-- The simulator on an Apple-silicon host; pass -p:RuntimeIdentifier=ios-arm64 for a device. -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">iossimulator-arm64</RuntimeIdentifier>
+    <!-- Release trims whole assemblies, as a consumer's app would. -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- With ahead-of-time compilation only, opening any file failed on the simulator with "Attempting to JIT compile ... while running in
+         aot-only mode" (the constructor call behind SafeFileHandle's marshaller). The interpreter runs what was not compiled. -->
+    <UseInterpreter>true</UseInterpreter>
+    <StartupObject>RecursiveAI.OneMedia.IosSmoke.AppMain</StartupObject>
+  </PropertyGroup>
+
+  <Import Project="../Mobile.props" />
+
+</Project>
