@@ -121,6 +121,11 @@ public static class TextTracks
             return TextTrackFormat.Unknown;
         }
 
+        if (target is RemuxFormat.Wav or RemuxFormat.Rf64)
+        {
+            return TextTrackFormat.Unknown; // WAVE holds no subtitles; the muxer refuses the track and the report says so
+        }
+
         if (target is RemuxFormat.MpegTs or RemuxFormat.M2ts)
         {
             // A transport stream holds none of the text track formats; the muxer refuses them and the report says so.

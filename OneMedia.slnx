@@ -27,6 +27,7 @@
     <Project Path="tools/OneMedia.TextTrackCheck/OneMedia.TextTrackCheck.csproj" />
     <Project Path="tools/OneMedia.TeletextCheck/OneMedia.TeletextCheck.csproj" />
     <Project Path="tools/OneMedia.EventsCheck/OneMedia.EventsCheck.csproj" />
+    <Project Path="tools/OneMedia.WavCheck/OneMedia.WavCheck.csproj" />
     <Project Path="tools/OneMedia.WriterCheck/OneMedia.WriterCheck.csproj" />
     <Project Path="tools/OneMedia.DateWriteCheck/OneMedia.DateWriteCheck.csproj" />
     <Project Path="tools/OneMedia.TagWriteCheck/OneMedia.TagWriteCheck.csproj" />

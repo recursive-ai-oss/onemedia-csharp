@@ -19,6 +19,14 @@ internal static class RemuxMuxers
                         DateUtcNanoseconds = options.CreationTime is { } t ? (t.UtcTicks - new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks) * 100 : null,
                     },
                     options.Limits);
+            case RemuxFormat.Wav or RemuxFormat.Rf64:
+                return new RecursiveAI.OneMedia.Riff.WavMuxer(
+                    output,
+                    (options.Wav ?? new RecursiveAI.OneMedia.Riff.WavMuxOptions()) with
+                    {
+                        Layout = format == RemuxFormat.Rf64 ? RecursiveAI.OneMedia.Riff.WavLayout.Rf64 : RecursiveAI.OneMedia.Riff.WavLayout.Auto,
+                        Limits = options.Limits,
+                    });
             case RemuxFormat.MpegTs or RemuxFormat.M2ts:
                 return new RecursiveAI.OneMedia.MpegTs.MpegTsMuxer(
                     output,
