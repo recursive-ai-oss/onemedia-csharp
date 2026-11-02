@@ -381,24 +381,47 @@ public sealed class WriterFixTests : IDisposable
         return h & 0xFFFF;
     }
 
-    // ---- in-place writing helper ----
+    // ---- in-place writing ----
 
     [Fact]
-    public void TheChangedRangeStreamWritesOnlyDifferingRuns()
+    public void AnInPlaceSaveWritesOnlyTheRunsThatDiffer()
     {
         byte[] original = new byte[200_000];
         string path = Put("range.bin", original);
-        byte[] fresh = (byte[])original.Clone();
-        fresh[10] = 1;
-        fresh[11] = 2;
-        fresh[150_000] = 9;
-        using MemoryMediaSource src = new(original);
-        using FileStream file = new(path, FileMode.Open, FileAccess.Write, FileShare.Read, 0);
-        using ChangedRangeStream stream = new(file, src, 0);
-        stream.Write(fresh);
-        Assert.Equal(3, stream.BytesWritten);
-        file.Flush();
-        file.Dispose();
-        Assert.Equal(fresh, File.ReadAllBytes(path));
+        PieceList list = new();
+        list.AddCopy(0, 10);
+        list.AddData(new byte[] { 1, 2 });
+        list.AddCopy(12, 149_988);
+        list.AddData(new byte[] { 9 });
+        list.AddZeros(1000); // equal to what is there: nothing to write
+        list.AddCopy(151_001, 200_000 - 151_001);
+        EditPlan plan = list.ToPlan(200_000, 0, 0, 0);
+        Assert.True(plan.IsSameLayout);
+        WriteReport report = SafeWriter.SaveInPlace(plan, path);
+        Assert.Equal(3, report.BytesWritten);
+        byte[] expected = (byte[])original.Clone();
+        expected[10] = 1;
+        expected[11] = 2;
+        expected[150_000] = 9;
+        Assert.Equal(expected, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void AnInPlaceSaveWithManyScatteredChangesStaysWithinTheRunBound()
+    {
+        // More separate runs than the list keeps: neighbouring runs are joined (unchanged bytes between them are rewritten), and the result is still right.
+        byte[] original = new byte[4_000_000];
+        string path = Put("scatter.bin", original);
+        byte[] changed = new byte[4_000_000];
+        for (int i = 0; i < changed.Length; i += 40)
+        {
+            changed[i] = 7;
+        }
+
+        PieceList list = new();
+        list.AddData(changed);
+        EditPlan plan = list.ToPlan(4_000_000, 0, 0, 0);
+        SafeWriter.SaveInPlace(plan, path);
+        Assert.Equal(changed, File.ReadAllBytes(path));
     }
 }

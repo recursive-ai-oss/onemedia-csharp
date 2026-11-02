@@ -110,21 +110,36 @@ public static class SafeWriter
         cancellationToken.ThrowIfCancellationRequested();
         using FileMediaSource source = FileMediaSource.Open(path);
         CheckSource(plan, source);
-        long written = 0;
-        // No write buffer: every write goes straight to the file, so the bytes that change are the only bytes written.
-        using (FileStream file = new(path, FileMode.Open, FileAccess.Write, FileShare.Read, 0))
+        // Two passes. The first compares every new piece with what the file holds and notes the runs of bytes that differ (nothing is written, so
+        // it can still be cancelled). The second writes just those runs, one after the other, with no reads in between: the file is half
+        // changed only for as long as it takes to write the changed bytes, which is the shortest window the operation can have.
+        ChangedRuns runs = new();
+        long at = 0;
+        foreach (OutputPiece piece in plan.Pieces)
         {
-            long at = 0;
+            if (piece.Kind != OutputPieceKind.Copy)
+            {
+                using FindChangedRunsStream find = new(source, at, runs);
+                PieceWriter.Write([piece], source, find, cancellationToken);
+            }
+
+            at += piece.Length;
+        }
+
+        long written = 0;
+        if (runs.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // No write buffer: every write goes straight to the file.
+            using FileStream file = new(path, FileMode.Open, FileAccess.Write, FileShare.Read, 0);
+            at = 0;
             foreach (OutputPiece piece in plan.Pieces)
             {
                 if (piece.Kind != OutputPieceKind.Copy)
                 {
-                    // Only the bytes that differ from what the file holds there are written: new content that equals the old (the
-                    // zeros of a padding run, the part of a metadata block that did not change) is skipped, which keeps the
-                    // write small and narrows the window in which a crash can leave a half written file.
-                    using ChangedRangeStream changed = new(file, source, at);
-                    PieceWriter.Write([piece], source, changed, CancellationToken.None);
-                    written += changed.BytesWritten;
+                    using WriteChangedRunsStream write = new(file, at, runs);
+                    PieceWriter.Write([piece], source, write, CancellationToken.None);
+                    written += write.BytesWritten;
                 }
 
                 at += piece.Length;
@@ -320,19 +335,63 @@ public static class SafeWriter
     }
 }
 
+/// <summary>The runs of bytes (position and length) an in-place write has to change, in increasing position order.</summary>
+internal sealed class ChangedRuns
+{
+    // A bound on what a hostile plan can make us hold: past it, neighbouring runs are joined, which writes a few unchanged bytes between them.
+    private const int MaxRuns = 1 << 16;
+    private readonly List<(long Start, long Length)> _runs = [];
+
+    public int Count => _runs.Count;
+
+    public (long Start, long Length) this[int index] => _runs[index];
+
+    public void Add(long start, long length)
+    {
+        if (_runs.Count > 0 && _runs[^1].Start + _runs[^1].Length == start)
+        {
+            _runs[^1] = (_runs[^1].Start, _runs[^1].Length + length);
+            return;
+        }
+
+        _runs.Add((start, length));
+        if (_runs.Count >= MaxRuns)
+        {
+            Compact();
+        }
+    }
+
+    // Joins each run to the next one, halving the list.
+    private void Compact()
+    {
+        List<(long Start, long Length)> joined = new(_runs.Count / 2 + 1);
+        for (int i = 0; i < _runs.Count; i += 2)
+        {
+            (long start, long length) = _runs[i];
+            if (i + 1 < _runs.Count)
+            {
+                length = _runs[i + 1].Start + _runs[i + 1].Length - start;
+            }
+
+            joined.Add((start, length));
+        }
+
+        _runs.Clear();
+        _runs.AddRange(joined);
+    }
+}
+
 /// <summary>
-/// A write-only stream over an open file that, for each block written at a position, reads the same range of the original and writes only the
-/// runs of bytes that differ (runs closer than <see cref="MergeGap"/> bytes are written together). Used for in-place saves.
+/// A write-only stream that, for each block written at a position, reads the same range of the original and records the runs of bytes that
+/// differ (runs closer than <see cref="MergeGap"/> bytes are joined). It writes nothing.
 /// </summary>
-internal sealed class ChangedRangeStream(FileStream file, IMediaSource original, long start) : Stream
+internal sealed class FindChangedRunsStream(IMediaSource original, long start, ChangedRuns runs) : Stream
 {
     private const int Block = 64 * 1024;
     private const int MergeGap = 32;
     private readonly byte[] _old = System.Buffers.ArrayPool<byte>.Shared.Rent(Block);
     private long _position = start;
     private bool _disposed;
-
-    public long BytesWritten { get; private set; }
 
     public override bool CanRead => false;
 
@@ -360,14 +419,14 @@ internal sealed class ChangedRangeStream(FileStream file, IMediaSource original,
         {
             ReadOnlySpan<byte> chunk = buffer[..Math.Min(buffer.Length, Block)];
             int have = original.Read(_position, _old.AsSpan(0, chunk.Length), CancellationToken.None);
-            WriteRuns(chunk, Math.Max(0, have));
+            Find(chunk, Math.Max(0, have));
             _position += chunk.Length;
             buffer = buffer[chunk.Length..];
         }
     }
 
     // Bytes past `have` have no counterpart in the original (cannot happen for a same-layout plan) and count as different.
-    private void WriteRuns(ReadOnlySpan<byte> chunk, int have)
+    private void Find(ReadOnlySpan<byte> chunk, int have)
     {
         int n = chunk.Length;
         int i = 0;
@@ -395,9 +454,7 @@ internal sealed class ChangedRangeStream(FileStream file, IMediaSource original,
                 i++;
             }
 
-            file.Position = _position + runStart;
-            file.Write(chunk.Slice(runStart, lastDifferent - runStart + 1));
-            BytesWritten += lastDifferent - runStart + 1;
+            runs.Add(_position + runStart, lastDifferent - runStart + 1);
             i = lastDifferent + 1;
         }
     }
@@ -411,6 +468,69 @@ internal sealed class ChangedRangeStream(FileStream file, IMediaSource original,
         }
 
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>A write-only stream over an open file that writes only the parts of what it is given that fall in the recorded runs.</summary>
+internal sealed class WriteChangedRunsStream(FileStream file, long start, ChangedRuns runs) : Stream
+{
+    private long _position = start;
+    private int _next; // the first run that may still overlap the data to come
+
+    public long BytesWritten { get; private set; }
+
+    public override bool CanRead => false;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => true;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position { get => _position; set => throw new NotSupportedException(); }
+
+    public override void Flush() { }
+
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+    public override void Write(ReadOnlySpan<byte> buffer)
+    {
+        long end = _position + buffer.Length;
+        // Runs before this data were handled by earlier pieces (runs are in position order); skip any that end before it.
+        while (_next < runs.Count && runs[_next].Start + runs[_next].Length <= _position)
+        {
+            _next++;
+        }
+
+        int i = _next;
+        while (i < runs.Count && runs[i].Start < end)
+        {
+            (long runStart, long runLength) = runs[i];
+            long from = Math.Max(runStart, _position);
+            long to = Math.Min(runStart + runLength, end);
+            if (to > from)
+            {
+                file.Position = from;
+                file.Write(buffer.Slice((int)(from - _position), (int)(to - from)));
+                BytesWritten += to - from;
+            }
+
+            if (runStart + runLength > end)
+            {
+                break; // the run goes on into the next block
+            }
+
+            i++;
+        }
+
+        _next = i;
+        _position = end;
     }
 }
 
