@@ -831,12 +831,12 @@ public sealed class HlsMultivariantPlaylist : HlsPlaylist
 
             if (v.FrameRate is not null)
             {
-                sb.Append(",FRAME-RATE=").Append(v.FrameRate);
+                sb.Append(",FRAME-RATE=").Append(Enumerated(v.FrameRate));
             }
 
             if (v.VideoRange is not null)
             {
-                sb.Append(",VIDEO-RANGE=").Append(v.VideoRange);
+                sb.Append(",VIDEO-RANGE=").Append(Enumerated(v.VideoRange));
             }
 
             if (v.VideoGroup is not null)
@@ -887,4 +887,11 @@ public sealed class HlsMultivariantPlaylist : HlsPlaylist
             }
         }
     }
+
+    // FRAME-RATE and VIDEO-RANGE are unquoted values (RFC 8216 §4.3.4.2). A lenient read can hand back text that was quoted in the input and holds a comma or a space;
+    // written bare, it would split into other attributes, so it goes out quoted and reads back as the same value.
+    private static readonly char[] s_unquotedBreaks = [',', '"', ' ', '\t'];
+
+    private static string Enumerated(string value) =>
+        value.AsSpan().IndexOfAny(s_unquotedBreaks) >= 0 ? "\"" + value + "\"" : value;
 }

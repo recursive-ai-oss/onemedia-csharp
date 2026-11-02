@@ -294,6 +294,7 @@ public sealed class ManifestTests
     [InlineData("hls-playlist/roundtrip-keys-1.m3u8")]
     [InlineData("hls-playlist/roundtrip-keys-2.m3u8")]
     [InlineData("hls-playlist/roundtrip-durations-1.m3u8")]
+    [InlineData("hls-playlist/roundtrip-multivariant-1.m3u8")]
     [InlineData("dash-mpd/roundtrip-1.mpd")]
     public void FuzzFindingsRewriteToThemselves(string file)
     {
