@@ -42,6 +42,7 @@ EventTargets.Register(targets);
 ReconstructTarget.Register(targets);
 RepairTarget.Register(targets);
 ManifestTargets.Register(targets);
+WavMuxTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;

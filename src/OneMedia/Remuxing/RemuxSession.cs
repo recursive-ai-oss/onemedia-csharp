@@ -559,6 +559,11 @@ public sealed class RemuxSession : IDisposable
                 {
                     s.Out = iso.AddTrack(declared, IsoOptions?.Invoke(s.Input));
                 }
+                else if (muxer is RecursiveAI.OneMedia.Riff.WavMuxer wav)
+                {
+                    // The PCM layout the reader knows (AIFF and CAF byte order, FLV tags) comes through the same hook as for the ISO targets.
+                    s.Out = wav.AddTrack(declared, new RecursiveAI.OneMedia.Riff.WavTrackOptions { Pcm = IsoOptions?.Invoke(s.Input)?.Pcm });
+                }
                 else
                 {
                     s.Out = muxer.AddTrack(declared);

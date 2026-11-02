@@ -78,3 +78,6 @@ cannot be recognised; memory is one bit per packet of the file.
 `tools/repair/damage.py <fmt> <healthy> <dir>` writes the damaged variants (Matroska 17, AVI 16, MP4 11 + 2, fragmented MP4 12 + 2, TS 12); `tools/run-repair-case.sh` repairs each and compares
 the packets (`RepairCheck diff`: equal prefix per track; `RepairCheck subseq` for TS: every kept packet is one of the original's, in order), counts `ffprobe` error lines and probes
 seeks at three points. `tools/run-repair-checks.sh` runs the whole matrix on the worker against pinned oracles and the corpus.
+
+Known limits of the checks: in two TS cases cut at 90 % of the file the repaired output keeps one frame that was cut (the limit above: a PES packet of unbounded length cut off at a
+packet boundary cannot be recognised). M2TS (192-byte packets) was not swept against an oracle, because ffmpeg 7.0.2 crashes on the sample files. The damaged files were made from healthy generated files, published samples and corpus files, not from recordings of devices.

@@ -290,6 +290,9 @@ internal static class IsoSampleEntries
 
         switch (t.CodecTag)
         {
+            // 'sowt' and 'twos' are 16-bit unless the entry's sample size says 8: observed in files written with signed 8-bit samples,
+            // which carry 'sowt' and a sample size of 8. Byte order does not matter for one-byte samples.
+            case "sowt" or "twos" when t.Audio?.BitsPerSample == 8: return new PcmSampleFormat(PcmEncoding.SignedInteger, 8, 8, false);
             case "sowt": return new PcmSampleFormat(PcmEncoding.SignedInteger, 16, 16, false);
             case "twos": return new PcmSampleFormat(PcmEncoding.SignedInteger, 16, 16, true);
             case "in24": return new PcmSampleFormat(PcmEncoding.SignedInteger, 24, 24, true);
@@ -297,6 +300,8 @@ internal static class IsoSampleEntries
             case "fl32": return new PcmSampleFormat(PcmEncoding.FloatingPoint, 32, 32, true);
             case "fl64": return new PcmSampleFormat(PcmEncoding.FloatingPoint, 64, 64, true);
             case "raw ": return new PcmSampleFormat(PcmEncoding.UnsignedInteger, 8, 8, false);
+            case "alaw": return new PcmSampleFormat(PcmEncoding.ALaw, 8, 8, false);
+            case "ulaw": return new PcmSampleFormat(PcmEncoding.MuLaw, 8, 8, false);
             case "ipcm" or "fpcm" when t.Configuration.Format == "pcmC" && t.Configuration.Data.Length >= 6:
                 {
                     ReadOnlySpan<byte> c = t.Configuration.Data.Span;

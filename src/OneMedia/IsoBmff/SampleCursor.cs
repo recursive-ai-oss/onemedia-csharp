@@ -351,9 +351,18 @@ internal sealed class SampleCursor
         // offset of the sample within its chunk: the sizes of the samples before it in the chunk
         long firstInChunk = index - (_spc - _chunkLeft);
         long inChunk = 0;
-        for (long s = firstInChunk; s < index; s++)
+        if (_t.ConstantSize != 0)
         {
-            inChunk += SizeOf(s);
+            // §8.7.3.2: a non-zero sample_size means every sample has it. Summing would make a seek cost as much as the chunk holds samples,
+            // and a walk back over a chunk of hundreds of thousands of samples quadratic.
+            inChunk = (index - firstInChunk) * SizeOf(index);
+        }
+        else
+        {
+            for (long s = firstInChunk; s < index; s++)
+            {
+                inChunk += SizeOf(s);
+            }
         }
 
         _chunkOffset = chunkStart + inChunk;

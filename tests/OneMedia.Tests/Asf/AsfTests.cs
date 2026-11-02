@@ -133,6 +133,24 @@ public class AsfTests
         }
     }
 
+    // Found by the ASF fuzz target: the length field of a payload reached into the padding, leaving a negative data length.
+    [Fact]
+    public void PayloadLengthFieldInsidePaddingIsNotAnException()
+    {
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "asf", "asf-payload-length-in-padding.bin"));
+        try
+        {
+            using IDemuxer d = MediaFormats.Create().Open(new MemoryMediaSource(input));
+            while (d.TryReadPacket(out _))
+            {
+            }
+        }
+        catch (MediaException)
+        {
+            // A typed rejection is fine; any other exception fails the test.
+        }
+    }
+
     [Fact]
     public void TagsAreReadWithRanges()
     {
