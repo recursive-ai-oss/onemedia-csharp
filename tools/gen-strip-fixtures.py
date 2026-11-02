@@ -23,6 +23,8 @@ LENS_SERIAL = b'LXX0000000000001'
 CAMERA_SERIAL = b'C0000000000042'
 CAMERA_HASH = bytes(range(0xA0, 0xB0))
 MEDIA_UID = bytes(range(0x10, 0x30))
+FIRMWARE = b'FW9.99.01.00.00'  # 15 characters, as on the models the settings layout was checked on
+BLOB_ONLY_SERIAL = b'C9999999999999'  # appears only in the unlabelled settings block
 
 
 def box(kind, payload=b''):
@@ -152,7 +154,7 @@ def build():
     ftyp = box(b'ftyp', b'isom' + struct.pack('>I', 512) + b'isomiso2mp41')
     keys = [(1, 'com.apple.quicktime.location.ISO6709', 1), (2, 'com.apple.quicktime.video-orientation', 66)]
     mebx_entry = entry_box(b'mebx', box(b'keys', b''.join(mebx_key(*k) for k in keys)))
-    fdsc_blob = (b'GPRO' + b'\0' * 4 + b'FW1.00\0' + b'\0' * 9 + LENS_SERIAL + b'\0' * 40 + CAMERA_HASH + CAMERA_SERIAL + b'\0' + b'SYNTHETIC ONE\0' + b'\0' * 20
+    fdsc_blob = (b'GPRO' + b'\0' * 4 + FIRMWARE + LENS_SERIAL.ljust(48, b'\0') + CAMERA_HASH + BLOB_ONLY_SERIAL.ljust(15, b'\0') + b'SYNTHETIC ONE\0' + b'\0' * 20
                  + LAT_LON + b'\0' * 16)
     tracks = [
         track(1, b'meta', entry_box(b'gpmd'), [gpmf_sample(0), gpmf_sample(1)]),
@@ -178,7 +180,7 @@ def build():
     mvhd = full(b'mvhd', 0, 0, struct.pack('>IIII', 0, 0, 1000, 4000) + struct.pack('>IH', 0x00010000, 0x0100) + b'\0' * 10
                 + struct.pack('>9I', 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000) + b'\0' * 24 + struct.pack('>I', 5))
     udta = box(b'udta', udta_text(b'\xa9xyz', LAT_LON) + udta_text(b'\xa9mak', b'Synthetic') + udta_text(b'\xa9mod', b'ONE') + loci()
-               + box(b'LENS', LENS_SERIAL + b'\0' * 40) + box(b'CAME', CAMERA_HASH) + box(b'MUID', CAMERA_HASH + b'\0' * 16) + box(b'GUMI', CAMERA_HASH)
+               + box(b'FIRM', FIRMWARE) + box(b'LENS', LENS_SERIAL + b'\0' * 40) + box(b'CAME', CAMERA_HASH) + box(b'MUID', CAMERA_HASH + b'\0' * 16) + box(b'GUMI', CAMERA_HASH)
                + box(b'GPMF', udta_gpmf()) + box(b'QVMI', b'Exif\0\0' + tiff()))
     meta = box(b'meta', full(b'hdlr', 0, 0, struct.pack('>I', 0) + b'mdta' + b'\0' * 12 + b'\0')
                + full(b'keys', 0, 0, struct.pack('>I', 3) + b''.join(box(b'mdta', k.encode()) for k in

@@ -13,7 +13,7 @@ public class StripTests
     private static readonly string[] Secrets =
     [
         "+47.6205-122.3493", "+47.6206-122.3494", "LXX0000000000001", "C0000000000042", "XMPBODY0000042", "XMPAUX0000042", "EXIFSERIAL000042",
-        "AAAA-BBBB-CCCC-0042", "47,37.230N", "122,29.358W", "Somewhere", "240101120000",
+        "AAAA-BBBB-CCCC-0042", "C9999999999999", "47,37.230N", "122,29.358W", "Somewhere", "240101120000",
     ];
 
     private static string Temp(string name) => Path.Combine(Path.GetTempPath(), "strip-" + Guid.NewGuid().ToString("N") + "-" + name);

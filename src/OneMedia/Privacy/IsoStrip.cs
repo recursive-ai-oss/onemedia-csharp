@@ -27,10 +27,16 @@ internal static class IsoStrip
         List<Secret> secrets = [];
         MediaMetadata meta = file.Metadata;
         HashSet<long> freed = [];
+        byte[] firmware = [];
 
         foreach (NativeTag tag in meta.NativeTags)
         {
             ct.ThrowIfCancellationRequested();
+            if (tag.System == TagSystems.QuickTimeUserData && tag.Key == "FIRM" && !tag.ValueRange.IsNone && tag.ValueRange.Length is >= 6 and <= 64)
+            {
+                firmware = Trimmed(tag.ReadValue());
+            }
+
             StripCategories c = StripRules.Classify(tag.System, tag.Key) & cats;
             if (c != 0 && !tag.Range.IsNone)
             {
@@ -74,8 +80,8 @@ internal static class IsoStrip
             }
         }
 
-        ScrubTracks(file, options, secrets, sink, ct);
-        ScrubLeadingGap(source, file, options, secrets, sink, ct);
+        ScrubTracks(file, options, secrets, firmware, sink, ct);
+        ScrubLeadingGap(source, file, options, secrets, firmware, sink, ct);
         sink.AddNote("Subtitle and text tracks are not inspected: position text that a recorder stores in them stays.");
         sink.AddNote("Key names in a QuickTime metadata key table (keys box) and in mebx sample entries stay; their values are gone.");
         sink.AddNote("Layout is unchanged: every changed range keeps its length and no other byte moved.");
@@ -298,9 +304,9 @@ internal static class IsoStrip
     // sample of any track. No track refers to it, so it is searched for the values the labelled fields held.
     private const long MaxGapBytes = 1 << 20;
 
-    private static void ScrubLeadingGap(FileMediaSource source, MediaFile file, StripOptions options, List<Secret> secrets, StripSink sink, CancellationToken ct)
+    private static void ScrubLeadingGap(FileMediaSource source, MediaFile file, StripOptions options, List<Secret> secrets, byte[] firmware, StripSink sink, CancellationToken ct)
     {
-        if (secrets.Count == 0 || file.Demuxer is not { } demuxer)
+        if ((secrets.Count == 0 && firmware.Length == 0) || file.Demuxer is not { } demuxer)
         {
             return;
         }
@@ -351,10 +357,11 @@ internal static class IsoStrip
 
         byte[] gap = new byte[first - start];
         source.ReadExactly(start, gap, ct);
+        TelemetryScrub.GoProSettings(gap, start, firmware, "mdat-gap", 0, options.Categories, sink);
         TelemetryScrub.BySecrets(gap, start, "mdat-gap", 0, options.Categories, secrets, sink);
     }
 
-    private static void ScrubTracks(MediaFile file, StripOptions options, List<Secret> secrets, StripSink sink, CancellationToken ct)
+    private static void ScrubTracks(MediaFile file, StripOptions options, List<Secret> secrets, byte[] firmware, StripSink sink, CancellationToken ct)
     {
         if (file.Demuxer is not { } demuxer)
         {
@@ -364,7 +371,7 @@ internal static class IsoStrip
         foreach (MediaTrack track in demuxer.Tracks)
         {
             TelemetryFormat format = TelemetryTrackReader.FormatOf(track);
-            bool otherData = track.Kind == TrackKind.Data && format == TelemetryFormat.None && secrets.Count > 0;
+            bool otherData = track.Kind == TrackKind.Data && format == TelemetryFormat.None && (secrets.Count > 0 || firmware.Length > 0);
             if (format == TelemetryFormat.None && !otherData)
             {
                 continue;
@@ -410,6 +417,7 @@ internal static class IsoStrip
                             TelemetryScrub.Mebx(bytes, offset, track.Id, entry >= 0 && entry < tables.Length ? tables[entry] : null, options.Categories, sink);
                             break;
                         default:
+                            TelemetryScrub.GoProSettings(bytes, offset, firmware, track.CodecTag ?? "data", track.Id, options.Categories, sink);
                             TelemetryScrub.BySecrets(bytes, offset, track.CodecTag ?? "data", track.Id, options.Categories, secrets, sink);
                             break;
                     }

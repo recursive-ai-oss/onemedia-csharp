@@ -177,6 +177,42 @@ internal static class TelemetryScrub
     }
 
     /// <summary>
+    /// GoPro's settings block (the first bytes of the media data, and the samples of the "fdsc" track on some models) follows the firmware string with the
+    /// lens serial number (48 bytes), the 16-byte hash of the camera serial number and the camera serial number (15 bytes). Layout read from the field offsets
+    /// ExifTool's GoPro "fdsc" tag table lists (firmware 8, serial 23, other serial 87, model 102) and checked on the published sample files of ten models: the
+    /// firmware is 15 characters there, so the serial starts 15 bytes after it, the hash at 63 and the camera serial at 79. The firmware string comes from the
+    /// <c>FIRM</c> atom. Only the device-identifier category is affected.
+    /// </summary>
+    public static void GoProSettings(ReadOnlySpan<byte> data, long fileOffset, byte[] firmware, string system, long trackId, StripCategories cats, StripSink sink)
+    {
+        if ((cats & StripCategories.DeviceIds) == 0 || firmware.Length < 6 || fileOffset < 0)
+        {
+            return;
+        }
+
+        int from = 0;
+        while (from <= data.Length - firmware.Length)
+        {
+            int i = data[from..].IndexOf(firmware);
+            if (i < 0)
+            {
+                break;
+            }
+
+            int at = from + i + firmware.Length;
+            from = at;
+            if (at + 48 + 16 + 15 > data.Length)
+            {
+                continue;
+            }
+
+            sink.Zero(StripCategories.DeviceIds, system, "gopro settings: lens serial number", trackId, fileOffset + at, 48);
+            sink.Zero(StripCategories.DeviceIds, system, "gopro settings: camera serial hash", trackId, fileOffset + at + 48, 16);
+            sink.Zero(StripCategories.DeviceIds, system, "gopro settings: camera serial number", trackId, fileOffset + at + 64, 15);
+        }
+    }
+
+    /// <summary>
     /// Zeroes every occurrence of each secret in a sample: the settings track of GoPro cameras ("fdsc") repeats the lens serial number, the camera serial
     /// number and its hash and the ISO 6709 position as unlabelled blobs, and its layout is not documented, so the strip finds them by value (the values
     /// were read from the labelled places that were removed).
