@@ -131,6 +131,7 @@ def main():
     ap.add_argument("--ffprobe", default="ffprobe")
     ap.add_argument("--only", default="")
     ap.add_argument("--duration", type=float, default=1.5)
+    ap.add_argument("--files", nargs="*", help="check these existing files instead of generating inputs")
     a = ap.parse_args()
     ind, outd = os.path.join(a.work, "in"), os.path.join(a.work, "out")
     os.makedirs(ind, exist_ok=True)
@@ -138,16 +139,21 @@ def main():
     tool = shlex.split(a.tool)
     rows = []
     bad = 0
-    for name, layout, rate, codec, fmt, ext in cases():
+    work = [(f, os.path.basename(f).rsplit(".", 1)[0], os.path.basename(f).rsplit(".", 1)[-1].lower()) for f in a.files] if a.files else None
+    for name, layout, rate, codec, fmt, ext in ([(n, None, None, None, None, e) for _, n, e in work] if work else cases()):
         if a.only and a.only not in name:
             continue
-        src = os.path.join(ind, name + "." + ext)
+        if work:
+            src = [f for f, n, e in work if n == name and e == ext][0]
+        else:
+            src = os.path.join(ind, name + "." + ext)
         dst = os.path.join(outd, name + ".wav")
-        gen = [a.ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", multi(layout, rate, a.duration), "-c:a", codec] + fmt + [src]
-        g = run(gen)
-        if g.returncode != 0:
-            rows.append((name, "GENFAIL", g.stderr.decode(errors="replace").strip().splitlines()[-1:][0] if g.stderr else ""))
-            continue
+        if not work:
+            gen = [a.ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", multi(layout, rate, a.duration), "-c:a", codec] + fmt + [src]
+            g = run(gen)
+            if g.returncode != 0:
+                rows.append((name, "GENFAIL", g.stderr.decode(errors="replace").strip().splitlines()[-1:][0] if g.stderr else ""))
+                continue
         r = run(tool + ["remux", src, dst, "--overwrite"])
         if r.returncode != 0:
             msg = (r.stderr or r.stdout).decode(errors="replace").strip().replace("\n", " ")[:160]
