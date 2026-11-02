@@ -409,6 +409,13 @@ public sealed record MediaTrack
     /// <summary>Number of packets (samples, frames) when the container's index says, else -1.</summary>
     public long PacketCount { get; init; } = -1;
 
+    /// <summary>
+    /// True when <see cref="Duration"/> is known to cover only part of the track: an ISO file with movie fragments states the duration of the
+    /// samples in its movie box, not of those in the fragments after it (ISO/IEC 14496-12 §8.8). It is not an end for the track's samples.
+    /// Defaults to false.
+    /// </summary>
+    public bool DurationIsPartial { get; init; }
+
     /// <summary>True when the track's samples are encrypted or protected by DRM. Metadata remains readable; packets are delivered as stored.</summary>
     public bool IsProtected { get; init; }
 }

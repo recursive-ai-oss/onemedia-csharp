@@ -34,4 +34,17 @@ for f in files:
     x, y = (a[d * ch:], b) if d > 0 else (a, b[-d * ch:])
     k = min(len(x), len(y))
     tail = max((abs(p - q) for p, q in zip(x[:k], y[:k])), default=0.0)
-    print(f"{name}\t{ch}ch {rate}Hz\tours {n}\tffmpeg {m}\tdiff {d}\thead-aligned {head:.2e}\ttail-aligned {tail:.2e}")
+    # A count difference may come from ffmpeg's timestamp handling (it drops packets whose dts repeats). Decoding the same packets with their
+    # timing removed (stream copy to ADTS, AAC only) shows whether the decoder itself agrees.
+    note = ""
+    if d != 0:
+        adts = os.path.join(work, "ref.aac")
+        if os.path.exists(adts):
+            os.remove(adts)
+        c = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "quiet", "-y", "-i", f, "-map", "0:a:0", "-c", "copy", "-f", "adts", adts], check=False).returncode
+        if os.path.exists(adts) and os.path.getsize(adts) > 0:
+            raw = os.path.join(work, "ref-adts.f32")
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "quiet", "-y", "-threads", "1", "-i", adts, "-ac", str(ch), "-ar", str(rate), "-f", "f32le", raw], check=False)
+            if os.path.exists(raw):
+                note = f"\tadts-route {os.path.getsize(raw) // (4 * ch)}"
+    print(f"{name}\t{ch}ch {rate}Hz\tours {n}\tffmpeg {m}\tdiff {d}\thead-aligned {head:.2e}\ttail-aligned {tail:.2e}{note}")

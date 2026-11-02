@@ -323,6 +323,7 @@ internal sealed class IsoBmffEngine
             Video = video,
             PacketCount = movie.IsFragmented || (kind == TrackKind.Audio && codec == CodecId.Pcm) || SamplePacketsOf(t, kind, codec) is not null ? -1 : t.SampleCount,
             IsProtected = entry?.IsProtected ?? false,
+            DurationIsPartial = movie.IsFragmented && duration.IsKnown,
         };
     }
 

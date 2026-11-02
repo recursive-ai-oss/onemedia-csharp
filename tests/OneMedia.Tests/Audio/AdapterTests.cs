@@ -206,6 +206,17 @@ public class AdapterTests
         Assert.True(a.AsSpan().SequenceEqual(b));
     }
 
+    // tools/gen-isobmff-testdata.sh: a fragmented AAC file whose movie box states 4096 ticks (a quarter second of 16 kHz) for a track that holds 33
+    // packets in fragments. That figure is no length: the adapter used to stop the decode after it. ffmpeg 7.0.2 decodes all 33 * 1024 frames.
+    [Fact]
+    public void FragmentedFileWithStaleMovieDurationDecodesEveryFragment()
+    {
+        using MediaFile media = Media.Open(IsoFixture("frag_stale_duration.m4a"));
+        Assert.True(media.Audio!.DurationIsPartial);
+        (float[] samples, _) = ReadAll(AudioDecoder.OpenFile(IsoFixture("frag_stale_duration.m4a"), MediaAudioExtensions.CreateRegistry()));
+        Assert.Equal(33 * 1024, samples.Length);
+    }
+
     private static string HeAacFixture(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "testdata", "heaac", name);
 
     // The fixtures hold plain AAC-LC frames at 22.05 kHz whose configuration or sample entry says HE-AAC, the way HE-AAC files do.
