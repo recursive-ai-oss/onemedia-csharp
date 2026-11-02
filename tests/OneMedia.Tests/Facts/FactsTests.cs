@@ -84,6 +84,21 @@ public class FactResolverTests
         Assert.Equal("mvhd", without.CaptureTime.Candidates[^1].Source);
     }
 
+    [Theory]
+    [InlineData("HD6.01.01.60.00", true)]
+    [InlineData("H19.03.01.30.00", true)]
+    [InlineData("FS1.04.01.70.00", true)]
+    [InlineData("H264 encoder", false)]
+    [InlineData("hd6.01.01.60.00", false)]
+    [InlineData("HD6.01.01.60", false)]
+    public void GoProFirmwareStringIdentifiesTheDevice(string firmware, bool gopro)
+    {
+        FactCandidate<MediaDateTime> mvhd = new(new MediaDateTime(new DateTime(2018, 1, 24, 11, 27, 32, DateTimeKind.Utc), null, TimeZoneCertainty.Utc), "mvhd", "3", "seconds since 1904", TimeZoneCertainty.Utc);
+        MediaFacts f = Resolve(new FactEvidence { CaptureTime = [mvhd], Software = [new FactCandidate<string>(firmware, "udta:FIRM", firmware, "text")] });
+        Assert.Equal(gopro, f.Profile?.Id == "gopro-firmware");
+        Assert.Equal(gopro ? TimeZoneCertainty.Local : TimeZoneCertainty.Utc, f.CaptureTime.Best!.Certainty);
+    }
+
     [Fact]
     public void FileNameAndFileSystemAreLastAndOnlyWhenGiven()
     {
@@ -425,6 +440,19 @@ public class FactsHappyPathTests
             Assert.Equal("SN12345", m.Facts.Serial.Best!.Value);
             Assert.Equal("exif:QVMI:ExifIFD.DateTimeOriginal", m.Facts.CaptureTime.Candidates[0].Source);
             Assert.True(m.Facts.Location.HasValue);
+        });
+    }
+
+    [Fact]
+    public void GoProFirmwareAtomBecomesTheSoftwareCandidateAndSelectsTheProfile()
+    {
+        byte[] file = TagTestHelpers.IsoWith(Box("udta", Box("FIRM", System.Text.Encoding.Latin1.GetBytes("HD6.01.01.60.00"))));
+        TagTestHelpers.WithIso(file, m =>
+        {
+            Assert.Equal("udta:FIRM", m.Facts.Software.Best!.Source);
+            Assert.Equal("HD6.01.01.60.00", m.Facts.Software.Best.Value);
+            MediaFacts f = new DefaultFactResolver().Resolve(FactEvidence.FromContainer(m.Facts));
+            Assert.Equal("gopro-firmware", f.Profile?.Id);
         });
     }
 

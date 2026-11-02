@@ -42,6 +42,14 @@ internal sealed class FactsBuilder(DefectLog defects)
     public void AddNative(NativeTag t)
     {
         string? text = t.Kind is TagValueKind.Text ? t.Text : null;
+        if (text is null && t.System == TagSystems.QuickTimeUserData && t.Key == "FIRM" && t.Kind == TagValueKind.Binary && t.ValueRange.Length is > 0 and <= 64)
+        {
+            // GoPro writes its firmware version as a bare string in a FIRM atom (observed in HERO5 to HERO8, MAX and Fusion files).
+            string firmware = System.Text.Encoding.Latin1.GetString(t.ReadValue()).Trim('\0', ' ');
+            AddString(Software, 25, t, firmware, $"{t.System}:{t.Key}");
+            return;
+        }
+
         if (text is null)
         {
             return;

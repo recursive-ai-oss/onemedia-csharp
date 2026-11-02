@@ -22,6 +22,52 @@ public enum ProfileBasis
 /// <param name="Evidence">What settled the row, in words: the files or documents and what they showed.</param>
 public sealed record DeviceProfile(string Id, string? Make, string? ModelPrefix, bool HeaderTimeIsLocal, ProfileBasis Basis, string Evidence)
 {
+    /// <summary>
+    /// Software (firmware) strings that identify the device when no maker or model is stored, as shapes: <c>A</c> a letter, <c>9</c> a digit, anything else literal
+    /// (<c>AA9.99.99.99.99</c> matches <c>HD6.01.01.60.00</c>). Empty for rows matched by maker and model.
+    /// </summary>
+    public IReadOnlyList<string> SoftwareShapes { get; init; } = [];
+
+    /// <summary>True when <paramref name="software"/> has one of <see cref="SoftwareShapes"/>.</summary>
+    /// <param name="software">A software or firmware string, or <c>null</c>.</param>
+    /// <returns>True when a shape matches the whole string.</returns>
+    public bool MatchesSoftware(string? software)
+    {
+        if (software is null)
+        {
+            return false;
+        }
+
+        foreach (string shape in SoftwareShapes)
+        {
+            if (shape.Length == software.Length && ShapeMatches(shape, software))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ShapeMatches(string shape, string s)
+    {
+        for (int i = 0; i < shape.Length; i++)
+        {
+            bool ok = shape[i] switch
+            {
+                'A' => char.IsAsciiLetterUpper(s[i]),
+                '9' => char.IsAsciiDigit(s[i]),
+                _ => s[i] == shape[i],
+            };
+            if (!ok)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>True when this row applies to a device with the given make and model (either may be <c>null</c> when the file does not say).</summary>
     /// <param name="make">The device maker as found.</param>
     /// <param name="model">The device model as found.</param>
@@ -79,6 +125,11 @@ public sealed class DeviceProfileTable
             "GoPro MAX sample files: mvhd 15:45:32 against GPS UTC 23:45:14 on the same day (-8 h)."),
         new DeviceProfile("gopro-make", "GoPro", null, HeaderTimeIsLocal: true, ProfileBasis.ObservedInFiles,
             "Same GoPro files as the model rows, matched by maker for models that store one."),
+        // The movie files carry no maker or model of their own (the model sits in the GPMF track); the FIRM atom's firmware string does: HD5.02.02.00.00,
+        // HD6.01.01.60.00, HD7.01.01.80.00, HD8.01.01.20.00, H19.03.01.30.00 (MAX) and FS1.04.01.70.00 (Fusion) in the ten sample files.
+        new DeviceProfile("gopro-firmware", null, null, HeaderTimeIsLocal: true, ProfileBasis.ObservedInFiles,
+            "Ten GoPro sample files (HERO5 to HERO8, MAX, Fusion): the FIRM atom has the shape letter-letter-digit or letter-digit-digit, then four dotted two-digit groups; mvhd is local time in the files that carry GPS UTC times.")
+        { SoftwareShapes = ["AA9.99.99.99.99", "A99.99.99.99.99"] },
 
         // Documented: the QuickTime header times are seconds since 1904 and, per the file format, UTC; Apple devices follow it and additionally write
         // com.apple.quicktime.creationdate with a UTC offset (read as an offset-bearing vendor time).
@@ -95,12 +146,13 @@ public sealed class DeviceProfileTable
     /// <summary>Finds the first row that applies to the device.</summary>
     /// <param name="make">The maker, or <c>null</c>.</param>
     /// <param name="model">The model, or <c>null</c>.</param>
+    /// <param name="software">The software or firmware string, or <c>null</c>.</param>
     /// <returns>The row, or <c>null</c> when no row applies.</returns>
-    public DeviceProfile? Find(string? make, string? model)
+    public DeviceProfile? Find(string? make, string? model, string? software = null)
     {
         foreach (DeviceProfile row in _rows)
         {
-            if (row.Matches(make, model))
+            if (row.Matches(make, model) || row.MatchesSoftware(software))
             {
                 return row;
             }

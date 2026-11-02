@@ -178,7 +178,7 @@ public sealed class DefaultFactResolver : IFactResolver
         ArgumentNullException.ThrowIfNull(evidence);
         Fact<string> make = Order(evidence.Make, "make");
         Fact<string> model = Order(evidence.Model, "model");
-        DeviceProfile? profile = Profiles.Find(make.Best?.Value, model.Best?.Value);
+        DeviceProfile? profile = Profiles.Find(make.Best?.Value, model.Best?.Value, SoftwareForProfile(evidence));
 
         return new MediaFacts(
             Order(evidence.Duration, "duration"),
@@ -191,6 +191,23 @@ public sealed class DefaultFactResolver : IFactResolver
             Order(evidence.FrameSize, "frame-size"),
             Order(evidence.Serial, "serial"),
             profile);
+    }
+
+    // Any software reading may be a firmware string that names the device; the first one a profile shape accepts decides.
+    private string? SoftwareForProfile(FactEvidence evidence)
+    {
+        foreach (FactCandidate<string> c in evidence.Software)
+        {
+            foreach (DeviceProfile row in Profiles.Rows)
+            {
+                if (row.MatchesSoftware(c.Value))
+                {
+                    return c.Value;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static Fact<T> Order<T>(IReadOnlyList<FactCandidate<T>> candidates, string what)
