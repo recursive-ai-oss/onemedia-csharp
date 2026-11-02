@@ -98,7 +98,7 @@ input's defect count.
 | `Disposition` | MP4/QuickTime keep only `Default` and `Disabled`; other disposition flags (forced, commentary, hearing impaired …) are listed |
 | `Structure`, `Timing`, `Attachment` | reserved for the Matroska target (attachments, edit lists the target cannot hold) |
 
-`Changes` lists what the remux did to carried data: configuration derived from the stream, framing changed, times moved. `Mux.Notes` lists what the muxer rounded or filled in.
+`Changes` lists what the remux did to carried data: configuration derived from the stream, framing changed, times moved. For a transport stream output that includes the framing: ADTS headers added to AAC, and Annex B start codes with in-band parameter sets in place of length prefixes, so packet bytes differ from the input by design (`docs/muxing-ts.md`). `Mux.Notes` lists what the muxer rounded or filled in.
 
 Unknown top-level and movie-level boxes of an ISO source (`udta` payloads outside the tag readers, vendor `uuid`, `meta` with other handlers) are not carried by a remux; use `Faststart`, which copies them, when only the layout should change.
 

@@ -193,6 +193,14 @@ public class MpegTsMuxerTests
     }
 
     [Fact]
+    public void RemuxReportsThatPacketBytesDifferByDesign()
+    {
+        _ = Remux("bframes_aac.mp4", RemuxFormat.MpegTs, out RemuxReport report);
+        Assert.Contains(report.Changes, c => c.Contains("Annex B start codes", StringComparison.Ordinal));
+        Assert.Contains(report.Changes, c => c.Contains("ADTS header was added", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void SegmentsStartWithPatAndPmtAndCarryTheCountersOn()
     {
         using MediaFile source = Media.Open(Data("bframes_aac.mp4"));

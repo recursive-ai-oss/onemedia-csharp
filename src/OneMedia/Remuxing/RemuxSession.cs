@@ -674,6 +674,16 @@ public sealed class RemuxSession : IDisposable
                 _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotRepresentable, t.Index, "rotation", $"A transport stream has no display rotation field; the {turn.RotationDegrees} degree rotation is not carried."));
             }
 
+            // The framing of the payload differs by design: a transport stream carries Annex B video and ADTS audio (ISO/IEC 14496-15, 14496-3).
+            if (!t.Configuration.IsEmpty && t.Configuration.Format is "avcC" or "hvcC" or "vvcC")
+            {
+                _changes.Add($"Input track {t.Index}: packet bytes differ from the input by design: length prefixes became Annex B start codes, and the parameter sets from the {t.Configuration.Format} record are written in-band before keyframes that lack them (plus an access unit delimiter in front of each access unit, unless switched off).");
+            }
+            else if (t.Codec == CodecId.Aac && !t.Configuration.IsEmpty)
+            {
+                _changes.Add($"Input track {t.Index}: packet bytes differ from the input by design: an ADTS header was added in front of each AAC access unit.");
+            }
+
             // A transport stream has no edit list: the start of the first edit (and the priming) moves the packet times instead, so the track
             // starts at presentation time zero as a player of the source would show it. Priming packets keep a time before zero.
             if (!t.Edit.PacketTimesIncludePriming)
