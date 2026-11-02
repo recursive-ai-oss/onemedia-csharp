@@ -176,7 +176,7 @@ internal static partial class IsoRepair
             }
 
             uint ts = timescale.TryGetValue(id, out uint v) && v != 0 ? v : 1;
-            fragDuration = Math.Max(fragDuration, (long)Math.Round((double)sum * movieTimescale / ts));
+            fragDuration = Math.Max(fragDuration, RescaleRounded(sum, movieTimescale, ts));
         }
 
         if (mehdAt >= 0 && Math.Abs(mehdValue - fragDuration) > 1)
@@ -307,6 +307,9 @@ internal static partial class IsoRepair
             return report.Build(RepairStatus.Repaired, output.Position);
         }
     }
+
+    // sum * to / from, rounded to nearest, in exact integer arithmetic
+    internal static long RescaleRounded(long value, long to, long from) => (long)((((Int128)value * to) + (from / 2)) / from);
 
     private static void AddFragmentTracks(RepairReportBuilder report, SortedSet<uint> trackIds, List<Fragment> frags, long dropped)
     {

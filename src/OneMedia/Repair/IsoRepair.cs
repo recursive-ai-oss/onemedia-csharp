@@ -347,7 +347,7 @@ internal static partial class IsoRepair
 
             if (t.TkhdDurationAt >= 0 && t.Timescale > 0)
             {
-                long want = t.ElstSum >= 0 ? t.ElstSum : (long)Math.Round((double)t.MdhdDuration * movieTimescale / t.Timescale);
+                long want = t.ElstSum >= 0 ? t.ElstSum : RescaleRounded(t.MdhdDuration, movieTimescale, t.Timescale);
                 if (want > 0 && Math.Abs(t.TkhdDuration - want) > 1)
                 {
                     patches.Add((t.TkhdDurationAt, Number(want, t.TkhdDurationWidth)));
