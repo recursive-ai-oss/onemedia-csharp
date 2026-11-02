@@ -182,7 +182,8 @@ internal static class MatroskaTrackWriter
                     return asc;
                 }
 
-                return IsAny(c, "asc", "AudioSpecificConfig") && AudioSpecificConfig.TryParse(data.Span, out _) ? data.ToArray() : throw Missing("the AAC setup bytes are not an AudioSpecificConfig.");
+                // FLV labels the AAC sequence header "CodecPrivate"; its bytes are the AudioSpecificConfig, which the parse below confirms.
+                return IsAny(c, "asc", "AudioSpecificConfig", "CodecPrivate") && AudioSpecificConfig.TryParse(data.Span, out _) ? data.ToArray() : throw Missing("the AAC setup bytes are not an AudioSpecificConfig.");
             case "opus":
                 if (data.IsEmpty)
                 {
