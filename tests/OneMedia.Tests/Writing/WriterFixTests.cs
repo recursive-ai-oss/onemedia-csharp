@@ -183,6 +183,21 @@ public sealed class WriterFixTests : IDisposable
         Assert.Equal(file, WriterTestSupport.Apply(strict.Build(), file));
     }
 
+    /// <summary>
+    /// A fuzz find (600 s run): a nested chunk of odd size whose pad byte lies after its parent's stated end. Regenerating headers counts the pad in the
+    /// parent (the spec's rule) and so changed the outer size of an untouched file that the reader called clean; the reader now reports the deviation.
+    /// </summary>
+    [Fact]
+    public void APadByteOutsideItsParentIsReportedSoRegeneratingItsSizeIsNotAnUntouchedRoundTrip()
+    {
+        byte[] file = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "writer-riff", "writer-riff-pad-byte-outside-parent.bin"))[1..];
+        using MemoryMediaSource src = new(file);
+        DefectLog log = new();
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, log)!;
+        Assert.Contains(log, d => d.Severity >= DefectSeverity.Warning);
+        Assert.Equal(file, WriterTestSupport.Apply(new ChunkEditor(cf, src).Build(), file));
+    }
+
     /// <summary>A fuzz find from the first fix: a nested BW64 whose ds64 size runs far past the end of the file is refused, not planned as a copy of bytes that do not exist.</summary>
     [Fact]
     public void RegeneratingHeadersWithADs64SizePastTheEndOfTheFileIsATypedRefusalOrAValidPlan()
