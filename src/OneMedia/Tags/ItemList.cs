@@ -37,11 +37,6 @@ internal static class ItemListParser
     {
         foreach (BoxNode item in ilst.EnumerateChildren())
         {
-            if (item.Type is BoxTypes.Free or BoxTypes.Skip)
-            {
-                continue; // padding inside the list (a removed item that kept its size)
-            }
-
             string key = ItemKey(item, io, keys);
             string? mean = null;
             string? name = null;

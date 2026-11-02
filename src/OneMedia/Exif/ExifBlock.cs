@@ -58,9 +58,6 @@ public enum ExifType : ushort
 /// <param name="BigEndian">The byte order of <paramref name="Value"/>.</param>
 public sealed record ExifEntry(string Ifd, ushort Tag, ExifType Type, uint Count, ByteRange ValueRange, ReadOnlyMemory<byte> Value, bool BigEndian)
 {
-    /// <summary>Where the 12-byte directory entry itself lies in the source (tag, type, count, value or offset), or <see cref="ByteRange.None"/> when the block's position is unknown. Writers use it to change an entry in place.</summary>
-    public ByteRange EntryRange { get; init; } = ByteRange.None;
-
     /// <summary>The value as text for <see cref="ExifType.Ascii"/> entries (up to the first NUL, trimmed), else <c>null</c>.</summary>
     /// <returns>The text.</returns>
     public string? AsText()
@@ -307,7 +304,7 @@ public sealed class ExifBlock
                 }
             }
 
-            entries.Add(new ExifEntry(name, tag, (ExifType)type, n, range, value, big) { EntryRange = baseOffset < 0 ? ByteRange.None : new ByteRange(baseOffset + pos, 12) });
+            entries.Add(new ExifEntry(name, tag, (ExifType)type, n, range, value, big));
 
             // Exif 2.32 §4.6.3: 0x8769 points to the Exif IFD, 0x8825 to the GPS IFD, 0xA005 (in the Exif IFD) to the Interoperability IFD; TIFF 6.0
             // adds SubIFDs (0x014A, one or more offsets).
