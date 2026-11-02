@@ -8,6 +8,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 Fixes for 0.3.0-preview.1, plus early previews of capture facts and telemetry. The previews are checked against ExifTool on published sample files and on files we generate, not yet on a corpus of device recordings; their behaviour may change.
 
+### Privacy
+
+- In 0.3.0-preview.1, removing frames from the end of an ID3v2 tag in an MP3 in place could leave the removed frames' bytes in the file as padding, so a removed location, comment or serial number could survive. Fixed: an edit that removes trailing frames now overwrites them. **If you removed tags from MP3 files with 0.3.0-preview.1, save those files again with this version.** No other format was affected (checked on MP3, AIFF, WAV, FLAC, Opus, Ogg, MP4 and MKV).
+
 ### Added
 
 - Preview: timed telemetry (`MediaFile.Telemetry`, a pull reader in `RecursiveAI.OneMedia.Metadata.Telemetry`, `docs/telemetry.md`): GoPro GPMF, Google CAMM, QuickTime timed metadata (`mebx`), DJI per-frame text and `djmd` tracks, and AVCHD MDPM GPS, decoded to typed per-sample channels (GPS, accelerometer, gyroscope, orientation, camera settings, raw items with byte ranges) without allocating per sample.
@@ -15,7 +19,6 @@ Fixes for 0.3.0-preview.1, plus early previews of capture facts and telemetry. T
 
 ### Fixed
 
-- Privacy: removing frames from the end of an ID3v2 tag in an MP3 left the removed frames' bytes in the file as stale "padding", so a removed location, comment or serial number survived the edit. The writer now treats padding that does not read as zeros as changed and rewrites it. The RIFF (WAV/AIFF ID3 chunk, `bext`), APE, Vorbis comment (Ogg), FLAC, MP4 and Matroska writers were checked the same way and do not take that shortcut (test `FieldsRemovedInPlaceLeaveNoStaleBytesInTheFile`, which fails on MP3 without the fix and passes on all eight formats with it).
 - AVI written by stream copy from an MP4 whose `avcC`/`hvcC`/`vvcC` record has an odd length (RIFF pads the `strf` chunk to an even size) is read again: the record ends at `biSize`, so the pad byte no longer defeats the parse. Such files get their codec string (`avc1.64001E`, not none) and remux to MP4 and Matroska with their video: an AVI whose record is present is carried as length-prefixed samples with that record instead of being searched for Annex B parameter sets.
 - A remux, and `MakePlayable`, no longer report success when the picture was lost. `RemuxReport.LostMediaTracks` lists the wanted video tracks, and the audio tracks when none of them was written, that did not reach the output for any reason but the caller's own choice; `MakePlayable` returns `Failed` (no output file) with a `remux.dropped-track` blocker instead of `Made`, and `onemedia remux` prints a warning and exits with 3. Deselecting or dropping a track on request is still a choice, not a loss.
 - MP4/MOV written from Matroska (or any input whose frames are reordered and that has no edit list of its own) kept an edit list shorter than the presentation by the reorder delay, so players dropped the last one or two frames (sintel 1,251 of 1,253 frames decoded, test5 1,103 of 1,104). The edit's `segment_duration` now runs to the end of the last frame shown (ISO/IEC 14496-12 section 8.6.6).
