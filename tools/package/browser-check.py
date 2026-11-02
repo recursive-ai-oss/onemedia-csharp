@@ -104,6 +104,23 @@ JS = r"""async ({player, url}) => {
 }"""
 
 
+WATCH = {"current": None}
+
+
+def start_watchdog(out):
+    """A page can freeze the whole browser, which no timer in the page survives: after 170 s on one observation it is recorded as hung and the
+    process exits with status 3; run it again with --resume to carry on."""
+    def loop():
+        while True:
+            time.sleep(5)
+            cur = WATCH["current"]
+            if cur and time.time() - cur[3] > 170:
+                out.write(json.dumps({"browser": cur[4], "presentation": cur[0], "player": cur[1], "hung": True, "pass": False}) + "\n")
+                out.flush()
+                os._exit(3)
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--browser", required=True, choices=["chromium", "firefox", "webkit"])
@@ -112,6 +129,7 @@ def main():
     ap.add_argument("--players", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", default="")
+    ap.add_argument("--resume", action="store_true", help="append to --out and skip what it already holds")
     a = ap.parse_args()
     home = os.environ.get("ONEMEDIA_HOME", os.path.expanduser("~/onemedia"))
     libs = os.path.join(home, "oracles", "playwright", "libs", "usr", "lib", "x86_64-linux-gnu")
@@ -130,13 +148,22 @@ def main():
             if a.browser == "webkit": jobs.append((d, "native-hls", f"{base}/{d}/master.m3u8"))
         if os.path.exists(os.path.join(a.root, d, "manifest.mpd")):
             jobs.append((d, "dashjs", f"{base}/{d}/manifest.mpd"))
-    with sync_playwright() as p, open(a.out, "w") as out:
+    done = set()
+    if a.resume and os.path.exists(a.out):
+        for line in open(a.out):
+            r = json.loads(line)
+            done.add((r["presentation"], r["player"]))
+    with sync_playwright() as p, open(a.out, "a" if a.resume else "w") as out:
+        start_watchdog(out)
         launch = {}
         if a.browser == "chromium": launch["args"] = ["--autoplay-policy=no-user-gesture-required"]
         if a.browser == "firefox": launch["firefox_user_prefs"] = {"media.autoplay.default": 0, "media.autoplay.blocking_policy": 0}
         if a.executable: launch["executable_path"] = a.executable
         browser = getattr(p, a.browser).launch(headless=True, **launch)
         for i, (d, player, url) in enumerate(jobs):
+            if (d, player) in done:
+                continue
+            WATCH["current"] = (d, player, url, time.time(), a.browser)
             rec = {"browser": a.browser, "version": browser.version, "presentation": d, "player": player}
             ctx = browser.new_context(); page = ctx.new_page(); page.set_default_timeout(20000)
             try:
@@ -150,6 +177,7 @@ def main():
                 rec["harnessError"] = f"{type(e).__name__}: {str(e)[:300]}"
             try: ctx.close()
             except Exception: pass
+            WATCH["current"] = None
             out.write(json.dumps(rec) + "\n"); out.flush()
             print(d, player, rec.get("pass"), rec.get("fatal") or rec.get("harnessError") or rec.get("unsupported") or "", file=sys.stderr, flush=True)
             if (i + 1) % 10 == 0:

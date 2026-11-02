@@ -113,6 +113,19 @@ def main():
         path = os.path.join(outdir, track, "index.m3u8")
         if not os.path.isfile(path):
             continue
+        if track == "stream0":
+            # A transport stream rendition carries audio and video together: compare each stream with the source stream of its kind.
+            out_kinds, out_all = kinds(ffprobe, path), packets(ffprobe, path)
+            for idx, o in sorted(out_all.items()):
+                kind = out_kinds.get(idx)
+                if kind not in by_kind:
+                    continue
+                s = src_packets[by_kind[kind]]
+                d, shift = compare(s, o, with_bytes)
+                total += len(s)
+                bad += sum(v for k, v in d.items() if not k.endswith("(explained)"))
+                print("%s HLS %s packets %d/%d shift %s diffs %s" % (track, kind, len(s), len(o), "%.6f" % shift if shift is not None else "n/a", dict(d) or "none"))
+            continue
         kind = "video" if track.startswith("video") else "audio" if track.startswith("audio") else None
         if kind is None or kind not in by_kind:
             continue
