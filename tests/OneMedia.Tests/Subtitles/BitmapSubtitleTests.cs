@@ -305,7 +305,8 @@ public class BitmapSubtitleTests
                     Assert.Fail($"depth {depth} px ({i % 300},{i / 300}) code {code} alpha {img.Pixels[(i * 4) + 3]} want {255 - tt}");
                 }
 
-                (int r, _, _) = Reference(y, cb, cr, true);
+                // DVB is always ITU-R BT.601 (EN 300 743 clause 7.2.4)
+                (int r, _, _) = Reference(y, cb, cr, false);
                 Assert.InRange(img.Pixels[i * 4], Clamp(r) - 1, Clamp(r) + 1);
             }
         }

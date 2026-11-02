@@ -225,7 +225,7 @@ internal static class Program
         }
 
         int matched = 0, exact = 0, maxDiff = 0, pixelsOver2 = 0;
-        long pixelsDiff = 0, pixelsTotal = 0;
+        long pixelsDiff = 0, pixelsTotal = 0, onlyTheirs = 0, onlyOurs = 0, bothVisibleDiffer = 0;
         double maxDt = 0;
         var used = new HashSet<int>();
         foreach (SubtitleCue c in cues)
@@ -299,8 +299,29 @@ internal static class Program
                 }
 
                 pixelsTotal++;
+                if (Environment.GetEnvironmentVariable("COMPARE_CLASSES") == "1")
+                {
+                    if (aa == 0 && ab != 0)
+                    {
+                        onlyTheirs++;
+                    }
+                    else if (aa != 0 && ab == 0)
+                    {
+                        onlyOurs++;
+                    }
+                    else if (aa != 0 && d > 2)
+                    {
+                        bothVisibleDiffer++;
+                    }
+                }
+
                 if (d > 0)
                 {
+                    if (d > 2 && pixelsOver2 < 6 && Environment.GetEnvironmentVariable("COMPARE_DEBUG") == "1")
+                    {
+                        Console.WriteLine($"    px ({i % w},{i / w}) ours={canvas[o]},{canvas[o + 1]},{canvas[o + 2]},{canvas[o + 3]} ffmpeg={theirs[o]},{theirs[o + 1]},{theirs[o + 2]},{theirs[o + 3]}");
+                    }
+
                     diffPixels++;
                     if (d > 2)
                     {
@@ -324,6 +345,11 @@ internal static class Program
         }
 
         Console.WriteLine($"{Path.GetFileName(file)} [{what}] ours={cues.Count} ffmpeg-nonblank-frames={nonBlank} matched={matched} identical={exact} pixels-differing={pixelsDiff} (over 2: {pixelsOver2}) max-channel-diff={maxDiff} max-time-diff={maxDt * 1000:F2}ms");
+        if (Environment.GetEnvironmentVariable("COMPARE_CLASSES") == "1")
+        {
+            Console.WriteLine($"  classes: ours transparent but ffmpeg visible={onlyTheirs}, ours visible but ffmpeg transparent={onlyOurs}, both visible and differing by more than 2={bothVisibleDiffer}");
+        }
+
         return 0;
     }
 }

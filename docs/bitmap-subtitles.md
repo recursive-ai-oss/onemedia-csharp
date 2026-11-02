@@ -70,5 +70,35 @@ is a typed defect with the byte offset (`pgs.*`, `vobsub.*`, `dvbsub.*` codes); 
 ## Verification
 
 `tools/run-bitmapsubs-diff.sh` writes crafted streams (`tools/OneMedia.BitmapSubsCheck gen`), has ffmpeg re-wrap them (Matroska copy,
-`dvbsub` in MPEG-TS, `dvdsub` in Matroska and as idx/sub) and compares our pictures with the RGBA frames ffmpeg renders on a transparent
-canvas for the same file. Results are recorded in the changelog of the release that carries them.
+M2TS, `dvbsub` in MPEG-TS, `dvdsub` in Matroska, VOB and as idx/sub) and compares our pictures with the RGBA frames ffmpeg renders on a
+transparent canvas for the same file. Event times are compared after removing ffmpeg's timeline shift (it starts every subtitle file at 0),
+and agree with `ffprobe -show_packets` times.
+
+Crafted streams, ffmpeg 7.0.2 and mkvmerge 103.0 (3 events each):
+
+| Input | Result |
+|---|---|
+| PGS `.sup`, Matroska (mkvmerge and ffmpeg), M2TS; SD and HD | 3/3 matched, at most 1 level per channel apart (rounding in the YCbCr to RGB step, ~1,600 to ~2,000 pixels) |
+| DVD sub-pictures: Matroska, VOB (alpha and geometry only, the palette is in the IFO), idx/sub, mkvmerge `S_VOBSUB` | 3/3 pixel-identical |
+| DVB in MPEG-TS | 3/3, at most 1 level apart (ffmpeg 8.0.1 only, see below) |
+
+ffmpeg 7.0.2 (the static build) crashes on any MPEG-TS input on the test machine, so the DVB-in-TS rows were rendered with ffmpeg 8.0.1;
+the M2TS PGS rows render the same stream copied to Matroska.
+
+Published samples (samples.ffmpeg.org `sub/`, fetch-only, see `tools/corpus/manifest.tsv`):
+
+| File | Events | Result |
+|---|---|---|
+| `PGS/supsample.mkv` (PGS, 1280x720) | 1 | pixel-identical |
+| `largeres_vobsub.mkv` (VobSub, 1920x1080, first stream, first 60 s) | 3 | pixel-identical |
+| `VOB/X.The.Movie...idx/.sub` | 685 | all event times equal ffprobe's; alpha and geometry identical in all 685; colours differ because this idx has no `palette:` line, so both decoders use their own fallback (ours a grey ramp) |
+| `dvbsub/dvbsubtest.ts` (DVB, ffmpeg 8.0.1) | 36 | every visible pixel that both show is equal; 225,792 pixels are transparent for us and black for ffmpeg: CLUT entry 0 has Y = 0, which EN 300 743 defines as fully transparent whatever T says, and ffmpeg paints it opaque |
+| `dvbsub/SubTitleHD.ts` (DVB, ffmpeg 8.0.1) | 8 | differs: the stream has no CLUT definition, so we use the default 16-entry CLUT of EN 300 743 clause 10.2 (entry 2 is opaque green); ffmpeg renders those pixels differently (alpha 36). Not settled by a second implementation |
+
+Known gaps: the PGS cropping flag (taken as 0x80 in the composition object) is inferred, since ffmpeg ignores cropping and so cannot confirm it;
+the published PGS sample has no cropped objects.
+
+Fuzz: one target each for the PGS segment decoder, the sub-picture decoder, the DVB decoder and the idx parser, 300 s each on 4 cores:
+4.05 M, 1.46 M, 8.40 M and 1.59 M executions, no crashes.
+
+Set `COMPARE_DEBUG=1` or `COMPARE_CLASSES=1` for the comparison tool to print sample differing pixels or the transparent/visible split.
