@@ -32,6 +32,12 @@ public enum RemuxFormat
 
     /// <summary>WebM, the Matroska subset for VP8, VP9, AV1, Vorbis and Opus.</summary>
     WebM,
+
+    /// <summary>An MPEG transport stream (<c>.ts</c>) with 188-byte packets. H.264, HEVC, VVC and MPEG-2 video, AAC, MPEG audio, AC-3/E-AC-3, DVB subtitles and teletext, timed ID3 and SCTE-35 are carried; tags, chapters and edit lists are not.</summary>
+    MpegTs,
+
+    /// <summary>An MPEG transport stream with 192-byte packets (<c>.m2ts</c>, <c>.mts</c>): as <see cref="MpegTs"/> with a 4-byte arrival time stamp before each packet.</summary>
+    M2ts,
 }
 
 /// <summary>Receives each packet exactly as it is handed to the muxer: output track index, times after any shift, and the payload after repackaging.</summary>

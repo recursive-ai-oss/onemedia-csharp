@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Remuxes files to a transport stream and compares the packets our reader finds in the output with those it finds in the input. Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.TsMuxCheck</RootNamespace>
+    <AssemblyName>OneMedia.TsMuxCheck</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>
