@@ -31,6 +31,7 @@ TagWriteTarget.Register(targets);
 FactsTargets.Register(targets);
 TelemetryTarget.Register(targets);
 StripTarget.Register(targets);
+CaptionTargets.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;

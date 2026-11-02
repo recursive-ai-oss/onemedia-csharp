@@ -19,6 +19,7 @@
     <Project Path="tools/OneMedia.MatroskaOneAudio/OneMedia.MatroskaOneAudio.csproj" />
     <Project Path="tools/OneMedia.PlaybackCheck/OneMedia.PlaybackCheck.csproj" />
     <Project Path="tools/OneMedia.RemuxCheck/OneMedia.RemuxCheck.csproj" />
+    <Project Path="tools/OneMedia.CaptionCheck/OneMedia.CaptionCheck.csproj" />
     <Project Path="tools/OneMedia.TelemetryCheck/OneMedia.TelemetryCheck.csproj" />
     <Project Path="tools/OneMedia.WriterCheck/OneMedia.WriterCheck.csproj" />
     <Project Path="tools/OneMedia.TagWriteCheck/OneMedia.TagWriteCheck.csproj" />

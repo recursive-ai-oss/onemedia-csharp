@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dumps embedded captions as SRT per channel/service for comparison with other tools, and drives the write-back. Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.CaptionCheck</RootNamespace>
+    <AssemblyName>OneMedia.CaptionCheck</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>

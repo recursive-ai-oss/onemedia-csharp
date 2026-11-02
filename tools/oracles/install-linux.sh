@@ -32,6 +32,9 @@ MEDIAINFO_SHA=3087b8d4906a47d876a66a500b8a6af63de8e9da9992d295a702b4ca79fb3fdd
 EXIFTOOL_VER=13.60
 EXIFTOOL_URL=https://sourceforge.net/projects/exiftool/files/Image-ExifTool-13.60.tar.gz/download
 EXIFTOOL_SHA=c8e3c42576f46d862e4cd9c192989776e7363931e890c95056bcd6293e83ea36
+CCEXTRACTOR_VER=0.96.6
+CCEXTRACTOR_URL=https://github.com/CCExtractor/ccextractor/releases/download/v0.96.6/ccextractor-x86_64.AppImage
+CCEXTRACTOR_SHA=176790ad21035ecdfcc28ef7f882a3ae60bdb6cd57ec393aa1fb66c7c3320d31
 # -------------------------------------------------------------------------------------------------
 
 sha() { sha256sum "$1" | cut -d' ' -f1; }
@@ -114,6 +117,16 @@ if ! installed exiftool "$EXIFTOOL_SHA"; then
 fi
 wrap exiftool "exec perl \"$O/exiftool/exiftool\" \"\$@\""
 
+# ccextractor: the release AppImage, extracted so FUSE is not needed, executed only.
+fetch ccextractor "$CCEXTRACTOR_URL" "$CCEXTRACTOR_SHA" ccextractor.AppImage
+if ! installed ccextractor "$CCEXTRACTOR_SHA"; then
+  rm -rf "$O/ccextractor"; mkdir -p "$O/ccextractor"; chmod +x "$D/ccextractor.AppImage"
+  ( cd "$O/ccextractor" && "$D/ccextractor.AppImage" --appimage-extract >/dev/null )
+  echo "$CCEXTRACTOR_SHA" > "$O/ccextractor/.pin"
+fi
+CCX=$(find "$O/ccextractor/squashfs-root" -type f -name ccextractor | head -1)
+wrap ccextractor "LD_LIBRARY_PATH=\"$(dirname "$CCX")/../lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\" exec \"$CCX\" \"\$@\""
+
 # mkvalidator, when a build exists (see build-mkvalidator.sh).
 [ -x "$O/bin/mkvalidator" ] || echo "note: mkvalidator not installed (tools/oracles/build-mkvalidator.sh)"
 
@@ -123,5 +136,6 @@ echo "=== versions"
 "$O/bin/mkvinfo" --version | head -1
 "$O/bin/mediainfo" --Version | tail -1
 echo "exiftool $("$O/bin/exiftool" -ver)"
+"$O/bin/ccextractor" --version 2>&1 | head -1
 echo "=== sha256 (as pinned)"
-for n in FFMPEG GPAC MKVTOOLNIX MEDIAINFO EXIFTOOL; do v=${n}_SHA; echo "$n ${!v}"; done
+for n in FFMPEG GPAC MKVTOOLNIX MEDIAINFO EXIFTOOL CCEXTRACTOR; do v=${n}_SHA; echo "$n ${!v}"; done
