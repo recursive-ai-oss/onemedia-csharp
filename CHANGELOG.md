@@ -4,6 +4,16 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- AVI written by stream copy from an MP4 whose `avcC`/`hvcC`/`vvcC` record has an odd length (RIFF pads the `strf` chunk to an even size) is read again: the record ends at `biSize`, so the pad byte no longer defeats the parse. Such files get their codec string (`avc1.64001E`, not none) and remux to MP4 and Matroska with their video: an AVI whose record is present is carried as length-prefixed samples with that record instead of being searched for Annex B parameter sets.
+- A remux, and `MakePlayable`, no longer report success when the picture was lost. `RemuxReport.LostMediaTracks` lists the wanted video tracks, and the audio tracks when none of them was written, that did not reach the output for any reason but the caller's own choice; `MakePlayable` returns `Failed` (no output file) with a `remux.dropped-track` blocker instead of `Made`, and `onemedia remux` prints a warning and exits with 3. Deselecting or dropping a track on request is still a choice, not a loss.
+- MP4/MOV written from Matroska (or any input whose frames are reordered and that has no edit list of its own) kept an edit list shorter than the presentation by the reorder delay, so players dropped the last one or two frames (sintel 1,251 of 1,253 frames decoded, test5 1,103 of 1,104). The edit's `segment_duration` now runs to the end of the last frame shown (ISO/IEC 14496-12 section 8.6.6).
+- Remux loss lines name the input track: the muxer's own message prefix ("Track 2:") counts the tracks it had accepted, not the input's numbering, so losses of input tracks 3 to 7 read "Track 2". They now read "Input track N:", as the change lines do.
+- README and `docs/writer.md` no longer say `Save` leaves the whole old or new file after a power loss: only `kill -9` is tested (500 rounds, 0 corrupt targets), power loss is not, and the folder is not `fsync`ed (the BCL cannot), so the rename may not be durable.
+- `docs/writer-review.md` gives one `SaveInPlace` tear figure everywhere: 3 of 300 with the two-pass writer, 7 of 300 for the original code; the earlier 1 of 300 came from a broken harness.
+- `PaddingRequiredException.Required` for a refused MP3 `SaveInPlace`, an ID3 chunk in WAV/AIFF and an Opus comment header is the real shortfall: it no longer includes the 1,024 bytes of optional growth padding (`ChunkEditor.Replace` has an overload that names the optional tail). MP4, Matroska, FLAC and RIFF chunks already reported the real figure.
+
 ## [0.3.0-preview.1] - 2026-11-02
 
 Writing, remux, editing and playability: the ISO and Matroska muxers, remux and faststart, trim/split/concat, tag editing in every system, `Save`/`SaveAs`/`SaveInPlace`, `CanPlay` and `MakePlayable`. `Save` replaces the file (new inode, the saver's owner and group; extended attributes, ACLs and hard links are not kept); `SaveInPlace` works within existing padding only and is not atomic. The ISO muxer and `CanPlay` shipped as previews in 0.2.0-preview.2 and are now covered by the writer and playback checks. Not in this release: MPEG-TS, WAV and ASF writing, subtitles, repair, packaging.

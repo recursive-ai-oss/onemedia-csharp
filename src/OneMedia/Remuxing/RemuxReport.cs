@@ -90,6 +90,12 @@ public sealed record RemuxReport(
     IReadOnlyList<string> Changes,
     int InputDefects)
 {
+    /// <summary>
+    /// Input tracks the caller wanted that did not reach the output and are media the file is about: every video track, and the audio tracks when none
+    /// of them was written. Empty when the output holds what was asked for. A track the caller deselected or dropped is not listed.
+    /// </summary>
+    public IReadOnlyList<int> LostMediaTracks { get; init; } = [];
+
     /// <summary>True when anything other than a caller's own choice (<see cref="LossReason.Deselected"/>) did not carry over.</summary>
     public bool HasLosses
     {

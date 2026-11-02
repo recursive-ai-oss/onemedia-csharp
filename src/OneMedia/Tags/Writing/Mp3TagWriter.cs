@@ -34,7 +34,8 @@ internal static class ReplacementPlan
             list.AddData(r.Data);
             list.AddZeros(r.ZeroPad);
             list.NoteChange(r.Description, new ByteRange(r.Offset, r.Length), start);
-            required += Math.Max(0, r.NewLength - r.Length);
+            // Growth padding (ZeroPad) is optional: only the bytes the edit itself needs count as a shortfall.
+            required += Math.Max(0, r.Data.Length - r.Length);
             pos = r.Offset + r.Length;
         }
 
@@ -382,12 +383,12 @@ internal static class Mp3TagWriter
     }
 
     // For tags inside a chunk of a RIFF file: the chunk builder needs the whole payload, so the padding is materialised here.
-    internal static (byte[] Tag, SystemWriteReport Report, List<string> Notes) BuildId3v2Public(IMediaSource src, Id3Tag? tag, TagEdits edits, TagWriteOptions options, MediaLimits limits, long oldLength)
+    internal static (byte[] Tag, SystemWriteReport Report, List<string> Notes, long Padding) BuildId3v2Public(IMediaSource src, Id3Tag? tag, TagEdits edits, TagWriteOptions options, MediaLimits limits, long oldLength)
     {
         (byte[] head, long pad, SystemWriteReport report, List<string> notes) = BuildId3v2(src, tag, edits, options, limits, oldLength);
         byte[] whole = new byte[head.Length + pad];
         head.CopyTo(whole, 0);
-        return (whole, report, notes);
+        return (whole, report, notes, pad);
     }
 
     // Returns the tag header and frames, and the number of zero padding bytes that follow them.

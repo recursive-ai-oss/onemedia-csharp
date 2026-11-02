@@ -129,7 +129,17 @@ internal static class OggTagWriter
             list.AddGenerated(restLength, new Renumber(pos, first.Serial, delta));
         }
 
-        EditPlan plan = list.ToPlan(src.Length, 0, 0, Math.Max(0, pages.Sum(p => p.Length) - (pos - first.Length)));
+        // The shortfall is measured without the growth padding an Opus comment header leaves behind: that padding is optional, so a refused
+        // in-place edit must not ask for more than the edit itself needs.
+        long minimalLength = pages.Sum(p => p.Length);
+        if (kind == "opus" && packets[commentIndex].Length > old.Length)
+        {
+            List<byte[]> minimal = [.. packets];
+            minimal[commentIndex] = OpusTagsPacket(cr.Block, old.Length, 0);
+            minimalLength = Repage(minimal, first.Serial, first.Sequence + 1).Sum(p => p.Length);
+        }
+
+        EditPlan plan = list.ToPlan(src.Length, 0, 0, Math.Max(0, minimalLength - (pos - first.Length)));
         return new TagWritePlan(plan, new TagWriteReport([cr.Report], delta != 0 ? [$"The header pages changed from {pageCount} to {pages.Count}; later pages of the stream were renumbered and re-checksummed."] : []));
     }
 

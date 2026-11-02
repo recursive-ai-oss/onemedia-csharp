@@ -63,18 +63,18 @@ internal static class RiffTagWriter
         ChunkNode? id3 = cf.Chunks.FirstOrDefault(c => c.Id is "id3 " or "ID3 ");
         if (id3 is not null && options.Wants(TagSystems.Id3Chunk) && Id3Tag_TryRead(src, id3, limits, out Id3.Id3Tag? tag))
         {
-            (byte[] bytes, SystemWriteReport r, List<string> n) = Mp3TagWriter.BuildId3v2Public(src, tag, edits, options, limits, tag!.Range.Length);
+            (byte[] bytes, SystemWriteReport r, List<string> n, long padding) = Mp3TagWriter.BuildId3v2Public(src, tag, edits, options, limits, tag!.Range.Length);
             notes.AddRange(n);
             reports.Add(r with { System = TagSystems.Id3Chunk });
             byte[] chunk = ChunkBuilder.Create(layout, id3.Id, bytes);
-            editor.Replace(id3, chunk);
+            editor.Replace(id3, chunk, padding);
             any = true;
         }
         else if (id3 is null && (options.Systems?.Contains(TagSystems.Id3Chunk) == true || (options.Systems is null && edits.PictureEdits.Any(e => e.Kind == TagEditKind.SetPicture))))
         {
             // Pictures live only in ID3: a chunk is created for them (with every field when asked for by name).
             TagEdits forId3 = options.Systems is null ? PicturesOnly(edits) : edits;
-            (byte[] bytes, SystemWriteReport r, List<string> n) = Mp3TagWriter.BuildId3v2Public(src, null, forId3, options, limits, 0);
+            (byte[] bytes, SystemWriteReport r, List<string> n, _) = Mp3TagWriter.BuildId3v2Public(src, null, forId3, options, limits, 0);
             notes.AddRange(n);
             reports.Add(r with { System = TagSystems.Id3Chunk, Created = true });
             editor.AppendChild(null, ChunkBuilder.Create(layout, layout == ChunkLayout.Iff ? "ID3 " : "id3 ", bytes));

@@ -106,6 +106,19 @@ internal sealed class MuxTrack : IDisposable
 
     public long DurationSum { get; set; }
 
+    /// <summary>The composition offset (presentation minus decode time) of the sample last added.</summary>
+    public int PreviousComposition { get; set; }
+
+    /// <summary>
+    /// The end of the latest-ending sample on the presentation timeline (its presentation time plus its duration), in the shifted media timeline.
+    /// With composition reordering this runs past <see cref="DurationSum"/> by the reorder delay, and an edit that ends at <see cref="DurationSum"/>
+    /// would cut off the last frames shown.
+    /// </summary>
+    public long PresentationEnd { get; set; }
+
+    /// <summary>Notes that the sample whose decode time is <paramref name="shiftedDts"/> and composition offset <paramref name="composition"/> lasts <paramref name="duration"/>.</summary>
+    public void NotePresentation(long shiftedDts, int composition, long duration) => PresentationEnd = Math.Max(PresentationEnd, shiftedDts + composition + duration);
+
     public int CompositionValue { get; set; }
 
     public long CompositionRun { get; set; }

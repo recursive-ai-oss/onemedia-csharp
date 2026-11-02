@@ -368,6 +368,25 @@ public sealed class WriterFixTests : IDisposable
         Assert.Equal(5, ex.Required);
     }
 
+    // The growth padding a save leaves behind is optional, so a refused in-place edit must ask for the bytes the edit itself lacks, not those plus the padding.
+    [Theory]
+    [InlineData("audio-es/plain.mp3")]
+    [InlineData("pcm/aiff-id3.aiff")]
+    [InlineData("xiph-flv/tags.flac")]
+    [InlineData("xiph-flv/tags.opus")]
+    [InlineData("metadata/tags_ilst.mp4")]
+    public void ARefusedInPlaceEditAsksForTheRealShortfallNotTheGrowthPadding(string fixture)
+    {
+        string path = Put("short" + Path.GetExtension(fixture), Fx(fixture));
+        TagWriter.Save(path, Title(new string('T', 700)), TagWriteOptions.Minimal);
+        long ForOptions(TagWriteOptions options) => Assert.Throws<PaddingRequiredException>(() => TagWriter.SaveInPlace(path, Title(new string('U', 30000)), options)).Required;
+        long minimal = ForOptions(TagWriteOptions.Minimal);
+        long defaults = ForOptions(new TagWriteOptions());
+        Assert.Equal(minimal, defaults);
+        // The title grows by 29,300 characters, at most two bytes each.
+        Assert.InRange(minimal, 1, 70000);
+    }
+
     // ---- finding 10: the message ----
 
     [Fact]

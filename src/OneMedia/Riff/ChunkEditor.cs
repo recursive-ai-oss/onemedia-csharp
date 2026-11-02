@@ -56,7 +56,14 @@ public sealed class ChunkEditor
     /// <param name="node">The chunk to replace.</param>
     /// <param name="chunk">The complete new chunk slot as built by <see cref="ChunkBuilder"/> (header, payload, pad).</param>
     /// <exception cref="ArgumentException"><paramref name="chunk"/> is not exactly one chunk slot of this file's layout, <paramref name="node"/> overlaps another edit, or it is the data chunk of an RF64 file.</exception>
-    public void Replace(ChunkNode node, ReadOnlyMemory<byte> chunk)
+    public void Replace(ChunkNode node, ReadOnlyMemory<byte> chunk) => Replace(node, chunk, 0);
+
+    /// <summary>Replaces a chunk with a new chunk whose last bytes are optional padding.</summary>
+    /// <param name="node">The chunk to replace.</param>
+    /// <param name="chunk">The complete new chunk slot as built by <see cref="ChunkBuilder"/> (header, payload, pad).</param>
+    /// <param name="optionalTail">How many bytes at the end of the payload are padding the caller added for later edits. They are written, but a refusal because the chunk does not fit asks only for the bytes beyond them (<see cref="EditPlan.PaddingRequired"/>).</param>
+    /// <exception cref="ArgumentException"><paramref name="chunk"/> is not exactly one chunk slot of this file's layout, <paramref name="node"/> overlaps another edit, or it is the data chunk of an RF64 file.</exception>
+    public void Replace(ChunkNode node, ReadOnlyMemory<byte> chunk, long optionalTail)
     {
         ArgumentNullException.ThrowIfNull(node);
         CheckChunk(chunk);
@@ -65,7 +72,7 @@ public sealed class ChunkEditor
             throw new ArgumentException("The data chunk of an RF64 file cannot be replaced: its size is held in ds64.", nameof(node));
         }
 
-        Add(new Request(RequestKind.Replace, node, chunk, false));
+        Add(new Request(RequestKind.Replace, node, chunk, false, Math.Max(0, optionalTail)));
     }
 
     /// <summary>Removes a chunk.</summary>
@@ -313,7 +320,7 @@ public sealed class ChunkEditor
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? Slot(next) : 0;
                 available += free;
                 // A shrink that leaves a gap too small for a chunk header needs the rest of a header, or the exact old size.
-                required += m > n ? Math.Max(1, m - n - free) : ChunkBuilder.HeaderSize(_file.Layout) - (n - m);
+                required += m > n ? Math.Max(1, m - Math.Min(r.OptionalTail, m) - n - free) : ChunkBuilder.HeaderSize(_file.Layout) - (n - m);
                 long pad = m > n ? AddGrowthPadding(repl) : 0;
                 shift.Add(NextOf(node), m - n + pad);
             }
@@ -480,7 +487,7 @@ public sealed class ChunkEditor
         Append,
     }
 
-    private sealed record Request(RequestKind Kind, ChunkNode Node, ReadOnlyMemory<byte> Chunk, bool Reclaim);
+    private sealed record Request(RequestKind Kind, ChunkNode Node, ReadOnlyMemory<byte> Chunk, bool Reclaim, long OptionalTail = 0);
 
     private sealed class Rewriter : TreeRewriter<ChunkNode>
     {
