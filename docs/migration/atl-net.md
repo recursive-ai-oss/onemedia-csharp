@@ -1,7 +1,7 @@
 # From ATL.NET
 
-Docs read: ATL.NET wiki "Usage / Code snippets" page (edited 2025-08-24, read 2026-11-02) and the package version 7.19.0 used as a bench
-comparator through its public API only. Source was not read.
+Basis: the ATL.NET wiki page "Usage / Code snippets" (https://github.com/Zeugma440/atldotnet/wiki/3.-Usage-_-Code-snippets, last edited
+2025-08-24), fetched 2026-11-02; ATL.NET 7.19.0 is the bench comparator. Every ATL member named below appears on that page. Source was not read.
 
 ATL's `Track` merges properties and tags into one object whose fields you set and `Save()`. OneMedia separates the file (`MediaFile`),
 its tracks (`media.Tracks`) and its tags (`media.Tags`, `media.Native`).
@@ -13,7 +13,7 @@ its tracks (`media.Tracks`) and its tags (`media.Tags`, `media.Native`).
 | `track.Year` | `media.Tags.Date` (string as stored); `media.CaptureTime` for video |
 | `track.TrackNumber`, `DiscNumber` | `media.Tags.TrackNumber`, `DiscNumber` (`int?`) |
 | `track.Duration` (seconds) | `media.Duration` (`TimeSpan?`), `media.ExactDuration` |
-| `track.Bitrate`, `ChannelsArrangement`, `SampleRate` | `media.Audio.BitRate`, `media.Audio.Audio.Value.Channels`, `.SampleRate` |
+| `track.Bitrate` (KBps), `track.ChannelsArrangement.NbChannels` | `media.Audio.BitRate` (bit/s), `media.Audio.Audio.Value.Channels`; also `.SampleRate` |
 | `track.AdditionalFields["key"]` | `media.Native[system, key]`, `media.Native.Find(system, key)` (system named, e.g. `QuickTime`, `ID3v2`, `RIFF`) |
 | `track.EmbeddedPictures` | `media.Tags.Pictures`; `SetPicture`, `RemovePictures` |
 | `track.Lyrics`, `track.Chapters` | `media.Tags.Lyrics`; chapters through the native layer |

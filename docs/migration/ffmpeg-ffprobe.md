@@ -1,7 +1,8 @@
 # From FFMpegCore, ffprobe and ffmpeg
 
-Docs read: FFMpegCore README (main branch, read 2026-11-02; it states CI against ffmpeg 8.1) and the ffprobe/ffmpeg command-line
-documentation (ffmpeg 7.0.2 and 8.x user docs). Source of neither was read.
+Basis: the FFMpegCore README (main branch, which says its CI runs against ffmpeg 8.1) and the ffmpeg user documentation
+(https://ffmpeg.org/ffprobe.html, https://ffmpeg.org/ffmpeg.html, https://ffmpeg.org/ffmpeg-formats.html, https://ffmpeg.org/ffmpeg-codecs.html),
+all fetched 2026-11-02 and checked flag by flag. Source of neither tool was read.
 
 FFMpegCore builds `ffmpeg` command lines and parses `ffprobe` output. OneMedia does the container work in-process and has no
 subprocess, so there is no binary to locate, no argument builder and no temp-file folder to configure.
@@ -14,7 +15,7 @@ subprocess, so there is no binary to locate, no argument builder and no temp-fil
 | `ffprobe -show_format` | `media.Format`, `media.ExactDuration`, `media.Tags`, `media.Defects` |
 | `ffprobe -show_streams` | `media.Tracks` (kind, codec, `Rfc6381Codec()`, language, disposition, edit info) |
 | `ffprobe -show_packets` | `media.Packets(track)`: pts, dts, duration, keyframe flag, size, source byte range |
-| any raw tag or box value | `media.Native[system, key]` |
+| `ffprobe -show_chapters`, `-show_data`, or any raw tag or box value | `media.Native[system, key]` (chapters through the native layer) |
 
 ```csharp
 using var media = Media.Open("in.mp4");
@@ -40,14 +41,14 @@ For allocation-free loops use the demuxer's `TryReadPacket` into a caller buffer
 |---|---|
 | `ffmpeg -i in -c copy out.mkv` | `Media.Remux("in.mp4", "out.mkv")` returns a `RemuxReport` (`HasLosses`, dropped tracks) |
 | `FFMpeg.SubVideo(in, out, from, to)`, `-ss -to -c copy` | `Media.Trim(in, out, from, to)`; `TrimMode.FrameAccurate` (default, edit list hides pre-roll) or keyframe |
-| `-movflags +faststart`, `.WithFastStart()` | `Media.Faststart(in, out)` |
+| `-movflags +faststart` (mov/mp4 muxer option), FFMpegCore `.WithFastStart()` | `Media.Faststart(in, out)` |
 | `FFMpeg.Join(out, parts...)` | `Media.Concat(out, parts...)` (mismatched configurations are refused or reported) |
 | `-metadata title=...` | `media.Tags.Title = ...; media.SaveAs(out)` |
-| `-map_metadata -1`, strip location | `Media.StripLocation(in, out)`, `Media.StripDeviceIds(in, out)` |
-| `-f hls` / `-f dash` | `Media.PackageHls(in, dir)` / `Media.PackageDash(in, dir)` |
-| `-c:s webvtt` on a sidecar | `Subtitles.Convert("a.srt", "a.vtt")` returns a `ConversionReport` |
+| `-map_metadata -1` (disables automatic metadata copy), strip location | `Media.StripLocation(in, out)`, `Media.StripDeviceIds(in, out)` |
+| `-f hls` / `-f dash` (the hls and dash muxers) | `Media.PackageHls(in, dir)` / `Media.PackageDash(in, dir)` |
+| `-c:s webvtt` (subtitle codec) on a sidecar | `Subtitles.Convert("a.srt", "a.vtt")` returns a `ConversionReport` |
 | make it play in a browser | `Media.CanPlay(path, BrowserProfiles.Chrome)`, `Media.MakePlayable(in, out, profile)` |
-| `FFMpeg.ExtractAudio` to PCM/WAV | `media.Decode()` (package `RecursiveAI.OneMedia.Audio`) gives decoded audio through OneAudio |
+| `FFMpeg.ExtractAudio` (audio track to a file) | no one-line equivalent for writing an audio-only file; `media.Decode()` (package `RecursiveAI.OneMedia.Audio`) gives decoded PCM through OneAudio |
 | `FFMpeg.Snapshot`, `GifSnapshot`, scaling, filters, `-c:v libx264` | out of scope: OneMedia decodes and encodes no video |
 
 ```csharp

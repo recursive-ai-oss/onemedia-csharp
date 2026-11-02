@@ -1,25 +1,27 @@
 # From ExifTool
 
-Docs read: ExifTool application documentation and tag-name pages, ExifTool 13.60 (the version run as an oracle in OneMedia's tests).
-The Perl source and modules were not read. ExifTool is a command-line tool; OneMedia is a library, so the map is flag to call.
+Basis: the ExifTool application documentation (https://exiftool.org/exiftool_pod.html) and the QuickTime, GPS and Composite tag-name pages
+(https://exiftool.org/TagNames/), fetched 2026-11-02; each flag and tag below was found on them. ExifTool 13.60 is the version run as an
+oracle in OneMedia's tests. The Perl source and modules were not read. ExifTool is a command-line tool; OneMedia is a library, so the map is
+flag to call.
 
 | ExifTool | OneMedia |
 |---|---|
 | `exiftool file` | `Media.Open(path)`; CLI: `onemedia info file`, `onemedia tags file` |
 | `-Make -Model` | `media.Device.Make`, `media.Device.Model` (`Fact<string>`) |
-| `-CreateDate`, `-DateTimeOriginal`, `-api QuickTimeUTC` | `media.CaptureTime` (candidates with source and time-zone certainty, plus the resolved value) |
-| `-GPSPosition` | `media.Location` |
-| `-Rotation` | `media.Rotation` |
+| `-CreateDate`, `-DateTimeOriginal`, and the `QuickTimeUTC` API option (`-api QuickTimeUTC=1`; documented on the QuickTime page) | `media.CaptureTime` (candidates with source and time-zone certainty, plus the resolved value) |
+| `-GPSPosition` (a Composite tag) | `media.Location` |
+| `-Rotation` (QuickTime tag, also a writable Composite tag) | `media.Rotation` |
 | `-G1 -a -s` (all tags with their group) | `media.Native[system, key]`, `media.Native.Find(system, key)`; the system names the group |
 | `-ee` (embedded telemetry: GPMF, CAMM, `mebx`) | `media.Telemetry` (typed samples), `media.OpenTelemetry(track)` |
 | `-Title=x -Artist=y` | `media.Tags.Title = "x"; media.Tags.Artist = "y"; media.SaveAs(out)` |
 | `-CreateDate=...` on a video | `Media.SetCaptureTime(in, out, DateTimeOffset)` (writes every date field the file has, with a report) |
-| `-gps:all=` | `Media.StripLocation(in, out)` |
-| `-serialnumber=` and device tags | `Media.StripDeviceIds(in, out)` |
+| `-GPS:all=` (group delete, note 4 of the application docs) | `Media.StripLocation(in, out)` |
+| `-SerialNumber=` and other device tags | `Media.StripDeviceIds(in, out)` |
 | `-overwrite_original` | `media.Save()` (atomic replace); the default is a new file via `SaveAs` |
-| `-overwrite_original_in_place` | `media.SaveInPlace()` (only within existing padding) |
+| `-overwrite_original_in_place` (copies the temp file over the original) | no equivalent: `media.SaveInPlace()` is different, it writes only within existing padding and throws `PaddingRequiredException` otherwise |
 | `-json`, `-csv` | typed objects; serialise what you need |
-| `-validate`, `-warning` | `media.Defects` |
+| the `Warning` and `Error` tags (`-a` shows duplicates) | `media.Defects` |
 | `-ee` on still images, MakerNotes, IPTC, XMP in JPEG | out of scope |
 
 ```csharp
