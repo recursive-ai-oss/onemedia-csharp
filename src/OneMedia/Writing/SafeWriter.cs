@@ -8,9 +8,9 @@ namespace RecursiveAI.OneMedia;
 /// </summary>
 /// <remarks>
 /// Memory use is a few buffers whatever the file size. Media payload is copied by range, never held. A new file is written under a
-/// temporary name in the destination's folder (<c>.name.onemedia-XXXXXXXX.tmp</c>), flushed to disk and then renamed, so the target name
+/// temporary name in the destination's folder (<c>.name.onemedia-&lt;host&gt;-&lt;process id&gt;-&lt;random&gt;.tmp</c>), flushed to disk and then renamed, so the target name
 /// never shows a partly written file. A process killed mid-write can leave the temporary file behind; it is never the target and is safe to
-/// delete. An in-place write is the one operation that is not atomic: a crash during it can leave a metadata range half written, which is
+/// delete, and the next save of the same target removes it (the process that made it is gone, or it is a day old). An in-place write is the one operation that is not atomic: a crash during it can leave a metadata range half written, which is
 /// why it only touches the ranges the plan names and never media payload.
 /// </remarks>
 public static class SafeWriter
@@ -111,16 +111,20 @@ public static class SafeWriter
         using FileMediaSource source = FileMediaSource.Open(path);
         CheckSource(plan, source);
         long written = 0;
-        using (FileStream file = new(path, FileMode.Open, FileAccess.Write, FileShare.Read, FileBuffer))
+        // No write buffer: every write goes straight to the file, so the bytes that change are the only bytes written.
+        using (FileStream file = new(path, FileMode.Open, FileAccess.Write, FileShare.Read, 0))
         {
             long at = 0;
             foreach (OutputPiece piece in plan.Pieces)
             {
                 if (piece.Kind != OutputPieceKind.Copy)
                 {
-                    file.Position = at;
-                    PieceWriter.Write([piece], source, file, CancellationToken.None);
-                    written += piece.Length;
+                    // Only the bytes that differ from what the file holds there are written: new content that equals the old (the
+                    // zeros of a padding run, the part of a metadata block that did not change) is skipped, which keeps the
+                    // write small and narrows the window in which a crash can leave a half written file.
+                    using ChangedRangeStream changed = new(file, source, at);
+                    PieceWriter.Write([piece], source, changed, CancellationToken.None);
+                    written += changed.BytesWritten;
                 }
 
                 at += piece.Length;
@@ -135,7 +139,8 @@ public static class SafeWriter
     private static WriteReport WriteViaTemp(EditPlan plan, string sourcePath, string target, WriteMode mode, bool copyMode, bool overwrite, CancellationToken cancellationToken)
     {
         string dir = Path.GetDirectoryName(target) ?? ".";
-        string temp = Path.Combine(dir, $".{Path.GetFileName(target)}.onemedia-{Guid.NewGuid().ToString("N")[..8]}.tmp");
+        RemoveStaleTemporaryFiles(dir, Path.GetFileName(target));
+        string temp = Path.Combine(dir, TemporaryName(Path.GetFileName(target)));
         bool done = false;
         try
         {
@@ -191,12 +196,221 @@ public static class SafeWriter
         }
     }
 
+    // The temporary file of a write is named <dot><target name>.onemedia-<4 hex digits of the host name>-<process id in hex>-<8 random hex digits>.tmp, so that
+    // the next save of the same target can recognise what an earlier, killed save left behind, and prove that it was its own. The host digits keep a save on
+    // one machine from judging the live temporary file of another machine that shares the folder.
+    private const string TempMarker = ".onemedia-";
+    private const string TempSuffix = ".tmp";
+
+    private static string TemporaryName(string targetName) =>
+        $".{targetName}{TempMarker}{HostTag():x4}-{Environment.ProcessId:x}-{Guid.NewGuid().ToString("N")[..8]}{TempSuffix}";
+
+    private static int HostTag()
+    {
+        int h = 17;
+        foreach (char c in Environment.MachineName)
+        {
+            h = unchecked((h * 31) + c);
+        }
+
+        return h & 0xFFFF;
+    }
+
+    /// <summary>How old a temporary file must be before another save may remove it when the process that made it cannot be shown to be gone.</summary>
+    internal static TimeSpan StaleAge { get; set; } = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Removes temporary files that earlier saves of this target left behind when they were killed. A file is removed only when its name is exactly
+    /// that of a temporary file for this target and either the process that made it is gone, or it was last written more than <see cref="StaleAge"/> ago.
+    /// Failures are ignored: a leftover file does no harm, and a save must not fail because of another save's debris.
+    /// </summary>
+    private static void RemoveStaleTemporaryFiles(string directory, string targetName)
+    {
+        string prefix = $".{targetName}{TempMarker}";
+        try
+        {
+            foreach (string candidate in Directory.EnumerateFiles(directory, prefix + "*" + TempSuffix))
+            {
+                if (!IsStaleTemporaryName(Path.GetFileName(candidate), prefix, out int hostTag, out int processId))
+                {
+                    continue;
+                }
+
+                bool sameHost = hostTag == HostTag();
+                bool owned = sameHost && processId != Environment.ProcessId && !ProcessExists(processId);
+                bool old = DateTime.UtcNow - File.GetLastWriteTimeUtc(candidate) > StaleAge;
+                if (owned || old)
+                {
+                    File.Delete(candidate);
+                }
+            }
+        }
+        catch (IOException)
+        {
+            // Debris cleanup is best effort.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same.
+        }
+    }
+
+    // <prefix><4 hex digits>-<hex process id>-<8 hex digits>.tmp, and nothing else.
+    private static bool IsStaleTemporaryName(string name, string prefix, out int hostTag, out int processId)
+    {
+        hostTag = 0;
+        processId = 0;
+        if (!name.StartsWith(prefix, StringComparison.Ordinal) || !name.EndsWith(TempSuffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> middle = name.AsSpan(prefix.Length, name.Length - prefix.Length - TempSuffix.Length);
+        int first = middle.IndexOf('-');
+        int last = middle.LastIndexOf('-');
+        if (first != 4 || last <= first + 1 || middle.Length - last - 1 != 8)
+        {
+            return false;
+        }
+
+        foreach (char c in middle[(last + 1)..])
+        {
+            if (!char.IsAsciiHexDigitLower(c))
+            {
+                return false;
+            }
+        }
+
+        System.Globalization.NumberStyles hex = System.Globalization.NumberStyles.AllowHexSpecifier;
+        return int.TryParse(middle[..first], hex, System.Globalization.CultureInfo.InvariantCulture, out hostTag)
+            && int.TryParse(middle[(first + 1)..last], hex, System.Globalization.CultureInfo.InvariantCulture, out processId) && processId > 0;
+    }
+
+    private static bool ProcessExists(int processId)
+    {
+        try
+        {
+            using System.Diagnostics.Process p = System.Diagnostics.Process.GetProcessById(processId);
+            return !p.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false; // no such process
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (PlatformNotSupportedException)
+        {
+            return true; // cannot tell (browser): fall back to the age rule
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return true; // cannot tell: assume it is alive
+        }
+    }
+
     private static void CheckSource(EditPlan plan, IMediaSource source)
     {
         if (source.Length != plan.SourceLength)
         {
             throw new IOException($"The source is {source.Length} bytes but the plan was made for {plan.SourceLength}; the file changed after it was read.");
         }
+    }
+}
+
+/// <summary>
+/// A write-only stream over an open file that, for each block written at a position, reads the same range of the original and writes only the
+/// runs of bytes that differ (runs closer than <see cref="MergeGap"/> bytes are written together). Used for in-place saves.
+/// </summary>
+internal sealed class ChangedRangeStream(FileStream file, IMediaSource original, long start) : Stream
+{
+    private const int Block = 64 * 1024;
+    private const int MergeGap = 32;
+    private readonly byte[] _old = System.Buffers.ArrayPool<byte>.Shared.Rent(Block);
+    private long _position = start;
+    private bool _disposed;
+
+    public long BytesWritten { get; private set; }
+
+    public override bool CanRead => false;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => true;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position { get => _position; set => throw new NotSupportedException(); }
+
+    public override void Flush() { }
+
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+    public override void Write(ReadOnlySpan<byte> buffer)
+    {
+        while (!buffer.IsEmpty)
+        {
+            ReadOnlySpan<byte> chunk = buffer[..Math.Min(buffer.Length, Block)];
+            int have = original.Read(_position, _old.AsSpan(0, chunk.Length), CancellationToken.None);
+            WriteRuns(chunk, Math.Max(0, have));
+            _position += chunk.Length;
+            buffer = buffer[chunk.Length..];
+        }
+    }
+
+    // Bytes past `have` have no counterpart in the original (cannot happen for a same-layout plan) and count as different.
+    private void WriteRuns(ReadOnlySpan<byte> chunk, int have)
+    {
+        int n = chunk.Length;
+        int i = 0;
+        while (i < n)
+        {
+            if (i < have)
+            {
+                i += MemoryExtensions.CommonPrefixLength(chunk[i..have], _old.AsSpan(i, have - i));
+                if (i >= n)
+                {
+                    break;
+                }
+            }
+
+            int runStart = i;
+            int lastDifferent = i;
+            i++;
+            while (i < n && i - lastDifferent < MergeGap)
+            {
+                if (i >= have || chunk[i] != _old[i])
+                {
+                    lastDifferent = i;
+                }
+
+                i++;
+            }
+
+            file.Position = _position + runStart;
+            file.Write(chunk.Slice(runStart, lastDifferent - runStart + 1));
+            BytesWritten += lastDifferent - runStart + 1;
+            i = lastDifferent + 1;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            _disposed = true;
+            System.Buffers.ArrayPool<byte>.Shared.Return(_old);
+        }
+
+        base.Dispose(disposing);
     }
 }
 

@@ -14,6 +14,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Fixed
 
+- Tag and structure edits hold padding as generated zeros, so an edit runs in constant memory however large the padding is (an ID3v2 tag with 200 MiB of padding no longer allocates 400 MB), and `SaveInPlace` writes only the bytes that differ from what the file holds (`WriteReport.BytesWritten` is what was written), which also narrows the window a crash can tear.
+- A tag edit that makes a region grow leaves padding behind it (`TagWriteOptions.PaddingBytes`, 1024 by default; `TagWriteOptions.Minimal` for none; `GrowthPadding` on `BoxEditor`, `EbmlEditor` and `ChunkEditor`): a `free` box in MP4, a Void element in Matroska, a `JUNK` chunk in WAVE/AIFF, zero padding in an Opus comment header. A later in-place edit of a somewhat longer value now fits. Unedited files and edits that fit are unchanged.
+- A common `Date` write lists the other date tags the file keeps in `TagWriteReport.Warnings`, and `onemedia tags` prints them.
+- `Save` and `SaveAs` name their temporary files `.name.onemedia-<host>-<pid>-<random>.tmp` and remove the debris of a killed save of the same target. `PaddingRequiredException.Required` is the real shortfall for a shrink that leaves a gap too small for a padding header, and a Matroska file with bytes after its Segment is refused with a message that says so.
 - H.264, HEVC and VVC in AVI written from an MP4 by stream copy (`avc1`, `avcC` after the bitmap header) get their codec description and RFC 6381 string (`Rfc6381Codec()`, `DescribeCodec()`) from that record, the same string as the source MP4 gives; the in-stream parameter sets are read only when there is no record.
 - Frame rates taken from H.264, HEVC and AV1 parameter sets (`CodecParameters.FrameRateNumerator`/`FrameRateDenominator`, so MP4 `avcC` tracks and AVI/TS fallbacks too) are in lowest terms: 10/1, not 20/2.
 

@@ -45,6 +45,13 @@ public sealed class ChunkEditor
     /// </summary>
     public bool RewriteHeaders { get; set; }
 
+    /// <summary>
+    /// Bytes of padding chunk (<c>JUNK</c>, or <c>junk</c> in Wave64) to leave after a chunk that has to grow, or after a chunk added where there was
+    /// no padding to take it, so that a later edit fits in place. Rounded down to the layout's alignment (2, or 8 in Wave64); a value below a
+    /// chunk header is treated as 0. Default 0 (no padding). An edit that fits the existing layout, and a file that is not edited, never gain padding.
+    /// </summary>
+    public long GrowthPadding { get; set; }
+
     /// <summary>Replaces a chunk with a new chunk.</summary>
     /// <param name="node">The chunk to replace.</param>
     /// <param name="chunk">The complete new chunk slot as built by <see cref="ChunkBuilder"/> (header, payload, pad).</param>
@@ -176,6 +183,20 @@ public sealed class ChunkEditor
 
     private long NextOf(ChunkNode n) => Math.Min(n.NextOffset, _source.Length);
 
+    // A chunk that had to grow leaves a padding chunk behind it, so that a later edit can be saved in place. Returns the slot added.
+    private long AddGrowthPadding(PieceList into)
+    {
+        long align = _file.Layout == ChunkLayout.Wave64 ? 8 : 2;
+        long slot = GrowthPadding / align * align;
+        if (slot < ChunkBuilder.HeaderSize(_file.Layout))
+        {
+            return 0;
+        }
+
+        PaddingPieces.AddChunkPadding(into, _file.Layout, slot);
+        return slot;
+    }
+
     private bool Fits(long remainder) => remainder == 0 || remainder >= ChunkBuilder.HeaderSize(_file.Layout);
 
     private ChunkNode? NextSibling(ChunkNode n)
@@ -266,7 +287,7 @@ public sealed class ChunkEditor
         else if (m < n && Fits(n - m))
         {
             repl.AddData(bytes);
-            repl.AddData(ChunkBuilder.CreatePadding(_file.Layout, n - m));
+            PaddingPieces.AddChunkPadding(repl, _file.Layout, n - m);
             name += " (remainder kept as padding chunk)";
         }
         else
@@ -279,7 +300,7 @@ public sealed class ChunkEditor
                 repl.AddData(bytes);
                 if (f - (m - n) > 0)
                 {
-                    repl.AddData(ChunkBuilder.CreatePadding(_file.Layout, f - (m - n)));
+                    PaddingPieces.AddChunkPadding(repl, _file.Layout, f - (m - n));
                 }
 
                 used += m - n;
@@ -291,8 +312,10 @@ public sealed class ChunkEditor
                 repl.AddData(bytes);
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? Slot(next) : 0;
                 available += free;
-                required += m > n ? Math.Max(1, m - n - free) : 1;
-                shift.Add(NextOf(node), m - n);
+                // A shrink that leaves a gap too small for a chunk header needs the rest of a header, or the exact old size.
+                required += m > n ? Math.Max(1, m - n - free) : ChunkBuilder.HeaderSize(_file.Layout) - (n - m);
+                long pad = m > n ? AddGrowthPadding(repl) : 0;
+                shift.Add(NextOf(node), m - n + pad);
             }
         }
 
@@ -310,7 +333,7 @@ public sealed class ChunkEditor
         }
         else
         {
-            repl.AddData(ChunkBuilder.CreatePadding(_file.Layout, n));
+            PaddingPieces.AddChunkPadding(repl, _file.Layout, n);
         }
 
         rw.AddSlot(node, node, repl, r.Reclaim ? $"remove '{node.Id}'" : $"clear '{node.Id}' to a padding chunk");
@@ -345,7 +368,7 @@ public sealed class ChunkEditor
             repl.AddData(bytes);
             if (f - m > 0)
             {
-                repl.AddData(ChunkBuilder.CreatePadding(_file.Layout, f - m));
+                PaddingPieces.AddChunkPadding(repl, _file.Layout, f - m);
             }
 
             used += m;
@@ -372,7 +395,8 @@ public sealed class ChunkEditor
         }
 
         added.AddData(bytes);
-        shift.Add(kids.Count > 0 ? NextOf(kids[^1]) : parent.Offset + parent.HeaderSize, m);
+        long appendedPad = AddGrowthPadding(added);
+        shift.Add(kids.Count > 0 ? NextOf(kids[^1]) : parent.Offset + parent.HeaderSize, m + appendedPad);
         rw.AddAppendChunk(parent, added);
     }
 

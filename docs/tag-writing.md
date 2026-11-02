@@ -16,7 +16,11 @@ Normative description of how OneMedia changes tags. Code: `RecursiveAI.OneMedia.
 ## Write-back report
 
 `TagWriteReport.Systems` has one entry per system written: fields written, fields removed, fields **not representable** (with the reason), conversions applied (cut to 30 bytes,
-date reduced to a year, roles not stored, several values joined), and whether the system was created. `Notes` carries file-wide remarks (an ID3v2.2 tag upgraded, a second ID3v2 tag edited too).
+date reduced to a year, roles not stored, several values joined), and whether the system was created. `Notes` carries file-wide remarks (an ID3v2.2 tag upgraded, a second ID3v2 tag edited too). `Warnings` lists what the write left as it was and a reader may not expect: a common `Date` write
+names every other date tag the file keeps (QuickTime `creationdate`, `creation_time` and `year`, Matroska `DATE_RECORDED`, `DATE_ENCODED`, `DATE_RELEASED`... and the Segment `DateUTC`, ID3 `TDOR`,
+`TDRL`, `TDEN`..., RIFF `IDIT`, Vorbis `ORIGINALDATE`, ASF `WM/OriginalReleaseTime`, the movie header's creation time) with the value it holds, because MediaInfo and ExifTool may show one of those
+instead of the date just written. `Date` still sets the one field of the table below; which dates a real date write should set (and in what zone) is a separate piece of work. `onemedia tags` prints
+warnings as `warning:` lines.
 
 ## Key written per field
 
@@ -58,18 +62,18 @@ Generated from the mapping table (`tag-mapping.md`): the first key of the field'
 - **MP4/MOV/3GP.** `ilst` items are rebuilt from the untouched items' bytes plus the edited ones (`trkn`/`disk` as binary pairs, several values as several `data` boxes, `covr` with a `data`
   box per picture and the image type 13/14/27/12, freeform items as `----:mean:name`). Setting Genre also removes `gnre`. `mdta` key-table metadata edits existing keys and appends new keys to
   `keys`. QuickTime `©` atoms are edited when present. Pictures live only in `ilst`: a file with only `udta` or `mdta` tags gets an item list holding the pictures. Growth is taken from a
-  following `free` box; otherwise `stco`/`co64` are fixed by the box editor.
+  following `free` box; otherwise `stco`/`co64` are fixed by the box editor and the grown box is followed by a `free` box of `PaddingBytes`.
 - **Matroska/WebM.** SimpleTags of file-level Tags (Targets naming no UID); the one the common view reads (levels 30 and up first) is replaced, keeping its language, default flag and nested
   tags. `Title` also goes to Segment Info. Pictures are `AttachedFile`s named `cover.<ext>` (other roles `<role>.<ext>`). New `Tags`/`Attachments` elements go in front of the first Cluster,
-  beside the last element before it, so readers find them without scanning.
+  beside the last element before it, so readers find them without scanning. An element that has to grow is followed by a Void element of `PaddingBytes`.
 - **MP3.** ID3v2.3/2.4 (the existing version is kept; a new tag is 2.4, or 2.3 with `Id3v2Version`), ID3v1, APEv2 (same header and footer choice as the file). The ID3v2 tag keeps its size when
-  the result fits (padding absorbs the change), else it is rewritten with `PaddingBytes`. Text is Latin-1 when it fits, else UTF-8 (2.4) or UTF-16 (2.3). A 2.2 tag is upgraded and the frames
+  the result fits (padding absorbs the change), else it is rewritten with `PaddingBytes` of padding (written as generated zeros, however large). Text is Latin-1 when it fits, else UTF-8 (2.4) or UTF-16 (2.3). A 2.2 tag is upgraded and the frames
   with no counterpart are dropped and named in the report. Consecutive ID3v2 tags each get the edits. Tag-wide unsynchronisation is refused.
-- **FLAC.** Vorbis comment and PICTURE blocks are rewritten, padding blocks merged into one at the end; metadata that keeps its size keeps the layout (in-place capable).
+- **FLAC.** Vorbis comment and PICTURE blocks are rewritten, padding blocks merged into one at the end (`PaddingBytes` when the metadata grows); metadata that keeps its size keeps the layout (in-place capable).
 - **Ogg.** Vorbis, Opus and FLAC-in-Ogg: the comment packet is rewritten, the header packets re-laid out in new pages (CRC recomputed). If the page count changes, later pages of that stream are
-  renumbered and re-checksummed while copying, a page at a time. Pictures are `METADATA_BLOCK_PICTURE` entries. Speex, Theora and multiplexed header pages are refused.
+  renumbered and re-checksummed while copying, a page at a time. An Opus comment header is padded with zeros after the comment list (RFC 7845 §5.2): to its old length when the new comments fit, so the pages and an in-place edit keep their layout, else by `PaddingBytes`. Vorbis and Ogg FLAC headers cannot carry padding. Pictures are `METADATA_BLOCK_PICTURE` entries. Speex, Theora and multiplexed header pages are refused.
 - **WAV/RF64.** `LIST INFO` (rebuilt from the existing sub-chunks), `bext` fields (Description, OriginationDate and native `Originator`, `OriginatorReference`, `OriginationTime`, same size so in place),
-  `id3 ` chunk. **AIFF.** `NAME`, `AUTH`, `(c) `, `ANNO`, `ID3 ` chunk. Pictures create an ID3 chunk. AVI and Wave64 are not edit targets.
+  `id3 ` chunk. **AIFF.** `NAME`, `AUTH`, `(c) `, `ANNO`, `ID3 ` chunk. Pictures create an ID3 chunk. A chunk that has to grow is followed by a `JUNK` chunk of `PaddingBytes` (rounded down to an even size); ffprobe, MediaInfo and ExifTool read WAVE and AIFF files with it. AVI and Wave64 are not edit targets.
 
 - **ASF/WMA/WMV.** The Content Description (title, author, copyright, description, rating) and the Extended Content Description (`WM/*` attributes; unicode text, `WM/SharedUserRating` as a
   DWORD, `WM/Picture` for pictures) are rebuilt; every other attribute is carried as its bytes. All other header objects are copied; only the Header Object's size and child count, the File

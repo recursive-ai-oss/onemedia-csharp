@@ -243,6 +243,13 @@ public sealed class TagWriteReport
     /// <summary>Remarks on the file as a whole (an ID3v2.2 tag upgraded, a system that is read-only, a field no present system could hold).</summary>
     public IReadOnlyList<string> Notes { get; }
 
+    /// <summary>
+    /// Things the write left as they were that a reader of the result may not expect. A <see cref="CommonField.Date"/> write lists each other date tag
+    /// the file keeps (a QuickTime <c>creationdate</c>, a Matroska <c>DATE_RECORDED</c>, an ID3 <c>TDOR</c>, the movie header's creation time) because tools
+    /// such as MediaInfo and ExifTool may show one of those instead. Empty when there is nothing to warn about.
+    /// </summary>
+    public IReadOnlyList<string> Warnings { get; internal set; } = [];
+
     /// <summary>The byte-level report of the save; null until the plan was saved.</summary>
     public WriteReport? Write { get; set; }
 
@@ -282,8 +289,15 @@ public sealed class TagWriteOptions
     /// <summary>The ID3v2 version written when a tag is created or a version 2.2 tag is upgraded: 3 or 4 (default 4).</summary>
     public int Id3v2Version { get; init; } = 4;
 
-    /// <summary>Padding to leave after a rewritten ID3v2 tag, FLAC metadata or similar block, in bytes (default 1024).</summary>
+    /// <summary>
+    /// Padding to leave behind a tag region that has to grow, in bytes (default 1024), so that a later edit can be saved in place. It applies to a rewritten
+    /// ID3v2 tag, FLAC metadata, the ASF header, an Opus comment header, and to each MP4 box (<c>free</c>), Matroska element (Void) or RIFF/AIFF chunk
+    /// (<c>JUNK</c>) that had to grow. A tag that fits where it was keeps its size, and a file with no edit gains no padding. 0 asks for the smallest output.
+    /// </summary>
     public int PaddingBytes { get; init; } = 1024;
+
+    /// <summary>Options for the smallest output: no padding is left behind a growing tag region.</summary>
+    public static TagWriteOptions Minimal { get; } = new() { PaddingBytes = 0 };
 
     /// <summary>Limits applied while reading the file's existing tags.</summary>
     public MediaLimits? Limits { get; init; }

@@ -7,8 +7,11 @@ Normative description of how OneMedia edits files without disturbing what it was
 
 - An edit is **planned**, then **applied**. An editor takes the lazy tree of a file plus the edits asked for (`Replace`, `Remove`, `AppendChild`) and builds an
   `EditPlan`: an ordered list of output pieces. A piece is either a **copy** of a source byte range (media payload, untouched elements and headers), literal
-  **data** (new or edited elements) or a **generated** stream (chunk offset tables, `Cues`, which are written while streaming). Planning reads structure only;
+  **data** (new or edited elements) or a **generated** stream (chunk offset tables, `Cues`, runs of padding zeros, which are written while streaming). Planning reads structure only;
   applying streams the pieces to a destination with a bounded buffer, so memory does not depend on the file size.
+- **Padding is never held.** A `free`/`skip` box, a Void element, a `JUNK` chunk, an ID3v2 or ASF padding area or a FLAC PADDING block is a small header piece followed by a generated run of
+  zeros, so a tag with 200 MiB of padding plans and writes in a few buffers (an ID3v2 tag may carry 256 MiB). One limit: the ID3v2 tag inside a WAVE/AIFF `id3 ` chunk is still built as
+  one chunk, so a chunk with a very large padding is held while it is planned.
 - An unedited file produces a plan that is one copy of the whole source: it comes back byte for byte. Default editing never re-emits a header it did not need to change.
   `RewriteHeaders = true` re-emits every header from its parsed values (a check that the writer reads what it writes); on a well-formed file the result is identical too.
   A header whose stated size was cut to fit the file (see Damaged files) is copied, not re-emitted.
@@ -23,6 +26,14 @@ Padding is a `free`/`skip` box, a Matroska `Void` element or a RIFF `JUNK`/`PAD 
 - is larger and the growth is absorbed by the padding element that directly follows it (padding after the edited element, which shrinks or vanishes).
 
 `AppendChild` takes the last unconsumed padding sibling of the parent when the new element fits it, otherwise the element is added at the end of the parent.
+
+**Padding on growth.** When an edit makes a tag region larger than the room it had, the file has to be rewritten, and the new region is followed by a modest padding
+(`GrowthPadding` on the three editors, `TagWriteOptions.PaddingBytes` for tag writes, **1024 bytes by default**) so that a later `SaveInPlace` of a slightly larger value fits:
+a `free` box in MP4 (after the grown box, in its parent), a Void element in Matroska, a `JUNK` chunk in WAVE/RF64/AIFF/Wave64, and a PADDING block in FLAC (as before), the ID3v2 tag and the ASF header, and
+zero padding after the comment list of an Opus comment header (RFC 7845 §5.2). 1024 bytes holds a longer title or a few more fields and costs nothing next to media; one padding is left
+per grown element, so an edit that grows three Matroska SimpleTags leaves three. It is off when `PaddingBytes` is 0 (`TagWriteOptions.Minimal`), it never applies to an edit that fits the
+existing layout, and an unedited file (or an edit that changes nothing) is copied byte for byte. Ogg Vorbis and Ogg FLAC comment headers have no padding to leave (a Vorbis comment packet
+ends in its framing bit; an Ogg FLAC PADDING packet would change the header packet count) and keep their old behaviour: a later edit fits in place only at the same page layout.
 
 A plan whose every edit fits is a **same-layout** plan (`IsSameLayout`): nothing after it moves, no offset changes, no parent size changes. Only same-layout plans can be
 applied in place. Otherwise the later bytes move and the plan is **grown**: ancestors get their sizes recomputed (keeping the width of the size field when the new size
@@ -69,18 +80,26 @@ real size is stated once content moves. An unedited or same-layout edit leaves t
 `SafeWriter` applies a plan:
 - `Write(plan, source, stream)` streams to any `Stream`.
 - `SaveAs(plan, source, destination)` writes a new file (refuses to overwrite unless asked), `fsync`s it and closes it.
-- `Save(plan, path)` writes `.name.onemedia-XXXXXXXX.tmp` in the same directory, `fsync`s, and replaces the target with an atomic rename (`File.Move` with overwrite; the
+- `Save(plan, path)` writes `.name.onemedia-<host>-<pid>-<random>.tmp` in the same directory (`<host>` is four hex digits of a hash of the machine name, `<pid>` the process id in hex), `fsync`s, and replaces the target with an atomic rename (`File.Move` with overwrite; the
   Unix permission bits of the original are kept). A failure or cancellation deletes the temp file; a killed process leaves the original untouched and at most one stray temp file
-  that is never the target.
+  that is never the target. **Stale temp files.** Before it writes, `Save`/`SaveAs` removes temp files of the same target in that folder that match the name pattern exactly and either
+  belong to a process of this machine that no longer exists, or were last written more than 24 hours ago (the age rule covers another machine's debris on a shared folder and a process
+  id that cannot be checked, as in the browser). A temp file whose process is alive, one of this process, one of another target and any file that does not match the pattern are left alone.
+  Nothing is removed when the folder cannot be listed or written; failures to clean up are ignored.
   - **Open handles and Windows.** The source handle `Save` itself uses is closed before the rename, because Windows cannot replace a file while any handle to it is open. `FileMediaSource` opens files with delete sharing, so a reader (`MediaFile`) opened on the same path does not by itself block other opens, but Windows can still refuse to rename over a file that another handle holds. In that case `Save` throws `FileInUseException` (an `IOException`): the original is complete and unchanged, and the temporary file is removed. Dispose the reader and save again, or use `SaveAs`. Linux and macOS replace the name atomically and the reader keeps reading the old file. No native calls are used to force a replacement, so the Windows outcome with an open reader is either a clean replacement or this exception, never a half state.
   - **What the replacement is, on Linux and macOS.** The result is a new file: it has a new inode and modification time, the original's permission bits (`chmod`), and the owner and group of the
     user running the save. Extended attributes, ACLs, SELinux labels, hard links and the creation time of the original are **not** carried over (no native calls are made), and a read-only file in a
     writable folder is replaced like any other. A symbolic link is followed: the file it points to is replaced (a temporary file beside that file) and the link stays a link. Two saves of
     the same path at once each write their own temporary file and the later rename wins; there is no lock. The folder itself is not `fsync`ed after the rename, so after a power loss (not a
-    killed process) the old name may still point at the old file.
+    killed process) the old name may still point at the old file. This cannot be done from the BCL: opening a directory for `FlushToDisk` is refused on Linux and macOS
+    (`UnauthorizedAccessException`) and shipped packages make no native calls; the file's data is `fsync`ed before the rename.
   - **A plan is checked against the file by length only.** If another program changes the file after it was planned and leaves its length alone, the copied ranges come from the changed file.
 - `SaveInPlace(plan, path)` writes only the changed ranges of a same-layout plan, in place. A plan that is not same-layout throws `PaddingRequiredException` (bytes
-  required, bytes available) before the first byte is written. It is **not atomic**: a crash in the middle leaves a mix of old and new bytes in the edited ranges. Use `Save` when that matters.
+  required, bytes available) before the first byte is written; `Required` is the real shortfall (for a shrink that leaves a gap too small for a padding header, the missing part of the header: 5 for
+  a 3-byte gap in MP4). **Only bytes that differ are written.** Each new piece is compared with what the file holds at that position, and runs of equal bytes (the zeros of a padding area, the
+  unchanged part of a rewritten box) are skipped; differing runs closer than 32 bytes are written together. A 3-byte title edit in 200 MiB of ID3 padding writes the changed bytes of the tag (a few
+  dozen), not the padding, and `WriteReport.BytesWritten` says what was actually written. It is still **not atomic**: a crash in the middle leaves a mix of old and new bytes in the edited ranges,
+  but the window is the few ranges that changed, not the whole padding. Use `Save` when that matters.
 - Every entry point takes a `CancellationToken`.
 
 ## Method and results

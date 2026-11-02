@@ -53,7 +53,7 @@ public static class TagWriter
             return new TagWritePlan(same.ToPlan(source.Length, 0, 0, 0), new TagWriteReport([], []));
         }
 
-        return family switch
+        TagWritePlan planned = family switch
         {
             TagFamily.Iso => IsoTagWriter.Plan(source, edits, options, limits, cancellationToken),
             TagFamily.Matroska => MatroskaTagWriter.Plan(source, edits, options, limits, cancellationToken),
@@ -64,6 +64,8 @@ public static class TagWriter
             TagFamily.Asf => AsfTagWriter.Plan(source, edits, options, limits, cancellationToken),
             _ => throw new UnsupportedMediaException("Tag writing is not supported for this format."),
         };
+        planned.Report.Warnings = DateWarnings.Find(source, edits, planned.Report, limits);
+        return planned;
     }
 
     /// <summary>Writes the edits to a new file at <paramref name="destination"/>; the original is untouched.</summary>

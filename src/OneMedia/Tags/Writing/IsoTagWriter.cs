@@ -39,7 +39,7 @@ internal static class IsoTagWriter
         DefectLog defects = new();
         BoxTree tree = new(src, limits, defects);
         BoxNode moov = tree.TopLevel.FirstOrDefault(b => b.Type == BoxTypes.Moov) ?? throw new UnsupportedMediaException("The file has no movie box; its tags cannot be edited.");
-        BoxEditor editor = new(tree, src, limits);
+        BoxEditor editor = new(tree, src, limits) { GrowthPadding = options.PaddingBytes };
         List<SystemWriteReport> reports = [];
         List<string> notes = [];
 
