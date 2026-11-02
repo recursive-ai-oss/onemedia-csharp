@@ -343,4 +343,14 @@ public class BitmapSubtitleTests
         Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, png.AsSpan(0, 8).ToArray());
         Assert.Equal((3, 2), ((png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19], (png[20] << 24) | (png[21] << 16) | (png[22] << 8) | png[23]));
     }
+
+    [Fact]
+    public void IndexEntryWithAFilePositionPastTheSignedRangeIsReportedNotThrown()
+    {
+        // Found by fuzzing: a 16-digit hexadecimal file position read as a negative number and indexed the .sub file before its start.
+        byte[] idx = System.Text.Encoding.ASCII.GetBytes("size: 720x480\nid: en, index: 0\ntimestamp: 00:00:01:000, filepos: ffffffffffffffff\n");
+        byte[] sub = new byte[64];
+        DefectLog defects = new();
+        Assert.Empty(VobSubReader.Read(idx, sub, null, defects));
+    }
 }

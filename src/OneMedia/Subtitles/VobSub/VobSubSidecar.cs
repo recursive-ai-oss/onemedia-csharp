@@ -250,6 +250,12 @@ internal static class DvdSubPictureStream
     internal static bool TryReadUnit(ReadOnlySpan<byte> sub, long position, int subStream, MediaLimits limits, DefectLog defects, out Unit unit)
     {
         unit = default;
+        if (position < 0)
+        {
+            // A hexadecimal file position of 16 digits can read as negative; there is no unit before the start of the file.
+            return false;
+        }
+
         int p = (int)Math.Min(position, sub.Length);
         List<byte>? data = null;
         int expected = 0;
