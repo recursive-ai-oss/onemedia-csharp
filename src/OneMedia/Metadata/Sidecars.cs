@@ -280,10 +280,35 @@ public static class Sidecars
                 {
                     if (sample is ScalarSample { Values.Count: >= 7 } k && !double.IsNaN(k.Values[0]))
                     {
-                        DateTime wall = new((int)k.Values[0], (int)k.Values[1], (int)k.Values[2], (int)k.Values[3], (int)k.Values[4], Math.Min((int)k.Values[5], 59), (int)k.Values[6], DateTimeKind.Unspecified);
-                        long cueTicks = sample.Time.IsKnown ? sample.Time.Rescale(10_000_000, MediaRounding.NearestEven).Ticks : 0;
+                        int year = (int)k.Values[0], month = (int)k.Values[1], day = (int)k.Values[2];
+                        int hour = (int)k.Values[3], minute = (int)k.Values[4], second = Math.Min((int)k.Values[5], 59), milli = (int)k.Values[6];
+                        if (year is < 1 or > 9999 || month is < 1 or > 12 || day < 1 || day > DateTime.DaysInMonth(year, month)
+                            || hour is < 0 or > 23 || minute is < 0 or > 59 || second < 0 || milli is < 0 or > 999)
+                        {
+                            continue; // The text is not a calendar time (30 February, hour 99): not evidence.
+                        }
+
+                        DateTime wall = new(year, month, day, hour, minute, second, milli, DateTimeKind.Unspecified);
+                        long cueTicks = 0;
+                        if (sample.Time.IsKnown)
+                        {
+                            if (!sample.Time.TryRescale(10_000_000, MediaRounding.NearestEven, out MediaTime cueTime))
+                            {
+                                continue; // A cue start too large for 64-bit ticks is not a clock offset.
+                            }
+
+                            cueTicks = cueTime.Ticks;
+                        }
+
+                        long start = wall.Ticks - cueTicks;
+                        if (start < 0 || start > DateTime.MaxValue.Ticks)
+                        {
+                            // A cue start so large that frame 1's clock would fall outside the calendar: this reading is not evidence.
+                            continue;
+                        }
+
                         string rawTime = string.Create(CultureInfo.InvariantCulture, $"{wall:yyyy-MM-dd HH:mm:ss.fff}");
-                        set.CaptureTime = [new FactCandidate<MediaDateTime>(new MediaDateTime(wall.AddTicks(-cueTicks), null, TimeZoneCertainty.Unknown), "sidecar:dji-srt:timestamp", rawTime,
+                        set.CaptureTime = [new FactCandidate<MediaDateTime>(new MediaDateTime(new DateTime(start, DateTimeKind.Unspecified), null, TimeZoneCertainty.Unknown), "sidecar:dji-srt:timestamp", rawTime,
                             "wall-clock time of frame 1 in the SRT text, moved back by the cue start; no time zone is written")];
                         break;
                     }

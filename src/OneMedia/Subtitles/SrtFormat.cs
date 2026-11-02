@@ -75,19 +75,39 @@ internal sealed class SrtFormat : SubtitleFormat
     internal override SubtitleDocument ReadCore(SubtitleSource src)
     {
         string text = src.Text;
-        var lines = new List<(int Start, int Length)>();
-        int pos = 0;
-        while (src.NextLine(ref pos, out int s, out int l))
-        {
-            lines.Add((s, l));
-        }
+        LineTable lines = src.ReadLines();
 
         if (lines.Count > 0 && lines[0].Length > 0 && text[lines[0].Start] == '\uFEFF')
         {
             lines[0] = (lines[0].Start + 1, lines[0].Length - 1);
         }
 
-        var cues = new List<SubtitleCue>();
+        // The line after a cue is looked at twice (as the end of the cue, then as the start of the next one): remember the last answer.
+        int cachedLine = -1;
+        TimeLineInfo? cachedInfo = null;
+        TimeLineInfo? TimeLineAt(int k)
+        {
+            if (k != cachedLine)
+            {
+                cachedInfo = TimeLine(text, lines[k]);
+                cachedLine = k;
+            }
+
+            return cachedInfo;
+        }
+
+        bool StartsCueAt(int j)
+        {
+            ReadOnlySpan<char> l = text.AsSpan(lines[j].Start, lines[j].Length).Trim();
+            if (IsDigits(l) && j + 1 < lines.Count && TimeLineAt(j + 1) is not null)
+            {
+                return true;
+            }
+
+            return TimeLineAt(j) is not null;
+        }
+
+        var cues = new List<SubtitleCue>(Math.Min(Math.Max(4, lines.Count / 4), 1 << 20));
         int i = 0;
         int n = lines.Count;
         while (i < n)
@@ -98,15 +118,19 @@ internal sealed class SrtFormat : SubtitleFormat
                 continue;
             }
 
-            string? index = null;
             ReadOnlySpan<char> first = text.AsSpan(lines[i].Start, lines[i].Length).Trim();
-            if (IsDigits(first) && i + 1 < n && TimeLine(text, lines[i + 1]) is not null)
+            bool hasIndex = false;
+            if (IsDigits(first) && i + 1 < n && TimeLineAt(i + 1) is not null)
             {
-                index = first.ToString();
+                hasIndex = true;
                 i++;
             }
+            else
+            {
+                first = default;
+            }
 
-            TimeLineInfo? tl = TimeLine(text, lines[i]);
+            TimeLineInfo? tl = TimeLineAt(i);
             if (tl is null)
             {
                 src.Report(DefectKind.InvalidValue, DefectSeverity.Warning, lines[i].Start, "Expected a cue time line; line skipped.", "subtitles.srt.stray-line");
@@ -117,7 +141,12 @@ internal sealed class SrtFormat : SubtitleFormat
             src.CheckCue(cues.Count + 1, lines[i].Start);
             int timeLineStart = lines[i].Start;
             i++;
-            var body = new StringBuilder();
+
+            // The body is the run of non-blank lines, joined with \n. A blank line inside the text (kept, with a defect) is rare and
+            // switches to a builder.
+            StringBuilder? body = null;
+            int bodyFirst = i;
+            int bodyEnd = i;
             int bodyStart = i < n ? lines[i].Start : text.Length;
             bool firstLine = true;
             while (i < n)
@@ -130,13 +159,29 @@ internal sealed class SrtFormat : SubtitleFormat
                         j++;
                     }
 
-                    if (j >= n || StartsCue(text, lines, j))
+                    if (j >= n || StartsCueAt(j))
                     {
                         i = j;
                         break;
                     }
 
                     src.Report(DefectKind.Inconsistent, DefectSeverity.Warning, lines[i].Start, "Blank line inside cue text; kept.", "subtitles.srt.blank-in-text");
+                    if (body is null)
+                    {
+                        body = new StringBuilder();
+                        for (int k = bodyFirst; k < bodyEnd; k++)
+                        {
+                            if (k > bodyFirst)
+                            {
+                                body.Append('\n');
+                            }
+
+                            body.Append(text, lines[k].Start, lines[k].Length);
+                        }
+
+                        firstLine = bodyEnd == bodyFirst;
+                    }
+
                     for (int k = i; k < j; k++)
                     {
                         if (!firstLine)
@@ -149,12 +194,20 @@ internal sealed class SrtFormat : SubtitleFormat
                     continue;
                 }
 
-                if (!firstLine)
+                if (body is null)
                 {
-                    body.Append('\n');
+                    bodyEnd = i + 1;
+                }
+                else
+                {
+                    if (!firstLine)
+                    {
+                        body.Append('\n');
+                    }
+
+                    body.Append(text, lines[i].Start, lines[i].Length);
                 }
 
-                body.Append(text, lines[i].Start, lines[i].Length);
                 firstLine = false;
                 i++;
             }
@@ -164,18 +217,34 @@ internal sealed class SrtFormat : SubtitleFormat
                 src.Report(DefectKind.InvalidOrder, DefectSeverity.Warning, timeLineStart, "Cue ends before it starts.", "subtitles.srt.end-before-start");
             }
 
-            SrtMarkup.Parse(body.ToString(), src, bodyStart, out string plain, out List<SubtitleSpan> spans, out CuePlacement? placement);
-            var extras = new List<SubtitleExtra>();
-            string expected = (cues.Count + 1).ToString(CultureInfo.InvariantCulture);
-            if (index is not null && index != expected)
+            string bodyText = body is null ? SubtitleSource.JoinLines(text, lines, bodyFirst, bodyEnd) : body.ToString();
+            string plain;
+            SubtitleList<SubtitleSpan> spanList;
+            CuePlacement? placement = null;
+            if (bodyText.AsSpan().IndexOfAny('<', '{') < 0)
             {
-                extras.Add(new SubtitleExtra("srt", "index", index));
-                src.Report(DefectKind.Inconsistent, DefectSeverity.Info, timeLineStart, $"Cue number {index} where {expected} was expected.", "subtitles.srt.index");
+                plain = bodyText;
+                spanList = SubtitleList.Empty<SubtitleSpan>();
+            }
+            else
+            {
+                SrtMarkup.Parse(bodyText, src, bodyStart, out plain, out List<SubtitleSpan> spans, out placement);
+                spanList = SubtitleList.From(spans);
+            }
+
+            // The number is kept only when it is not the one a plain count would give ("007" is not "7").
+            List<SubtitleExtra>? extras = null;
+            int expected = cues.Count + 1;
+            if (hasIndex && !IsExpectedIndex(first, expected))
+            {
+                string index = first.ToString();
+                extras = [new SubtitleExtra("srt", "index", index)];
+                src.Report(DefectKind.Inconsistent, DefectSeverity.Info, timeLineStart, $"Cue number {index} where {expected.ToString(CultureInfo.InvariantCulture)} was expected.", "subtitles.srt.index");
             }
 
             if (tl.Value.Coordinates is { } coords)
             {
-                extras.Add(new SubtitleExtra("srt", "coordinates", coords));
+                (extras ??= []).Add(new SubtitleExtra("srt", "coordinates", coords));
             }
 
             cues.Add(new SubtitleCue
@@ -183,37 +252,44 @@ internal sealed class SrtFormat : SubtitleFormat
                 Start = tl.Value.Start,
                 End = tl.Value.End,
                 Text = plain,
-                Spans = SubtitleList.From(spans),
+                Spans = spanList,
                 Placement = placement,
-                Extras = SubtitleList.From(extras),
+                Extras = extras is null ? SubtitleList.Empty<SubtitleExtra>() : SubtitleList.From(extras),
             });
         }
 
         return new SubtitleDocument { Cues = SubtitleList.From(cues), NewLine = src.NewLine };
     }
 
+    // digits (at most nine, no sign) that are the decimal form of value, with no leading zero.
+    private static bool IsExpectedIndex(ReadOnlySpan<char> digits, int value)
+    {
+        if (digits.IsEmpty || digits[0] == '0')
+        {
+            return false;
+        }
+
+        int v = 0;
+        foreach (char c in digits)
+        {
+            v = (v * 10) + (c - '0');
+        }
+
+        return v == value;
+    }
+
     private static bool IsBlank(string text, (int Start, int Length) line)
     {
         for (int k = 0; k < line.Length; k++)
         {
-            if (!char.IsWhiteSpace(text[line.Start + k]) && text[line.Start + k] != '\uFEFF')
+            char c = text[line.Start + k];
+            if (!char.IsWhiteSpace(c) && c != '\uFEFF')
             {
                 return false;
             }
         }
 
         return true;
-    }
-
-    private static bool StartsCue(string text, List<(int Start, int Length)> lines, int j)
-    {
-        ReadOnlySpan<char> l = text.AsSpan(lines[j].Start, lines[j].Length).Trim();
-        if (IsDigits(l) && j + 1 < lines.Count && TimeLine(text, lines[j + 1]) is not null)
-        {
-            return true;
-        }
-
-        return TimeLine(text, lines[j]) is not null;
     }
 
     private readonly record struct TimeLineInfo(MediaTime Start, MediaTime End, string? Coordinates);
@@ -251,26 +327,38 @@ internal sealed class SrtFormat : SubtitleFormat
     internal override string WriteCore(SubtitleDocument doc, ConversionReport report)
     {
         string nl = doc.NewLine;
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(MarkupWriter.EstimateCapacity(doc.Cues.Count, 96));
         for (int c = 0; c < doc.Cues.Count; c++)
         {
             SubtitleCue cue = doc.Cues[c];
-            string number = (c + 1).ToString(CultureInfo.InvariantCulture);
+            string? number = null;
             string? coords = null;
-            foreach (SubtitleExtra e in cue.Extras)
+            for (int e = 0; e < cue.Extras.Count; e++)
             {
-                if (e.Format == "srt" && e.Key == "index")
+                SubtitleExtra extra = cue.Extras[e];
+                if (extra.Format == "srt" && extra.Key == "index")
                 {
-                    number = e.Value;
+                    number = extra.Value;
                 }
-                else if (e.Format == "srt" && e.Key == "coordinates")
+                else if (extra.Format == "srt" && extra.Key == "coordinates")
                 {
-                    coords = e.Value;
+                    coords = extra.Value;
                 }
             }
 
-            sb.Append(number).Append(nl);
-            sb.Append(SrtTime.Format(cue.Start, c, report, ',')).Append(" --> ").Append(SrtTime.Format(cue.End, c, report, ','));
+            if (number is null)
+            {
+                sb.Append(c + 1);
+            }
+            else
+            {
+                sb.Append(number);
+            }
+
+            sb.Append(nl);
+            SrtTime.Append(sb, cue.Start, c, report, ',');
+            sb.Append(" --> ");
+            SrtTime.Append(sb, cue.End, c, report, ',');
             if (coords is not null)
             {
                 sb.Append(' ').Append(coords);
@@ -294,6 +382,16 @@ internal static class SrtTime
         time = default;
         comma = false;
         standard = false;
+        if (!s.IsEmpty && (char.IsWhiteSpace(s[0]) || char.IsWhiteSpace(s[^1])))
+        {
+            s = s.Trim();
+        }
+
+        if (TryParseSimple(s, out time, out comma, out standard))
+        {
+            return true;
+        }
+
         s = s.Trim();
         if (s.Length < 4)
         {
@@ -359,6 +457,136 @@ internal static class SrtTime
         return true;
     }
 
+    // One pass over the usual shape: digits ':' digits [':' digits] [(',' | '.') digits], nothing else (no spaces, no signs). Anything
+    // else, and every value outside the ranges below, goes to the general parser, which decides what is valid.
+    private static bool TryParseSimple(ReadOnlySpan<char> s, out MediaTime time, out bool comma, out bool standard)
+    {
+        time = default;
+        comma = false;
+        standard = false;
+        if (s.Length < 4 || s.Length > 24)
+        {
+            return false;
+        }
+
+        long f0 = 0;
+        long f1 = 0;
+        long f2 = 0;
+        int d0 = 0;
+        int d1 = 0;
+        int d2 = 0;
+        int colons = 0;
+        int i = 0;
+        for (; i < s.Length; i++)
+        {
+            uint d = (uint)(s[i] - '0');
+            if (d <= 9)
+            {
+                switch (colons)
+                {
+                    case 0:
+                        f0 = (f0 * 10) + d;
+                        d0++;
+                        break;
+                    case 1:
+                        f1 = (f1 * 10) + d;
+                        d1++;
+                        break;
+                    default:
+                        f2 = (f2 * 10) + d;
+                        d2++;
+                        break;
+                }
+            }
+            else if (s[i] == ':' && colons < 2)
+            {
+                colons++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (colons == 0 || d0 == 0 || d1 == 0 || d0 > 9 || d1 > 9 || d2 > 9 || (colons == 2 && d2 == 0))
+        {
+            return false;
+        }
+
+        long hours;
+        long minutes;
+        long seconds;
+        int hourDigits;
+        int minuteDigits;
+        int secondDigits;
+        if (colons == 2)
+        {
+            hours = f0;
+            minutes = f1;
+            seconds = f2;
+            hourDigits = d0;
+            minuteDigits = d1;
+            secondDigits = d2;
+        }
+        else
+        {
+            hours = 0;
+            minutes = f0;
+            seconds = f1;
+            hourDigits = 0;
+            minuteDigits = d0;
+            secondDigits = d1;
+        }
+
+        int fracDigits = 0;
+        long ms = 0;
+        bool isComma = false;
+        if (i < s.Length)
+        {
+            if (s[i] is not (',' or '.'))
+            {
+                return false;
+            }
+
+            isComma = s[i] == ',';
+            int fracStart = ++i;
+            if (fracStart >= s.Length)
+            {
+                return false;
+            }
+
+            long num = 0;
+            long den = 1;
+            for (; i < s.Length; i++)
+            {
+                uint d = (uint)(s[i] - '0');
+                if (d > 9)
+                {
+                    return false;
+                }
+
+                fracDigits++;
+                if (den < 1000)
+                {
+                    num = (num * 10) + d;
+                    den *= 10;
+                }
+            }
+
+            ms = num * (1000 / den);
+        }
+
+        if (minutes > 59_999 || seconds > 59_999 || hours > 9_999_999)
+        {
+            return false;
+        }
+
+        time = new MediaTime(((((((hours * 60) + minutes) * 60) + seconds) * 1000)) + ms, 1000);
+        comma = isComma;
+        standard = isComma && hourDigits >= 2 && minuteDigits == 2 && secondDigits == 2 && fracDigits == 3;
+        return true;
+    }
+
     private static bool TryNumber(ReadOnlySpan<char> s, out long value)
     {
         value = 0;
@@ -378,6 +606,55 @@ internal static class SrtTime
         }
 
         return true;
+    }
+
+    /// <summary>Appends <c>HH:MM:SS,mmm</c> (what <see cref="Format"/> returns) without making a string.</summary>
+    internal static void Append(StringBuilder sb, MediaTime t, int cue, ConversionReport report, char separator)
+    {
+        long ms = t.Timescale == 1000 ? t.Ticks : SubtitleLoss.Quantize(t, 1000, cue, SubtitleFeatures.Timing, report, "Time");
+        if (ms < 0)
+        {
+            report.Add(cue, SubtitleFeatures.Timing, LossKind.Approximated, "Negative time clamped to zero.");
+            ms = 0;
+        }
+
+        long totalSeconds = ms / 1000;
+        AppendPadded(sb, totalSeconds / 3600, 2);
+        sb.Append(':');
+        AppendPadded(sb, totalSeconds / 60 % 60, 2);
+        sb.Append(':');
+        AppendPadded(sb, totalSeconds % 60, 2);
+        sb.Append(separator);
+        AppendPadded(sb, ms % 1000, 3);
+    }
+
+    /// <summary>Appends a non-negative number with at least <paramref name="minDigits"/> digits.</summary>
+    internal static void AppendPadded(StringBuilder sb, long value, int minDigits)
+    {
+        int digits = 1;
+        for (long v = value; v >= 10; v /= 10)
+        {
+            digits++;
+        }
+
+        for (int k = digits; k < minDigits; k++)
+        {
+            sb.Append('0');
+        }
+
+        if (digits <= 2)
+        {
+            if (digits == 2)
+            {
+                sb.Append((char)('0' + (int)(value / 10)));
+            }
+
+            sb.Append((char)('0' + (int)(value % 10)));
+        }
+        else
+        {
+            sb.Append(value);
+        }
     }
 
     internal static string Format(MediaTime t, int cue, ConversionReport report, char separator)
@@ -419,7 +696,14 @@ internal static class NumpadAlignment
 
 internal static class SrtMarkup
 {
-    private sealed record Open(string Name, int Start, TextStyle Style);
+    private readonly record struct Open(string Name, int Start, TextStyle Style);
+
+    // TextStyle is immutable, so the four plain tags share one instance each.
+    private static readonly TextStyle BoldStyle = new() { Bold = true };
+    private static readonly TextStyle ItalicStyle = new() { Italic = true };
+    private static readonly TextStyle UnderlineStyle = new() { Underline = true };
+    private static readonly TextStyle StrikeStyle = new() { Strike = true };
+    private static readonly TextStyle EmptyStyle = new();
 
     internal static void Parse(string raw, SubtitleSource src, int baseIndex, out string text, out List<SubtitleSpan> spans, out CuePlacement? placement)
     {
@@ -442,7 +726,12 @@ internal static class SrtMarkup
                     }
                     else
                     {
-                        int k = open.FindLastIndex(o => o.Name == name);
+                        int k = open.Count - 1;
+                        while (k >= 0 && open[k].Name != name)
+                        {
+                            k--;
+                        }
+
                         if (k < 0)
                         {
                             src.Report(DefectKind.InvalidOrder, DefectSeverity.Info, baseIndex + i, $"Closing </{name}> without an opening tag; ignored.", "subtitles.srt.tag-unmatched");
@@ -520,28 +809,37 @@ internal static class SrtMarkup
             sp++;
         }
 
-        string tag = body[..sp].ToString().ToLowerInvariant();
+        ReadOnlySpan<char> tagSpan = body[..sp];
         ReadOnlySpan<char> attrs = body[sp..];
-        switch (tag)
+        string tag;
+        if (tagSpan.Equals("b", StringComparison.OrdinalIgnoreCase))
         {
-            case "b":
-                style = new TextStyle { Bold = true };
-                break;
-            case "i":
-                style = new TextStyle { Italic = true };
-                break;
-            case "u":
-                style = new TextStyle { Underline = true };
-                break;
-            case "s" or "strike":
-                tag = "s";
-                style = new TextStyle { Strike = true };
-                break;
-            case "font":
-                style = closing ? new TextStyle() : FontStyle(attrs);
-                break;
-            default:
-                return false;
+            tag = "b";
+            style = BoldStyle;
+        }
+        else if (tagSpan.Equals("i", StringComparison.OrdinalIgnoreCase))
+        {
+            tag = "i";
+            style = ItalicStyle;
+        }
+        else if (tagSpan.Equals("u", StringComparison.OrdinalIgnoreCase))
+        {
+            tag = "u";
+            style = UnderlineStyle;
+        }
+        else if (tagSpan.Equals("s", StringComparison.OrdinalIgnoreCase) || tagSpan.Equals("strike", StringComparison.OrdinalIgnoreCase))
+        {
+            tag = "s";
+            style = StrikeStyle;
+        }
+        else if (tagSpan.Equals("font", StringComparison.OrdinalIgnoreCase))
+        {
+            tag = "font";
+            style = closing ? EmptyStyle : FontStyle(attrs);
+        }
+        else
+        {
+            return false;
         }
 
         name = tag;
@@ -630,6 +928,14 @@ internal static class SrtMarkup
 
     internal static void Write(StringBuilder sb, SubtitleCue cue, int cueIndex, string nl, ConversionReport report)
     {
+        if (cue.Spans.Count == 0 && !MarkupWriter.HasBlankLines(cue.Text))
+        {
+            // No markup to place: the usual cue is its alignment tag (if any) and its text.
+            AppendAlignment(sb, cue);
+            MarkupWriter.AppendEscaped(sb, cue.Text, false, nl);
+            return;
+        }
+
         var intervals = new List<MarkupInterval>();
         var points = new List<MarkupPoint>();
         foreach (SubtitleSpan span in cue.Spans)
@@ -707,24 +1013,15 @@ internal static class SrtMarkup
             plain = MarkupWriter.FillBlankLines(plain, intervals, points, ' ');
         }
 
+        AppendAlignment(sb, cue);
+        MarkupWriter.Write(sb, plain, intervals, points, false, nl);
+    }
+
+    private static void AppendAlignment(StringBuilder sb, SubtitleCue cue)
+    {
         if (cue.Placement is { } p && NumpadAlignment.To(p.Align, p.VerticalAlign) is int an and > 0)
         {
             sb.Append("{\\an").Append(an.ToString(CultureInfo.InvariantCulture)).Append('}');
         }
-
-        MarkupWriter.Write(sb, plain, intervals, points, (o, s) =>
-        {
-            foreach (char ch in s)
-            {
-                if (ch == '\n')
-                {
-                    o.Append(nl);
-                }
-                else
-                {
-                    o.Append(ch);
-                }
-            }
-        });
     }
 }

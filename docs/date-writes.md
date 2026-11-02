@@ -45,7 +45,7 @@ Fields that look like dates and are not the capture date are left and listed wit
 The range is 1904 to 2262; a time outside it throws `ArgumentOutOfRangeException`. A version 0 header box holds 32-bit seconds (to 2040); a
 later time leaves that box and says so.
 
-### Choices made where the specifications are silent [agent defaults]
+### Choices made where the specifications are silent
 
 - **Header times are UTC unless told otherwise.** ISO/IEC 14496-12 says UTC, and Windows and macOS both read them as UTC (below). Some cameras
   store local time; `DeviceProfile.HeaderTimeIsLocal` (data in `DeviceProfiles.cs`) and `CaptureTimeOptions.HeaderTimesAreLocal` select the local

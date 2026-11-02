@@ -27,6 +27,11 @@
     <EmbeddedResource Include="../../testdata/bitmapsubs/dvb-2bit.pes" LogicalName="bitmap-dvb-2bit.pes" />
     <EmbeddedResource Include="../../testdata/bitmapsubs/dvb-4bit.pes" LogicalName="bitmap-dvb-4bit.pes" />
     <EmbeddedResource Include="../../testdata/bitmapsubs/dvb-8bit.pes" LogicalName="bitmap-dvb-8bit.pes" />
+    <EmbeddedResource Include="../../testdata/repair/tiny.mkv" LogicalName="repair-tiny.mkv" />
+    <EmbeddedResource Include="../../testdata/repair/tiny.avi" LogicalName="repair-tiny.avi" />
+    <EmbeddedResource Include="../../testdata/repair/tiny.mp4" LogicalName="repair-tiny.mp4" />
+    <EmbeddedResource Include="../../testdata/repair/tiny-frag.mp4" LogicalName="repair-tiny-frag.mp4" />
+    <EmbeddedResource Include="../../testdata/repair/tiny.ts" LogicalName="repair-tiny.ts" />
     <EmbeddedResource Include="../../testdata/audio/opus.webm" LogicalName="opus.webm" />
     <EmbeddedResource Include="../../testdata/telemetry/gpmf-synthetic.mp4" LogicalName="gpmf-synthetic.mp4" />
     <EmbeddedResource Include="../../testdata/telemetry/camm-all-types.mp4" LogicalName="camm-all-types.mp4" />
