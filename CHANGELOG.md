@@ -9,6 +9,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - The duration of an HLS presentation rounded each `EXTINF` to a whole second while adding them up, so a 52.208 s stream read 51 s. `EXTINF` values are decimals and are now summed exactly (a DASH period's start, when derived from the previous period, had the same rounding). `docs/streaming-sources.md` also states that `PresentationVariant.Bandwidth` is `AVERAGE-BANDWIDTH` when present and `BANDWIDTH` otherwise.
 - Reconstructing a recording with no reference file, when the video's parameter sets lived only in the lost movie box, could still end with the muxer's "a video track needs a width and height" text. The scan took a few stray bytes inside the H.264 data for an AV1 sequence header; it now needs a frame size and a second well-formed temporal unit behind it, so the rebuild says that a reference file is needed. A frame size the sample entry cannot hold (over 65535) now also gets that lead message.
 
+### Changed
+
+- Planning a Matroska tag edit is faster and allocates less: the sizes of the stored positions are settled without rewriting the tree three times, the safety check opens the Matroska reader directly with a rented buffer, and small rewritten Cues are built once. The files written are byte-identical to before. `MediaFormats.Default`'s documentation now lists every format it opens.
+
 ### Added
 
 - `MediaTrack` forwards one-line fields: `Width`, `Height`, `RotationDegrees`, `FrameRate` (video) and `SampleRate`, `Channels` (audio), all nullable, so `media.Video?.Width` and `media.Audio?.SampleRate` read as the README sketch does. They read the existing `Video` and `Audio` info; nothing else changes.
