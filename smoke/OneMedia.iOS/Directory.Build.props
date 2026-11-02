@@ -1,0 +1,16 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- The iOS build copies the runtime's dynamic libraries into the app bundle, and in the shared artifacts layout (bin/<project>/<config>_<rid>)
+       those copies come out as small text files that the loader rejects. A conventional bin/obj tree works, so this project keeps one,
+       outside the source folders like the rest of the output. -->
+  <PropertyGroup>
+    <UseArtifactsOutput>false</UseArtifactsOutput>
+    <MobileOutput Condition="'$(ONEMEDIA_ARTIFACTS)' != ''">$(ONEMEDIA_ARTIFACTS)/iOS/</MobileOutput>
+    <MobileOutput Condition="'$(ONEMEDIA_ARTIFACTS)' == ''">$(MSBuildThisFileDirectory)../../artifacts/iOS/</MobileOutput>
+    <BaseOutputPath>$(MobileOutput)bin/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MobileOutput)obj/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
+</Project>

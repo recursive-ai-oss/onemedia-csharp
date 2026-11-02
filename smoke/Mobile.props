@@ -1,0 +1,65 @@
+<Project>
+
+  <!-- What the Android and iOS smoke apps share with the NativeAOT smoke: its checks (smoke/Shared), the test-side file builders
+       they read back, the embedded sample files, and the phone-app checks in Mobile/MobileChecks.cs. -->
+  <ItemGroup>
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+    <Compile Include="$(MSBuildThisFileDirectory)Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <Compile Include="$(MSBuildThisFileDirectory)Mobile/MobileChecks.cs" Link="Shared/MobileChecks.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../tests/OneMedia.Tests/Captions/TeletextBuilder.cs" Link="Shared/TeletextBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../tests/OneMedia.Tests/Events/EventBuilder.cs" Link="Shared/EventBuilder.cs" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/bitmapsubs/pgs.sup" LogicalName="bitmap-pgs.sup" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/bitmapsubs/vobsub.idx" LogicalName="bitmap-vobsub.idx" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/bitmapsubs/vobsub.sub" LogicalName="bitmap-vobsub.sub" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/bitmapsubs/dvb-2bit.pes" LogicalName="bitmap-dvb-2bit.pes" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/bitmapsubs/dvb-4bit.pes" LogicalName="bitmap-dvb-4bit.pes" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/bitmapsubs/dvb-8bit.pes" LogicalName="bitmap-dvb-8bit.pes" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/repair/tiny.mkv" LogicalName="repair-tiny.mkv" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/repair/tiny.avi" LogicalName="repair-tiny.avi" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/repair/tiny.mp4" LogicalName="repair-tiny.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/repair/tiny-frag.mp4" LogicalName="repair-tiny-frag.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/repair/tiny.ts" LogicalName="repair-tiny.ts" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio/opus.webm" LogicalName="opus.webm" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/gpmf-synthetic.mp4" LogicalName="gpmf-synthetic.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/camm-all-types.mp4" LogicalName="camm-all-types.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/mebx-synthetic.mp4" LogicalName="mebx-synthetic.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/strip/strip-mixed.mp4" LogicalName="strip-mixed.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/dji-text.mp4" LogicalName="dji-text.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/djmd-real.mp4" LogicalName="djmd-real.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/mdpm-gps.mts" LogicalName="mdpm-gps.mts" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/telemetry/dji-formats.srt" LogicalName="dji-formats.srt" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio/aac.m4a" LogicalName="aac.m4a" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/asf/wmav2-tagged.wma" LogicalName="wmav2-tagged.wma" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/mpeg/h264-aac.ts" LogicalName="h264-aac.ts" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/mpeg/h264-aac.m2ts" LogicalName="h264-aac.m2ts" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/text/oracle/mb_tx3g.mp4" LogicalName="tt-mb_tx3g.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/text/oracle/mb_wvtt.mp4" LogicalName="tt-mb_wvtt.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/text/oracle/mb_stpp.mp4" LogicalName="tt-mb_stpp.mp4" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/text/oracle/mm_srt.mkv" LogicalName="tt-mm_srt.mkv" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/text/oracle/mm_ass.mkv" LogicalName="tt-mm_ass.mkv" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/text/oracle/mm_vtt.mkv" LogicalName="tt-mm_vtt.mkv" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/mpeg/mpeg2-mp2.vob" LogicalName="mpeg2-mp2.vob" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/mpeg/h264.264" LogicalName="h264.264" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/mpeg/vp8.ivf" LogicalName="vp8.ivf" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio-es/lame-info.mp3" LogicalName="lame-info.mp3" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio-es/lc.aac" LogicalName="lc.aac" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio-es/ac3.ac3" LogicalName="ac3.ac3" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio-es/nb.amr" LogicalName="nb.amr" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio-es/tagged/id3v24-basic.mp3" LogicalName="id3v24-basic.mp3" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio/opus.ogg" LogicalName="opus.ogg" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/audio/vorbis.ogg" LogicalName="vorbis.ogg" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/xiph-flv/tags.flac" LogicalName="tags.flac" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/xiph-flv/tiny.flv" LogicalName="tiny.flv" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/avi/mjpeg-pcm.avi" LogicalName="mjpeg-pcm.avi" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/avi/one-frame-pal-type1.avi" LogicalName="one-frame-pal-type1.avi" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../testdata/avi/one-frame-pal.dv" LogicalName="one-frame-pal.dv" />
+  </ItemGroup>
+
+</Project>

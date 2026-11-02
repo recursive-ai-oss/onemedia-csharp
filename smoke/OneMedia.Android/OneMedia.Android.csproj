@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Android smoke app: the shared smoke checks, trimmed (Release), run in an emulator by run-emulator.sh. Not packed, not in the solution. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>$(PackagePrefix)OneMedia.AndroidSmoke</AssemblyName>
+    <RootNamespace>$(PackagePrefix)OneMedia.AndroidSmoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <ApplicationId>ai.recursive.onemedia.smoke</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <!-- The emulator on an x64 host; pass -p:RuntimeIdentifier=android-arm64 for a device. -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">android-x64</RuntimeIdentifier>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Release trims whole assemblies, as a consumer's app would. -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <Import Project="../Mobile.props" />
+
+</Project>
