@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Fuzz;
 

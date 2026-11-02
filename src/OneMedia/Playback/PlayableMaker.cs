@@ -46,11 +46,18 @@ public enum MakePlayableActionKind
 /// <param name="Kind">The step.</param>
 /// <param name="Track">The input track concerned, or -1.</param>
 /// <param name="Detail">A sentence for a person.</param>
-public sealed record MakePlayableAction(MakePlayableActionKind Kind, int Track, string Detail);
+public sealed record MakePlayableAction(MakePlayableActionKind Kind, int Track, string Detail)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => Track < 0 ? $"{Kind}: {Detail}" : $"{Kind} (track {Track}): {Detail}";
+}
 
 /// <summary>What <see cref="PlayableMaker.MakePlayable(string, string, BrowserProfile, MakePlayableOptions?, CancellationToken)"/> decided and did.</summary>
 public sealed record MakePlayableReport
 {
+    /// <summary>A one-line summary: profile, status and counts. The data is in the properties.</summary>
+    public override string ToString() => $"MakePlayable for {ProfileId}: {Status}, {Actions.Count} action{(Actions.Count == 1 ? "" : "s")}, {Remaining.Count} blocker{(Remaining.Count == 1 ? "" : "s")} remaining (see Actions, Remaining)";
+
     /// <summary>The <see cref="BrowserProfile.Id"/> targeted.</summary>
     public required string ProfileId { get; init; }
 
@@ -153,7 +160,7 @@ public static class PlayableMaker
         PlaybackVerdict before;
         PlaybackDescription description;
         bool fragmented;
-        using (MediaFile input = Media.Open(inputPath))
+        using (MediaFile input = Media.Open(inputPath, cancellationToken))
         {
             before = input.CanPlay(profile);
             description = before.Description;
@@ -388,7 +395,7 @@ public static class PlayableMaker
             try
             {
                 FaststartReport fs = Remuxer.Faststart(inputPath, outputPath, options.Overwrite, ct);
-                using MediaFile result = Media.Open(outputPath);
+                using MediaFile result = Media.Open(outputPath, ct);
                 return new MakePlayableReport
                 {
                     ProfileId = profile.Id,
@@ -429,7 +436,7 @@ public static class PlayableMaker
         {
             if (plan.Transcodes.Count > 0)
             {
-                using MediaFile probe = Media.Open(inputPath);
+                using MediaFile probe = Media.Open(inputPath, ct);
                 IAudioTranscoder transcoder = options.AudioTranscoder!;
                 foreach (PlannedTranscode p in plan.Transcodes)
                 {
@@ -504,7 +511,7 @@ public static class PlayableMaker
             }
 
             PlaybackVerdict after;
-            using (MediaFile result = Media.Open(outputPath))
+            using (MediaFile result = Media.Open(outputPath, ct))
             {
                 after = result.CanPlay(profile);
             }

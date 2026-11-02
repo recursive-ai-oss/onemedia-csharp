@@ -63,6 +63,11 @@ internal static class AudioStreamSmoke
         check("audio es: decode mp3 with LAME gapless", Decoded("lame-info.mp3") == 13230);
         check("audio es: decode adts aac", Decoded("lc.aac") == 14336);
         check("audio es: decode amr", Decoded("nb.amr") == 6400);
+        using (MediaFile viaTrack = Media.Open(Resource("lc.aac")))
+        using (IAudioDecoder d = viaTrack.Audio!.Decode())
+        {
+            check("audio es: track.Decode()", d.Format.Channels > 0);
+        }
     }
 
     private static long Decoded(string name)

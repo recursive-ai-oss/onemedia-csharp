@@ -1,4 +1,4 @@
-namespace RecursiveAI.OneMedia;
+namespace RecursiveAI.OneMedia.Writing;
 
 /// <summary>
 /// Treats two node objects as the same node when they sit at the same offset. Lazy trees can hand out several objects for one node (a

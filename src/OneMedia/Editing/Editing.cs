@@ -81,7 +81,11 @@ public sealed class EditRefusedException : MediaException
 /// <param name="HiddenVideoPackets">Video packets written before the first shown frame (the edit list hides them). Zero in keyframe mode.</param>
 /// <param name="Notes">Everything the operation rounded, moved or dropped, in words.</param>
 /// <param name="Mux">The muxer's own report.</param>
-public sealed record ClipReport(MediaTime SourceStart, MediaTime Duration, int HiddenVideoPackets, IReadOnlyList<string> Notes, MuxReport Mux);
+public sealed record ClipReport(MediaTime SourceStart, MediaTime Duration, int HiddenVideoPackets, IReadOnlyList<string> Notes, MuxReport Mux)
+{
+    /// <summary>A one-line summary: where the clip starts and how long it is. The data is in the properties.</summary>
+    public override string ToString() => $"Clip: starts at {SourceStart}, lasts {Duration}, {Notes.Count} note{(Notes.Count == 1 ? "" : "s")} (see Notes)";
+}
 
 /// <summary>
 /// An edit list the muxer reads when the file is finished. An operation that streams does not know a clip's last frame or a track's first

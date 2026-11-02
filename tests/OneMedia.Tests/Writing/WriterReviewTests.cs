@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using RecursiveAI.OneMedia.Tags;
 using Xunit;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tests;
 

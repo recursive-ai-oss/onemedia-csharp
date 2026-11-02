@@ -36,7 +36,7 @@ public sealed class AudioTranscoder : IAudioTranscoder
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file; refused if it exists.</param>
     /// <param name="profile">The browser profile.</param>
-    /// <returns>As <see cref="Media.MakePlayable(string, string, BrowserProfile)"/>, with audio transcoding available.</returns>
+    /// <returns>As <see cref="Media.MakePlayable(string, string, BrowserProfile, CancellationToken)"/>, with audio transcoding available.</returns>
     public static MakePlayableReport MakePlayable(string input, string output, BrowserProfile profile) =>
         PlayableMaker.MakePlayable(input, output, profile, new MakePlayableOptions { AudioTranscoder = Default });
 
@@ -87,7 +87,7 @@ public sealed class AudioTranscoder : IAudioTranscoder
             throw new UnsupportedMediaException(message);
         }
 
-        MediaFile file = Media.Open(inputPath);
+        MediaFile file = Media.Open(inputPath, cancellationToken);
         try
         {
             return target == CodecId.Aac ? AacTranscode.Create(file, source, bitRate, cancellationToken)

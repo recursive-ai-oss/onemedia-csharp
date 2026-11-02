@@ -102,6 +102,9 @@ public sealed record ReconstructionReport(
     long UsedBytes,
     IReadOnlyList<string> Notes)
 {
+    /// <summary>A one-line summary: tracks, recovered share and confidence. The data is in the properties.</summary>
+    public override string ToString() => $"Reconstructed: {Tracks.Count} track{(Tracks.Count == 1 ? "" : "s")}, {(int)(RecoveredFraction * 100)}% of the scanned span recovered, confidence {Confidence}";
+
     /// <summary>The most skipped ranges a report lists; more are counted in <see cref="SkippedRangeCount"/>.</summary>
     public const int MaxListedSkips = 1000;
 

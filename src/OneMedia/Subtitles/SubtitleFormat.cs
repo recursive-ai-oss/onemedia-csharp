@@ -137,6 +137,9 @@ public sealed class ConversionReport
     /// <summary>True when nothing was dropped or approximated.</summary>
     public bool IsLossless => _losses.Count == 0 && Omitted == 0;
 
+    /// <summary>A one-line summary. The data is in the properties.</summary>
+    public override string ToString() => IsLossless ? $"Converted to {Target}: lossless" : $"Converted to {Target}: {_losses.Count + Omitted} loss{(_losses.Count + Omitted == 1 ? "" : "es")} (see Losses)";
+
     /// <summary>How many entries (listed or not) there are for a feature and kind.</summary>
     /// <param name="feature">The feature.</param>
     /// <param name="kind">Dropped or approximated.</param>

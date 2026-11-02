@@ -28,7 +28,7 @@ public sealed class AacReconstructionProbe : IAudioFrameProbe
     public static ReconstructionOptions Options() => new() { AudioProbes = Probes };
 
     /// <summary>
-    /// Repairs a damaged file into a new file like <see cref="Media.Repair(string, string, string?)"/>, and also recovers AAC tracks when a
+    /// Repairs a damaged file into a new file like <see cref="Media.Repair(string, string, string?, CancellationToken)"/>, and also recovers AAC tracks when a
     /// truncated MP4/MOV/3GP is rebuilt from its media data.
     /// </summary>
     /// <param name="input">The damaged file.</param>

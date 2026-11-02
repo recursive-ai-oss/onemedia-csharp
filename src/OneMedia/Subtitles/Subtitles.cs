@@ -15,13 +15,14 @@ public static class Subtitles
     /// <c>.idx</c> with the <c>.sub</c> beside it, or a bare <c>.sub</c>; those give image cues).
     /// </summary>
     /// <param name="path">The file.</param>
+    /// <param name="cancellationToken">Cancels the operation before it starts and between steps.</param>
     /// <returns>The cue model.</returns>
     /// <exception cref="UnsupportedMediaException">The content is not a recognised subtitle format.</exception>
     /// <exception cref="MediaLimitExceededException">The file is larger than <see cref="MediaLimits.MaxAllocationBytes"/> or holds too many cues.</exception>
     /// <exception cref="IOException">The file cannot be read.</exception>
-    public static SubtitleDocument Read(string path) => SubtitleFiles.Read(path);
+    public static SubtitleDocument Read(string path, CancellationToken cancellationToken = default) => SubtitleFiles.Read(path, cancellationToken);
 
-    /// <summary>Reads a subtitle file asynchronously. See <see cref="Read(string)"/>.</summary>
+    /// <summary>Reads a subtitle file asynchronously. See <see cref="Read(string, CancellationToken)"/>.</summary>
     /// <param name="path">The file.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     public static async Task<SubtitleDocument> ReadAsync(string path, CancellationToken cancellationToken = default) =>
@@ -30,12 +31,13 @@ public static class Subtitles
     /// <summary>Writes a document to a new file in the format its extension names.</summary>
     /// <param name="document">The document.</param>
     /// <param name="path">The new file; <c>.srt</c>, <c>.vtt</c>, <c>.ass</c>/<c>.ssa</c>, <c>.ttml</c>/<c>.dfxp</c>/<c>.xml</c>, <c>.sbv</c> or <c>.lrc</c>.</param>
+    /// <param name="cancellationToken">Cancels the operation before it starts and between steps.</param>
     /// <returns>What the format could not carry.</returns>
     /// <exception cref="UnsupportedMediaException">The extension names no writable format.</exception>
     /// <exception cref="IOException">The file exists (nothing is overwritten) or cannot be written.</exception>
-    public static ConversionReport Write(SubtitleDocument document, string path) => SubtitleFiles.Write(document, path);
+    public static ConversionReport Write(SubtitleDocument document, string path, CancellationToken cancellationToken = default) => SubtitleFiles.Write(document, path, cancellationToken);
 
-    /// <summary>Writes a document to a new file asynchronously. See <see cref="Write(SubtitleDocument, string)"/>.</summary>
+    /// <summary>Writes a document to a new file asynchronously. See <see cref="Write(SubtitleDocument, string, CancellationToken)"/>.</summary>
     /// <param name="document">The document.</param>
     /// <param name="path">The new file.</param>
     /// <param name="cancellationToken">Cancels the write.</param>
@@ -45,12 +47,13 @@ public static class Subtitles
     /// <summary>Converts a subtitle file to the format the output extension names, into a new file.</summary>
     /// <param name="input">The source file (format by content).</param>
     /// <param name="output">The new file (format by extension).</param>
+    /// <param name="cancellationToken">Cancels the operation before it starts and between steps.</param>
     /// <returns>What the target format could not carry, per cue.</returns>
     /// <exception cref="UnsupportedMediaException">The input is not recognised or the extension names no writable format.</exception>
     /// <exception cref="IOException">The output exists or a file cannot be read or written.</exception>
-    public static ConversionReport Convert(string input, string output) => Write(Read(input), output);
+    public static ConversionReport Convert(string input, string output, CancellationToken cancellationToken = default) => Write(Read(input, cancellationToken), output, cancellationToken);
 
-    /// <summary>Converts asynchronously. See <see cref="Convert(string, string)"/>.</summary>
+    /// <summary>Converts asynchronously. See <see cref="Convert(string, string, CancellationToken)"/>.</summary>
     /// <param name="input">The source file.</param>
     /// <param name="output">The new file.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
@@ -61,7 +64,12 @@ public static class Subtitles
 // File access for the happy path, kept apart so the layers above stay free of paths.
 internal static class SubtitleFiles
 {
-    internal static SubtitleDocument Read(string path) => Read(path, ReadBytes(path));
+    internal static SubtitleDocument Read(string path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Read(path, ReadBytes(path));
+    }
+
 
     // A VobSub index needs its .sub from beside it, so bitmap files go by path; everything else is decided by the bytes.
     internal static SubtitleDocument Read(string path, byte[] data)
@@ -105,8 +113,9 @@ internal static class SubtitleFiles
         return format;
     }
 
-    internal static ConversionReport Write(SubtitleDocument document, string path)
+    internal static ConversionReport Write(SubtitleDocument document, string path, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(document);
         SubtitleOutput output = TargetFor(path).Write(document);
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);

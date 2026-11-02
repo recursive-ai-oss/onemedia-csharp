@@ -7,12 +7,13 @@ using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Metadata.Telemetry;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia;
 
 /// <summary>
 /// An opened media file: what the container says about itself (format, tracks, duration, defects) and its packets. Created by
-/// <see cref="Media.Open(string)"/> and its overloads. The tracks are immutable neutral descriptions; the packets come from the
+/// <see cref="Media.Open(string, CancellationToken)"/> and its overloads. The tracks are immutable neutral descriptions; the packets come from the
 /// demuxer, which is reachable as <see cref="Demuxer"/> or <see cref="AsyncDemuxer"/> for everything the happy path does not offer.
 /// Not thread-safe.
 /// </summary>
@@ -405,13 +406,29 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
     private InvalidOperationException NotYetRead() => new(_sync is null ? "Call ReadMetadataAsync first for a file opened from an asynchronous source." : "This format has no metadata reader.");
 
+    // Remembers which file a track was handed out by, so extensions on a track (such as Decode in the audio package) can find it.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MediaTrack, MediaFile> s_owners = new();
+
+    private IReadOnlyList<MediaTrack> Owned(IReadOnlyList<MediaTrack> tracks)
+    {
+        foreach (MediaTrack t in tracks)
+        {
+            s_owners.AddOrUpdate(t, this);
+        }
+
+        return tracks;
+    }
+
+    /// <summary>The file that handed out <paramref name="track"/> through <see cref="Tracks"/>, <see cref="Video"/> or <see cref="Audio"/>; null for a track from anywhere else.</summary>
+    internal static MediaFile? OwnerOf(MediaTrack track) => s_owners.TryGetValue(track, out MediaFile? f) ? f : null;
+
     private IMediaContainer Container => (IMediaContainer?)_sync ?? _async!;
 
     /// <summary>The container format the data was read as.</summary>
     public MediaFormatId Format => Container.Format;
 
     /// <summary>The tracks in container order.</summary>
-    public IReadOnlyList<MediaTrack> Tracks => Container.Tracks;
+    public IReadOnlyList<MediaTrack> Tracks => Owned(Container.Tracks);
 
     /// <summary>The duration the container states about itself (movie header, fragment header or Segment information), or <see cref="MediaTime.Unknown"/>. It can disagree with the tracks.</summary>
     public MediaTime ContainerDuration => Container.Duration;
@@ -523,7 +540,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     private MediaTrack? FirstOf(TrackKind kind)
     {
         MediaTrack? first = null;
-        foreach (MediaTrack t in Container.Tracks)
+        foreach (MediaTrack t in Owned(Container.Tracks))
         {
             if (t.Kind != kind)
             {

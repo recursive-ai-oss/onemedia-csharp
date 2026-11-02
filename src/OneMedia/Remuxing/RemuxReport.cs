@@ -75,7 +75,11 @@ public sealed record RemuxLoss(LossKind Kind, LossReason Reason, int InputTrack,
 /// <param name="OutputTrack">Output track index, or -1 when the track was left out.</param>
 /// <param name="Packets">Packets written.</param>
 /// <param name="Repackaging">The change made to each packet's payload: <c>none</c>, <c>annexb-to-length-prefixed</c> or <c>adts-to-raw</c>.</param>
-public sealed record RemuxTrackReport(int InputTrack, int OutputTrack, long Packets, string Repackaging);
+public sealed record RemuxTrackReport(int InputTrack, int OutputTrack, long Packets, string Repackaging)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => $"Track {InputTrack} -> {OutputTrack}: {Packets} packets, repackaging {Repackaging}";
+}
 
 /// <summary>The outcome of a remux.</summary>
 /// <param name="Mux">What the muxer wrote (bytes, packets and payload bytes per output track, its own notes).</param>
@@ -103,6 +107,9 @@ public sealed record RemuxReport(
     /// </summary>
     public IReadOnlyList<string> CarriedCaptions { get; init; } = [];
 
+    /// <summary>A one-line summary: tracks and losses. The data is in the properties.</summary>
+    public override string ToString() => $"Remuxed: {Tracks.Count} track{(Tracks.Count == 1 ? "" : "s")}, {Losses.Count} loss{(Losses.Count == 1 ? "" : "es")} (see Losses)";
+
     /// <summary>True when anything other than a caller's own choice (<see cref="LossReason.Deselected"/>) did not carry over.</summary>
     public bool HasLosses
     {
@@ -127,4 +134,8 @@ public sealed record RemuxReport(
 /// <param name="BytesCopied">Bytes copied from the input without change (everything but the movie box).</param>
 /// <param name="OffsetsShifted">Chunk offset entries (<c>stco</c>/<c>co64</c>) that were moved.</param>
 /// <param name="PromotedTables">Chunk offset tables that had to become 64-bit.</param>
-public sealed record FaststartReport(bool Relocated, long MovieBoxBytes, long BytesCopied, long OffsetsShifted, int PromotedTables);
+public sealed record FaststartReport(bool Relocated, long MovieBoxBytes, long BytesCopied, long OffsetsShifted, int PromotedTables)
+{
+    /// <summary>A one-line summary.</summary>
+    public override string ToString() => Relocated ? $"Faststart: movie box ({MovieBoxBytes} bytes) moved to the front" : "Faststart: already at the front";
+}

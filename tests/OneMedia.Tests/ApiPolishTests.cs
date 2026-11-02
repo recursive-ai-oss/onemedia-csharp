@@ -24,6 +24,29 @@ public class ApiPolishTests
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
+    // ---- cancellation on the happy path ----
+
+    [Fact]
+    public void HappyPathCallsStopOnACancelledToken()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onemedia-cancel-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string input = Data("isobmff", "bframes_aac.mp4");
+            Assert.ThrowsAny<OperationCanceledException>(() => Media.Remux(input, System.IO.Path.Combine(dir, "out.mkv"), cts.Token));
+            Assert.ThrowsAny<OperationCanceledException>(() => Media.Faststart(input, System.IO.Path.Combine(dir, "fs.mp4"), cts.Token));
+            Assert.ThrowsAny<OperationCanceledException>(() => RecursiveAI.OneMedia.Subtitles.Read(Data("subtitles", "sample.ass"), cts.Token));
+            Assert.ThrowsAny<OperationCanceledException>(() => RecursiveAI.OneMedia.Subtitles.Convert(Data("subtitles", "sample.ass"), System.IO.Path.Combine(dir, "o.srt"), cts.Token));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // ---- iTunes (c)cpy ----
 
     [Fact]

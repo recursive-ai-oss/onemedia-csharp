@@ -123,7 +123,7 @@ public enum MediaReadStateReason
 /// A read of a <see cref="MediaFile"/> cannot proceed from the state the file is in. This is a caller error (not bad data), raised instead
 /// of returning no packets: a file reads one track at a time, starts again from the beginning on each new read when its source can seek,
 /// and refuses when it cannot (<see cref="MediaReadStateReason.CannotRewind"/>, the usual case for a forward-only source such as a
-/// non-seekable stream passed to <see cref="Media.Open(Stream, bool)"/>). A synchronous read of an asynchronously opened file raises
+/// non-seekable stream passed to <see cref="Media.Open(Stream, bool, CancellationToken)"/>). A synchronous read of an asynchronously opened file raises
 /// <see cref="MediaReadStateReason.AsynchronousSource"/>.
 /// </summary>
 public sealed class MediaReadStateException : InvalidOperationException

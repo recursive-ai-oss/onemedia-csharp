@@ -1,3 +1,4 @@
+using RecursiveAI.OneMedia.Writing;
 namespace RecursiveAI.OneMedia.Privacy;
 
 /// <summary>What a privacy strip removes.</summary>
@@ -115,6 +116,9 @@ public sealed class StripReport
 
     /// <summary>The byte-level report once the plan was saved; null before.</summary>
     public WriteReport? Write { get; internal set; }
+
+    /// <summary>A one-line summary: what was removed and what was not. The data is in the properties.</summary>
+    public override string ToString() => $"Strip: {Entries.Count} removed, {NotRemoved.Count} not removed (see Entries, NotRemoved)";
 }
 
 /// <summary>A planned strip: the edit plan that produces the new file, and the report of what it does.</summary>

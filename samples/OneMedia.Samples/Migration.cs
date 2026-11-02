@@ -1,5 +1,6 @@
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Samples;
 

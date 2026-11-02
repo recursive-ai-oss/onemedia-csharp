@@ -4,6 +4,29 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- `track.Decode()` in `RecursiveAI.OneMedia.Audio`: decodes an audio track, so `media.Audio!.Decode()` works as the README sketch shows.
+- `docs/api-review.md`: the public-surface review before 1.0, and `tools/OneMedia.ApiList`, which lists the public surface of built assemblies.
+- `docs/platforms.md`: the known limits in the browser runtime (FLAC `MakePlayable` target, synchronous readers over late-answering sources).
+
+### Changed
+
+- `RecursiveAI.OneMedia.Audio` now uses OneAudio 1.7.2, whose FLAC encoder no longer needs the platform MD5, so `MakePlayable` with a FLAC audio target works in the browser too.
+
+Breaking against 0.8.0-preview.1, allowed before 1.0. To migrate:
+
+- **Cancellation on the happy path.** Every `Media.*` and `Subtitles.*` call that does I/O takes a trailing `CancellationToken cancellationToken = default`: `Open` (path, stream, memory), `OpenGrowing`, `CanPlay`, `Remux` (both), `Faststart`, `MakePlayable`, `SetCaptureTime`, `PackageHls`, `PackageDash`, `StripLocation`, `StripDeviceIds`, `Repair`, `Subtitles.Read`, `Write` and `Convert`. Source code compiles unchanged; code built against 0.8 must be recompiled. `Media.Concat` keeps its `params string[]` form and gains an overload `Concat(output, IReadOnlyList<string> inputs, CancellationToken)`.
+- **`PackagedTrack.DurationSeconds` (a `double`) is now `PackagedTrack.Duration`, a `MediaTime`.** Use `Duration.ToTimeSpan(MediaRounding.Floor).TotalSeconds` for seconds.
+- **The safe-writer types moved to `RecursiveAI.OneMedia.Writing`:** `SafeWriter`, `EditPlan`, `WriteReport`, `WriteChange`, `WriteMode`, `OutputPiece`, `OutputPieceKind`, `IPieceGenerator` and `PaddingRequiredException`. Add `using RecursiveAI.OneMedia.Writing;`. `FileInUseException` stays in `RecursiveAI.OneMedia`.
+- `Media.Trim`, `Split` and `SplitBySize` choose the ISO or Matroska cutter inside the editing layer; behaviour is unchanged.
+- The report types (`RemuxReport`, `RepairReport`, `MakePlayableReport`, `ClipReport`, `MuxReport`, `PackagingReport`, `StripReport`, `ConversionReport` and the others) print a one-line summary from `ToString()`; the data stays in the properties.
+- `TagWriteReport.Write` and `CaptureTimeReport.Write` can no longer be assigned by callers; the save methods fill them in.
+
+### Removed
+
+- `RemuxSession.IsoOptions` is internal (it also carried WAV options and only the remuxer and the segmenter used it).
+
 ## [0.8.0-preview.1] - 2026-11-02
 
 Hardening: every parser fuzzed, the speed, allocation, memory and I/O tables for every area on x64 and arm64, the test suite in headless Chromium, phone smoke runs, and migration pages. Everything in 0.7.0-preview.1 stays; packaging, sources, repair, subtitles, captions, capture facts, telemetry and timed events are still previews.

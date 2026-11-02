@@ -2,6 +2,7 @@ using System.Text;
 using RecursiveAI.OneMedia.Tags;
 using RecursiveAI.OneMedia.Tags.Id3;
 using Xunit;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tests;
 

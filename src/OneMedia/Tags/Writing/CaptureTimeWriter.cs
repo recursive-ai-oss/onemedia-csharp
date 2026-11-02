@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Linq;
 using RecursiveAI.OneMedia.Metadata;
 using RecursiveAI.OneMedia.Tags.Xmp;
+using RecursiveAI.OneMedia.Writing;
 
 namespace RecursiveAI.OneMedia.Tags;
 
@@ -80,7 +81,10 @@ public sealed class CaptureTimeReport
     public IReadOnlyList<string> Warnings { get; }
 
     /// <summary>The byte-level report of the save; null until the plan was saved.</summary>
-    public WriteReport? Write { get; set; }
+    public WriteReport? Write { get; internal set; }
+
+    /// <summary>A one-line summary. The data is in the properties.</summary>
+    public override string ToString() => $"Capture time: {Written.Count} field{(Written.Count == 1 ? "" : "s")} written, {Left.Count} left, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Written, Left)";
 }
 
 /// <summary>A planned capture-time write: the byte-level plan and the report.</summary>
