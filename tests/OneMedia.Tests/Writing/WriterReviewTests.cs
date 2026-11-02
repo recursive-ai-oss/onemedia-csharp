@@ -799,6 +799,7 @@ public sealed class WriterReviewTests
         }
     }
 
+    [Trait("Browser", "filesystem")]
     [Fact]
     public void SaveKeepsPermissionsAndLeavesNoTemporaryFileWhenTheFolderIsReadOnly()
     {

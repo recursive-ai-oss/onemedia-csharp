@@ -257,6 +257,7 @@ public class TelemetryTests
         Assert.True(damaged.Keys.Count < 9);
     }
 
+    [Trait("Browser", "allocation")]
     [Fact]
     public void ThePullPathAllocatesNothingPerSample()
     {
@@ -329,6 +330,7 @@ public class TelemetryTests
         }
     }
 
+    [Trait("Browser", "timing")]
     [Fact]
     public void ALongChunkOfEqualSizedSamplesIsSeekedInConstantTime()
     {

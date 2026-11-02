@@ -297,6 +297,7 @@ public class XiphFlvTests
         Assert.True(p.Info.IsKeyframe || p.Info.TrackIndex != d.Tracks.Single(t => t.Kind == TrackKind.Video).Index);
     }
 
+    [Trait("Browser", "allocation")]
     [Theory]
     [InlineData("opus.ogg")]
     [InlineData("tags.flac")]

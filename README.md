@@ -171,7 +171,7 @@ To run part of the suite, use the runner's own filters, for example `dotnet test
 
 Build output goes to `artifacts/` in the repository root (ignored by git). To build somewhere else, set `ONEMEDIA_SCRATCH` to a directory; output then goes to `$ONEMEDIA_SCRATCH/artifacts`. Test files are written under the system temporary directory (`TMPDIR`).
 
-`smoke/OneMedia.AotSmoke` is published with NativeAOT and fails on any trim or AOT warning; `smoke/OneMedia.WasmSmoke` runs the same checks under the browser-wasm runtime (`wasm-tools` workload; run the built `AppBundle/main.mjs` with node). `tools/` holds the differential and I/O harness and the corpus scripts, `fuzz/` the fuzz targets and `bench/` the benchmarks; none of them ship.
+`smoke/OneMedia.AotSmoke` is published with NativeAOT and fails on any trim or AOT warning; `smoke/OneMedia.WasmSmoke` runs the same checks under the browser-wasm runtime (`wasm-tools` workload; run the built `AppBundle/main.mjs` with node), and `tests/OneMedia.Tests.Browser` runs the unit-test suite in headless Chromium (`tools/wasm-suite/run.sh`, `docs/platforms.md`). `tools/` holds the differential and I/O harness and the corpus scripts, `fuzz/` the fuzz targets and `bench/` the benchmarks; none of them ship.
 
 ## Contributing notes
 

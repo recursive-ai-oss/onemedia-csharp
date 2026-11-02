@@ -7,6 +7,8 @@
     <PackageVersion Include="RecursiveAI.OneAudio" Version="1.7.0" />
     <!-- Test, bench and fuzz projects only. -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.2" />
+    <PackageVersion Include="xunit.v3.assert" Version="4.0.2" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="SharpFuzz" Version="2.2.0" />
     <!-- Comparators: bench project only. TagLibSharp is LGPL and is only ever run as a black box there. -->

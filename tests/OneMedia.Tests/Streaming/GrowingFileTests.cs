@@ -30,6 +30,7 @@ public sealed class GrowingFileTests
         return list;
     }
 
+    [Trait("Browser", "concurrency")]
     [Fact]
     public async Task AFileWrittenInOddSizedPiecesReadsAsTheFinishedFileDoes()
     {
@@ -103,6 +104,7 @@ public sealed class GrowingFileTests
         }
     }
 
+    [Trait("Browser", "concurrency")]
     [Fact]
     public void CancellationStopsAWait()
     {
@@ -120,6 +122,7 @@ public sealed class GrowingFileTests
         }
     }
 
+    [Trait("Browser", "concurrency")]
     [Fact]
     public void AFileThatDoesNotExistYetIsWaitedFor()
     {

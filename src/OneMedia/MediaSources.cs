@@ -137,6 +137,13 @@ public sealed class FileMediaSource : IMediaSource, IAsyncMediaSource
     public async ValueTask<int> ReadAsync(long offset, Memory<byte> destination, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        if (OperatingSystem.IsBrowser())
+        {
+            // A single-threaded host has no thread to finish a file read on, and a caller that blocks on this task would wait forever,
+            // so the read happens here and the task is already complete when it is returned.
+            return Read(offset, destination.Span, cancellationToken);
+        }
+
         int total = 0;
         while (total < destination.Length)
         {

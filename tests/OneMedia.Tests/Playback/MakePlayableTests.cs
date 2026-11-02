@@ -222,6 +222,7 @@ public sealed class MakePlayableTests : IDisposable
         }
     }
 
+    [Trait("Browser", "md5")]
     [Fact]
     public void FlacInMp4IsWrittenForAProfileThatPlaysNothingElseWeMake()
     {

@@ -11,7 +11,7 @@ internal sealed class BlockingSourceAdapter(IAsyncMediaSource inner) : IMediaSou
         byte[] rented = System.Buffers.ArrayPool<byte>.Shared.Rent(destination.Length);
         try
         {
-            int n = inner.ReadAsync(offset, rented.AsMemory(0, destination.Length), cancellationToken).AsTask().GetAwaiter().GetResult();
+            int n = Input.EngineHost.Wait(inner.ReadAsync(offset, rented.AsMemory(0, destination.Length), cancellationToken));
             rented.AsSpan(0, n).CopyTo(destination);
             return n;
         }
