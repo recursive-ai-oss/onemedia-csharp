@@ -130,6 +130,11 @@ seed() {
                        "$here"/testdata/audio/opus.ogg "$here"/testdata/audio/vorbis.ogg "$here"/testdata/pcm/bwf-v0.wav "$here"/testdata/pcm/*.aif* "$here"/testdata/asf/*.wma "$here"/testdata/asf/*.wmv "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mkv; do
                 if [ -f "$f" ] && [ "$(stat -c %s "$f")" -le 262144 ]; then cp "$f" "$corpus/$(basename "$f").seed"; fi
               done ;;
+    datewrite) # Six bytes of time and option bits, then one fixture of each format the capture-time writer edits.
+              for f in "$here"/testdata/datewrite/* "$here"/testdata/audio-es/tagged/*.mp3 "$here"/testdata/audio/aac.m4a "$here"/testdata/audio/flac.flac "$here"/testdata/audio/opus.ogg \
+                       "$here"/testdata/pcm/bwf-v0.wav "$here"/testdata/asf/*.wmv "$here"/testdata/metadata/*.mp4 "$here"/testdata/metadata/*.mov "$here"/testdata/metadata/*.mkv; do
+                if [ -f "$f" ] && [ "$(stat -c %s "$f")" -le 262144 ]; then { printf '\100\345\234\170\060\000'; cat "$f"; } > "$corpus/$(basename "$f").seed"; fi
+              done ;;
     writer-iso|writer-ebml|writer-riff) # The first byte picks the path (bit 0: re-emit every header; bit 1: append padding and read back); the rest is the file.
              case "$target" in
                writer-iso) pats="$here/testdata/isobmff/*.mp4 $here/testdata/isobmff/*.mov $here/testdata/isobmff/*.3gp $here/testdata/metadata/*.mp4";;

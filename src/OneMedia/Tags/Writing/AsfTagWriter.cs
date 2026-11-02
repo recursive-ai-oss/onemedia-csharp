@@ -65,7 +65,7 @@ internal static class AsfTagWriter
             }
 
             long size = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(hdr.AsSpan(16)), long.MaxValue);
-            if (size < ObjectHeader || at + size > headerSize)
+            if (size < ObjectHeader || size > headerSize - at)
             {
                 throw new UnsupportedMediaException("An object inside the ASF header has an invalid size; tags cannot be written safely.");
             }
@@ -244,7 +244,7 @@ internal static class AsfTagWriter
             }
 
             long size = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(h.AsSpan(16)), long.MaxValue);
-            if (size < ObjectHeader || at + size > ext.Offset + ext.Size)
+            if (size < ObjectHeader || size > ext.Offset + ext.Size - at)
             {
                 return null;
             }

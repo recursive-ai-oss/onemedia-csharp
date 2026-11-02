@@ -86,6 +86,26 @@ public sealed class CaptureTimeTests
         Assert.True(Reads(m, When), $"resolved {m.CaptureTime.Best}");
     }
 
+    // Inputs the fuzz target found: the first six bytes are its time and option prefix. Each must be written or refused with a typed exception, twice in a row.
+    [Theory]
+    [InlineData("asf-datewrite.bin")]
+    [InlineData("asf-extension-size.bin")]
+    [InlineData("iso-datewrite.bin")]
+    [InlineData("riff-last-chunk-unpadded.bin")]
+    public void FuzzFindingsAreWrittenOrRefusedWithATypedException(string name)
+    {
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "datewrite", name));
+        try
+        {
+            (byte[] once, _) = Apply(input[6..], When);
+            Apply(once, When.AddDays(1));
+        }
+        catch (MediaException)
+        {
+            // A typed refusal is fine.
+        }
+    }
+
     [Fact]
     public void EveryHeaderOfAnMp4HoldsTheInstantInUtc()
     {

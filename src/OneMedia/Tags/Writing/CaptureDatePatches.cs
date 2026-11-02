@@ -133,6 +133,12 @@ internal static class CaptureDatePatches
         limits.CheckAllocation(total, box.Offset);
         byte[] b = new byte[total];
         src.ReadExactly(box.Offset, b);
+        if (!SizeMatches(b))
+        {
+            d.Left.Add(new DateFieldLeft(name, "creation_time" + suffix, null, "the box size field does not match its extent; it is not rewritten"));
+            return;
+        }
+
         int at = box.HeaderSize;
         int version = b[at];
         int width = version == 1 ? 8 : 4;
@@ -171,6 +177,24 @@ internal static class CaptureDatePatches
         d.Written.Add(new DateFieldWrite(name, "modification_time" + suffix, MacText(oldModification), MacText(value), d.HeaderSemantics));
     }
 
+    // BoxEditor.Replace wants a box whose size field matches its length. A box that runs to the end of the file (size 0), or one whose declared size
+    // disagrees with the bytes the reader found, cannot be patched in place and is left alone.
+    private static bool SizeMatches(byte[] box)
+    {
+        if (box.Length < 8)
+        {
+            return false;
+        }
+
+        uint size = BinaryPrimitives.ReadUInt32BigEndian(box);
+        if (size == 1)
+        {
+            return box.Length >= 16 && BinaryPrimitives.ReadUInt64BigEndian(box.AsSpan(8)) == (ulong)box.Length;
+        }
+
+        return size == (uint)box.Length;
+    }
+
     private static ulong Read(byte[] b, int at, int width) => width == 8 ? BinaryPrimitives.ReadUInt64BigEndian(b.AsSpan(at)) : BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(at));
 
     private static void Write(byte[] b, int at, int width, ulong v)
@@ -198,6 +222,11 @@ internal static class CaptureDatePatches
         limits.CheckAllocation(total, atom.Offset);
         byte[] box = new byte[total];
         src.ReadExactly(atom.Offset, box);
+        if (!SizeMatches(box))
+        {
+            return;
+        }
+
         long payloadAt = atom.Header.PayloadOffset;
         DefectLog scratch = new();
         if (!ExifBlock.TryParse(box.AsMemory(atom.HeaderSize), payloadAt, limits, scratch, out ExifBlock block))
