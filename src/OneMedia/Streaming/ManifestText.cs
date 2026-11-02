@@ -40,6 +40,42 @@ internal static class ManifestText
         return string.Create(CultureInfo.InvariantCulture, $"{(negative ? "-" : "")}{whole}.{fraction}");
     }
 
+    /// <summary>
+    /// The sum of two times, exact: expressed in the least common multiple of the two timescales (EXTINF values are decimals, so their timescales
+    /// are powers of ten and the sum keeps every digit). <see cref="MediaTime.Add"/> would round to the left operand's timescale, which for a
+    /// running total that starts at zero (timescale 1) is whole seconds. When the common timescale does not fit, the finer of the two is used and the
+    /// sum rounds to the nearest tick.
+    /// </summary>
+    public static MediaTime ExactSum(MediaTime a, MediaTime b)
+    {
+        long sa = a.Timescale;
+        long sb = b.Timescale;
+        Int128 gcd = Gcd(sa, sb);
+        Int128 lcm = (Int128)sa / gcd * sb;
+        if (lcm > long.MaxValue)
+        {
+            return sa >= sb ? a.Add(b, MediaRounding.NearestAwayFromZero) : b.Add(a, MediaRounding.NearestAwayFromZero);
+        }
+
+        Int128 ticks = ((Int128)a.Ticks * (lcm / sa)) + ((Int128)b.Ticks * (lcm / sb));
+        if (ticks < long.MinValue + 1 || ticks > long.MaxValue)
+        {
+            throw new OverflowException("The sum does not fit in 64 bits.");
+        }
+
+        return new MediaTime((long)ticks, (long)lcm);
+    }
+
+    private static long Gcd(long x, long y)
+    {
+        while (y != 0)
+        {
+            (x, y) = (y, x % y);
+        }
+
+        return x;
+    }
+
     /// <summary>Reads a decimal number of seconds ("6", "6.006", "0.0416667") exactly; the timescale is the matching power of ten.</summary>
     public static bool TryParseSeconds(ReadOnlySpan<char> text, out MediaTime time)
     {

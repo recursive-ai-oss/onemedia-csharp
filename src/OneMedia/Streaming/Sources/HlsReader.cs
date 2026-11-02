@@ -153,7 +153,10 @@ internal static class HlsReader
         return result.Playlist;
     }
 
-    /// <summary>The total of the segment durations, or unknown when one of them states none.</summary>
+    /// <summary>
+    /// The total of the segment durations, or unknown when one of them states none. EXTINF is a decimal number (RFC 8216 §4.3.2.1) and is read
+    /// exactly, so the total keeps every digit: five segments of 10.4 s are 52 s and not the 50 s that rounding each one gives.
+    /// </summary>
     public static MediaTime SumDurations(PlannedRendition r)
     {
         MediaTime total = MediaTime.Zero;
@@ -164,7 +167,7 @@ internal static class HlsReader
                 return MediaTime.Unknown;
             }
 
-            total = total.Add(s.Duration, MediaRounding.NearestAwayFromZero);
+            total = ManifestText.ExactSum(total, s.Duration);
         }
 
         return total;
