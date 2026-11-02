@@ -17,7 +17,7 @@ public static class TelemetryChannels
         List<MediaTrack> tracks = [];
         foreach (MediaTrack t in file.Tracks)
         {
-            if (TelemetryTrackReader.FormatOf(t) != TelemetryFormat.None)
+            if (TelemetryTrackReader.FormatOf(file, t) != TelemetryFormat.None)
             {
                 tracks.Add(t);
             }
@@ -47,7 +47,7 @@ public static class TelemetryChannels
 
     /// <summary>Decodes one telemetry track.</summary>
     /// <param name="file">The open file.</param>
-    /// <param name="track">A track for which <see cref="TelemetryTrackReader.FormatOf"/> is not <see cref="TelemetryFormat.None"/>.</param>
+    /// <param name="track">A track for which <see cref="TelemetryTrackReader.FormatOf(MediaFile, MediaTrack)"/> is not <see cref="TelemetryFormat.None"/>.</param>
     /// <returns>The track's channels.</returns>
     public static IReadOnlyList<TelemetryChannel> ReadTrack(MediaFile file, MediaTrack track)
     {
@@ -84,7 +84,9 @@ public static class TelemetryChannels
         return result;
     }
 
-    private static TelemetryChannel Build(MediaTrack track, TelemetryChannelInfo info, TelemetryKind kind, List<TelemetrySample> samples)
+    private static TelemetryChannel Build(MediaTrack track, TelemetryChannelInfo info, TelemetryKind kind, List<TelemetrySample> samples) => Build(track.Id, info, kind, samples);
+
+    internal static TelemetryChannel Build(long trackId, TelemetryChannelInfo info, TelemetryKind kind, List<TelemetrySample> samples)
     {
         double rate = 0;
         if (samples.Count > 1 && samples[0].Time.IsKnown && samples[^1].Time.IsKnown)
@@ -98,22 +100,23 @@ public static class TelemetryChannels
             }
         }
 
-        string format = info.Format switch { TelemetryFormat.Gpmf => "gpmf", TelemetryFormat.Camm => "camm", _ => "mebx" };
+        string format = info.Format switch { TelemetryFormat.Gpmf => "gpmf", TelemetryFormat.Camm => "camm", TelemetryFormat.DjiText => "dji-srt", TelemetryFormat.Djmd => "djmd", TelemetryFormat.Mdpm => "mdpm", _ => "mebx" };
         return new TelemetryChannel(kind, format, info.Name, samples)
         {
-            TrackId = track.Id,
+            TrackId = trackId,
             Label = info.Label,
+            DeviceName = info.DeviceName,
             Units = info.Units,
             NominalRateHz = rate,
         };
     }
 
-    private static TelemetrySample ToSample(TelemetryTrackReader reader, in TelemetryItem item, TelemetryChannelInfo info)
+    internal static TelemetrySample ToSample(TelemetryTrackReader? reader, in TelemetryItem item, TelemetryChannelInfo info)
     {
         if (item.IsRaw)
         {
-            string type = item.Format == TelemetryFormat.Gpmf ? ((char)item.TypeCode).ToString() : item.TypeCode >= 0 ? item.TypeCode.ToString(CultureInfo.InvariantCulture) : string.Empty;
-            return new RawTelemetrySample(item.Time, item.Duration, item.Range, info.Name, type, reader.RawData(item).ToArray());
+            string type = item.Format is TelemetryFormat.Gpmf or TelemetryFormat.Djmd ? ((char)item.TypeCode).ToString() : item.TypeCode >= 0 ? item.TypeCode.ToString(CultureInfo.InvariantCulture) : string.Empty;
+            return new RawTelemetrySample(item.Time, item.Duration, item.Range, info.Name, type, reader is null ? ReadOnlyMemory<byte>.Empty : reader.RawData(item).ToArray());
         }
 
         ReadOnlySpan<double> v = item.Values;
@@ -124,6 +127,9 @@ public static class TelemetryChannels
                     item.GpsTimeTicks is > 0 and <= 3155378975999999999L ? new DateTime(item.GpsTimeTicks, DateTimeKind.Utc) : null);
             case TelemetryKind.Accelerometer or TelemetryKind.Gyroscope or TelemetryKind.Magnetometer or TelemetryKind.Gravity when v.Length >= 3:
                 return new Vector3Sample(item.Time, item.Duration, item.Range, v[0], v[1], v[2]);
+            case TelemetryKind.Orientation when v.Length == 3 && item.Format is TelemetryFormat.DjiText or TelemetryFormat.Djmd:
+                // DJI gives attitude as yaw, pitch and roll in degrees.
+                return new OrientationSample(item.Time, item.Duration, item.Range, YawDegrees: Opt(v, 0), PitchDegrees: Opt(v, 1), RollDegrees: Opt(v, 2));
             case TelemetryKind.Orientation when v.Length >= 4:
                 return new OrientationSample(item.Time, item.Duration, item.Range, v[0], v[1], v[2], v[3]);
             case TelemetryKind.CameraSettings:
@@ -144,6 +150,13 @@ public static class TelemetryChannels
             return new CameraSettingsSample(item.Time, item.Duration, item.Range, ExposureTime: exposure, Notes: note);
         }
 
+        if (item.Format is TelemetryFormat.DjiText or TelemetryFormat.Djmd)
+        {
+            // ISO, shutter seconds, f-number, EV, colour temperature, focal length; NaN where the text or message does not state one.
+            return new CameraSettingsSample(item.Time, item.Duration, item.Range, Opt(v, 0) is { } iso ? (int)Math.Round(iso) : null, ShutterTime(Opt(v, 1)), Opt(v, 2), Opt(v, 3),
+                Opt(v, 4) is { } ct ? (int)Math.Round(ct) : null, Opt(v, 5));
+        }
+
         return info.Name switch
         {
             // Shutter time in seconds as a float; nanosecond resolution is finer than the stored precision.
@@ -151,6 +164,19 @@ public static class TelemetryChannels
             "ISOG" or "ISOE" => new CameraSettingsSample(item.Time, item.Duration, item.Range, Iso: (int)Math.Round(first)),
             _ => new CameraSettingsSample(item.Time, item.Duration, item.Range, ColorTemperatureKelvin: (int)Math.Round(first)),
         };
+    }
+
+    // A shutter of 1/N seconds is kept as the exact fraction 1/N; anything else in nanoseconds like the GPMF shutter.
+    private static MediaTime? ShutterTime(double? seconds)
+    {
+        if (seconds is not { } s || s <= 0)
+        {
+            return null;
+        }
+
+        double inverse = 1 / s;
+        double rounded = Math.Round(inverse);
+        return s < 1 && rounded >= 1 && Math.Abs(inverse - rounded) < 1e-6 * inverse ? new MediaTime(1, (long)rounded) : new MediaTime((long)Math.Round(s * 1e9), 1_000_000_000);
     }
 
     private static double? Opt(ReadOnlySpan<double> v, int i) => i < v.Length && !double.IsNaN(v[i]) ? v[i] : null;
@@ -192,6 +218,67 @@ public static class TelemetryFacts
 
         return result;
     }
+
+    // GPMF device names that name a block of settings or a lens rather than the camera.
+    private static readonly string[] GenericDeviceNames = ["Camera", "Global Settings", "Highlights", "Geometry Calibrations", "IMU Calibrations", "Back Lens", "Front Lens", "Rear Lens"];
+
+    /// <summary>
+    /// The device maker the telemetry implies: GoPro for a GPMF stream, DJI for <c>djmd</c> metadata. Neither format writes the maker as text, so the
+    /// candidate says it is inferred from the format.
+    /// </summary>
+    /// <param name="channels">Channels from <see cref="TelemetryChannels.Read"/>.</param>
+    /// <returns>At most one candidate per format.</returns>
+    public static IReadOnlyList<FactCandidate<string>> MakeCandidates(IReadOnlyList<TelemetryChannel> channels)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+        List<FactCandidate<string>> result = [];
+        foreach ((string format, string make) in new[] { ("gpmf", "GoPro"), ("djmd", "DJI") })
+        {
+            foreach (TelemetryChannel c in channels)
+            {
+                if (c.Format == format)
+                {
+                    result.Add(new FactCandidate<string>(make, "telemetry:" + format, make, "inferred: only " + make + " cameras write this telemetry format"));
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The device model the telemetry states: the GPMF <c>MINF</c> text when the track carries it, else the first GPMF device name that is not a generic
+    /// settings block (for example <c>Fusion</c>); the model string of <c>djmd</c> metadata.
+    /// </summary>
+    /// <param name="channels">Channels from <see cref="TelemetryChannels.Read"/>.</param>
+    /// <returns>Candidates, with the byte range of the text where it is a raw item.</returns>
+    public static IReadOnlyList<FactCandidate<string>> ModelCandidates(IReadOnlyList<TelemetryChannel> channels)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+        List<FactCandidate<string>> result = [];
+        foreach (TelemetryChannel c in channels)
+        {
+            if (c.Kind == TelemetryKind.Unknown && ((c.Format == "gpmf" && c.Name == "MINF") || (c.Format == "djmd" && c.Name == "model")) && c.Samples.Count > 0
+                && c.Samples[0] is RawTelemetrySample raw && Text(raw.Data.Span) is { Length: > 0 } text)
+            {
+                result.Add(new FactCandidate<string>(text, "telemetry:" + c.Format + ":" + c.Name, text, "text as written", TimeZoneCertainty.Unknown, raw.Range));
+            }
+        }
+
+        foreach (TelemetryChannel c in channels)
+        {
+            if (c.Format == "gpmf" && c.DeviceName.Length > 0 && Array.IndexOf(GenericDeviceNames, c.DeviceName) < 0)
+            {
+                result.Add(new FactCandidate<string>(c.DeviceName, "telemetry:gpmf:DVNM", c.DeviceName, "GPMF device name that is not a settings block"));
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static string Text(ReadOnlySpan<byte> data) => System.Text.Encoding.Latin1.GetString(data).Trim(' ', ' ');
 
     /// <summary>The earliest UTC time a GPS channel reports with a usable fix, as a capture-time candidate: the camera clock cannot say it better than the satellites.</summary>
     /// <param name="channels">Channels from <see cref="TelemetryChannels.Read"/>.</param>

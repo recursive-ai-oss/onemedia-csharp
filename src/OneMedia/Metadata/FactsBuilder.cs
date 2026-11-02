@@ -39,9 +39,41 @@ internal sealed class FactsBuilder(DefectLog defects)
 
     public MediaFacts Build() => new(Duration.ToFact(), CaptureTime.ToFact(), Location.ToFact(), Make.ToFact(), Model.ToFact(), Software.ToFact(), Orientation.ToFact(), FrameSize.ToFact(), Serial.ToFact());
 
+    // The text of the first MINF triplet in a GPMF block (one level of DEVC nesting is searched).
+    private static string? GpmfModel(byte[] block)
+    {
+        Telemetry.Gpmf.GpmfKlvReader outer = new(block);
+        while (outer.TryRead(out Telemetry.Gpmf.GpmfKlv klv))
+        {
+            if (klv.Key == Telemetry.Gpmf.GpmfKlv.MakeKey("MINF") && klv.Type == (byte)'c')
+            {
+                return System.Text.Encoding.Latin1.GetString(klv.Data).Trim('\0', ' ');
+            }
+
+            if (klv.IsNested && GpmfModel(klv.Data.ToArray()) is { } inner)
+            {
+                return inner;
+            }
+        }
+
+        return null;
+    }
+
     public void AddNative(NativeTag t)
     {
         string? text = t.Kind is TagValueKind.Text ? t.Text : null;
+        if (text is null && t.System == TagSystems.QuickTimeUserData && t.Key == "GPMF" && t.Kind == TagValueKind.Binary && t.ValueRange.Length is > 0 and <= 262144)
+        {
+            // GoPro keeps a copy of its device block (firmware, camera model MINF, serial numbers) as GPMF in a udta atom.
+            if (GpmfModel(t.ReadValue()) is { Length: > 0 } model)
+            {
+                AddString(Model, 25, t, model, $"{t.System}:{t.Key}:MINF");
+                AddString(Make, 25, t, "GoPro", $"{t.System}:{t.Key}");
+            }
+
+            return;
+        }
+
         if (text is null && t.System == TagSystems.QuickTimeUserData && t.Key == "FIRM" && t.Kind == TagValueKind.Binary && t.ValueRange.Length is > 0 and <= 64)
         {
             // GoPro writes its firmware version as a bare string in a FIRM atom (observed in HERO5 to HERO8, MAX and Fusion files).

@@ -17,6 +17,15 @@ public enum TelemetryFormat
 
     /// <summary>Apple QuickTime timed metadata in a <c>mebx</c> sample entry.</summary>
     Mebx,
+
+    /// <summary>The per-frame text DJI drones write into subtitle tracks and <c>.SRT</c> sidecars.</summary>
+    DjiText,
+
+    /// <summary>DJI protobuf metadata in a <c>djmd</c> (or <c>dbgi</c>) data track.</summary>
+    Djmd,
+
+    /// <summary>AVCHD camera data (MDPM) in the SEI messages of an H.264 video track of an MPEG transport stream.</summary>
+    Mdpm,
 }
 
 /// <summary>Fixed storage for the numeric components of one telemetry item (no allocation per sample).</summary>
