@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Compares the packets ffprobe reads from a packaged presentation with the ones it reads from the file it was made from.
 
-usage: check-packets.py <ffprobe> <source> <output-dir> [--bytes]
+usage: check-packets.py <ffprobe> <source> <output-dir> [--bytes] [--source-ffprobe <ffprobe>]
 
 For every track directory of the output (video0, audio0, ...) the HLS media playlist is probed, and for the DASH manifest every stream; each is
 compared with the first source stream of the same kind: packet count, size, flags (key frame) and the SHA-256 of the payload (--bytes), and the
 presentation and decode times after removing one constant shift per stream (an edit list or a negative first decode time moves a whole
 timeline by one amount). A difference is reported per field; the exit status is 1 when any packet differs.
+
+--source-ffprobe reads the source with another ffprobe (7.0.2 crashes on some MPEG-TS files).
+
+ffmpeg's DASH reader ends every stream when the shortest representation ends, so a DASH row may lack the last packets of the longer stream. That is
+reported as "dash-end" and not counted as a difference when the missing packets start within 50 ms of the shortest stream's end. A text/vtt
+representation (a sidecar file that ffmpeg's DASH reader cannot open) is removed from a temporary copy of the manifest before probing.
 
 A source whose video is stored as Annex B (MPEG-TS, raw H.264) or whose AAC carries ADTS headers is re-framed on the way in, so its payload
 bytes differ by design: run without --bytes and only counts, sizes of other codecs, flags and times are compared.
@@ -82,14 +88,21 @@ def compare(src, out, with_bytes):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != "--bytes"]
-    with_bytes = "--bytes" in sys.argv
+    argv = sys.argv[1:]
+    source_ffprobe = None
+    if "--source-ffprobe" in argv:
+        i = argv.index("--source-ffprobe")
+        source_ffprobe = argv[i + 1]
+        del argv[i:i + 2]
+    args = [a for a in argv if a != "--bytes"]
+    with_bytes = "--bytes" in argv
     if len(args) != 3:
         print(__doc__)
         return 2
     ffprobe, source, outdir = args
-    src_kinds = kinds(ffprobe, source)
-    src_packets = packets(ffprobe, source)
+    outdir = os.path.abspath(outdir)
+    src_kinds = kinds(source_ffprobe or ffprobe, source)
+    src_packets = packets(source_ffprobe or ffprobe, source)
     by_kind = {}
     for index, kind in sorted(src_kinds.items()):
         by_kind.setdefault(kind, index)
@@ -118,8 +131,22 @@ def main():
         print("%s HLS  packets %d/%d shift %s diffs %s" % (track, len(s), len(o), "%.6f" % shift if shift is not None else "n/a", dict(d) or "none"))
     mpd = os.path.join(outdir, "manifest.mpd")
     if os.path.isfile(mpd):
+        text = open(mpd).read()
+        if 'contentType="text"' in text:
+            import re
+            filtered = re.sub(r'<AdaptationSet[^>]*contentType="text".*?</AdaptationSet>', '', text, flags=re.S)
+            mpd = os.path.join(outdir, "manifest.nosubs.mpd")
+            open(mpd, "w").write(filtered)
         out_kinds = kinds(ffprobe, mpd)
         out_packets = packets(ffprobe, mpd)
+        ends = []
+        for kind in ("video", "audio"):
+            if kind in by_kind and src_packets[by_kind[kind]]:
+                last = src_packets[by_kind[kind]][-1]
+                p, d = number(last[0]), number(last[2])
+                if p is not None:
+                    ends.append(p + (d or 0))
+        shortest_end = min(ends) if ends else None
         for kind in ("video", "audio"):
             if kind not in by_kind:
                 continue
@@ -131,8 +158,13 @@ def main():
             s = src_packets[by_kind[kind]]
             o = out_packets[idx[0]]
             d, shift = compare(s, o, with_bytes)
+            if d.get("count") and len(o) < len(s) and shortest_end is not None:
+                missing = s[len(o):]
+                if all(number(m[0]) is not None and number(m[0]) >= shortest_end - 0.05 for m in missing):
+                    del d["count"]
+                    d["dash-end(explained)"] = len(missing)
             total += len(s)
-            bad += sum(d.values())
+            bad += sum(v for k, v in d.items() if not k.endswith("(explained)"))
             print("%s DASH packets %d/%d shift %s diffs %s" % (kind, len(s), len(o), "%.6f" % shift if shift is not None else "n/a", dict(d) or "none"))
     print("TOTAL packets %d differences %d" % (total, bad))
     return 1 if bad else 0

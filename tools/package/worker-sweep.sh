@@ -22,7 +22,8 @@ for f in "$WORK"/inputs/*; do
     sub=""; [ "$name" = h264-aac.mp4 ] && sub="--subs $WORK/inputs/subs-en.vtt:en:English"
     if ! "${TOOL[@]}" package "$f" "$out" --segment "$SEG" $extra $sub > "$WORK/logs/$name.$mode.package.log" 2>&1; then
       printf '%s\t%s\tPACKAGE-FAILED\t-\t-\t%s\n' "$name" "$mode" "$(tail -1 "$WORK/logs/$name.$mode.package.log")" >> "$WORK/summary.tsv"; continue; fi
-    python3 "$HERE/check-packets.py" "$FFPROBE" "$f" "$out" $bytes > "$WORK/logs/$name.$mode.packets.log" 2>&1; rc=$?
+    srcprobe=""; case "$name" in *.ts|*.m2ts) srcprobe="--source-ffprobe ${FFPROBE_TS:-/usr/bin/ffprobe}";; esac
+    python3 "$HERE/check-packets.py" "$FFPROBE" "$f" "$out" $bytes $srcprobe > "$WORK/logs/$name.$mode.packets.log" 2>&1; rc=$?
     total="$(grep '^TOTAL' "$WORK/logs/$name.$mode.packets.log" | awk '{print $3"/"$5}')"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$mode" "$([ $rc = 0 ] && echo OK || echo DIFF)" "${total%%/*}" "${total##*/}" "$(grep -c note: "$WORK/logs/$name.$mode.package.log")" >> "$WORK/summary.tsv"
   done
