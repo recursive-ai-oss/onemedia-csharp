@@ -25,7 +25,7 @@ for o in "$W"/*.to-*.*; do
   echo "$(ffprobe -v error "$o" 2>&1 | wc -l) $(basename "$o")"
 done
 echo '--- validators'
-for o in "$W"/*.to-mkv.mkv; do echo "mkvalidator $(basename "$o"): $(mkvalidator "$o" 2>&1 | tail -1)"; done
+for o in "$W"/*.to-mkv.mkv; do mkvalidator "$o" > "$W/mkvalidator.out" 2>&1; rc=$?; echo "mkvalidator $(basename "$o"): rc=$rc warnings=$(grep -c WRN "$W/mkvalidator.out") errors=$(grep -c ERR "$W/mkvalidator.out")"; done
 for o in "$W"/*.to-mp4.mp4; do echo "MP4Box -info $(basename "$o"): rc=$(MP4Box -quiet -info "$o" >/dev/null 2>"$W/mp4box.err"; echo $?) $(head -c 120 "$W/mp4box.err" | tr '\n' ' ')"; done
 echo '--- ffmpeg read-back'
 python3 tools/text-track-compare.py --tool "$CHECK" "$W"/*.to-*.mkv "$W"/*.to-*.mp4

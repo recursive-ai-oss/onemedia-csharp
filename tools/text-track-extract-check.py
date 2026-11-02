@@ -54,7 +54,7 @@ def parse(text):
                 g = m.groups()
                 cues.append((float(ms(g[0], g[1], g[2], g[3], 1)), float(ms(g[4], g[5], g[6], g[7], 1)), "\n".join(lines[i + 1:])))
                 break
-    for m in re.finditer(r"^Dialogue: *[^,]*,(\d+):(\d+):(\d+)\.(\d+),(\d+):(\d+):(\d+)\.(\d+),(?:[^,]*,){5}(.*)$", text, re.M):
+    for m in re.finditer(r"^Dialogue: *[^,]*,(\d+):(\d+):(\d+)\.(\d+),(\d+):(\d+):(\d+)\.(\d+),(?:[^,]*,){6}(.*)$", text, re.M):
         g = m.groups()
         cues.append((ms(g[0], g[1], g[2], g[3] + "0", 1), ms(g[4], g[5], g[6], g[7] + "0", 1), g[8]))
     return cues
@@ -104,7 +104,7 @@ def main():
                 for x in d[:8]:
                     print("    " + x)
         else:
-            probe = run(["ffprobe", "-v", "error", "-select_streams", "s", "-show_entries", "stream=id", "-of", "csv=p=0", path]).stdout.split()
+            probe = [m.group(1) for m in re.finditer(r"^# track \d+ id=(\d+) ", run([a.tool, "raw", path]).stdout, re.M)]
             for ordinal, (idx, cues) in enumerate(tracks):
                 if ordinal >= len(probe):
                     continue
