@@ -30,7 +30,7 @@ JS = """async (url) => {
   t.track.mode = 'hidden';
   await new Promise((res, rej) => { if (t.readyState === 2) res(); t.addEventListener('load', res); t.addEventListener('error', () => rej('track error')); setTimeout(() => rej('timeout'), 8000); });
   const out = [];
-  for (const c of t.track.cues) out.push([Math.round(c.startTime * 1000), Math.round(c.endTime * 1000), c.getCueAsHTML().textContent]);
+  for (const c of t.track.cues) { const f = c.getCueAsHTML(); f.querySelectorAll('rt').forEach(r => r.remove()); out.push([Math.round(c.startTime * 1000), Math.round(c.endTime * 1000), f.textContent]); }
   return out;
 }"""
 bad = 0
