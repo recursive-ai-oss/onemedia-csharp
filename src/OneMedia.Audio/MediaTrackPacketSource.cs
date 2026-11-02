@@ -182,11 +182,14 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
         }
 
         bool iso = demuxer.Format == MediaFormatId.IsoBmff;
+        // ISO/IEC 14496-12 §8.8: in a fragmented file the movie box's durations describe only the samples it holds; the fragments that follow are not
+        // counted, so such a duration is no length for the track.
+        MediaTime trackDuration = track.DurationIsPartial ? MediaTime.Unknown : track.Duration;
         int rate = track.Audio?.SampleRate ?? 0;
         int channels = track.Audio?.Channels ?? 0;
         ReadOnlyMemory<byte> config = default;
         byte[][] headers = [];
-        long rawFrames = track.Duration.IsKnown && rate > 0 ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
+        long rawFrames = trackDuration.IsKnown && rate > 0 ? trackDuration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
         // A Matroska duration is a rounded segment figure, not a count of this track's frames, so only ISO tables give an exact length.
         if (!iso)
         {
@@ -237,7 +240,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                         channels = heaac.Channels;
                     }
 
-                    rawFrames = iso && track.Duration.IsKnown ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
+                    rawFrames = iso && trackDuration.IsKnown ? trackDuration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
                 }
 
                 (priming, length) = TrimOf(track, rate, rawFrames, iso ? MediaRounding.Floor : MediaRounding.NearestAwayFromZero);
@@ -248,7 +251,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 config = track.Configuration.Data;
                 rate = track.Codec.Name == "amr-wb" ? 16000 : 8000;
                 channels = 1;
-                rawFrames = iso && track.Duration.IsKnown ? track.Duration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
+                rawFrames = iso && trackDuration.IsKnown ? trackDuration.Rescale(rate, MediaRounding.Floor).Ticks : -1;
                 (priming, length) = TrimOf(track, rate, rawFrames);
                 break;
 
@@ -257,7 +260,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 if (iso)
                 {
                     // MP4 states Opus's real end in the edit list: media_time (the pre-skip) plus the segment duration.
-                    (_, long editLength) = TrimOf(track, 48000, track.Duration.IsKnown ? track.Duration.Rescale(48000, MediaRounding.Floor).Ticks : -1);
+                    (_, long editLength) = TrimOf(track, 48000, trackDuration.IsKnown ? trackDuration.Rescale(48000, MediaRounding.Floor).Ticks : -1);
                     if (editLength >= 0 && (track.Edit.Edits?.Any(e => !e.IsEmpty) ?? false))
                     {
                         opusEnd = preSkip + editLength;
@@ -266,7 +269,7 @@ public sealed class MediaTrackPacketSource : global::OneAudio.IPacketSource
                 rate = 0;
                 channels = opusChannels;
                 // OneAudio counts Opus length from the raw granule total (it subtracts the pre-skip itself).
-                length = iso && track.Duration.IsKnown ? track.Duration.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks : -1;
+                length = iso && trackDuration.IsKnown ? trackDuration.Rescale(48000, MediaRounding.NearestAwayFromZero).Ticks : -1;
                 break;
 
             case "vorbis":

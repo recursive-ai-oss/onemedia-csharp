@@ -112,3 +112,20 @@ corpus (TS, MP4/MOV/3GP, Matroska):
   the edit and decodes every frame, so it is longer by the end padding (512 frames in the 48 kHz test files, 44 on the music clip). The
   samples agree at the start. (`audio-aac-stereo-noise.mp4`, white noise, differs by up to 0.36 at the same frames; that is a decoder difference on noise, not a timing one, and is not investigated here.)
 - **Matroska `CodecDelay`**: see above; ffmpeg keeps the delay, the adapter removes it.
+- **Fragmented files** (ISO/IEC 14496-12 §8.8): the movie box's durations describe only the samples the movie box holds, so for a file with
+  `mvex` the adapter takes no length from `mdhd`/`tkhd` (`MediaTrack.DurationIsPartial`) and decodes every fragment; the priming of an edit
+  list still applies. `discont-frag.mp4` has an `mdhd` of 51,968 ticks, a stale figure for the 48 samples in its movie box, and 1,360 more
+  packets in fragments. The adapter used to stop at the stale figure (51,968 frames against ffmpeg's 1,392,640); it now decodes 1,441,792 =
+  1,408 packets × 1,024. ffmpeg and ffprobe leave out table samples 1–47 of that file (`edit-list-in-fragmented-file` in the exceptions
+  table: the edit has `segment_duration` 0, which means the whole track here), so ffprobe lists 1,361 packets and ffmpeg's timed decode
+  1,360; decoding the same 1,361 packets without timing (stream copy to ADTS) gives 1,393,664, and ours is that plus the 47 table samples
+  (48,128 frames). The samples of the two decodes differ by up to 0.11 on both routes (the adapter against the same packets as ADTS through
+  OneAudio's own reader, too), so the remaining difference is between the two AAC decoders, not in the container.
+- **Edit list end** (`aacaudio.mov`, `cat-two-parts.mp4`): both sides drop the first edit's `media_time`; the adapter ends at the edit's
+  end and ffmpeg decodes every packet. `aacaudio.mov` has an edit of 495,890 ticks at 600 per second = 18,223,957.5 frames at 22,050 Hz,
+  so the adapter gives 18,223,957 and ffmpeg 18,224,128 (= its 17,797 packets × 1,024): −171, the half packet of padding. `cat-two-parts.mp4`
+  (two parts joined; one edit of 8.021 s starting at 1,024) gives 385,008 against 386,048: −1,040 frames of padding after the edit end.
+  This is the rule above, not a defect.
+- **Repeated decode times** (`every-frame.mp4`, written with `frag_every_frame`: 35 pairs of packets share one `dts`): the adapter decodes all
+  189 packets = 193,536 frames. ffmpeg's timed decode gives 157,696 because it drops packets whose `dts` repeats; the same packets copied to
+  ADTS (timing removed) decode to 193,536, equal to ours. `ffmpeg-frames.py` prints that `adts-route` count when the counts differ.
