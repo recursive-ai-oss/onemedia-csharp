@@ -62,7 +62,7 @@ public static class SafeWriter
             throw new IOException($"'{destinationPath}' already exists.");
         }
 
-        return WriteViaTemp(plan, sourcePath, full, WriteMode.SaveAs, copyMode: false, cancellationToken);
+        return WriteViaTemp(plan, sourcePath, full, WriteMode.SaveAs, copyMode: false, overwrite, cancellationToken);
     }
 
     /// <summary>
@@ -80,7 +80,11 @@ public static class SafeWriter
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentException.ThrowIfNullOrEmpty(path);
-        return WriteViaTemp(plan, path, Path.GetFullPath(path), WriteMode.Save, copyMode: true, cancellationToken);
+        // A symbolic link is followed: the edit goes to the file it points to and the link stays a link. Renaming over the link itself
+        // would replace the link with a regular file and leave the real file unedited.
+        string full = Path.GetFullPath(path);
+        string resolved = new FileInfo(full).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? full;
+        return WriteViaTemp(plan, resolved, resolved, WriteMode.Save, copyMode: true, overwrite: true, cancellationToken);
     }
 
     /// <summary>
@@ -128,7 +132,7 @@ public static class SafeWriter
         return new WriteReport(WriteMode.InPlace, plan, 0, written);
     }
 
-    private static WriteReport WriteViaTemp(EditPlan plan, string sourcePath, string target, WriteMode mode, bool copyMode, CancellationToken cancellationToken)
+    private static WriteReport WriteViaTemp(EditPlan plan, string sourcePath, string target, WriteMode mode, bool copyMode, bool overwrite, CancellationToken cancellationToken)
     {
         string dir = Path.GetDirectoryName(target) ?? ".";
         string temp = Path.Combine(dir, $".{Path.GetFileName(target)}.onemedia-{Guid.NewGuid().ToString("N")[..8]}.tmp");
@@ -155,7 +159,7 @@ public static class SafeWriter
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                File.Move(temp, target, overwrite: true);
+                File.Move(temp, target, overwrite);
             }
             catch (Exception e) when (OperatingSystem.IsWindows() && e is UnauthorizedAccessException or IOException && File.Exists(target))
             {

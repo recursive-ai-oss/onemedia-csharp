@@ -224,7 +224,8 @@ public sealed class ChunkEditor
         }
 
         long rootPayloadEnd = root.Offset + root.HeaderSize + root.PayloadSize;
-        if ((!root.IsSizeInferred || root.StatedEndPastFile) && !shift.IsEmpty)
+        // An RF64 file states 0xFFFFFFFF in its RIFF header, which reads as an open-ended size; its real size in ds64 still has to follow the edit.
+        if ((!root.IsSizeInferred || root.StatedEndPastFile || _file.Layout == ChunkLayout.Rf64) && !shift.IsEmpty)
         {
             AdjustLargeSizes(rw, shift, consumed, rootPayloadEnd, cancellationToken);
         }

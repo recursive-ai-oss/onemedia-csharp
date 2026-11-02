@@ -118,7 +118,7 @@ internal static class TagsCommand
             Console.Error.WriteLine(e.GetType().Name + ": " + e.Message);
             return 1;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
             Console.Error.WriteLine(e.Message);
             return 1;

@@ -622,6 +622,12 @@ public sealed class EbmlEditor
                 if (areaLength != node.PayloadSize && StatedSize(node, idLen, oldWidth) is long stated && stated + (areaLength - node.PayloadSize) >= areaLength)
                 {
                     long grown = stated + (areaLength - node.PayloadSize);
+                    if (grown >= (1L << 56) - 1)
+                    {
+                        // The element already claims almost the largest size EBML can state; there is no room to state more.
+                        throw new UnsupportedMediaException("An element states a size too close to the EBML maximum to grow; the file is not edited.") { Offset = node.Offset };
+                    }
+
                     int w = oldWidth is >= 1 and <= 8 && grown < (1L << (7 * oldWidth)) - 1 ? oldWidth : EbmlWriter.SizeLength(grown);
                     byte[] h = new byte[idLen + w];
                     EbmlWriter.WriteId(h, node.Id);
