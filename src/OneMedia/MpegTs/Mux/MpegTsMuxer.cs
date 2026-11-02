@@ -700,12 +700,12 @@ public sealed class MpegTsMuxer : IMuxer
             _step27 = step;
         }
 
-        // Repeat the tables early enough that the next packet, one step later, does not leave them older than the interval.
-        if (_psiDue || c - _lastPsi27 + _step27 > _o.PsiIntervalMilliseconds * 27_000L)
+        // A segment (or the stream) starts with the tables, before any filler.
+        if (_psiDue)
         {
             WritePsi();
             _psiDue = false;
-            _lastPsi27 = c;
+            _lastPsi27 = Math.Max(_lastPcr27, _clock27 - step);
         }
 
         if (_lastPcr27 >= 0 && _pcrTrack >= 0)
@@ -723,6 +723,13 @@ public sealed class MpegTsMuxer : IMuxer
 
                 WritePcrOnly(_tracks[_pcrTrack], _lastPcr27);
             }
+        }
+
+        // Repeat the tables early enough that the next packet, one step later, does not leave them older than the interval.
+        if (c - _lastPsi27 + _step27 > _o.PsiIntervalMilliseconds * 27_000L)
+        {
+            WritePsi();
+            _lastPsi27 = c;
         }
     }
 

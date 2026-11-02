@@ -284,11 +284,28 @@ internal static class TsTrackPlanner
         sets = [];
         lengthSize = 0;
         string? format = t.Configuration.Format;
+        ReadOnlyMemory<byte> data = t.Configuration.Data;
         string expected = nal == NalCodec.H264 ? "avcC" : nal == NalCodec.Hevc ? "hvcC" : "vvcC";
+        if (format == "bitmapinfoheader")
+        {
+            // Matroska V_MS/VFW/FOURCC: the CodecPrivate is a BITMAPINFOHEADER; what follows its 40 bytes is a record or Annex B parameter sets.
+            byte[] whole = data.ToArray();
+            if (Avi.AviTracks.TryGetRecord(t.Codec, whole, out string form, out ReadOnlyMemory<byte> record))
+            {
+                format = form;
+                data = record;
+            }
+            else
+            {
+                format = "annexb";
+                data = whole.Length > Avi.BitmapInfoHeader.Size ? whole.AsMemory(Avi.BitmapInfoHeader.Size) : default;
+            }
+        }
+
         if (format is null || format == "annexb")
         {
             // Annex B parameter sets handed over as the configuration.
-            sets = t.Configuration.Data.ToArray();
+            sets = data.ToArray();
             return;
         }
 
@@ -301,7 +318,7 @@ internal static class TsTrackPlanner
         switch (nal)
         {
             case NalCodec.H264:
-                if (!AvcDecoderConfigurationRecord.TryParse(t.Configuration.Data, out AvcDecoderConfigurationRecord? avc) || avc is null)
+                if (!AvcDecoderConfigurationRecord.TryParse(data, out AvcDecoderConfigurationRecord? avc) || avc is null)
                 {
                     throw Bad();
                 }
@@ -311,7 +328,7 @@ internal static class TsTrackPlanner
                 units.AddRange(avc.PictureParameterSets);
                 break;
             case NalCodec.Hevc:
-                if (!HevcDecoderConfigurationRecord.TryParse(t.Configuration.Data, out HevcDecoderConfigurationRecord? hevc) || hevc is null)
+                if (!HevcDecoderConfigurationRecord.TryParse(data, out HevcDecoderConfigurationRecord? hevc) || hevc is null)
                 {
                     throw Bad();
                 }
@@ -327,7 +344,7 @@ internal static class TsTrackPlanner
 
                 break;
             default:
-                if (!VvcDecoderConfigurationRecord.TryParse(t.Configuration.Data, out VvcDecoderConfigurationRecord? vvc) || vvc is null)
+                if (!VvcDecoderConfigurationRecord.TryParse(data, out VvcDecoderConfigurationRecord? vvc) || vvc is null)
                 {
                     throw Bad();
                 }

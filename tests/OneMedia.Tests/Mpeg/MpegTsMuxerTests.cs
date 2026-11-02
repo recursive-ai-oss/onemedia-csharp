@@ -299,6 +299,18 @@ public class MpegTsMuxerTests
         CheckStructure(ms.ToArray(), 188, out int pcrs, out double gap);
         Assert.True(gap <= 80.5, $"gap {gap}");
         Assert.True(pcrs >= 12);
+        // The tables keep their rhythm through the gap: PAT and PMT go out at PCR-only packets too, so within a gap they repeat about every 160 ms.
+        byte[] bytes = ms.ToArray();
+        int pats = 0;
+        for (int i = 0; i < bytes.Length; i += 188)
+        {
+            if (bytes[i + 1] == 0x40 && bytes[i + 2] == 0)
+            {
+                pats++;
+            }
+        }
+
+        Assert.True(pats >= 6, $"pats {pats}");
 
         MemoryStream empty = new();
         using (MpegTsMuxer mux = new(empty))

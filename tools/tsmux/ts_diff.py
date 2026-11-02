@@ -308,6 +308,32 @@ def compare(inp, out, is_mkv):
     return counts, diffs
 
 
+def raw_video_times(path, layout):
+    """PTS/DTS of every video PES packet as written (pid -> list), read from the PES headers themselves.
+    ffprobe drops a DTS equal to the PTS on a stream whose SPS announces reordering, so its dts column is a guess there."""
+    data = open(path, "rb").read()
+    size = 192 if layout == "m2ts" else 188
+    pre = size - 188
+    out = {}
+    def ts(b):
+        return (((b[0] >> 1) & 7) << 30) | (b[1] << 22) | ((b[2] >> 1) << 15) | (b[3] << 7) | (b[4] >> 1)
+    for i in range(0, len(data) // size * size, size):
+        p = data[i + pre:i + size]
+        if p[0] != 0x47 or not (p[1] & 0x40) or not (p[3] & 0x10):
+            continue
+        pid = ((p[1] & 0x1F) << 8) | p[2]
+        o = 4
+        if p[3] & 0x20:
+            o = 5 + p[4]
+        if o + 19 <= 188 and p[o:o + 3] == b"\0\0\1" and 0xE0 <= p[o + 3] <= 0xEF:
+            fl = p[o + 7]
+            if fl & 0x80:
+                pts = ts(p[o + 9:o + 14])
+                dts = ts(p[o + 14:o + 19]) if fl & 0x40 else pts
+                out.setdefault(pid, []).append((pts, dts))
+    return out
+
+
 def one(args, path):
     name = os.path.basename(path)
     ext = "m2ts" if args.layout == "m2ts" else "ts"
@@ -333,6 +359,12 @@ def one(args, path):
             return row
         sin = streams_of(din, True)
         sout = streams_of(dout, False)
+        raw = raw_video_times(out, args.layout)
+        for s_o, p_o in sout:
+            lst = raw.get(int(str(s_o.get("id", "0")), 0))
+            if lst and len(lst) == len(p_o):
+                for pk, (rp, rd) in zip(p_o, lst):
+                    pk["pts"], pk["dts"] = str(rp), str(rd)
         # streams the muxer refuses (unsupported codecs) are not in the output; the report lists them
         counts, diffs = compare(sin, sout, path.lower().endswith((".mkv", ".webm", ".mka")))
         row.update(counts)
