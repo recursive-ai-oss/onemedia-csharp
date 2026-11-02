@@ -20,7 +20,7 @@ public static class Remuxer
 
     /// <summary>Chooses the output container from a file name's extension.</summary>
     /// <param name="path">A path or file name.</param>
-    /// <returns>The format: <c>.mp4</c> MP4, <c>.m4a</c>/<c>.m4b</c> M4A, <c>.m4v</c> M4V, <c>.mov</c> QuickTime, <c>.3gp</c>, <c>.3g2</c>, <c>.mkv</c>/<c>.mka</c> Matroska, <c>.webm</c> WebM, <c>.ts</c> transport stream, <c>.m2ts</c>/<c>.mts</c> 192-byte transport stream; null for anything else.</returns>
+    /// <returns>The format: <c>.mp4</c> MP4, <c>.m4a</c>/<c>.m4b</c> M4A, <c>.m4v</c> M4V, <c>.mov</c> QuickTime, <c>.3gp</c>, <c>.3g2</c>, <c>.mkv</c>/<c>.mka</c> Matroska, <c>.webm</c> WebM, <c>.ts</c> transport stream, <c>.m2ts</c>/<c>.mts</c> 192-byte transport stream; <c>.wav</c>/<c>.wave</c>/<c>.bwf</c> WAVE, <c>.rf64</c> RF64; null for anything else.</returns>
     public static RemuxFormat? FormatForPath(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -34,6 +34,8 @@ public static class Remuxer
             ".3g2" => RemuxFormat.ThreeG2,
             ".mkv" or ".mka" or ".mk3d" => RemuxFormat.Matroska,
             ".webm" => RemuxFormat.WebM,
+            ".wav" or ".wave" or ".bwf" => RemuxFormat.Wav,
+            ".rf64" => RemuxFormat.Rf64,
             ".ts" => RemuxFormat.MpegTs,
             ".m2ts" or ".mts" => RemuxFormat.M2ts,
             _ => null,
@@ -200,6 +202,12 @@ public static class Remuxer
         ArgumentNullException.ThrowIfNull(inputPath);
         ArgumentNullException.ThrowIfNull(outputPath);
         using MediaFile input = Media.Open(inputPath);
+        if (format is RemuxFormat.Wav or RemuxFormat.Rf64)
+        {
+            // WAVE output is built under a temporary name and renamed when complete; see WavRemux.
+            return WavRemux.Remux(input, inputPath, outputPath, format, options, cancellationToken);
+        }
+
         FileStream output = Create(outputPath, options?.Overwrite ?? false);
         bool done = false;
         try
@@ -213,7 +221,7 @@ public static class Remuxer
             // A transport stream has no tag system to carry them into; Inspect already listed them as not written.
             if ((options?.CarryTags ?? true) && format is not (RemuxFormat.MpegTs or RemuxFormat.M2ts))
             {
-                report = CarryTags(input, outputPath, report, cancellationToken);
+                report = CarryTags(input, outputPath, report, inPlaceFirst: false, cancellationToken);
             }
 
             done = true;
@@ -405,12 +413,57 @@ public static class Remuxer
             session.AddLoss(new RemuxLoss(LossKind.CodecField, LossReason.NotWritten, t.Index, string.Join(' ', dropped), "Sample entry boxes the output does not write."));
         }
 
-        return boxes.Count == 0 ? null : new IsoTrackOptions { SampleEntryBoxes = boxes };
+        // QuickTime sound entries (in24, in32, fl32, fl64) are big-endian unless an 'enda' atom, inside 'wave', says otherwise.
+        PcmSampleFormat? pcm = null;
+        if (t.Codec == CodecId.Pcm && t.Kind == TrackKind.Audio && IsLittleEndianPcmEntry(track.SampleEntries[0].Extensions))
+        {
+            PcmSampleFormat resolved = IsoSampleEntries.ResolvePcm(t, null);
+            pcm = resolved with { BigEndian = false };
+        }
+
+        return boxes.Count == 0 && pcm is null ? null : new IsoTrackOptions { SampleEntryBoxes = boxes.Count == 0 ? null : boxes, Pcm = pcm };
+    }
+
+    // QuickTime File Format, sound sample description extensions: 'enda' (a 16-bit flag, 1 = little-endian) sits directly or inside a 'wave' atom.
+    private static bool IsLittleEndianPcmEntry(IReadOnlyList<ExtensionBox> extensions)
+    {
+        foreach (ExtensionBox e in extensions)
+        {
+            ReadOnlySpan<byte> p = e.Payload.Span;
+            if (e.TypeName == "enda")
+            {
+                return p.Length >= 2 && (p[0] | p[1]) != 0;
+            }
+
+            if (e.TypeName != "wave")
+            {
+                continue;
+            }
+
+            while (p.Length >= 8)
+            {
+                uint size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(p);
+                if (size < 8 || size > p.Length)
+                {
+                    break;
+                }
+
+                if (p[4] == (byte)'e' && p[5] == (byte)'n' && p[6] == (byte)'d' && p[7] == (byte)'a')
+                {
+                    return size >= 10 && (p[8] | p[9]) != 0;
+                }
+
+                p = p[(int)size..];
+            }
+        }
+
+        return false;
     }
 
     // Writes the input's common-view tags and pictures into the finished output with the tag writer, and replaces the muxer-level "not written"
     // tag and picture losses with what the writer reports. Tags with no common field have no counterpart to carry and stay losses.
-    private static RemuxReport CarryTags(MediaFile input, string outputPath, RemuxReport report, CancellationToken cancellationToken)
+    // inPlaceFirst: try the padding the muxer left (a small in-place edit) before writing the whole file again.
+    internal static RemuxReport CarryTags(MediaFile input, string outputPath, RemuxReport report, bool inPlaceFirst, CancellationToken cancellationToken)
     {
         List<RemuxLoss> losses = [.. report.Losses.Where(l => l.Kind is not (LossKind.Tag or LossKind.Picture) || l.Reason != LossReason.NotWritten)];
         try
@@ -443,7 +496,16 @@ public static class Remuxer
 
             if (!edits.IsEmpty)
             {
-                Tags.TagWriteReport written = Tags.TagWriter.Save(outputPath, edits, null, cancellationToken);
+                Tags.TagWriteReport written;
+                try
+                {
+                    written = inPlaceFirst ? Tags.TagWriter.SaveInPlace(outputPath, edits, null, cancellationToken) : Tags.TagWriter.Save(outputPath, edits, null, cancellationToken);
+                }
+                catch (PaddingRequiredException) when (inPlaceFirst)
+                {
+                    written = Tags.TagWriter.Save(outputPath, edits, null, cancellationToken);
+                }
+
                 foreach (Tags.SystemWriteReport s in written.Systems)
                 {
                     foreach ((Tags.CommonField field, string reason) in s.NotRepresentable)

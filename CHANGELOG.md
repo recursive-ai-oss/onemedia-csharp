@@ -6,16 +6,17 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [0.6.0-preview.1] - 2026-11-02
 
-Repair and reconstruction, and the subtitle speed rows. Everything in 0.4.0-preview.1 stays; subtitles, captions, capture facts, telemetry and timed events are still previews.
+Repair and reconstruction, MPEG-TS/M2TS and WAV/BWF/RF64 writing, a fix for QuickTime PCM byte order, and the subtitle speed rows. Everything in 0.4.0-preview.1 stays; subtitles, captions, capture facts, telemetry and timed events are still previews.
 
 **Read this first.**
 - **Repair is a preview.** It was checked on generated files, published samples and 10 GoPro clips, not on a corpus of device recordings (`docs/repair.md`, `docs/reconstruction.md`).
 - **Reconstruction of truncated MP4/MOV/3GP recordings has limits:** PCM audio, and video without in-stream parameter sets, need a reference file from the same device; 5.1 AAC is dropped; without a reference the AAC sample rate is a guess and the track is reported at Low confidence; AAC through `Media.Repair` needs the audio package's `AacReconstructionProbe.Repair` (the `onemedia` tool does this for you).
 - **Index repair limits:** a TS file cut at 90 % keeps one cut frame (seen in two sweep cases); M2TS has no oracle sweep because ffmpeg 7.0.2 crashes on those files; ASF, FLV and Ogg are not repaired.
-- MPEG-TS and WAV writing and HLS/DASH packaging are planned and not in this release.
+- **TS/M2TS and WAV writing are in; each has limits** (`docs/muxing-ts.md`: Opus refused, AAC with a program config element refused, decode-order VFW Matroska written as PTS=DTS; `docs/muxing-wav.md`: one track, seekable output only). HLS/DASH packaging and HLS/DASH sources are planned and not in this release.
 
 ### Fixed
 
+- Remuxing QuickTime PCM from MOV/MP4 read little-endian 24-bit, 32-bit and float entries (`enda`) as big-endian and wrote corrupt samples; they are now read correctly, and the QuickTime muxer refuses them where it has no little-endian entry. 8-bit signed `sowt`/`twos` entries were read as 16-bit and are now read as 8-bit.
 - Wording: the privacy-strip review in `README.md`, this changelog and `docs/strip-review.md` was called "independent". It is the project's own review, run by a separate pass within the project, not an external audit; the text now says so.
 - A remux of a file with several text tracks that the target holds in another format (for example several SubRip tracks from Matroska into MP4 or MOV, or several `tx3g` tracks from MP4 into Matroska) kept only the last converted track and dropped the others ("has no ISO sample entry code") while the report's Changes said each had been converted. Every such track is now converted, and `RemuxReportHonestyTests` checks the report against the output tracks (count, format per track, lost tracks listed) on the multi-subtitle files and a set of text-track remuxes.
 - `docs/telemetry.md` said the privacy strip was not in the release; it now describes what the strip does to GoPro, CAMM, `mebx` and DJI telemetry tracks and links `docs/strip.md`.
@@ -24,6 +25,8 @@ Repair and reconstruction, and the subtitle speed rows. Everything in 0.4.0-prev
 
 ### Added
 
+- MPEG-TS and M2TS writing (`MpegTsMuxer`, `RemuxFormat.MpegTs`/`M2ts`, `onemedia remux --format ts|m2ts`, `docs/muxing-ts.md`): one program with PAT/PMT, PES with PTS and DTS, PCR and continuity counters, written strictly forward in constant memory; Annex B and ADTS repackaging of H.264, HEVC, VVC and AAC; captions, teletext, DVB subtitles and timed ID3/SCTE 35 are carried; segment switching for later packaging. Limits: Opus is refused; AAC whose layout is in a program config element is refused; a decode-order Matroska VFW H.264 track is written with PTS equal to DTS (see `docs/muxing-ts.md`).
+- WAV, Broadcast Wave and RF64 writing (`WavMuxer`, `WavMuxOptions`, `BextChunk`, `CartChunk`, `docs/muxing-wav.md`): one audio track from any container that carries PCM, A-law or mu-law, as RIFF WAVE, with `bext`, `cart`, iXML, `LIST INFO` and other chunks, extensible format records for more than two channels or wider samples, and an automatic switch to RF64 past 4 GiB without moving a sample byte. `Remuxer.Remux` accepts `RemuxFormat.Wav` and `Rf64` (`onemedia remux in out.wav`, `--format wav|rf64`); chunks of a WAV or RF64 input travel unchanged. `WavMuxer.CreateFile` writes under a temporary name and renames when complete. Checked against ffmpeg 7.0.2 decoded samples and ffprobe packets on 113 generated files, against ExifTool and MediaInfo for the metadata chunks, and with 300 `kill -9` rounds (0 corrupt files).
 - `StripReport.NotExamined`: the fixed list of areas no strip run looks at (free text, unknown vendor atoms and boxes, trailers), on every report; `onemedia strip` prints it as a `not examined:` line.
 - Preview: repair (`Media.Repair`, `Repairer`, `RepairReport`, `onemedia repair <in> <out> [--reference <file>]`, `docs/reconstruction.md`). `onemedia repair` rebuilds the indexes of damaged MKV/WebM, AVI/OpenDML, MP4/MOV, fMP4 and MPEG-TS into a new file with a report; a progressive MP4 whose recording was cut off loses only the samples that are not there. The input is never modified and payload bytes are copied unchanged.
 - Preview: reconstruction of truncated MP4/MOV/3GP recordings (`IsoReconstructor`, `ReconstructionReport`; also reached through `Media.Repair` when the movie box is missing or cut off; AAC tracks are recovered when the file is repaired through `AacReconstructionProbe.Repair` in `RecursiveAI.OneMedia.Audio` or through the CLI). The media data is walked and cut into samples by the codecs' own framing (H.264, HEVC and AV1 video; AAC through the audio package, AMR, MP3, AC-3 and PCM audio; GoPro metadata), and a new file is written with the playable prefix of the recording. The report gives each track's confidence and the input byte ranges its samples came from, and lists what was left out. Limits: PCM audio and video without in-stream parameter sets need a reference file from the same device (`--reference`); AAC with more than two channels (5.1) is dropped because the frame probe does not take it; without a reference the AAC sample rate is a guess (44.1 kHz first), so audio times may be off and the track is reported at Low confidence; the original's irregular frame durations cannot be told from the stream. Checked on ffmpeg-written files, GoPro samples and Blender movies against ffmpeg 7.0.2 and MP4Box 26.07 (method in `docs/reconstruction.md`).
@@ -31,7 +34,7 @@ Repair and reconstruction, and the subtitle speed rows. Everything in 0.4.0-prev
 ### Changed
 
 - Subtitle parse and convert speed is published against SubtitlesParser 1.5.1 and the Subtitle Edit core library 5.3.0: on 14 rows (20,000 and 100,000 cues) the geometric mean of our median over the fastest comparator is 0.47× on x64 and 0.52× on arm64, the worst row 1.21× on both ([docs/bench-results/0.5-x64.md](docs/bench-results/0.5-x64.md), [0.5-arm64.md](docs/bench-results/0.5-arm64.md)); SRT parsing and 100,000-cue ASS parsing are near Subtitle Edit's speed, not ahead of it.
-- README, package pages and the tool and package descriptions say that repair is in this preview and that packaging (HLS/DASH, TS muxing, WAV writing) is not.
+- README, package pages and the tool and package descriptions say that repair, TS/M2TS writing and WAV writing are in this preview and that HLS/DASH packaging and sources are not.
 - `docs/repair.md` lists the known limits of its checks.
 
 ## [0.4.0-preview.1] - 2026-11-02

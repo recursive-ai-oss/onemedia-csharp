@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Writes WAVE files for the checks that need a file we made: broadcast metadata for ExifTool and MediaInfo, files past 4 GiB for the RF64
+       switch, and atomic writes for the kill test. Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.WavCheck</RootNamespace>
+    <AssemblyName>OneMedia.WavCheck</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -33,6 +33,12 @@ public enum RemuxFormat
     /// <summary>WebM, the Matroska subset for VP8, VP9, AV1, Vorbis and Opus.</summary>
     WebM,
 
+    /// <summary>WAVE (<c>.wav</c>, <c>.bwf</c>): one audio track, RIFF that becomes RF64 by itself past 4 GiB (<see cref="Riff.WavLayout.Auto"/>).</summary>
+    Wav,
+
+    /// <summary>RF64 (EBU Tech 3306) from the first byte, whatever the size.</summary>
+    Rf64,
+
     /// <summary>An MPEG transport stream (<c>.ts</c>) with 188-byte packets. H.264, HEVC, VVC and MPEG-2 video, AAC, MPEG audio, AC-3/E-AC-3, DVB subtitles and teletext, timed ID3 and SCTE-35 are carried; tags, chapters and edit lists are not.</summary>
     MpegTs,
 
@@ -118,4 +124,11 @@ public sealed record RemuxOptions
     /// merged by decode time. The feeds belong to the caller, who disposes them after the remux. Used by <c>MakePlayable</c> to carry re-encoded audio.
     /// </summary>
     public IReadOnlyList<TrackReplacement>? Replacements { get; init; }
+
+    /// <summary>
+    /// For the WAVE targets: metadata chunks (<c>bext</c>, <c>iXML</c>, <c>cart</c>, <c>LIST INFO</c>, others), padding and limits to give the WAVE muxer. Its
+    /// <see cref="Riff.WavMuxOptions.Layout"/> is replaced by the target format (<see cref="RemuxFormat.Rf64"/> forces RF64, <see cref="RemuxFormat.Wav"/> uses
+    /// <see cref="Riff.WavLayout.Auto"/>). For the path overloads with a WAVE input and no value here, the input's chunks are carried over unchanged. Null for none.
+    /// </summary>
+    public Riff.WavMuxOptions? Wav { get; init; }
 }

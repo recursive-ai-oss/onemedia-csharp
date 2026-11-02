@@ -217,7 +217,7 @@ public static class SafeWriter
     private const string TempMarker = ".onemedia-";
     private const string TempSuffix = ".tmp";
 
-    private static string TemporaryName(string targetName) =>
+    internal static string TemporaryName(string targetName) =>
         $".{targetName}{TempMarker}{HostTag():x4}-{Environment.ProcessId:x}-{Guid.NewGuid().ToString("N")[..8]}{TempSuffix}";
 
     private static int HostTag()
@@ -239,7 +239,7 @@ public static class SafeWriter
     /// that of a temporary file for this target and either the process that made it is gone, or it was last written more than <see cref="StaleAge"/> ago.
     /// Failures are ignored: a leftover file does no harm, and a save must not fail because of another save's debris.
     /// </summary>
-    private static void RemoveStaleTemporaryFiles(string directory, string targetName)
+    internal static void RemoveStaleTemporaryFiles(string directory, string targetName)
     {
         string prefix = $".{targetName}{TempMarker}";
         try
