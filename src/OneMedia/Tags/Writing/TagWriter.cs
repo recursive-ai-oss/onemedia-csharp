@@ -120,7 +120,7 @@ public static class TagWriter
     /// <summary>
     /// Looks for bytes of removed or stale values that an earlier edit left in the file. For ID3v2 at the start of a file (MP3 and other ID3-led audio) it
     /// reports padding that is not all zeros, frames sitting in the padding, and a frame right after the tag where audio should start. Other tag
-    /// systems write their padding as zeros on every edit and are not scanned. Saving the file with any edit, or none, removes what this finds in padding.
+    /// systems write their padding as zeros on every edit and are not scanned. It does not look at the fields that are still in the tag: a removed value that remains an ordinary frame is not residue (see <see cref="FindPresent"/>). Saving the file with any edit, or none, removes what this finds in padding.
     /// </summary>
     /// <param name="path">The file.</param>
     /// <param name="cancellationToken">Cancels the scan.</param>
@@ -139,6 +139,29 @@ public static class TagWriter
     {
         ArgumentNullException.ThrowIfNull(source);
         return Mp3TagWriter.FindResidue(source, MediaLimits.Default, cancellationToken);
+    }
+
+    /// <summary>
+    /// Lists the values of the given common fields that a file still holds, in any tag system it has (ID3v2, ID3v1, APEv2, <c>ilst</c>, Matroska tags,
+    /// Vorbis comments, RIFF INFO…), read through the common view. This is the check <see cref="CheckResidue(string, CancellationToken)"/> does not make: a value
+    /// that was removed badly but is still an ordinary field of the tag is present here. Each result names the field and where it lives
+    /// (<see cref="CommonValue.Source"/>) and carries the text, which the caller decides whether to show.
+    /// </summary>
+    /// <param name="path">The file.</param>
+    /// <param name="fields">The fields that should be absent.</param>
+    /// <returns>One entry per value found; empty when none of the fields is present.</returns>
+    /// <exception cref="UnsupportedMediaException">The file is not in a format with tags this library reads.</exception>
+    public static IReadOnlyList<CommonValue> FindPresent(string path, IEnumerable<CommonField> fields)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        using MediaFile media = Media.Open(path);
+        List<CommonValue> found = [];
+        foreach (CommonField field in fields.Distinct())
+        {
+            found.AddRange(media.Tags.Values(field));
+        }
+
+        return found;
     }
 
     private enum TagFamily

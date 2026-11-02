@@ -100,6 +100,63 @@ public sealed class TagResidueTests : IDisposable
         Assert.DoesNotContain("SECRET", r.Detail, StringComparison.Ordinal);
     }
 
+    private static (int Exit, string Out) RunTags(params string[] args)
+    {
+        TextWriter original = Console.Out;
+        using StringWriter captured = new();
+        Console.SetOut(captured);
+        try
+        {
+            return (RecursiveAI.OneMedia.Tool.TagsCommand.Run(args), captured.ToString());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+    }
+
+    [Fact]
+    public void CheckSaysWhatItCoversAndAbsentFindsAFieldThatIsStillALiveFrame()
+    {
+        // The shape preview.1 left: the field was meant to be removed but is still an ordinary frame of the tag.
+        string path = Put("live.mp3", Fx("audio-es/plain.mp3"));
+        TagEdits add = new();
+        add.Set(CommonField.Title, "kept");
+        add.Set(CommonField.Comment, Marker + " comment");
+        TagWriter.Save(path, add);
+        Assert.Empty(TagWriter.CheckResidue(path));
+
+        (int exit, string text) = RunTags(path, "--check");
+        Assert.Equal(0, exit);
+        Assert.Contains("no leftovers in ID3v2 padding; fields still present in the tag are not checked", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("clean", text, StringComparison.Ordinal);
+
+        (exit, text) = RunTags(path, "--check", "--absent", "comment,composer");
+        Assert.Equal(1, exit);
+        Assert.Contains("Comment: still present in id3v2:", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Composer", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET", text, StringComparison.Ordinal);
+
+        // Once it is really removed both checks pass.
+        TagWriter.Save(path, Remove(CommonField.Comment));
+        (exit, text) = RunTags(path, "--check", "--absent", "comment,composer");
+        Assert.Equal(0, exit);
+        Assert.Contains("fields absent in every tag system: Comment, Composer", text, StringComparison.Ordinal);
+        Assert.Empty(TagWriter.FindPresent(path, [CommonField.Comment]));
+        Assert.Equal(CommonField.Title, Assert.Single(TagWriter.FindPresent(path, [CommonField.Title, CommonField.Comment])).Field);
+    }
+
+    [Fact]
+    public void TheLeftoverHintNamesTheFile()
+    {
+        string path = WithLeftover("hint.mp3", asFrame: true);
+        (int exit, string text) = RunTags(path, "--check");
+        Assert.Equal(1, exit);
+        string shown = path.Contains(' ', StringComparison.Ordinal) ? "\"" + path + "\"" : path;
+        Assert.Contains("onemedia tags " + shown + " --replace", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("<file>", text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void CheckFindsAFrameRightAfterTheTag()
     {
