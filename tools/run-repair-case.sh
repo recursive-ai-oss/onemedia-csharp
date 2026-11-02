@@ -29,5 +29,7 @@ for f in "$D"/*."$ext"; do
     c=$($FFPROBE -v error -read_intervals "$t%+#5" -select_streams v:0 -show_entries packet=pts_time -of csv=p=0 "$r" 2>&1 | grep -c .)
     [ "$c" -ge 1 ] || sk=1
   done
-  echo "$n: ${res%% in=*} | $d | ffprobe-errors in=$dd out=$e dur=$dur seek-fail=$sk | validator in=$(validate "$f") out=$(validate "$r")"
+  cu=""
+  if [ "${VALIDATE:-}" = mkvalidator ]; then cu=" | $(python3 "$(dirname "$0")/repair/check-cues.py" "$r")"; fi
+  echo "$n: ${res%% in=*} | $d | ffprobe-errors in=$dd out=$e dur=$dur seek-fail=$sk | validator in=$(validate "$f") out=$(validate "$r")$cu"
 done
