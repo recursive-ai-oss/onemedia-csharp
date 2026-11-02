@@ -23,6 +23,7 @@
     <EmbeddedResource Include="../../testdata/telemetry/gpmf-synthetic.mp4" LogicalName="gpmf-synthetic.mp4" />
     <EmbeddedResource Include="../../testdata/telemetry/camm-all-types.mp4" LogicalName="camm-all-types.mp4" />
     <EmbeddedResource Include="../../testdata/telemetry/mebx-synthetic.mp4" LogicalName="mebx-synthetic.mp4" />
+    <EmbeddedResource Include="../../testdata/strip/strip-mixed.mp4" LogicalName="strip-mixed.mp4" />
     <EmbeddedResource Include="../../testdata/telemetry/dji-text.mp4" LogicalName="dji-text.mp4" />
     <EmbeddedResource Include="../../testdata/telemetry/djmd-real.mp4" LogicalName="djmd-real.mp4" />
     <EmbeddedResource Include="../../testdata/telemetry/mdpm-gps.mts" LogicalName="mdpm-gps.mts" />

@@ -129,6 +129,7 @@ internal static class SmokeRun
         await AviSmoke.RunAsync(Check);
         PlaybackSmoke.Run(Check);
         TelemetrySmoke.Run(Check);
+        StripSmoke.Run(Check);
         TelemetrySmoke.RunSidecar(Check);
         WriterSmoke.Run(Check);
         TagWriteSmoke.Run(Check);

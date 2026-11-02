@@ -50,6 +50,11 @@ static int Run(string[] args)
         return TagsCommand.Run(args[1..]);
     }
 
+    if (args.Length >= 1 && args[0] == "strip")
+    {
+        return StripCommand.Run(args[1..]);
+    }
+
     if (RecursiveAI.OneMedia.Tool.EditCommands.Handles(args))
     {
         return RecursiveAI.OneMedia.Tool.EditCommands.Run(args);
@@ -63,6 +68,7 @@ static int Run(string[] args)
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
     Console.Error.WriteLine("       onemedia tags <file> --check   look for leftover removed or stale values (exit 1 if found); with no edits, --replace/--out/--in-place zero them");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);
+    Console.Error.WriteLine(StripCommand.Usage);
     return 2;
 }
 
