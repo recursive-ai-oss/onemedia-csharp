@@ -13,7 +13,7 @@ carries every place the strip looks at in an ISO base media file:
   trak 3      mebx: location text and an orientation value that stays
   trak 4      fdsc: an unlabelled blob that repeats the lens serial, the camera serial, its hash and the position
 
-usage: gen-strip-fixtures.py <output dir> | --big <file> <gibibytes>
+usage: gen-strip-fixtures.py <output dir> | --big <file> <gibibytes> | --seeds <testdata/fuzz dir>
 """
 import struct
 import sys
@@ -201,8 +201,21 @@ def build(hole=0, big_path=None):
     return ftyp + mdat + moov + xmp
 
 
+def write_seeds(root):
+    """Fuzz seeds: strip-file is a selector byte plus the fixture; strip-bytes is a selector byte, a key-length byte (0) and one block."""
+    import os
+    for name in ('strip-bytes', 'strip-file'):
+        os.makedirs(os.path.join(root, name), exist_ok=True)
+    open(os.path.join(root, 'strip-file', 'mixed.seed'), 'wb').write(b'\x00' + build())
+    for name, block in (('gpmf', gpmf_sample(0)), ('camm6', camm_sample(6)), ('tiff', b'Exif\0\0' + tiff()), ('xmp', xmp_packet(512))):
+        open(os.path.join(root, 'strip-bytes', name + '.seed'), 'wb').write(b'\x00\x00' + block)
+
+
 if __name__ == '__main__':
     import os
+    if len(sys.argv) > 2 and sys.argv[1] == '--seeds':
+        write_seeds(sys.argv[2])
+        sys.exit(0)
     if len(sys.argv) > 3 and sys.argv[1] == '--big':
         # --big <file> <gibibytes>: a sparse file with the same content and a media data box that many GiB long
         build(int(float(sys.argv[3]) * (1 << 30)), sys.argv[2])

@@ -28,14 +28,28 @@ public static class PrivacyStrip
     public static StripPlan Plan(string path, StripOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
+        using FileMediaSource source = FileMediaSource.Open(path);
+        return Plan(source, options, cancellationToken);
+    }
+
+    /// <summary>Plans a strip of a source (a file or memory). The source is read during planning and is not disposed.</summary>
+    /// <param name="source">The source, from offset 0.</param>
+    /// <param name="options">What to strip; both categories when null.</param>
+    /// <param name="cancellationToken">Cancels planning.</param>
+    /// <returns>The plan and the report of what it does. Apply the plan with <see cref="SafeWriter.Write"/> to the same source.</returns>
+    /// <exception cref="UnsupportedMediaException">The format is not recognised.</exception>
+    /// <exception cref="MediaFormatException">The file is damaged beyond what the planner can read.</exception>
+    public static StripPlan Plan(IMediaSource source, StripOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
         options ??= StripOptions.Default;
-        using MediaFile file = MediaFile.Open(FileMediaSource.Open(path), options: options.Limits is null ? null : new MediaOpenOptions { Limits = options.Limits }, cancellationToken: cancellationToken);
+        using MediaFile file = MediaFile.Open(source, options: new MediaOpenOptions { Limits = options.Limits ?? MediaLimits.Default, LeaveOpen = true }, cancellationToken: cancellationToken);
         if (file.Format == MediaFormatId.IsoBmff)
         {
-            return IsoStrip.Plan(path, file, options, cancellationToken);
+            return IsoStrip.Plan(source, file, options, cancellationToken);
         }
 
-        return OtherStrip.Plan(path, file, options, cancellationToken);
+        return OtherStrip.Plan(source, file, options, cancellationToken);
     }
 
     /// <summary>Writes the stripped file to a new path; the original is untouched.</summary>
@@ -82,7 +96,7 @@ public static class PrivacyStrip
 /// <summary>The strip for every format but ISO base media: the tag writers remove the matching native keys.</summary>
 internal static class OtherStrip
 {
-    public static StripPlan Plan(string path, MediaFile file, StripOptions options, CancellationToken ct)
+    public static StripPlan Plan(IMediaSource source, MediaFile file, StripOptions options, CancellationToken ct)
     {
         StripCategories cats = options.Categories;
         List<StripEntry> entries = [];
@@ -108,15 +122,14 @@ internal static class OtherStrip
         if (matched.Count == 0)
         {
             PieceList same = new();
-            using FileMediaSource s = FileMediaSource.Open(path);
-            same.AddCopy(0, s.Length);
-            plan = same.ToPlan(s.Length, 0, 0, 0);
+            same.AddCopy(0, source.Length);
+            plan = same.ToPlan(source.Length, 0, 0, 0);
         }
         else
         {
             try
             {
-                TagWritePlan written = TagWriter.Plan(path, edits, TagWriteOptions.Minimal, ct);
+                TagWritePlan written = TagWriter.Plan(source, edits, TagWriteOptions.Minimal, ct);
                 plan = written.Plan;
                 notes.AddRange(written.Report.Notes);
                 foreach (NativeTag t in matched)
@@ -127,9 +140,8 @@ internal static class OtherStrip
             catch (UnsupportedMediaException e)
             {
                 PieceList same = new();
-                using FileMediaSource s = FileMediaSource.Open(path);
-                same.AddCopy(0, s.Length);
-                plan = same.ToPlan(s.Length, 0, 0, 0);
+                same.AddCopy(0, source.Length);
+                plan = same.ToPlan(source.Length, 0, 0, 0);
                 foreach (NativeTag t in matched)
                 {
                     left.Add(new StripLeftover(StripRules.Classify(t.System, t.Key) & cats, t.System, t.Key, t.TrackId, t.Range, "The tag writer cannot edit this file: " + e.Message));

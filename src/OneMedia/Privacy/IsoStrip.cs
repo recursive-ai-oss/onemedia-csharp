@@ -18,10 +18,9 @@ internal static class IsoStrip
 {
     private static readonly byte[] FreeType = "free"u8.ToArray();
 
-    public static StripPlan Plan(string path, MediaFile file, StripOptions options, CancellationToken ct)
+    public static StripPlan Plan(IMediaSource source, MediaFile file, StripOptions options, CancellationToken ct)
     {
         StripCategories cats = options.Categories;
-        using FileMediaSource source = FileMediaSource.Open(path);
         PatchSet patches = new();
         StripSink sink = new(patches);
         List<Secret> secrets = [];
@@ -139,7 +138,7 @@ internal static class IsoStrip
 
     // A tag is removed by turning its atom (in an item list: its item) into a free box of the same size. Readers skip free boxes in an item list;
     // leaving the item with only its value atoms turned to padding made ExifTool report the key with the text "#free".
-    private static void FreeTag(FileMediaSource source, NativeTag tag, StripCategories c, StripSink sink, HashSet<long> freed)
+    private static void FreeTag(IMediaSource source, NativeTag tag, StripCategories c, StripSink sink, HashSet<long> freed)
     {
         if (!freed.Add(tag.Range.Offset))
         {
@@ -168,7 +167,7 @@ internal static class IsoStrip
 
     private delegate void ScrubFn(ReadOnlySpan<byte> bytes, long fileOffset, long trackId, StripCategories cats, StripSink sink);
 
-    private static void ScrubValue(FileMediaSource source, NativeTag tag, StripOptions options, StripSink sink, List<Secret> secrets, ScrubFn scrub)
+    private static void ScrubValue(IMediaSource source, NativeTag tag, StripOptions options, StripSink sink, List<Secret> secrets, ScrubFn scrub)
     {
         MediaLimits limits = options.Limits ?? MediaLimits.Default;
         if (tag.ValueRange.Length > limits.MaxTagBytes)
@@ -217,7 +216,7 @@ internal static class IsoStrip
     // Camera makers keep an Exif block in these user-data atoms (the same list the reader uses for Exif evidence); a few wrapper bytes may precede the TIFF header.
     private static readonly string[] ExifAtoms = ["QVMI", "MVTG", "RMKN", "SIGM", "Exif"];
 
-    private static void ScrubExifAtoms(FileMediaSource source, ITagContainer udta, StripOptions options, StripSink sink, CancellationToken ct)
+    private static void ScrubExifAtoms(IMediaSource source, ITagContainer udta, StripOptions options, StripSink sink, CancellationToken ct)
     {
         MediaLimits limits = options.Limits ?? MediaLimits.Default;
         ByteRange r = udta.Range;
@@ -248,7 +247,7 @@ internal static class IsoStrip
         }
     }
 
-    private static void ScrubXmp(FileMediaSource source, XmpPacket x, StripCategories cats, StripSink sink)
+    private static void ScrubXmp(IMediaSource source, XmpPacket x, StripCategories cats, StripSink sink)
     {
         if (x.PacketRange.IsNone)
         {
@@ -290,7 +289,7 @@ internal static class IsoStrip
     // sample of any track. No track refers to it, so it is searched for the values the labelled fields held.
     private const long MaxGapBytes = 1 << 20;
 
-    private static void ScrubLeadingGap(FileMediaSource source, MediaFile file, StripOptions options, List<Secret> secrets, byte[] firmware, StripSink sink, CancellationToken ct)
+    private static void ScrubLeadingGap(IMediaSource source, MediaFile file, StripOptions options, List<Secret> secrets, byte[] firmware, StripSink sink, CancellationToken ct)
     {
         if ((secrets.Count == 0 && firmware.Length == 0) || file.Demuxer is not { } demuxer)
         {
