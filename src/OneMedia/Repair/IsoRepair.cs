@@ -41,6 +41,9 @@ internal static partial class IsoRepair
         public long[] ChunkStart = [];         // decode time of each chunk's first sample, in media timescale
         public long[] ChunkFirstSample = [];   // sample index of each chunk's first sample
         public long[] FirstSampleSize = [];
+        public long[] ChunkSamples = [];        // samples in each chunk
+        public int TrakAt, TrakHdr, TrakSize;  // the track box within the movie box bytes
+        public int StszAt = -1;                // the sample size box (its version byte) within the movie box bytes
     }
 
     public static RepairReport Run(RepairInput input, Stream destination, MediaLimits limits, CancellationToken ct)
@@ -444,14 +447,52 @@ internal static partial class IsoRepair
         long beyond = 0;
         foreach (TrackInfo t in tracks)
         {
-            report.Tracks.Add(new RepairTrackReport((int)t.Id, string.Empty, t.Samples, 0, chosen is null ? RepairConfidence.High : conf,
-                mdats.ConvertAll(x => new ByteRange(x.Start, x.End - x.Start))));
             beyond += CountBeyond(t, chosen is null ? t.Offsets : chosen[tracks.IndexOf(t)], input.Length);
+        }
+
+        // the media data ends before some samples do: cut the sample tables back to the samples that are all there
+        SampleCut[]? cuts = null;
+        if (beyond > 0)
+        {
+            long[][] finalOffsets = [.. tracks.ConvertAll(t => chosen is null ? t.Offsets : chosen[tracks.IndexOf(t)])];
+            byte[]? shrunk = ShrinkMovie(m, moov, tracks, finalOffsets, input.Length, movieTimescale, mvhdDurationAt, mvhdWidth, mvhdDuration, report, out cuts);
+            if (shrunk is not null)
+            {
+                patches.RemoveAll(x => x.At >= moov.Offset && x.At < moov.Offset + moov.Size);
+                patches.Add((moov.Offset, shrunk));
+                for (int i = 0; i < tracks.Count; i++)
+                {
+                    SampleCut c = cuts[i];
+                    if (!c.Changed)
+                    {
+                        continue;
+                    }
+
+                    TrackInfo t = tracks[i];
+                    long present = c.FirstLostOffset >= 0 && c.FirstLostOffset < input.Length ? Math.Min(c.FirstLostSize, input.Length - c.FirstLostOffset) : 0;
+                    report.Add(RepairAction.Rebuilt, "stbl", (int)t.Id, moov.Offset, moov.Size,
+                        $"The media data ends inside the file: the sample tables now hold {c.Samples} of {t.Samples} samples ({c.Chunks} chunks) and the durations follow.", RepairConfidence.High);
+                    if (present > 0)
+                    {
+                        report.Add(RepairAction.Dropped, "sample", (int)t.Id, c.FirstLostOffset, present, "The last sample is only partly in the file and is left out.", RepairConfidence.High);
+                    }
+                }
+
+                beyond = 0;
+            }
+        }
+
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            TrackInfo t = tracks[i];
+            bool cutTrack = cuts is not null && beyond == 0 && cuts[i].Changed;
+            report.Tracks.Add(new RepairTrackReport((int)t.Id, string.Empty, cutTrack ? cuts![i].Samples : t.Samples, cutTrack ? t.Samples - cuts![i].Samples : 0,
+                chosen is null ? RepairConfidence.High : conf, mdats.ConvertAll(x => new ByteRange(x.Start, x.End - x.Start))));
         }
 
         if (beyond > 0)
         {
-            report.Warn($"{beyond} chunks lie beyond the end of the file (the media data is cut off); removing them from the sample tables needs reconstruction.");
+            report.Warn($"{beyond} chunks lie beyond the end of the file (the media data is cut off) and the sample tables could not be cut back.");
         }
 
         if (patches.Count == 0 && tail == 0)
@@ -506,7 +547,7 @@ internal static partial class IsoRepair
 
     private static TrackInfo? ParseTrak(byte[] m, int at, int hdr, int size, long moovOffset, int order, MediaLimits limits)
     {
-        var t = new TrackInfo { Order = order };
+        var t = new TrackInfo { Order = order, TrakAt = at, TrakHdr = hdr, TrakSize = size };
         byte[] stszData = [];
         int stszAt = -1;
         List<(uint First, uint PerChunk)> stsc = [];
@@ -634,6 +675,7 @@ internal static partial class IsoRepair
 
         _ = stszData;
         t.Samples = total;
+        t.StszAt = stszAt;
         long Size(long i) => constant != 0 ? constant : BinaryPrimitives.ReadUInt32BigEndian(m.AsSpan(stszAt + 12 + (int)(i * 4)));
 
         t.Offsets = new long[stcoCount];
@@ -641,6 +683,7 @@ internal static partial class IsoRepair
         t.ChunkStart = new long[stcoCount];
         t.ChunkFirstSample = new long[stcoCount];
         t.FirstSampleSize = new long[stcoCount];
+        t.ChunkSamples = new long[stcoCount];
         for (int i = 0; i < stcoCount; i++)
         {
             t.Offsets[i] = t.Co64 ? (long)BinaryPrimitives.ReadUInt64BigEndian(m.AsSpan(stcoAt + (i * 8))) : BinaryPrimitives.ReadUInt32BigEndian(m.AsSpan(stcoAt + (i * 4)));
@@ -685,6 +728,7 @@ internal static partial class IsoRepair
             }
 
             t.ChunkSizes[c] = bytes;
+            t.ChunkSamples[c] = sample - t.ChunkFirstSample[c];
         }
 
         foreach ((uint n, uint d) in stts)
