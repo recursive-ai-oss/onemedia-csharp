@@ -7,6 +7,7 @@ Prints one JSON object:
   exiftool_left     location / serial / identifier tags ExifTool 13.x still shows in the stripped file (-ee -a -G3)
   mediainfo_left    lines MediaInfo still shows that name a location or an identifier
   bytes_left        secrets from the original (strings, ISO 6709 forms, big/little-endian binary forms of the coordinates, hex ids) found in the stripped bytes
+  framemd5_equal    with --ffmpeg: ffmpeg's decoded frame hashes of the first video and audio stream are equal (the check for MDPM, where the packet bytes differ by design)
   av_payload_equal  per-stream SHA-256 of ffprobe packet data for audio and video streams, original against stripped
 The secrets are read from the original with ExifTool (-n, so numbers are plain): GPS coordinates of every sample, and every tag whose name says serial, unique id or content id.
 Nothing is printed that is a secret; counts only.
@@ -125,6 +126,15 @@ def av_hashes(ffprobe, path):
     return {k: v.hexdigest() for k, v in hashes.items() if types.get(k) in ('video', 'audio')}
 
 
+def frame_md5(ffmpeg, path):
+    """Decoded frames of the first video and first audio stream as ffmpeg's framemd5 lines (header comments dropped)."""
+    lines = []
+    for sel in ('0:v:0', '0:a:0'):
+        out = run([ffmpeg, '-v', 'error', '-i', path, '-map', sel, '-f', 'framemd5', '-'])
+        lines.append([l for l in out.splitlines() if l and not l.startswith('#')])
+    return lines
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('original')
@@ -132,6 +142,7 @@ def main():
     ap.add_argument('--exiftool', default='exiftool')
     ap.add_argument('--mediainfo', default='mediainfo')
     ap.add_argument('--ffprobe', default='ffprobe')
+    ap.add_argument('--ffmpeg', default=None, help='also compare decoded frames (framemd5) of the original and the stripped file')
     ap.add_argument('--ids-only', action='store_true', help='only device identifiers were stripped: do not require location to be gone')
     ap.add_argument('--location-only', action='store_true')
     a = ap.parse_args()
@@ -160,6 +171,10 @@ def main():
     ho, hs = av_hashes(a.ffprobe, a.original), av_hashes(a.ffprobe, a.stripped)
     res['av_payload_equal'] = ho == hs
     res['av_streams'] = len(ho)
+    if a.ffmpeg:
+        fo, fs = frame_md5(a.ffmpeg, a.original), frame_md5(a.ffmpeg, a.stripped)
+        res['framemd5_equal'] = fo == fs
+        res['framemd5_frames'] = [len(x) for x in fo]
     json.dump(res, sys.stdout, indent=1)
     print()
 

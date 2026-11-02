@@ -81,7 +81,7 @@ internal static class IsoStrip
 
         ScrubTracks(file, options, secrets, firmware, sink, ct);
         ScrubLeadingGap(source, file, options, secrets, firmware, sink, ct);
-        sink.AddNote("Subtitle and text tracks are not inspected: position text that a recorder stores in them stays.");
+        sink.AddNote("Subtitle and text tracks are scanned for coordinates and serial numbers written as text (docs/strip.md lists the patterns); other text in them stays.");
         sink.AddNote("Key names in a QuickTime metadata key table (keys box) and in mebx sample entries stay; their values are gone.");
         sink.AddNote("Layout is unchanged: every changed range keeps its length and no other byte moved.");
         return new StripPlan(patches.ToPlan(source.Length), new StripReport(cats, sink.Entries(), sink.Leftovers, sink.Notes));
@@ -357,7 +357,14 @@ internal static class IsoStrip
         {
             TelemetryFormat format = TelemetryTrackReader.FormatOf(track);
             bool otherData = track.Kind == TrackKind.Data && format == TelemetryFormat.None && (secrets.Count > 0 || firmware.Length > 0);
-            if (format == TelemetryFormat.None && !otherData)
+            bool text = track.Kind == TrackKind.Subtitle;
+            if (track.Kind == TrackKind.Data && track.CodecTag == "dbgi")
+            {
+                // DJI's second protobuf track holds debug values in an undocumented layout and is not decoded, so it is not edited.
+                sink.Leftover(options.Categories, "dbgi", "debug track", track.Id, ByteRange.None, "The track's layout is not known; any position or serial number in it stays.");
+            }
+
+            if (format == TelemetryFormat.None && !otherData && !text)
             {
                 continue;
             }
@@ -369,6 +376,7 @@ internal static class IsoStrip
             }
 
             int generation = file.BeginRead();
+            bool unknownProtocol = false;
             try
             {
                 while (true)
@@ -388,8 +396,17 @@ internal static class IsoStrip
                     }
 
                     ReadOnlySpan<byte> bytes = view.Data;
+                    if (text)
+                    {
+                        TextScrub.Sample(bytes, offset, "text", track.Id, options.Categories, sink);
+                        continue;
+                    }
+
                     switch (format)
                     {
+                        case TelemetryFormat.Djmd:
+                            unknownProtocol |= !DjiScrub.Djmd(bytes, offset, track.Id, options.Categories, sink);
+                            break;
                         case TelemetryFormat.Gpmf:
                             TelemetryScrub.Gpmf(bytes, offset, "gpmd", track.Id, options.Categories, sink);
                             TelemetryScrub.BySecrets(bytes, offset, "gpmd", track.Id, options.Categories, secrets, sink);
@@ -414,6 +431,11 @@ internal static class IsoStrip
                 {
                     demuxer.SetTrackEnabled(t.Index, true);
                 }
+            }
+
+            if (unknownProtocol)
+            {
+                sink.Leftover(options.Categories, "djmd", "message", track.Id, ByteRange.None, "A sample names a protocol that is not in the table of known DJI layouts, so its position and serial fields could not be located.");
             }
         }
     }

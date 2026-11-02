@@ -6,8 +6,8 @@ namespace RecursiveAI.OneMedia.Privacy;
 /// <summary>
 /// Removes location and device identifiers from a media file: from every tag system the format has (QuickTime <c>©xyz</c>, <c>mdta</c> location and
 /// content-identifier keys, <c>loci</c>, GoPro serial and unique-id atoms, XMP and EXIF GPS and serial properties, Matroska, ID3, Vorbis, APE, RIFF and
-/// ASF fields whose names say location or serial) and from timed telemetry (GoPro GPMF, Google CAMM, QuickTime <c>mebx</c>). Make and model are kept.
-/// The result is written to a new file by default; the media payload is copied without change, so the per-track payload hash of the output equals the input's.
+/// ASF fields whose names say location or serial) and from timed telemetry (GoPro GPMF, Google CAMM, QuickTime <c>mebx</c>, DJI <c>djmd</c> and per-frame text, text-track coordinates, AVCHD camera data in transport streams). Make and model are kept.
+/// The result is written to a new file by default; the media payload is copied without change, so the per-track payload hash of the output equals the input's (except in transport streams, where the AVCHD camera data lives inside the video packets and its position entries are overwritten there).
 /// </summary>
 /// <remarks>
 /// <para>For MP4, MOV and 3GP every change is made in place in the copy: a field is overwritten with zeros, an atom becomes a <c>free</c> box of its own size,
@@ -47,6 +47,11 @@ public static class PrivacyStrip
         if (file.Format == MediaFormatId.IsoBmff)
         {
             return IsoStrip.Plan(source, file, options, cancellationToken);
+        }
+
+        if (file.Format == MediaFormatId.MpegTs)
+        {
+            return TsStrip.Plan(source, file, options, cancellationToken);
         }
 
         return OtherStrip.Plan(source, file, options, cancellationToken);
@@ -149,7 +154,54 @@ internal static class OtherStrip
             }
         }
 
-        notes.Add("Only tag fields are inspected in this format; position or serial data inside the streams themselves is not.");
+        ScanSubtitleTracks(file, options, left, ct);
+        notes.Add("Only tag fields and subtitle text are inspected in this format; position or serial data inside the other streams is not.");
         return new StripPlan(plan, new StripReport(cats, entries, left, notes));
+    }
+
+    // A subtitle block sits inside a cluster or chunk whose checksum or size a same-length edit would have to maintain, so text that looks like a
+    // position or serial number is reported, not edited.
+    private static void ScanSubtitleTracks(MediaFile file, StripOptions options, List<StripLeftover> left, CancellationToken ct)
+    {
+        if (file.Demuxer is not { } demuxer)
+        {
+            return;
+        }
+
+        foreach (MediaTrack track in demuxer.Tracks.Where(t => t.Kind == TrackKind.Subtitle))
+        {
+            foreach (MediaTrack t in demuxer.Tracks)
+            {
+                demuxer.SetTrackEnabled(t.Index, t.Index == track.Index);
+            }
+
+            int generation = file.BeginRead();
+            try
+            {
+                while (true)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    file.EnsureCurrentRead(generation);
+                    if (!demuxer.TryReadPacket(out PacketView view))
+                    {
+                        break;
+                    }
+
+                    if (view.Data.Length <= 65536 && TextScrub.Any(view.Data, options.Categories))
+                    {
+                        left.Add(new StripLeftover(options.Categories, "text", "subtitle text", track.Id, view.Info.SourceRange,
+                            "Subtitle text holds what looks like a position or serial number; the block lies in a structure whose checksum or size would change, so it was not edited."));
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                foreach (MediaTrack t in demuxer.Tracks)
+                {
+                    demuxer.SetTrackEnabled(t.Index, true);
+                }
+            }
+        }
     }
 }

@@ -9,7 +9,7 @@ namespace RecursiveAI.OneMedia.Fuzz;
 
 /// <summary>
 /// Fuzz targets for the privacy strip. <c>strip-bytes</c> takes a selector byte (bit 0: location, bit 1: device ids; both when neither is set), a key length
-/// byte and that many bytes of mebx key table, then one block that every block scrubber (GPMF, CAMM, mebx, Exif, XMP, GoPro settings, secrets) is run on: the
+/// byte and that many bytes of mebx key table, then one block that every block scrubber (GPMF, CAMM, mebx, Exif, XMP, GoPro settings, secrets, djmd, text) is run on: the
 /// patches they make must stay inside the block and keep its length. <c>strip-file</c> takes the selector byte and a whole file: the plan must have the file's length
 /// when the layout is kept, and applying it must not throw anything but the library's own exceptions.
 /// </summary>
@@ -41,6 +41,8 @@ internal static class StripTarget
         TelemetryScrub.Camm(block, Base, 1, cats, sink);
         TelemetryScrub.Mebx(block, Base, 1, table, cats, sink);
         TiffScrub.Scrub(block, Base, "exif", 1, cats, sink);
+        _ = DjiScrub.Djmd(block, Base, 1, cats, sink);
+        TextScrub.Sample(block, Base, "text", 1, cats, sink);
         byte[] firmware = block.Length >= 8 ? block[..6] : [];
         TelemetryScrub.GoProSettings(block, Base, firmware, "fdsc", 1, cats, sink);
         if (block.Length >= 12)

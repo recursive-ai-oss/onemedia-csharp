@@ -7,7 +7,10 @@ device identifiers. This page states exactly what is looked for, what is done to
 
 - **Default output is a new file.** `PrivacyStrip.SaveAs(in, out, options)` leaves the input alone; `Save` replaces the file atomically (temporary file,
   then rename); `SaveInPlace` overwrites only the changed ranges and works only when nothing moves (ISO base media: always).
-- **Media payload is never touched.** Audio and video samples are copied by range. The per-track payload hash of the output equals the input's.
+- **Media payload is never touched,** with one exception, stated here so it can be checked: in an MPEG transport stream the AVCHD camera data (MDPM)
+  sits inside the H.264 SEI messages of the video, so stripping its position entries changes bytes of the video packets (see MDPM below). Everywhere
+  else audio and video samples are copied by range and the per-track payload hash of the output equals the input's. (Telemetry and text tracks are
+  data/subtitle tracks, and their samples change by design.)
 - **ISO base media (MP4, MOV, 3GP, M4A, fragmented MP4): nothing moves.** Every change keeps its length: a field is overwritten with zeros, a whole atom
   or item becomes a `free` box of its own size. No chunk offset, `moof` offset or `sidx` entry changes. `EditPlan.IsSameLayout` is true.
 - **Make and model stay.** Camera make/model/software, firmware version, and orientation are not touched.
@@ -22,6 +25,7 @@ device identifiers. This page states exactly what is looked for, what is done to
 |---|---|
 | `ConvertedToPadding` | the atom/item is now a `free` box of the same size, payload zeroed |
 | `Zeroed` | the value bytes were overwritten with zeros; headers and lengths stay |
+| `Overwritten` | the bytes were overwritten with a neutral value that is not zero and the field's key was changed so readers skip it: 0xFF in MDPM entries (zeros could join into a start code), spaces in text, and in DJI protobuf samples zeros plus the key changed to field number 15 |
 | `Rewritten` | an XMP packet was re-serialised without the properties and padded with spaces to its old length |
 | `Removed` | a tag writer removed the key (non-ISO formats; the tag area is rewritten) |
 
@@ -42,18 +46,64 @@ device identifiers. This page states exactly what is looked for, what is done to
 | `gpmd` track (GoPro GPMF) | `GPS5`, `GPS9`, `GPSU`, `GPSF`, `GPSP`, `GPSA`, `GPRI`, `GLPI`, `LNED`: value zeroed, key renamed `EMPT` | `CASN`, `MUID`, `LINF`, `CINF` likewise |
 | `camm` track | packet types 4 (local position), 5 (position), 6 (GPS): payload zeroed, type set to 0xFFFF | |
 | `mebx` track | atoms whose key (from the sample entry's key table) contains the location words above, including nested detected-face groups: value zeroed, local id set to 0 | atoms whose key names a serial/id |
+| `djmd` track (DJI protobuf, protocols in the table of `DjmdDecoder`) | the position message (latitude, longitude, units), `abs_alt`, `rel_alt`: value overwritten with zeros (a varint as `80 … 00`, the same length), key changed to field 15 of the same wire type | the aircraft serial number (path 1-1-5): zeros, key changed to field 15. The model string stays |
+| subtitle and text tracks in ISO files (`tx3g`, `text`, `wvtt`, `stpp`, DJI per-frame text) | text rules below: overwritten with spaces | `serial`-style keys |
 | GoPro settings block (start of `mdat` before the first sample, and `fdsc` samples) | the position string by value | lens serial (48 bytes), camera-serial hash (16), camera serial (15) after the `FIRM` string; and every value read from a removed field, by value |
 
 "By value": after the labelled fields are read, their values (serials ≥ 6 bytes, the media id, the position text, facts-layer serial and location readings)
 are searched for in every data track that no decoder handles and in the unreferenced settings block. Each occurrence is zeroed and reported
 (`System` = the track's sample entry or `mdat-gap`).
 
+### Text rules (ISO text tracks; scan only elsewhere)
+
+Applied to the bytes of each subtitle/text sample, in order, then overlapping matches merged and blanked with spaces (the sample keeps its length):
+
+1. `key: value` or `key = value`, the key a whole word, case-insensitive: `latitude`, `longitude`, `lat`, `lon`, `lng`, `altitude`, `alt`, `abs_alt`,
+   `rel_alt`, `gps_alt` with a numeric value (key through value); `serial_number`, `serialnumber`, `serial number`, `serial`, `sn` with a word of at
+   least four characters (device IDs).
+2. `GPS(…)` or `HOME(…)` (spaces allowed before the bracket) whose contents are only digits, `. , - + ; space m M`.
+3. ISO 6709 strings, `±DD[.d]±DDD[.d][±alt]/` (also the minute and second forms with 4/6 and 5/7 digits), the closing `/` required.
+4. Two decimals with at least three fraction digits, the first within ±90 and the second within ±180, separated by 1–3 of space, comma, semicolon.
+   A number that is the tail of a longer number or word, or followed by a second point (`1.2.345`), does not count.
+
+Ordinary subtitle text (times, `1.5`, version numbers, the word "latitude" without a value) is left alone; the tests list the cases. A pair of
+decimals that is not a position (for instance `12.345 6.789` in a caption) is blanked all the same: the rule prefers removing to missing. Standalone
+subtitle files (`.srt` and others) are not opened by the strip.
+
+In Matroska/WebM, ASF, AVI and the other non-ISO formats a subtitle block lies inside a structure whose checksum or size a same-length edit would have to
+maintain, so a track whose text matches the rules is reported in `NotRemoved` (`text:subtitle text`, with the first block's range) and not edited.
+
+### MPEG transport streams (AVCHD camera data)
+
+AVCHD camcorders repeat their camera data in an H.264 SEI message (type 5, UUID `17ee8c60-f84d-11d9-8cd6-0800200c9a66`, marker `MDPM`) at the start of
+each group of pictures. The strip reads the file once in 1 MiB blocks (constant memory; 188-, 192- and 204-byte packets are detected from five sync
+bytes), follows each H.264 PID, looks in the first 8 KiB of every PES packet for SEI NAL units, removes emulation prevention bytes to find the entries
+(`tag` plus four data bytes), and overwrites each position entry with 0xFF (tag byte included) in place in the transport packets. Position tags are
+0xB0–0xC8 and 0xCA–0xCC (GPS version, latitude and longitude with references, altitude, time, status, mode, DOP, speed, track, map datum, date).
+
+- **The video payload changes, by necessity.** Only the bytes of those entries differ (the tests and the verification count them); every other byte of the
+  file, including the other bytes of the same NAL units and every TS header, is copied. Decoded pictures are identical: `ffmpeg -f framemd5` of the input and
+  the output are equal (checked on real AVCHD streams).
+- 0xFF, not zero: zeros next to zeros could form a start code or need an escape. Zero bytes that are followed by an emulation prevention byte (`00 00 03`)
+  stay as they are so the escape remains valid; that leaves at most those zero bytes of an entry.
+- **No MDPM serial number field is documented in the public tag descriptions**, so none is stripped; maker and model (tag 0xE0 and the Sony model entries) stay.
+  A recorder that stores such data elsewhere is not covered.
+- An SEI message that runs past the first 8 KiB of its PES packet is not searched: the report lists it in `NotRemoved`. MDPM in an MP4/MOV (some
+  cameras write it there) is not looked for.
+- Only H.264 video PIDs are followed; MPEG-2 video and other PIDs are not inspected.
+
 ### Other formats
 
 Matroska, ID3, APE, Vorbis comments, RIFF INFO, ASF: every native tag whose key contains one of the words above (`location`, `gps`, `latitude`,
 `longitude`, `serial`, `uniqueid`, `owner`, …; RIFF `IARL`) is removed through the tag writer for that format (`docs/tag-writing.md` describes what it
 rewrites). The report lists them as `Removed`. Where the tag writer refuses a file, the tags are listed in `NotRemoved`. Position or serial data inside
-the streams of these formats is not inspected.
+the streams of these formats is not inspected, except subtitle text (above).
+
+**Layout of these edits (measured on the test files).** The Matroska tag writer turns a removed `SimpleTag` into a `Void` element of the same size and
+fixes the checksum of its parent, so a Matroska strip keeps the layout (`IsSameLayout`; `SaveInPlace` works). The ID3v2 writer keeps the tag's size when
+the remaining frames fit and zeroes the rest as padding, so an MP3 strip keeps the layout too; for that the strip passes no extra padding. Other writers
+(Vorbis, RIFF, APE, ASF) rewrite their tag area and may move bytes: `SaveInPlace` then refuses with `PaddingRequired`. (Frames removed from the end of an
+ID3 tag used to stay in the file as stale bytes inside the padding; the writer now notices and clears them.)
 
 ## Neutral values
 
@@ -62,9 +112,12 @@ packets are renamed to an unassigned type, GPMF keys to `EMPT`, mebx atoms to lo
 
 ## Not covered (and what the report says)
 
-- Subtitle and text tracks (a recorder may write position text there): not inspected; a note says so.
+- Text that matches none of the text rules (a place name in a subtitle, a position written in words). Subtitle blocks in Matroska and the other non-ISO
+  formats are only reported, not edited. Standalone subtitle files.
+- DJI's `dbgi` debug track (undocumented layout): not inspected; the report lists it in `NotRemoved`. Fields of `djmd` messages the decoder does not map
+  (GPS time, home point, quaternions): not touched; a protocol name not in the decoder's table is reported in `NotRemoved`.
 - The names in a `keys` box and in `mebx` sample entries stay (a name is not a value); values are gone.
-- DJI telemetry in subtitle tracks and sidecars, AVCHD MDPM GPS: decoders land in another unit; not stripped here.
+- Sidecar files next to the video (DJI `.SRT`, Sony clip XML, XMP): the strip works on one file.
 - Position or serial data the strip does not know a name for. The rules are the tables in `StripRules`; unknown vendor atoms stay.
 - Free-text fields (title, comment, description) are not scanned for coordinates.
 - Thumbnails/cover art images with their own Exif are not opened.
@@ -78,7 +131,8 @@ packets are renamed to an unassigned type, GPMF keys to `EMPT`, mebx atoms to lo
 serial/unique-id/content-id/owner value; builds their forms (UTF-8 and UTF-16 text, 4/5/6-decimal text, ISO 6709, float64 LE/BE, int32 pairs at 1e7 and
 1e6 scale, hex ids); searches the stripped file's bytes; lists the tags ExifTool still shows whose names say location/serial/id with a non-neutral value;
 the lines MediaInfo shows; and compares per-stream SHA-256 of `ffprobe -show_data_hash` for audio and video. `tools/strip/run-corpus.sh` runs a folder.
-`tools/strip/make-samples.sh` writes small samples in several tag systems with ffmpeg; `tools/gen-strip-fixtures.py` writes the committed synthetic fixture
+`--ffmpeg` adds the `framemd5` comparison (for MDPM, where packet bytes differ by design); `tools/strip/make-mdpm-real.py` turns the date entries of a real camcorder recording into position-tagged entries so there is something to strip while the stream still decodes.
+`tools/strip/make-samples.sh` writes small samples in several tag systems, with text tracks, with ffmpeg; `tools/gen-strip-fixtures.py` writes the committed synthetic fixture
 (`testdata/strip/strip-mixed.mp4`), a sparse multi-GiB variant (`--big`) and the fuzz seeds.
 
 Memory: planning reads the movie structure, the tag atoms and the telemetry samples (one packet at a time); media payload is copied by range. A 4.5 GiB

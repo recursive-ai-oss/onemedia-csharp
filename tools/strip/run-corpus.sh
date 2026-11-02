@@ -12,13 +12,13 @@ for f in "$IN"/*; do
   dotnet exec "$DLL" strip "$f" "$OUT/$b" "$@" > "$OUT/$b.report.txt" 2>&1
   code=$?
   echo "== $b exit=$code entries=$(grep -vc '^note\|NOT REMOVED' "$OUT/$b.report.txt") notremoved=$(grep -c 'NOT REMOVED' "$OUT/$b.report.txt")"
-  python3 "$HERE/verify-strip.py" "$f" "$OUT/$b" --exiftool "$O/exiftool" --mediainfo "$O/mediainfo" --ffprobe "$O/ffprobe" > "$OUT/$b.verify.json" 2>&1
+  python3 "$HERE/verify-strip.py" "$f" "$OUT/$b" --exiftool "$O/exiftool" --mediainfo "$O/mediainfo" --ffprobe "$O/ffprobe" --ffmpeg "$O/ffmpeg" > "$OUT/$b.verify.json" 2>&1
   python3 - "$OUT/$b.verify.json" <<'EOF'
 import json, sys
 try:
     r = json.load(open(sys.argv[1]))
 except Exception as e:
     print('  verify failed:', open(sys.argv[1]).read()[:300]); sys.exit()
-print('  secrets', r['secrets'], '| bytes_left', len(r['bytes_left']), r['bytes_left'][:4], '| exiftool real-valued', r['exiftool_tags_with_real_values'][:6], '| neutral', r['exiftool_tags_with_neutral_values'], '| mediainfo', len(r['mediainfo_lines_still_shown']), r['mediainfo_lines_still_shown'][:3], '| size_equal', r['size_equal'], '| av_equal', r['av_payload_equal'], r['av_streams'])
+print('  secrets', r['secrets'], '| bytes_left', len(r['bytes_left']), r['bytes_left'][:4], '| exiftool real-valued', r['exiftool_tags_with_real_values'][:6], '| neutral', r['exiftool_tags_with_neutral_values'], '| mediainfo', len(r['mediainfo_lines_still_shown']), r['mediainfo_lines_still_shown'][:3], '| size_equal', r['size_equal'], '| av_equal', r['av_payload_equal'], r['av_streams'], '| framemd5_equal', r.get('framemd5_equal'), r.get('framemd5_frames'))
 EOF
 done
