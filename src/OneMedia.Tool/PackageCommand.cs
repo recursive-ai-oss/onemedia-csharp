@@ -12,7 +12,7 @@ namespace RecursiveAI.OneMedia.Tool;
 internal static class PackageCommand
 {
     public const string Usage =
-        "       onemedia package <in>... <dir> [--hls | --dash] [--segment <seconds>] [--single-file] [--subs <file>[:<lang>[:<name>]]]... [--no-container-subs] [--overwrite]\n"
+        "       onemedia package <in>... <dir> [--hls | --dash] [--segment <seconds>] [--ts] [--single-file] [--subs <file>[:<lang>[:<name>]]]... [--no-container-subs] [--overwrite]\n"
         + "       onemedia package <in|-> <dir> --live [--window <segments>] [--segment <seconds>] [--hls | --dash]\n"
         + "                     cut CMAF segments and write HLS playlists and a DASH manifest (both unless one is named); several inputs make a bit-rate ladder (the first supplies the audio);\n"
         + "                     --live publishes each segment as it completes, keeping a sliding window, and reads '-' as a stream from standard input";
@@ -22,7 +22,7 @@ internal static class PackageCommand
         List<string> positional = [];
         PackagingFormats formats = PackagingFormats.None;
         double segment = 6;
-        bool single = false, live = false, overwrite = false, containerSubs = true;
+        bool ts = false, single = false, live = false, overwrite = false, containerSubs = true;
         int window = 6;
         List<PackagingSubtitle> subs = [];
         try
@@ -33,6 +33,7 @@ internal static class PackageCommand
                 {
                     case "--hls": formats |= PackagingFormats.Hls; break;
                     case "--dash": formats |= PackagingFormats.Dash; break;
+                    case "--ts": ts = true; break;
                     case "--single-file": single = true; break;
                     case "--live": live = true; break;
                     case "--overwrite": overwrite = true; break;
@@ -73,6 +74,7 @@ internal static class PackageCommand
             {
                 Formats = formats,
                 SegmentDuration = new MediaTime((long)Math.Round(segment * 1000), 1000),
+                SegmentFormat = ts ? SegmentFormat.MpegTs : SegmentFormat.Cmaf,
                 SingleFile = single,
                 Overwrite = overwrite,
                 IncludeContainerSubtitles = containerSubs,

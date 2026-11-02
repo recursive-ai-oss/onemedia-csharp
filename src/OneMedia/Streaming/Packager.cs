@@ -20,6 +20,16 @@ public enum PackagingFormats
     Both = Hls | Dash,
 }
 
+/// <summary>The container of the media segments.</summary>
+public enum SegmentFormat
+{
+    /// <summary>Fragmented MP4 in the CMAF profile (ISO/IEC 23000-19): one init segment and a segment series per track, for HLS and DASH.</summary>
+    Cmaf = 0,
+
+    /// <summary>MPEG transport stream segments (RFC 8216 §3.2): audio and video multiplexed into one stream per rendition. HLS only; DASH is left out with a note.</summary>
+    MpegTs,
+}
+
 /// <summary>Settings of live packaging: segments are published as they complete and old ones leave the playlists.</summary>
 public sealed record LiveOptions
 {
@@ -64,6 +74,9 @@ public sealed record PackagingOptions
 {
     /// <summary>The manifests to write. Default <see cref="PackagingFormats.Both"/>.</summary>
     public PackagingFormats Formats { get; init; } = PackagingFormats.Both;
+
+    /// <summary>The container of the media segments. Default <see cref="SegmentFormat.Cmaf"/>. <see cref="SegmentFormat.MpegTs"/> writes HLS only, one multiplexed stream per input (a bit-rate ladder gives each input its own audio), a <c>.ts</c> file per segment or, with <see cref="SingleFile"/>, one <c>media.ts</c> with byte ranges.</summary>
+    public SegmentFormat SegmentFormat { get; init; }
 
     /// <summary>The target segment duration; see <see cref="SegmenterOptions.SegmentDuration"/>. Default six seconds.</summary>
     public MediaTime SegmentDuration { get; init; } = new(6, 1);

@@ -31,7 +31,8 @@ internal static class PackagingManifests
     {
         bool single = options.SingleFile;
         long ts = Math.Max(t.Track.Timescale, 1);
-        HlsMap map = new(single ? "media.mp4" : "init.mp4", single ? new HlsByteRange(t.InitLength, 0) : null);
+        // A transport stream segment is self-contained (RFC 8216 §3.2): no EXT-X-MAP.
+        HlsMap? map = t.Muxed ? null : new(single ? "media.mp4" : "init.mp4", single ? new HlsByteRange(t.InitLength, 0) : null);
         List<HlsSegment> segments = new(t.Segments.Count);
         // RFC 8216 §4.4.5.1: a playlist with DATERANGE tags needs a program date time; without a live clock the dates count from the Unix epoch.
         DateTimeOffset origin = options.Live?.StartTime ?? DateTimeOffset.UnixEpoch;
@@ -45,7 +46,7 @@ internal static class PackagingManifests
             segments.Add(new HlsSegment
             {
                 OtherTags = tags ?? [],
-                Uri = single ? "media.mp4" : FileName(r.File),
+                Uri = FileName(r.File),
                 Duration = new MediaTime(r.Info.DurationTicks, ts),
                 ByteRange = single ? new HlsByteRange(r.Bytes, r.Offset) : null,
                 Map = map,
@@ -123,6 +124,7 @@ internal static class PackagingManifests
         List<HlsRendition> renditions = [];
         List<HlsVariant> variants = [];
         string? subsGroup = text.Count > 0 ? "subs" : null;
+        bool muxed = tracks.Any(t => t.Muxed);
         for (int i = 0; i < text.Count; i++)
         {
             PackagingSubtitle s = text[i].Subtitle;
@@ -139,7 +141,26 @@ internal static class PackagingManifests
             });
         }
 
-        if (video.Count > 0)
+        if (muxed)
+        {
+            // Each transport stream rendition carries its own audio, so every one is a variant and none needs an audio group.
+            foreach (TrackOut m in tracks)
+            {
+                MediaTrack d = m.Track.Declared ?? m.Track.Input;
+                variants.Add(new HlsVariant
+                {
+                    Uri = $"{m.Name}/index.m3u8",
+                    Bandwidth = m.Track.PeakBitsPerSecond,
+                    AverageBandwidth = m.Track.AverageBitsPerSecond,
+                    Codecs = m.Track.Codecs,
+                    Width = d.Video?.Width ?? 0,
+                    Height = d.Video?.Height ?? 0,
+                    FrameRate = d.Video is { } vi && FrameRate(vi) is { Length: > 0 } fr ? fr : null,
+                    SubtitleGroup = subsGroup,
+                });
+            }
+        }
+        else if (video.Count > 0)
         {
             string? audioGroup = audio.Count > 0 ? "audio" : null;
             for (int i = 0; i < audio.Count; i++)

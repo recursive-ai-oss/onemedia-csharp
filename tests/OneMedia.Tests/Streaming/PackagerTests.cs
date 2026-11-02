@@ -54,6 +54,65 @@ public sealed class PackagerTests : IDisposable
         return joined;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TransportStreamSegmentsAreStandaloneAndConcatenateToTheSourcePackets(bool singleFile)
+    {
+        string output = Out(singleFile ? "ts-single" : "ts");
+        PackagingReport report = Packager.Package(Fixture("gop1s-bframes-aac.mp4"), output, new PackagingOptions { SegmentFormat = SegmentFormat.MpegTs, SegmentDuration = new MediaTime(1, 1), SingleFile = singleFile });
+        Assert.Contains(report.Notes, n => n.Contains("DASH", StringComparison.Ordinal));
+        Assert.DoesNotContain("manifest.mpd", report.Manifests);
+        PackagedTrack stream = Assert.Single(report.Tracks);
+        Assert.True(stream.Segments > 2);
+        HlsMediaPlaylist list = Assert.IsType<HlsMediaPlaylist>(HlsPlaylist.Parse(File.ReadAllText(Path.Combine(output, "stream0", "index.m3u8"))));
+        Assert.Equal(stream.Segments, list.Segments.Count);
+        Assert.All(list.Segments, s => Assert.Null(s.Map));
+        HlsMultivariantPlaylist master = Assert.IsType<HlsMultivariantPlaylist>(HlsPlaylist.Parse(File.ReadAllText(Path.Combine(output, "master.m3u8"))));
+        Assert.Contains("avc1", master.Variants[0].Codecs);
+        Assert.Contains("mp4a", master.Variants[0].Codecs);
+        string joined = Path.Combine(_dir, "joined" + singleFile + ".ts");
+        using (FileStream f = File.Create(joined))
+        {
+            if (singleFile)
+            {
+                Assert.All(list.Segments, s => Assert.NotNull(s.ByteRange));
+                byte[] all = File.ReadAllBytes(Path.Combine(output, "stream0", "media.ts"));
+                foreach (HlsSegment s in list.Segments)
+                {
+                    HlsByteRange r = s.ByteRange!.Value;
+                    Assert.Equal(0x47, all[r.Offset]); // each range starts at a transport packet
+                    Assert.Equal(0x47, all[r.Offset + 188]);
+                    f.Write(all, (int)r.Offset, (int)r.Length);
+                }
+            }
+            else
+            {
+                foreach (HlsSegment s in list.Segments)
+                {
+                    byte[] seg = File.ReadAllBytes(Path.Combine(output, "stream0", s.Uri));
+                    Assert.Equal(0, seg.Length % 188);
+                    Assert.Equal(0x47, seg[0]);
+                    f.Write(seg);
+                }
+            }
+        }
+
+        foreach (TrackKind kind in new[] { TrackKind.Video, TrackKind.Audio })
+        {
+            Assert.Equal(Packets(Fixture("gop1s-bframes-aac.mp4"), kind).Count, Packets(joined, kind).Count);
+        }
+
+        // every segment opens on its own and starts with a keyframe
+        if (!singleFile)
+        {
+            foreach (HlsSegment s in list.Segments)
+            {
+                Assert.True(Packets(Path.Combine(output, "stream0", s.Uri), TrackKind.Video)[0].Key);
+            }
+        }
+    }
+
     [Fact]
     public void EventsBecomeAnEventStreamAndDateRanges()
     {

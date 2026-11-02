@@ -1098,6 +1098,34 @@ public sealed class RemuxSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// True when the output is a transport stream and starting a new segment right before <paramref name="outputPacket"/> gives a decodable one (the packet is a
+    /// keyframe of the stream's synchronisation track; see <see cref="RecursiveAI.OneMedia.MpegTs.MpegTsMuxer.CanStartSegmentAt"/>). False for every other container.
+    /// </summary>
+    /// <param name="outputPacket">The packet about to be written, as <see cref="RemuxOptions.Observer"/> receives it (its track index is the output track).</param>
+    /// <returns>True when a segment may start here.</returns>
+    public bool CanStartSegmentAt(in PacketInfo outputPacket) => _muxer is RecursiveAI.OneMedia.MpegTs.MpegTsMuxer ts && ts.CanStartSegmentAt(outputPacket);
+
+    /// <summary>
+    /// Ends the current segment of a transport stream output and continues in <paramref name="next"/>, as <see cref="RecursiveAI.OneMedia.MpegTs.MpegTsMuxer.StartSegment"/> does.
+    /// Call it from the <see cref="RemuxOptions.Observer"/> or between packets. Does nothing for other containers.
+    /// </summary>
+    /// <param name="next">The new destination; writable, not closed by the session.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    /// <exception cref="InvalidOperationException">After <see cref="Finish"/>.</exception>
+    public void StartSegment(Stream next, CancellationToken cancellationToken = default)
+    {
+        if (_finished)
+        {
+            throw new InvalidOperationException("The session is finished.");
+        }
+
+        if (_muxer is RecursiveAI.OneMedia.MpegTs.MpegTsMuxer ts)
+        {
+            ts.StartSegment(next, cancellationToken);
+        }
+    }
+
     /// <summary>Completes the output and returns the report.</summary>
     /// <param name="cancellationToken">Cancels the write; the output is then incomplete.</param>
     /// <returns>What was written and what did not carry over.</returns>

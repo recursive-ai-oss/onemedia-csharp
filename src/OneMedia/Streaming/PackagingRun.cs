@@ -40,6 +40,9 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
         public long FirstStartTicks { get; set; } = -1;
 
         public long EndTicks { get; set; }
+
+        /// <summary>True for a transport stream rendition: audio and video multiplexed in one stream, no init segment.</summary>
+        public bool Muxed { get; init; }
     }
 
     internal sealed class TextOut(string name, PackagingSubtitle subtitle)
@@ -74,6 +77,13 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
     {
         ArgumentNullException.ThrowIfNull(directory);
         _dir = Path.GetFullPath(directory);
+        if (options.SegmentFormat == SegmentFormat.MpegTs && options.Formats.HasFlag(PackagingFormats.Dash))
+        {
+            // DASH here carries fragmented MP4 only.
+            options = options with { Formats = options.Formats & ~PackagingFormats.Dash };
+            _notes.Add("DASH was not written: transport stream segments are HLS only.");
+        }
+
         _options = options;
         _inputCount = inputCount;
         if (options.Live is not null)
@@ -122,19 +132,33 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
         bool first = _inputIndex++ == 0;
         IDemuxer demuxer = file.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "This file was opened from an asynchronous source; packaging reads synchronously.");
         bool videoTaken = false;
+        bool ts = _options.SegmentFormat == SegmentFormat.MpegTs;
+        SegmenterOptions segmenterOptions = new()
+        {
+            SegmentDuration = _options.SegmentDuration,
+            Limits = _options.Limits,
+            // The first input gives every track; ladder inputs give one video track each (a transport stream variant carries its own audio, so every input gives all).
+            Select = t => ts || first || (t.Kind == TrackKind.Video && !videoTaken && (videoTaken = true)),
+            SessionIsoOptions = file.Demuxer is IsoBmffDemuxer iso
+                ? (s, t) => Remuxing.Remuxer.IsoTrackOptionsFor(iso, t, s)
+                : (_, t) => Remuxing.Remuxer.PcmOptionsFor(demuxer, t),
+        };
+        TsSegmenter? tsSegmenter = ts ? new TsSegmenter(file.Tracks, this, segmenterOptions) : null;
+        if (tsSegmenter is not null)
+        {
+            using (tsSegmenter)
+            {
+                RunTs(file, demuxer, tsSegmenter, first, cancellationToken);
+            }
+
+            FinishInput(file, first, cancellationToken);
+            return;
+        }
+
         CmafSegmenter segmenter = new(
             file.Tracks,
             this,
-            new SegmenterOptions
-            {
-                SegmentDuration = _options.SegmentDuration,
-                Limits = _options.Limits,
-                // The first input gives every track; ladder inputs give one video track each.
-                Select = t => first || (t.Kind == TrackKind.Video && !videoTaken && (videoTaken = true)),
-                SessionIsoOptions = file.Demuxer is IsoBmffDemuxer iso
-                    ? (s, t) => Remuxing.Remuxer.IsoTrackOptionsFor(iso, t, s)
-                    : (_, t) => Remuxing.Remuxer.PcmOptionsFor(demuxer, t),
-            });
+            segmenterOptions);
         using (segmenter)
         {
             foreach (SegmentedTrack t in segmenter.Tracks)
@@ -181,6 +205,44 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
             }
         }
 
+        FinishInput(file, first, cancellationToken);
+    }
+
+    private void RunTs(MediaFile file, IDemuxer demuxer, TsSegmenter segmenter, bool first, CancellationToken cancellationToken)
+    {
+        SegmentedTrack t = segmenter.Tracks[0];
+        TrackOut o = new(t, $"stream{_videoCount++}") { Muxed = true };
+        _tracks.Add(o);
+        _byTrack[t] = o;
+        foreach (MediaTrack input in file.Tracks)
+        {
+            if (input.Kind is not (TrackKind.Video or TrackKind.Audio) || input.IsProtected)
+            {
+                demuxer.SetTrackEnabled(input.Index, false);
+                if (first && input.Kind is not (TrackKind.Subtitle or TrackKind.Data))
+                {
+                    _notes.Add($"Input track {input.Index} ({input.Kind} {input.Codec.Name}) was not packaged.");
+                }
+            }
+        }
+
+        int generation = file.BeginRead();
+        while (demuxer.TryReadPacket(out PacketView view))
+        {
+            file.EnsureCurrentRead(generation);
+            segmenter.WritePacket(view.Info, view.Data, cancellationToken);
+        }
+
+        SegmenterReport report = segmenter.Finish(cancellationToken);
+        _losses.AddRange(report.Losses);
+        if (t.SegmentCount == 0)
+        {
+            _notes.Add($"Input {_inputIndex} produced no segments and was left out.");
+        }
+    }
+
+    private void FinishInput(MediaFile file, bool first, CancellationToken cancellationToken)
+    {
         if (first && _options.Live is null && _options.IncludeSourceEvents)
         {
             try
@@ -241,7 +303,17 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
         _anySegments = true;
         string file;
         long offset = 0;
-        if (_options.SingleFile)
+        if (t.Muxed && _options.SingleFile)
+        {
+            // Transport stream segments need no index: they are appended to one file and the playlist addresses them by byte range.
+            Directory.CreateDirectory(Path.Combine(_dir, t.Name));
+            file = $"{t.Name}/media.ts";
+            t.Spool ??= new FileStream(Path.Combine(_dir, file), FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
+            offset = t.SpoolBytes;
+            t.Spool.Write(data);
+            t.SpoolBytes += data.Length;
+        }
+        else if (_options.SingleFile)
         {
             file = $"{t.Name}/media.mp4";
             offset = t.SpoolBytes;
@@ -250,7 +322,8 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
         }
         else
         {
-            file = $"{t.Name}/seg-{segment.Number.ToString("D5", CultureInfo.InvariantCulture)}.m4s";
+            Directory.CreateDirectory(Path.Combine(_dir, t.Name));
+            file = $"{t.Name}/seg-{segment.Number.ToString("D5", CultureInfo.InvariantCulture)}.{(t.Muxed ? "ts" : "m4s")}";
             WriteFile(file, data);
         }
 
@@ -356,7 +429,15 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
         {
             foreach (TrackOut t in _tracks)
             {
-                AssembleSingleFile(t, cancellationToken);
+                if (t.Muxed)
+                {
+                    t.Spool?.Dispose();
+                    t.Spool = null;
+                }
+                else
+                {
+                    AssembleSingleFile(t, cancellationToken);
+                }
             }
         }
 
