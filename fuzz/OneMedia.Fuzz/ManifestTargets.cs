@@ -23,6 +23,19 @@ internal static class ManifestTargets
     {
         try
         {
+            // The lenient read takes anything; its defects point inside the text and what it returns writes out.
+            string raw = System.Text.Encoding.UTF8.GetString(input);
+            HlsParseResult lenient = HlsPlaylist.ParseLenient(raw, s_small);
+            foreach (ManifestDefect d in lenient.Defects)
+            {
+                if (d.Line < 1 || d.Offset < 0 || d.Offset > raw.Length + 1)
+                {
+                    throw new InvalidOperationException("defect position outside the text");
+                }
+            }
+
+            _ = lenient.Playlist.ToString();
+
             HlsPlaylist p = HlsPlaylist.Parse(input, s_small);
             string text = p.ToString();
             if (HlsPlaylist.Parse(text, s_small).ToString() != text)
