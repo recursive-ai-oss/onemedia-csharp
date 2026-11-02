@@ -74,7 +74,7 @@ internal static class DashMpdReader
                 case "Period": periods.Add(ReadPeriod(e)); break;
                 case "BaseURL": baseUrls.Add(e.Value.Trim()); break;
                 case "UTCTiming": timings.Add(Descriptor(e)); break;
-                default: other.Add(e.ToString(SaveOptions.DisableFormatting)); break;
+                default: other.Add(Raw(e)); break;
             }
         }
 
@@ -108,7 +108,7 @@ internal static class DashMpdReader
             {
                 case "AdaptationSet": sets.Add(ReadAdaptationSet(e)); break;
                 case "BaseURL": baseUrls.Add(e.Value.Trim()); break;
-                default: other.Add(e.ToString(SaveOptions.DisableFormatting)); break;
+                default: other.Add(Raw(e)); break;
             }
         }
 
@@ -146,7 +146,7 @@ internal static class DashMpdReader
             }
             else
             {
-                other.Add(e.ToString(SaveOptions.DisableFormatting));
+                other.Add(Raw(e));
             }
         }
 
@@ -207,7 +207,7 @@ internal static class DashMpdReader
             }
             else
             {
-                other.Add(e.ToString(SaveOptions.DisableFormatting));
+                other.Add(Raw(e));
             }
         }
 
@@ -291,6 +291,9 @@ internal static class DashMpdReader
     };
 
     private static DashDescriptor Descriptor(XElement e) => new(e.Name.LocalName, Attr(e, "schemeIdUri") ?? string.Empty, Attr(e, "value"), Attr(e, "id"));
+
+    // XElement.ToString declares the element's namespace on it; inside the MPD's own namespace that declaration is redundant and would make a rewrite differ from the text it came from.
+    private static string Raw(XElement e) => e.ToString(SaveOptions.DisableFormatting).Replace(" xmlns=\"urn:mpeg:dash:schema:mpd:2011\"", string.Empty, StringComparison.Ordinal);
 
     private static string? Attr(XElement e, string name) => e.Attribute(name)?.Value;
 

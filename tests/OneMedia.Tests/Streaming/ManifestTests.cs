@@ -289,4 +289,23 @@ public sealed class ManifestTests
         Assert.Equal([90_000L, 92_000L], byTimeline.Select(x => x.Time));
         Assert.Equal([0L, 2000L], byTimeline.Select(x => x.PresentationStart));
     }
+
+    [Theory]
+    [InlineData("hls-playlist/roundtrip-keys-1.m3u8")]
+    [InlineData("dash-mpd/roundtrip-1.mpd")]
+    public void FuzzFindingsRewriteToThemselves(string file)
+    {
+        byte[] bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", file));
+        if (file.EndsWith(".mpd", StringComparison.Ordinal))
+        {
+            string first = DashMpd.Parse(bytes).ToString();
+            Assert.Equal(first, DashMpd.Parse(first).ToString());
+        }
+        else
+        {
+            string first = HlsPlaylist.Parse(bytes).ToString();
+            string second = HlsPlaylist.Parse(first).ToString();
+            Assert.True(first == second, "W1:\n" + first.Replace("\0", "<NUL>") + "\nW2:\n" + second.Replace("\0", "<NUL>"));
+        }
+    }
 }

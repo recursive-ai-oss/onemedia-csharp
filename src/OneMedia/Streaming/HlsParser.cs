@@ -105,7 +105,7 @@ internal static class HlsParser
         DateTimeOffset? pdt = null;
         long previousEnd = 0;
         List<HlsKey> keys = [];
-        List<string> pendingKeyLines = [];
+        List<string> pendingAll = []; // every unmodelled or key line since the last segment, in file order, for tags no segment follows
         bool keysChanged = false;
         for (int n = first; n < lines.Length; n++)
         {
@@ -145,7 +145,7 @@ internal static class HlsParser
                     OtherTags = pending.Count == 0 ? [] : pending.ToArray(),
                 });
                 keysChanged = false;
-                pendingKeyLines.Clear();
+                pendingAll.Clear();
                 if (range is { } used)
                 {
                     previousEnd = used.End;
@@ -223,7 +223,7 @@ internal static class HlsParser
                         }
 
                         keysChanged = true;
-                        pendingKeyLines.Add(line);
+                        pendingAll.Add(line);
                         break;
                     }
 
@@ -280,6 +280,7 @@ internal static class HlsParser
                     else
                     {
                         pending.Add(line);
+                        pendingAll.Add(line);
                     }
 
                     break;
@@ -292,8 +293,7 @@ internal static class HlsParser
         }
 
         // Unmodelled tags after the last segment URI belong after it; so do key tags no segment followed.
-        trailing.AddRange(pendingKeyLines);
-        trailing.AddRange(pending);
+        trailing.AddRange(pendingAll);
         return new HlsMediaPlaylist
         {
             Version = version ?? 1,
