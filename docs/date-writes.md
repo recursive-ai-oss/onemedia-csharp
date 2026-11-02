@@ -24,7 +24,7 @@ own; there the wall clock of that offset is written.
 
 | Format | Fields written | Zone semantics | Added when absent |
 |---|---|---|---|
-| MP4 / MOV / 3GP | `mvhd`, every `tkhd`, every `mdhd`: creation and modification time | UTC seconds since 1904 (ISO/IEC 14496-12 §8.2.2); the local wall clock when a device profile or the option says the device stores local time | no: the header boxes always exist; a header whose times are both 0 is left unset |
+| MP4 / MOV / 3GP | `mvhd`, every `tkhd`, every `mdhd`: creation and modification time | UTC seconds since 1904 (ISO/IEC 14496-12 §8.2.2); the local wall clock when a device profile or the option says the device stores local time | no: the header boxes always exist; `mvhd` is always written, even when both its times are 0, because it is the date Explorer, Photos and AVFoundation show; a `tkhd` or `mdhd` whose times are both 0 is left unset and listed under Left |
 | | `udta` `©day`, `ilst` `©day` | UTC with a `Z` (Windows mis-reads an offset here, see below) | no |
 | | `mdta` `com.apple.quicktime.creationdate` | ISO 8601 with the offset, `+0200` as Apple cameras write it | no |
 | | `mdta` `creation_time`, `com.apple.quicktime.creation_time`, `date`, `com.apple.quicktime.date` | UTC with a `Z` / ISO 8601 with offset | no |

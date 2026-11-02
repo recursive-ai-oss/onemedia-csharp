@@ -196,9 +196,11 @@ internal sealed class TextTrackRemux : IDisposable
             _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotRepresentable, track.Index, l.Feature, l.Detail + count));
         }
 
-        List<TrackReplacement> all = options?.Replacements is { } existing ? [.. existing] : [];
+        // Build on the replacements added so far: starting again from the caller's options would keep only the last converted track.
+        RemuxOptions current = Options ?? options ?? new RemuxOptions();
+        List<TrackReplacement> all = current.Replacements is { } existing ? [.. existing] : [];
         all.Add(new TrackReplacement(feed));
-        Options = (options ?? new RemuxOptions()) with { Replacements = all };
+        Options = current with { Replacements = all };
     }
 
     public void Report(RemuxSession session)

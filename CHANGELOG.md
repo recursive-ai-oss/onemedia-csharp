@@ -4,6 +4,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- Wording: the privacy-strip review in `README.md`, this changelog and `docs/strip-review.md` was called "independent". It is the project's own review, run by a separate pass within the project, not an external audit; the text now says so.
+- A remux of a file with several text tracks that the target holds in another format (for example several SubRip tracks from Matroska into MP4 or MOV, or several `tx3g` tracks from MP4 into Matroska) kept only the last converted track and dropped the others ("has no ISO sample entry code") while the report's Changes said each had been converted. Every such track is now converted, and `RemuxReportHonestyTests` checks the report against the output tracks (count, format per track, lost tracks listed) on the multi-subtitle files and a set of text-track remuxes.
+- `docs/telemetry.md` said the privacy strip was not in the release; it now describes what the strip does to GoPro, CAMM, `mebx` and DJI telemetry tracks and links `docs/strip.md`.
+- WebVTT top-placed cues were written as `line:0,start`, which Chromium 140 ignores (the cue stayed at the bottom). `start` is the default line alignment, so the writer now writes `line:0`; checked in Chromium 140, Chrome 155, Firefox 141 and WebKit 26 (`tools/playback/vtt-placement.py`: cue at the top).
+- `docs/date-writes.md` said a header whose times are both 0 is left unset. The behaviour is: `mvhd` is always written (it is the date Explorer, Photos and AVFoundation show), and only `tkhd`/`mdhd` headers of zeroes are left unset and listed. The page now says so; a test covers it.
+
+### Added
+
+- `StripReport.NotExamined`: the fixed list of areas no strip run looks at (free text, unknown vendor atoms and boxes, trailers), on every report; `onemedia strip` prints it as a `not examined:` line.
+
+### Changed
+
 - Subtitle parse and convert speed is published against SubtitlesParser 1.5.1 and the Subtitle Edit core library 5.3.0: on 14 rows (20,000 and 100,000 cues) the geometric mean of our median over the fastest comparator is 0.47× on x64 and 0.52× on arm64, the worst row 1.21× on both ([docs/bench-results/0.5-x64.md](docs/bench-results/0.5-x64.md), [0.5-arm64.md](docs/bench-results/0.5-arm64.md)); SRT parsing and 100,000-cue ASS parsing are near Subtitle Edit's speed, not ahead of it.
 
 ### Added
@@ -24,7 +38,7 @@ The privacy strip and capture-date writes, subtitles and captions, timed events,
 
 ### Added
 
-- Privacy strip (`PrivacyStrip`, `Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`, `docs/strip.md`): strips the location and device identifiers listed in `docs/strip.md` (tag systems, Exif, XMP, telemetry tracks and known text tracks) into a new file by default, without changing media payload bytes, and reports what it found and could not remove. It does not search free text, unknown vendor atoms or trailers; `docs/strip-review.md` records an independent review and the places it does not reach.
+- Privacy strip (`PrivacyStrip`, `Media.StripLocation`, `Media.StripDeviceIds`, `onemedia strip`, `docs/strip.md`): strips the location and device identifiers listed in `docs/strip.md` (tag systems, Exif, XMP, telemetry tracks and known text tracks) into a new file by default, without changing media payload bytes, and reports what it found and could not remove. It does not search free text, unknown vendor atoms or trailers; `docs/strip-review.md` records the project's own review (not an external audit) and the places it does not reach.
 - Capture-date writes (`CaptureTimeWriter`, `CaptureTimeOptions`, `CaptureTimeReport`, `Media.SetCaptureTime`, `onemedia tags <file> --capture-time <iso8601>`, `docs/date-writes.md`): set the time a recording was made in every date field a file carries, each in its own notation and zone semantics (MP4/MOV/3GP header times, `©day`, `creationdate`, XMP and Exif dates; Matroska `DateUTC` and tags; RIFF INFO and BWF origination; ID3, Vorbis and ASF dates), with a report of what was written (old and new text), what was left and why, and which dates still disagree (telemetry GPS times are never rewritten). Payload bytes are unchanged. `TagEdits.SetNative` on `xmp` accepts `xmp:`, `photoshop:` and `exif:` properties and on `udta` a `©` atom.
 - Preview: subtitle sidecars and the cue model (`SubtitleDocument`, `SubtitleCue`, `SubtitleSpan`, `Subtitles.Read`/`Write`/`Convert`, `SubtitleFormats`, `SubtitleAlignment`, `onemedia subs`, `docs/subtitles.md`): SRT, WebVTT, ASS/SSA, TTML/DFXP/IMSC1 text, SBV and LRC with styling spans, placement, word timing and exact `MediaTime`; content-based format detection, legacy text encodings, typed defects with byte offsets, same-format round trips that keep what the format can say, and a `ConversionReport` of what a conversion dropped or approximated (the fidelity table is in `docs/subtitles.md`). Compared with ffmpeg 7.0.2 for SRT, WebVTT, ASS and LRC; WebVTT loaded as `<track>` in Chromium, Firefox and WebKit.
 - Preview: subtitle text tracks in containers (`TextTracks`, `docs/text-tracks.md`): tx3g, QuickTime text, `wvtt`, `stpp` (TTML/IMSC) and Matroska SRT, ASS and WebVTT tracks are read into cues and written back from cues; remux converts a text track only when the target cannot hold its format and lists the losses.
@@ -35,6 +49,7 @@ The privacy strip and capture-date writes, subtitles and captions, timed events,
 - Timed events (`MediaFile.Events`, `MediaEvents.List`, namespace `RecursiveAI.OneMedia.TimedEvents`, `onemedia events`, `docs/events.md`): QuickTime/ISO `tmcd` timecode tracks with the start timecode and an exact presentation-time to SMPTE timecode mapping (drop-frame at 30 and 60 fps), SCTE 35 splice information in MPEG-TS (stream type 0x86) and in `emsg` (`splice_insert`, `time_signal`, `splice_schedule`, segmentation, avail, DTMF and time descriptors, CRC, `pts_adjustment`), and ID3 timed metadata in MPEG-TS (stream type 0x15) and in `emsg`, with other `emsg` messages kept as raw events. Events are read lazily; opening a file reads no more than before. Remux carries `tmcd` tracks MP4 to MOV and back and reports `emsg` boxes as not written. Matroska stores a timecode only as a `TIMECODE` tag, so it is a native tag there, not an event. Equal to ffprobe's `timecode` on 24 files, to TSDuck 3.44 on SCTE 35 (generated and a real capture), to ffprobe packets for timed ID3 in TS and to MP4Box for `emsg`.
 - Make a file playable with AAC-LC and FLAC audio as well as Opus (`AudioTranscoder` now makes all three; `BrowserProfile.AudioTargets` says which a profile prefers, AAC first for `safari`, `ios-safari`, `webkit-linux` and `generic-mp4`): files whose audio only AAC could rescue, such as anything for the generic MP4 profile, are made instead of refused. AAC carries the encoder's 1,024-sample lead-in and its end padding in the MP4 edit list, so players that honour edit lists play exactly the source's length. `RecursiveAI.OneMedia.Audio` now uses OneAudio 1.7.0. See `docs/make-playable.md`.
 - `onemedia tags <file> --check --absent <fields>` (library: `TagWriter.FindPresent(path, fields)`), described under Privacy.
+
 
 ### Changed
 
@@ -130,6 +145,7 @@ Fixes for AAC decoding from MPEG-TS/PS, MPEG-TS service names and several smalle
 - Preview: browser playability (`RecursiveAI.OneMedia.Playback`, `docs/playability.md`): `MediaFile.CanPlay(profile)` and `Media.CanPlay(path, profile)` return a verdict per mode (a plain URL, MediaSource) with typed blockers (container, codec, profile, level, bit depth, chroma, `hvc1`/`hev1` form, segmentation, encryption), each marked as fixable by a remux, an audio transcode, or a video blocker; plus warnings for hardware-dependent codecs, a movie box at the end and incomplete codec strings. Built-in profiles as static data: `Chrome`, `Chromium`, `Firefox`, `Safari`, `WebKitLinux`, `IosSafari`, `AndroidChrome`, `GenericMp4`; the first five were checked by playing a 75-file matrix in the real browsers (`tools/playback/`).
 - `IsoBmffDemuxer.MediaDataPrecedesMovie` and `IsoBmffAsyncDemuxer.FileType`/`MediaDataPrecedesMovie`.
 
+
 ### Changed
 
 - `MediaTrack.Rfc6381Codec()` names the sample entry for `hev1` (HEVC) and `avc3` (H.264) tracks, returns `vp9` for a VP9 track whose level is unknown (browsers reject `vp09.PP.00.DD`), and `vp9` for one without a configuration.
@@ -185,6 +201,7 @@ Known gaps: DV audio inside DV frames is not de-shuffled, so DV type 1 and raw D
 - `onemedia info` printed Matroska frame rates unreduced (`200000000/8333333 fps`); they are now reduced or snapped to the nearest broadcast rate.
 - Raw AV1 streams: an OBU whose size field was close to `int.MaxValue` overflowed the end-of-OBU test and threw `ArgumentOutOfRangeException`; it is now a malformed unit.
 
+
 ### Changed
 
 - Reading tags allocates far less: an ID3 tag no longer clears a 64 KiB window for a few hundred bytes (an MP3 tag read went from about 150 KB to 20 KB allocated), the common tag view no longer allocates a list per mapping row, and an Ogg Vorbis file reads its setup header only when packet durations are asked for.
@@ -214,6 +231,7 @@ Fixes from a review of the second preview.
 - `CodecParameters.SbrSignalling` (`SbrSignalling`: `None`, `Explicit`, `BackwardCompatible`, `ContainerRate`), `AudioDecodeReport.Signalling` and `MediaTrackPacketSource.SbrSignalling`.
 - `CodecParameters.ContainerDeclaresDoubleRate`, the new name of `SbrImplied`.
 
+
 ### Changed
 
 - `CodecParameters.SbrImplied` is `[Obsolete]` and forwards to `ContainerDeclaresDoubleRate`. `onemedia info` prints `container declares twice the core rate` for it and `SBR, explicit signalling` or `SBR, backward-compatible signalling` for signalled tracks.
@@ -224,6 +242,7 @@ Fixes from a review of the second preview.
 ## [0.1.0-preview.2] - 2026-11-01
 
 Fixes from a review of the first preview. No new formats or features.
+
 
 ### Changed
 
