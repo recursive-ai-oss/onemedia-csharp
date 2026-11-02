@@ -32,7 +32,7 @@ Untouched tracks are remuxed packets: payload bytes copied, apart from the docum
 standing, with their codes); `Notes`. Refusals are results; exceptions are for unreadable input, an existing output and cancellation.
 
 Codes added here, besides those in `playability.md`: `transcode.no-decoder` (no decoder for the source codec: AC-3, E-AC-3, ALAC, WMA), `transcode.channels` (more than two channels),
-`transcode.no-target` (the profile plays nothing the transcoder produces in any candidate container; for example `generic-mp4`), `transcode.failed` (the decoder or encoder refused the stream),
+`transcode.no-target` (the profile plays nothing the transcoder produces in any candidate container), `transcode.failed` (the decoder or encoder refused the stream),
 `remux.refused` (the muxer would not carry a track).
 
 ## Audio transcode (`RecursiveAI.OneMedia.Audio`)
@@ -41,9 +41,24 @@ Codes added here, besides those in `playability.md`: `transcode.no-decoder` (no 
 
 - **Decode:** OneAudio (AAC-LC, MP3, Vorbis, FLAC, Opus, AMR) through the same adapter as `Decode()`, or direct conversion for integer and float PCM (layout from the container reader or the sample entry code).
   HE-AAC with SBR/PS follows OneAudio's rules (it refuses what it cannot decode, reported as `transcode.failed`).
-- **Encode:** Opus, 48 kHz, mono or stereo, 20 ms packets, OneAudio's Opus encoder (complexity 7, VBR). Default bit rate 64 kbit/s mono, 96 kbit/s stereo (`MakePlayableOptions.AudioBitRate`). Other rates are resampled to 48 kHz
-  (polyphase). FLAC is not offered: the encoder writes a native stream, not packets. Opus is the one target; profiles that play neither Opus nor what the file has (`generic-mp4`) refuse.
-- **Delay:** the encoder's look-ahead is the pre-skip, written in the `OpusHead` (so `dOps` and `CodecDelay`) and as the track's priming, which the ISO muxer states in the first edit-list entry. The packets
+- **Targets and the rule that picks one.** The transcoder makes Opus, AAC-LC and FLAC. For each audio track that blocks, `MakePlayable` takes the first codec in the profile's `AudioTargets` (data in
+  `BrowserProfiles`) that the profile plays in the output container and the transcoder can make; codecs the list leaves out follow in the transcoder's order (Opus, AAC, FLAC). A profile without
+  `AudioTargets` therefore gets Opus wherever it plays Opus, and AAC only where Opus is not playable; `chrome`, `chromium`, `firefox` and `android-chrome` are of this kind. `safari`, `ios-safari`,
+  `webkit-linux` and `generic-mp4` list AAC first: it is the one audio codec every MP4 player has, hardware-decoded on Apple devices, while Opus in MP4 is newer (`generic-mp4` plays no Opus at all, and used to
+  refuse). FLAC comes last in every list: it is lossless and several times the size, so it is written only when the profile plays nothing else the transcoder makes (a profile whose table has FLAC in MP4 and no
+  Opus or AAC).
+- **Opus:** 48 kHz, mono or stereo, 20 ms packets, OneAudio's Opus encoder (complexity 7, VBR). Default bit rate 64 kbit/s mono, 96 kbit/s stereo (`MakePlayableOptions.AudioBitRate`). Other rates are resampled
+  to 48 kHz (polyphase).
+- **AAC-LC:** OneAudio's `AacEncoder`, mono or stereo, constant bit rate, 64 kbit/s per channel by default. `AudioBitRate` is kept between 8 kbit/s per channel and what 6,144 bits per channel per block
+  allows at the rate; the rate written is in the report. The source rate is kept when AAC-LC has it (8, 11.025, 12, 16, 22.05, 24, 32, 44.1 and 48 kHz); other rates (96 and 88.2 kHz, say) are resampled to the
+  nearest, ties upward. The `esds` box carries the encoder's two-byte AudioSpecificConfig.
+- **AAC delay and padding:** the first 1,024 output samples are the transform's overlap with silence. They are the track's priming, so the ISO muxer writes an edit list whose first entry starts at media time
+  1,024 (ISO/IEC 14496-12 §8.6.6). The last access unit's duration is shortened by the encoder's padding (0 to 1,023 samples), so the edit list also ends on the last real sample: read through the edit list,
+  the output has exactly the input's decoded length. A player that ignores edit lists plays 1,024 samples of lead-in and up to 1,023 of padding.
+- **FLAC:** OneAudio's `FlacPacketEncoder`; `fLaC` sample entry with a `dfLa` box. The source rate is kept and nothing is dropped, so there is no priming or padding. 16 bits, or 24 when the source is wider than 16.
+  The STREAMINFO is written before the first frame, so it has no total sample count and no MD5 ("unknown", RFC 9639 §8.2); the frames are complete and decodable.
+- **Channels:** mono and stereo only, for every target. More channels stay a blocker (`transcode.channels`); nothing is downmixed, so a report never hides one.
+- **Opus delay:** the encoder's look-ahead is the pre-skip, written in the `OpusHead` (so `dOps` and `CodecDelay`) and as the track's priming, which the ISO muxer states in the first edit-list entry. The packets
   start at the presentation time of the first decoded input sample (the first packet's time moved by the edit information, plus the input's declared priming that the decoder drops), so audio and video keep
   their alignment. The stream is padded with silence to cover the look-ahead, so the output audio can run up to one packet (20 ms) plus the look-ahead longer than the input.
 - **Memory:** packets are made on request, one at a time, from a streaming decoder, resampler and encoder.
@@ -76,3 +91,26 @@ Playback matrix (75 files; Playwright 1.55: Chromium 140, Firefox 141, WebKit 26
 - **Transcoded tracks:** 12 matrix and 6 corpus tracks in range, 1 explained. Duration and start time within one frame of the input (AAC frame 21.3 ms). One out of range by the stream-level figure: `ts-aac-only.ts`, where ffprobe reports 3.84 s for the TS audio stream although the 189 AAC packets hold 4.032 s; decoding input and output with ffmpeg gives 193,536 and 193,608 samples (72 apart). Start times differ by the 6.5 ms pre-skip.
 - **Validators:** MP4Box 26.07 `-info` and mkvalidator 0.6.0: no errors, except mkvalidator 0.6.0 rejecting AV1 in WebM (`ERR304`, "codec V_AV1 not supported for profile webm"; the validator predates AV1 in WebM, the file plays in Firefox).
 - **Memory:** a 1.13 GB VP9 + AAC Matroska file (1,468 s) made playable in Chromium's profile (WebM + Opus transcode) in 13 s with a peak RSS of 92 MB.
+
+### AAC and FLAC targets
+
+Checked with OneAudio 1.7.0 on x64 Linux: ffmpeg/ffprobe 7.0.2, MP4Box 26.07, Playwright 1.55 (WebKit 26 stands in for `safari` and `ios-safari`; Firefox 141 with system decoders plays the `generic-mp4` outputs, since the open-source Chromium has no AAC).
+Two inputs: the 75-file matrix and 14 generated files (`tools/playback/gen-audio-targets.sh`: MP3, Vorbis, FLAC, Opus and PCM at 8, 11.025, 22.05, 32, 44.1, 48, 88.2 and 96 kHz, mono and stereo, one with the audio starting 0.5 s late, one 30 s long).
+
+| Profile (browser) | Input | Before: made / refused / copied | After: made / refused / copied | Outputs that failed to play, before / after |
+|---|---|---|---|---|
+| generic-mp4 (firefox) | matrix | 11 / 55 / 9 | 30 / 36 / 9 | 0 of 20 / 0 of 39 |
+| generic-mp4 (firefox) | generated audio | 3 / 11 / 0 | 14 / 0 / 0 | 0 of 3 / 0 of 14 |
+| safari (webkit) | matrix | 20 / 10 / 44, 1 failed | 20 / 10 / 44, 1 failed | 1 of 64 / 1 of 64 |
+| ios-safari (webkit) | matrix | 26 / 24 / 25 | 26 / 24 / 25 | 2 of 51 / 2 of 51 |
+| webkit-linux (webkit) | matrix | 11 / 0 / 64 | 11 / 0 / 64 | 0 of 75 / 0 of 75 |
+| safari, ios-safari (webkit) | generated audio | 7 / 0 / 7, 8 / 0 / 6 | 7 / 0 / 7, 8 / 0 / 6 | 0 / 0 |
+| chromium, firefox | matrix | unchanged | unchanged (Opus still chosen) | 0 of 35, 0 of 63 |
+
+- `generic-mp4` used to refuse every file whose audio was not already AAC or MP3 (`transcode.no-target`); it now gets AAC-LC. The 19 matrix files and 11 generated files it now makes were all played with sound.
+- Safari and iOS Safari were already served by Opus (which WebKit plays in MP4); they now get AAC, so the status counts are the same and the codec differs. The three matrix failures are the ones from before (`caf-pcm.caf`, an unmodified CAF copy that WebKit does not start in the harness, and `ts-h264-high-aac.ts` made into MP4 on the iOS profile).
+- **Length** (ffmpeg decodes the output; OneAudio decodes the input, with the edit information applied): over the 30 AAC outputs (19 matrix, 11 generated) the output is 0 to 43 ms longer than the input (never more than two samples shorter, which is resampling slack, and never longer than one AAC frame at its rate). The excess is the encoder's padding, which ffmpeg 7.0.2 plays because it ignores the end of an edit list; read through the edit list (OneAudio's adapter, `MakePlayableTests`) the length is exact to the sample, and a 30 s file's edit list is 1,323,000 samples long, which is 30.000 s. FLAC outputs are sample-exact in both readers.
+- **Edit list** (MP4Box `-diso`): one entry, media time 1,024, for audio starting at zero; for audio that starts 0.5 s late, an empty edit of 0.5 s and then media time 1,024.
+- **Structure:** MP4Box `-info` reported no error on any output written for these profiles (30 + 14 for `generic-mp4`, 20 + 7 for `safari`, 26 + 8 for `ios-safari`; matrix + generated).
+- **Remux differential** (89 files to MP4 and to Matroska, ffprobe 7.0.2): 8,957 and 9,341 packets compared, 0 different, the same as before this change. The ISO muxer's edit list for a track with priming and a start offset changed (a gap, then the media from the priming, instead of a shorter gap and the media from zero), so webm Opus to MP4 outputs are 48 bytes larger, and two Matroska AAC files gained one explained time class.
+- Not covered: Windows/macOS Safari itself (only the WebKit build Playwright ships), real Chrome on macOS (Chrome keeps Opus, so nothing changed for it), and channel counts above two.

@@ -35,6 +35,27 @@ internal static class SmokeAudio
 
         check("decode opus in webm", DecodedFrames(webm) > 19000);
         check("decode aac in m4a", DecodedFrames(Resource("aac.m4a")) == 6400);
+        MakePlayableToAac(Resource("opus.webm"), check);
+    }
+
+    // MakePlayable with the AAC and FLAC encoders: Opus audio into the generic MP4 profile (which plays only AAC and MP3), through temporary files.
+    private static void MakePlayableToAac(byte[] opusWebm, Action<string, bool> check)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "onemedia-smoke-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string input = Path.Combine(dir, "in.webm");
+            File.WriteAllBytes(input, opusWebm);
+            Playback.MakePlayableReport r = AudioTranscoder.MakePlayable(input, Path.Combine(dir, "out.mp4"), Playback.BrowserProfiles.GenericMp4);
+            check("MakePlayable opus to aac", r.Status == Playback.MakePlayableStatus.Made && r.AudioTranscodes.Count == 1 && r.AudioTranscodes[0].To == CodecId.Aac);
+            using MediaFile output = Media.Open(Path.Combine(dir, "out.mp4"));
+            check("aac written with priming", output.Audio?.Codec == CodecId.Aac && output.Audio.Edit.Priming.Ticks == 1024);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     private static long DecodedFrames(byte[] file)

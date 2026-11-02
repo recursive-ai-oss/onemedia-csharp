@@ -115,6 +115,14 @@ public sealed class BrowserProfile
     /// <summary>The codec rules.</summary>
     public IReadOnlyList<CodecRule> Codecs { get; }
 
+    /// <summary>
+    /// The codecs to re-encode audio to, most wanted first, as codec names (<c>opus</c>, <c>aac</c>, <c>flac</c>); null: the transcoder's own order
+    /// (Opus, then AAC, then FLAC). <c>MakePlayable</c> takes the first one the profile plays in the output container and the transcoder can make; codecs
+    /// the list leaves out are tried after it. Safari, iOS Safari and the generic MP4 profile put AAC first: it is the one audio codec every MP4
+    /// player has, while Opus in MP4 is newer and less often decoded in hardware-backed players.
+    /// </summary>
+    public IReadOnlyList<string>? AudioTargets { get; init; }
+
     /// <summary>The modes in which the container is accepted; <see cref="PlaybackMode.None"/> when it is not.</summary>
     public PlaybackMode ModesFor(string container) => _containers.TryGetValue(container, out PlaybackMode m) ? m : PlaybackMode.None;
 

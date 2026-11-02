@@ -17,6 +17,7 @@ using RecursiveAI.OneMedia.Remuxing;
 //                                       runs MakePlayable (with audio transcoding) on every file of DIR for one profile and writes what it did
 // expect REPORT.tsv MANIFEST RESULTS.jsonl TABLE.tsv
 //                                       checks that every file MakePlayable wrote plays (progressive) in the browser, with the audio and video it should have; exit 1 otherwise
+// frames FILE                           prints the samples per channel, sample rate and channels the OneAudio decoder yields for the file's audio (edit information applied)
 if (args.Length < 2)
 {
     Console.Error.WriteLine("usage: describe DIR MANIFEST | verdicts DIR PROFILE | compare MANIFEST RESULTS PROFILE [TABLE]");
@@ -35,9 +36,27 @@ switch (args[0])
         return MakeAll(args[1], args[2], args[3], args[4]);
     case "expect":
         return Expect(args[1], args[2], args[3], args[4]);
+    case "frames":
+        return Frames(args[1]);
     default:
         Console.Error.WriteLine("unknown command " + args[0]);
         return 2;
+}
+
+static int Frames(string path)
+{
+    using MediaFile f = Media.Open(path);
+    using OneAudio.IAudioDecoder d = f.Decode();
+    float[] buffer = new float[4096 * d.Format.Channels];
+    long n = 0;
+    int got;
+    while ((got = d.Read(buffer)) > 0)
+    {
+        n += got;
+    }
+
+    Console.WriteLine($"{n} {d.Format.SampleRate} {d.Format.Channels}");
+    return 0;
 }
 
 static int Describe(string dir, string manifest)

@@ -120,7 +120,7 @@ public static class PlayableMaker
         (RemuxFormat.Mp4, "mp4"), (RemuxFormat.WebM, "webm"), (RemuxFormat.Matroska, "matroska"), (RemuxFormat.Mov, "mov"),
     ];
 
-    private static readonly CodecId[] s_assumedTargets = [CodecId.Opus];
+    private static readonly CodecId[] s_assumedTargets = [CodecId.Opus, CodecId.Aac, CodecId.Flac];
 
     /// <summary>Makes a file play in a browser profile.</summary>
     /// <param name="inputPath">The file; its format is recognised by content.</param>
@@ -252,7 +252,7 @@ public static class PlayableMaker
         else
         {
             Dictionary<int, PlaybackTrack> replaced = [];
-            IReadOnlyList<CodecId> targets = transcoder?.Targets ?? s_assumedTargets;
+            IReadOnlyList<CodecId> targets = OrderTargets(profile, transcoder?.Targets ?? s_assumedTargets);
             foreach (int track in v.Blockers.Where(b => b.TrackIndex >= 0).Select(b => b.TrackIndex).Distinct())
             {
                 PlaybackTrack? t = d.Tracks.FirstOrDefault(x => x.TrackIndex == track);
@@ -264,7 +264,7 @@ public static class PlayableMaker
                 bool done = false;
                 foreach (CodecId target in targets)
                 {
-                    PlaybackTrack asTarget = t with { Codec = target, CodecTag = null, CodecString = CodecStringOf(target), Profile = -1, Level = -1, BitDepth = 0 };
+                    PlaybackTrack asTarget = t with { Codec = target, CodecTag = null, CodecString = CodecStringOf(target), Profile = target == CodecId.Aac ? 2 : -1, Level = -1, BitDepth = 0 };
                     // The one track changed, the others as they are: does the profile play the result?
                     Dictionary<int, PlaybackTrack> trial = new(replaced) { [track] = asTarget };
                     PlaybackModeVerdict tv = Playability.Check(ForContainer(d, key, trial), profile).Progressive;
@@ -316,7 +316,37 @@ public static class PlayableMaker
         _ => null,
     };
 
-    private static string? CodecStringOf(CodecId c) => c == CodecId.Opus ? "opus" : c == CodecId.Flac ? "flac" : null;
+    // ISO/IEC 14496-3 object type 2 is AAC-LC, the only AAC the transcoder writes (RFC 6381 §3.3: mp4a.40.2).
+    private static string? CodecStringOf(CodecId c) => c == CodecId.Opus ? "opus" : c == CodecId.Flac ? "flac" : c == CodecId.Aac ? "mp4a.40.2" : null;
+
+    // The profile's own order first (BrowserProfile.AudioTargets), then whatever else the transcoder can make, in its order.
+    private static List<CodecId> OrderTargets(BrowserProfile profile, IReadOnlyList<CodecId> available)
+    {
+        List<CodecId> ordered = [];
+        if (profile.AudioTargets is { } preferred)
+        {
+            foreach (string name in preferred)
+            {
+                foreach (CodecId c in available)
+                {
+                    if (c.Name == name && !ordered.Contains(c))
+                    {
+                        ordered.Add(c);
+                    }
+                }
+            }
+        }
+
+        foreach (CodecId c in available)
+        {
+            if (!ordered.Contains(c))
+            {
+                ordered.Add(c);
+            }
+        }
+
+        return ordered;
+    }
 
     // What the description would be if the same packets sat in `key`: container name, content type, fast start, and the sample-entry form the muxers write.
     private static PlaybackDescription ForContainer(PlaybackDescription d, string key, Dictionary<int, PlaybackTrack>? replaced)

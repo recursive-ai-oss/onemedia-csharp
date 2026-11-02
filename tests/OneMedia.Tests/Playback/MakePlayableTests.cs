@@ -144,12 +144,100 @@ public sealed class MakePlayableTests : IDisposable
     }
 
     [Fact]
-    public void AProfileThatPlaysNoCodecWeCanEncodeRefusesTheAudio()
+    public void GenericMp4GetsAacLcWithThePrimingAndPaddingInTheEditList()
     {
-        // Generic MP4 takes AAC and MP3 only; the one encoder here makes Opus.
-        MakePlayableReport r = PlayableMaker.MakePlayable(Data("audio", "opus.mka"), Out("g.mp4"), BrowserProfiles.GenericMp4, WithAudio);
-        Assert.Equal(MakePlayableStatus.Refused, r.Status);
-        Assert.Contains(r.Remaining, b => b.Code == "transcode.no-target");
+        // Generic MP4 takes AAC and MP3 only: Opus is not a way out, AAC is.
+        string src = Data("audio", "opus.mka");
+        MakePlayableReport r = PlayableMaker.MakePlayable(src, Out("g.mp4"), BrowserProfiles.GenericMp4, WithAudio);
+        Assert.Equal(MakePlayableStatus.Made, r.Status);
+        AudioTranscodeInfo t = Assert.Single(r.AudioTranscodes);
+        Assert.Equal(CodecId.Aac, t.To);
+        Assert.Equal(1024, t.EncoderDelay.Rescale(t.SampleRate, MediaRounding.NearestAwayFromZero).Ticks);
+        Assert.True(t.BitRate > 0);
+
+        using MediaFile input = Media.Open(src);
+        using MediaFile output = Media.Open(Out("g.mp4"));
+        MediaTrack outTrack = output.Audio!;
+        Assert.Equal(CodecId.Aac, outTrack.Codec);
+        Assert.Equal("mp4a", outTrack.CodecTag);
+        Assert.Equal(1024, outTrack.Edit.Priming.Rescale(t.SampleRate, MediaRounding.NearestAwayFromZero).Ticks);
+        Assert.NotNull(outTrack.Edit.Edits);
+
+        // The edit list ends on the last real sample: the decoded length equals the input's, to the sample (the rate is unchanged).
+        long inFrames = FramesAt(input, out int inRate);
+        long outFrames = FramesAt(output, out int outRate);
+        Assert.Equal(inRate, outRate);
+        Assert.InRange(outFrames - inFrames, -1, 1);
+    }
+
+    private static long FramesAt(MediaFile f, out int rate)
+    {
+        using OneAudio.IAudioDecoder d = f.Decode();
+        rate = d.Format.SampleRate;
+        float[] buf = new float[4096 * d.Format.Channels];
+        long n = 0;
+        int got;
+        while ((got = d.Read(buf)) > 0)
+        {
+            n += got;
+        }
+
+        return n;
+    }
+
+    [Fact]
+    public void ANativeFlacFileBecomesAacAndNothingOfTheOriginalStreamLeaksIn()
+    {
+        string src = Data("audio", "flac.flac");
+        MakePlayableReport r = PlayableMaker.MakePlayable(src, Out("nf.mp4"), BrowserProfiles.GenericMp4, WithAudio);
+        Assert.Equal(MakePlayableStatus.Made, r.Status);
+        using MediaFile input = Media.Open(src);
+        long inFrames = FramesAt(input, out int rate);
+        using MediaFile output = Media.Open(Out("nf.mp4"));
+        int packets = 0;
+        long total = 0;
+        IDemuxer d = output.Demuxer!;
+        while (d.TryReadPacket(out PacketView v))
+        {
+            packets++;
+            total += v.Info.Duration.Ticks;
+            Assert.True(v.Data.Length <= 768, $"packet {packets} is {v.Data.Length} bytes, too large for one AAC-LC channel");
+        }
+
+        // 1,024 samples per unit, one unit of lead-in, and the last unit shortened by the padding.
+        Assert.Equal(((inFrames + 1023) / 1024) + 1, packets);
+        Assert.Equal(inFrames + 1024, total);
+        Assert.Equal(rate, output.Audio!.Audio!.Value.SampleRate);
+    }
+
+    [Fact]
+    public void SafariAndIosPreferAacWhereOpusWouldAlsoPlay()
+    {
+        foreach (BrowserProfile profile in new[] { BrowserProfiles.Safari, BrowserProfiles.IosSafari })
+        {
+            string o = Out("s-" + profile.Id + ".mp4");
+            MakePlayableReport r = PlayableMaker.MakePlayable(Data("audio", "mp3.mka"), o, profile, WithAudio);
+            Assert.Equal(MakePlayableStatus.Made, r.Status);
+            Assert.Equal(CodecId.Aac, Assert.Single(r.AudioTranscodes).To);
+        }
+    }
+
+    [Fact]
+    public void FlacInMp4IsWrittenForAProfileThatPlaysNothingElseWeMake()
+    {
+        BrowserProfile flacOnly = new("flac-only", "FLAC only", "test",
+            [new ContainerSupport("mp4", PlaybackMode.Both)],
+            [new CodecRule("flac", ["mp4"])]);
+        string src = Data("audio", "vorbis.ogg");
+        MakePlayableReport r = PlayableMaker.MakePlayable(src, Out("f.mp4"), flacOnly, WithAudio);
+        Assert.Equal(MakePlayableStatus.Made, r.Status);
+        Assert.Equal(CodecId.Flac, Assert.Single(r.AudioTranscodes).To);
+
+        using MediaFile input = Media.Open(src);
+        using MediaFile output = Media.Open(Out("f.mp4"));
+        Assert.Equal(CodecId.Flac, output.Audio!.Codec);
+        Assert.Equal("fLaC", output.Audio.CodecTag);
+        Assert.Equal(FramesAt(input, out _), FramesAt(output, out _));
     }
 
     [Fact]

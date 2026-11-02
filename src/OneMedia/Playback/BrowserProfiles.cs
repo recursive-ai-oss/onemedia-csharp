@@ -108,7 +108,7 @@ public static class BrowserProfiles
             R("vorbis", "webm", "ogg"),
             R("pcm", "wav", "aiff", "caf", "mov"),
         ])
-    { VerifiedWith = "WebKit 26.0 (Playwright build) on macOS arm64, driven by Playwright 1.55.0" };
+    { VerifiedWith = "WebKit 26.0 (Playwright build) on macOS arm64, driven by Playwright 1.55.0", AudioTargets = ["aac", "flac", "opus"] };
 
     /// <summary>
     /// The WebKit engine as Playwright builds it for Linux (WPE), whose media pipeline is GStreamer: it plays whatever the host's
@@ -123,7 +123,7 @@ public static class BrowserProfiles
             R("pcm", "wav", "aiff", "caf", "mov"),
             R("wmv2", "*"), R("wmav2", "*"),
         ])
-    { VerifiedWith = "WebKit 26.0 (Playwright WPE build) on Linux x64, driven by Playwright 1.55.0" };
+    { VerifiedWith = "WebKit 26.0 (Playwright WPE build) on Linux x64, driven by Playwright 1.55.0", AudioTargets = ["aac", "flac", "opus"] };
 
     /// <summary>
     /// Safari on iPhone and iPad (every iOS browser uses this engine), from Apple's and MDN's public documentation; not verified in a browser.
@@ -142,7 +142,7 @@ public static class BrowserProfiles
             R("opus", "mp4", "caf"),
             R("pcm", "wav", "aiff", "caf", "mov"),
         ])
-    { };
+    { AudioTargets = ["aac", "flac", "opus"] };
 
     /// <summary>
     /// Chrome on Android, from Chrome's and Android's public documentation; not verified in a browser. HEVC plays only where the device
@@ -177,7 +177,7 @@ public static class BrowserProfiles
             R("aac", "mp4") with { Profiles = [2] },
             R("mp3", "mp3", "mp4"),
         ])
-    { };
+    { AudioTargets = ["aac"] };
 
     /// <summary>Every built-in profile, in a stable order.</summary>
     public static IReadOnlyList<BrowserProfile> All { get; } = [Chrome, Chromium, Firefox, Safari, WebKitLinux, IosSafari, AndroidChrome, GenericMp4];

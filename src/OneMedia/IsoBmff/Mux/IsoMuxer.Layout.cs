@@ -326,6 +326,15 @@ public sealed partial class IsoMuxer
 
                 long mediaStart = Math.Max(0, priming - shift);
                 long lead = Math.Max(0, shift - priming);
+                if (priming > 0 && shift > 0)
+                {
+                    // The first kept sample sits `priming` into the media and is due `shift` after the start of the presentation: leave a gap of
+                    // `shift` and start the media at the priming, so the decoder's lead-in is never presented. (Starting at media time zero after a
+                    // gap of shift - priming would present the lead-in, which decoders that do not drop it, AAC among them, would play.)
+                    mediaStart = priming;
+                    lead = shift;
+                }
+
                 if (mediaStart != 0 || lead != 0 || padding != 0)
                 {
                     if (lead > 0)
