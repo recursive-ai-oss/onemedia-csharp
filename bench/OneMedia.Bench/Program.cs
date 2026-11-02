@@ -51,6 +51,13 @@ if (args[0] == "subsdump")
     return SubtitleDump.Run([.. args.Skip(1)]);
 }
 
+if (args[0] == "tagwsplit")
+{
+    // tagwsplit RELATIVE-PATH RUNS: plan, write and a bare copy timed apart, for tuning the tag-write rows.
+    WriteImpls.TagWriteSplit(Path.Combine(home, "corpus", args[1]), int.Parse(args[2], CultureInfo.InvariantCulture));
+    return 0;
+}
+
 if (args[0] == "crossread")
 {
     // crossread FILE: what ATL.NET and TagLib# read back from a file the tag-write check wrote.

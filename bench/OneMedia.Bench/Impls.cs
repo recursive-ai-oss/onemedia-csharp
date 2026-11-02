@@ -50,38 +50,8 @@ internal static class Impls
 
     // ---- OneMedia ---------------------------------------------------------------------------------------------------------
 
-    /// <summary>
-    /// The formats registered for the rows. When the ISO BMFF and Matroska readers exist, add them here, one line each.
-    /// </summary>
-    public static MediaFormatRegistry? OurRegistry()
-    {
-        MediaFormatRegistry registry = new();
-        registry.Add(new RecursiveAI.OneMedia.IsoBmff.IsoBmffFormat());
-        registry.Add(new RecursiveAI.OneMedia.Matroska.MatroskaFormat());
-        registry.Add(new RecursiveAI.OneMedia.Asf.AsfFormat());
-        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Id3AudioFormat());
-        registry.Add(new RecursiveAI.OneMedia.AudioStreams.MpegAudioFormat());
-        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AdtsFormat());
-        registry.Add(new RecursiveAI.OneMedia.AudioStreams.Ac3Format());
-        registry.Add(new RecursiveAI.OneMedia.AudioStreams.AmrFormat());
-        registry.Add(new RecursiveAI.OneMedia.Ogg.OggFormat());
-        registry.Add(new RecursiveAI.OneMedia.Flac.FlacFormat());
-        registry.Add(new RecursiveAI.OneMedia.Flv.FlvFormat());
-        registry.Add(new RecursiveAI.OneMedia.Riff.WavFileFormat());
-        registry.Add(new RecursiveAI.OneMedia.Aiff.AiffFileFormat());
-        registry.Add(new RecursiveAI.OneMedia.Caf.CafFileFormat());
-        registry.Add(new RecursiveAI.OneMedia.Avi.AviFormat());
-        registry.Add(new RecursiveAI.OneMedia.Dv.DvFormat());
-        foreach (IMediaFormatSniffer s in registry.Formats)
-        {
-            if (s is IMediaFormat)
-            {
-                return registry;
-            }
-        }
-
-        return null;
-    }
+    /// <summary>The registry every caller of <c>Media.Open</c> gets, so the rows pay what a user pays to find the format.</summary>
+    public static MediaFormatRegistry? OurRegistry() => MediaFormats.Default;
 
     private static readonly Lazy<MediaFormatRegistry?> Registry = new(OurRegistry);
 
