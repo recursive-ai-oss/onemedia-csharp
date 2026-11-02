@@ -202,13 +202,23 @@ public enum TimeZoneCertainty
 /// <param name="Certainty">What the writer said about the zone.</param>
 public readonly record struct MediaDateTime(DateTime Value, int? OffsetMinutes, TimeZoneCertainty Certainty)
 {
-    /// <summary>The instant, when the zone is known (UTC or an explicit offset); otherwise <c>null</c>.</summary>
-    public DateTimeOffset? ToDateTimeOffset() => Certainty switch
+    /// <summary>The instant, when the zone is known (UTC or an explicit offset); otherwise <c>null</c>. Also <c>null</c> when the offset is beyond ±14 hours or the instant is outside the range of <see cref="DateTimeOffset"/> (a hostile file can state either).</summary>
+    public DateTimeOffset? ToDateTimeOffset()
     {
-        TimeZoneCertainty.Utc => new DateTimeOffset(DateTime.SpecifyKind(Value, DateTimeKind.Utc)),
-        TimeZoneCertainty.Offset when OffsetMinutes is { } m => new DateTimeOffset(DateTime.SpecifyKind(Value, DateTimeKind.Unspecified), TimeSpan.FromMinutes(m)),
-        _ => null,
-    };
+        try
+        {
+            return Certainty switch
+            {
+                TimeZoneCertainty.Utc => new DateTimeOffset(DateTime.SpecifyKind(Value, DateTimeKind.Utc)),
+                TimeZoneCertainty.Offset when OffsetMinutes is { } m => new DateTimeOffset(DateTime.SpecifyKind(Value, DateTimeKind.Unspecified), TimeSpan.FromMinutes(m)),
+                _ => null,
+            };
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
 
     /// <inheritdoc />
     public override string ToString() => Certainty switch

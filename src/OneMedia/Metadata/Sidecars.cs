@@ -231,8 +231,9 @@ public static class Sidecars
                 }
             }
         }
-        catch (XmlException e)
+        catch (Exception e) when (e is XmlException or ArgumentException)
         {
+            // XmlReader raises ArgumentException (not XmlException) from its encoding detection on some malformed declarations; found by fuzzing.
             set.Defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, -1, "The Sony XML file is not well-formed XML: " + e.Message, "sidecar.xml-malformed");
         }
 

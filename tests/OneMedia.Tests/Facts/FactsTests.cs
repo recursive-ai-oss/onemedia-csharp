@@ -525,3 +525,43 @@ public class FactsFixtureTests
         Assert.Equal(new DateTime(2023, 2, 24, 8, 47, 37, 832), e.CaptureTime.Single().Value.Value);
     }
 }
+
+public class FactsFuzzRegressionTests
+{
+    private static string Dir(string target) => Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", target);
+
+    [Fact]
+    public void ExifRepros()
+    {
+        foreach (string f in Directory.GetFiles(Dir("exif")))
+        {
+            byte[] data = File.ReadAllBytes(f);
+            if (ExifBlock.TryParse(data, 0, MediaLimits.Default, new DefectLog(), out ExifBlock b))
+            {
+                EvidenceSet set = b.ToEvidence();
+                _ = DefaultFactResolver.Instance.Resolve(new FactEvidence().With(set));
+            }
+        }
+    }
+
+    [Fact]
+    public void SidecarRepros()
+    {
+        foreach (string f in Directory.GetFiles(Dir("sidecars")))
+        {
+            ReadOnlyMemory<byte> data = File.ReadAllBytes(f).AsMemory(1);
+            _ = Sidecars.ReadXmp(data);
+            _ = Sidecars.ReadSonyXml(data);
+            _ = Sidecars.ReadDjiSrt(data);
+            _ = Sidecars.Read(data);
+        }
+    }
+
+    [Fact]
+    public void OffsetBeyondFourteenHoursHasNoInstant()
+    {
+        Assert.True(MediaDateTime.TryParse("2023-04-05T10:00:00+22:00", out MediaDateTime dt, out _));
+        Assert.Null(dt.ToDateTimeOffset());
+        Assert.Equal(TimeSpan.FromHours(2), MediaDateTime.TryParse("2023-04-05T10:00:00+02:00", out MediaDateTime ok, out _) ? ok.ToDateTimeOffset()!.Value.Offset : default);
+    }
+}
