@@ -1011,6 +1011,26 @@ public sealed class RemuxSession : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// Ends the current fragment of a fragmented MP4 or CMAF output now, so the next packet starts a new <c>moof</c>. Meant to be called from the
+    /// <see cref="RemuxOptions.Observer"/> (which runs just before a packet is written) or between packets. Does nothing before the output has started,
+    /// and for the other containers it only pushes buffered bytes to the destination.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    /// <exception cref="InvalidOperationException">After <see cref="Finish"/>.</exception>
+    public void EndFragment(CancellationToken cancellationToken = default)
+    {
+        if (_finished)
+        {
+            throw new InvalidOperationException("The session is finished.");
+        }
+
+        if (_started)
+        {
+            _muxer!.Flush(cancellationToken);
+        }
+    }
+
     /// <summary>Completes the output and returns the report.</summary>
     /// <param name="cancellationToken">Cancels the write; the output is then incomplete.</param>
     /// <returns>What was written and what did not carry over.</returns>
@@ -1076,6 +1096,9 @@ public sealed class RemuxSession : IDisposable
 
     /// <summary>The input tracks this session was made for.</summary>
     public IReadOnlyList<MediaTrack> InputTracks => _inputTracks;
+
+    /// <summary>True once the output has started (the configurations are known and the tracks are declared).</summary>
+    internal bool Started => _started;
 
     /// <summary>The destination stream.</summary>
     public Stream Output => _output;
