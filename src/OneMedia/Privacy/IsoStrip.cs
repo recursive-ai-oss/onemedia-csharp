@@ -41,9 +41,13 @@ internal static class IsoStrip
             {
                 ScrubValue(source, tag, options, sink, secrets, static (b, off, tr, cs, sk) => TelemetryScrub.Gpmf(b, off, "udta", tr, cs, sk));
             }
-            else if (tag.System == TagSystems.QuickTimeUserData && tag.Key.Equals("Exif", StringComparison.OrdinalIgnoreCase) && !tag.ValueRange.IsNone)
+        }
+
+        foreach (ITagContainer c in meta.Containers)
+        {
+            if (c.System == TagSystems.QuickTimeUserData)
             {
-                ScrubValue(source, tag, options, sink, secrets, static (b, off, tr, cs, sk) => TiffScrub.Scrub(b, off, "exif", tr, cs, sk));
+                ScrubExifAtoms(source, c, options, sink, ct);
             }
         }
 
@@ -53,11 +57,36 @@ internal static class IsoStrip
             ScrubXmp(source, x, cats, sink);
         }
 
+        // What the facts layer found as serial numbers and positions is searched for by value in the data tracks too.
+        if ((cats & StripCategories.DeviceIds) != 0)
+        {
+            foreach (Metadata.FactCandidate<string> c in meta.Facts.Serial.Candidates)
+            {
+                AddSecret(secrets, StripCategories.DeviceIds, "facts:" + c.Source, c.Value);
+            }
+        }
+
+        if ((cats & StripCategories.Location) != 0)
+        {
+            foreach (Metadata.FactCandidate<Metadata.GeoLocation> c in meta.Facts.Location.Candidates)
+            {
+                AddSecret(secrets, StripCategories.Location, "facts:" + c.Source, c.RawValue);
+            }
+        }
+
         ScrubTracks(file, options, secrets, sink, ct);
         sink.AddNote("Subtitle and text tracks are not inspected: position text that a recorder stores in them stays.");
         sink.AddNote("Key names in a QuickTime metadata key table (keys box) and in mebx sample entries stay; their values are gone.");
         sink.AddNote("Layout is unchanged: every changed range keeps its length and no other byte moved.");
         return new StripPlan(patches.ToPlan(source.Length), new StripReport(cats, sink.Entries(), sink.Leftovers, sink.Notes));
+    }
+
+    private static void AddSecret(List<Secret> secrets, StripCategories c, string name, string value)
+    {
+        if (value.Length >= 6 && !secrets.Any(x => x.Name == name && x.Bytes.AsSpan().SequenceEqual(Encoding.UTF8.GetBytes(value))))
+        {
+            secrets.Add(new Secret(c, name, Encoding.UTF8.GetBytes(value)));
+        }
     }
 
     private static void Remember(List<Secret> secrets, NativeTag tag, StripCategories c)
@@ -176,6 +205,40 @@ internal static class IsoStrip
             }
 
             pos += (int)step;
+        }
+    }
+
+    // Camera makers keep an Exif block in these user-data atoms (the same list the reader uses for Exif evidence); a few wrapper bytes may precede the TIFF header.
+    private static readonly string[] ExifAtoms = ["QVMI", "MVTG", "RMKN", "SIGM", "Exif"];
+
+    private static void ScrubExifAtoms(FileMediaSource source, ITagContainer udta, StripOptions options, StripSink sink, CancellationToken ct)
+    {
+        MediaLimits limits = options.Limits ?? MediaLimits.Default;
+        ByteRange r = udta.Range;
+        if (r.IsNone || r.Length < 8 || !BoxReader.TryRead(source, r.Offset, r.End, false, null, out BoxHeader box, ct))
+        {
+            return;
+        }
+
+        long at = box.PayloadOffset;
+        while (at < r.End && BoxReader.TryRead(source, at, r.End, false, null, out BoxHeader child, ct))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Array.IndexOf(ExifAtoms, BoxTypes.ToText(child.Type)) >= 0)
+            {
+                if (child.PayloadSize > limits.MaxTagBytes)
+                {
+                    sink.Leftover(options.Categories, "exif", BoxTypes.ToText(child.Type), udta.TrackId, new ByteRange(child.PayloadOffset, child.PayloadSize), "The atom is larger than the tag limit and was not read.");
+                }
+                else
+                {
+                    byte[] bytes = new byte[child.PayloadSize];
+                    source.ReadExactly(child.PayloadOffset, bytes, ct);
+                    TiffScrub.Scrub(bytes, child.PayloadOffset, "exif", udta.TrackId, options.Categories, sink, limits);
+                }
+            }
+
+            at = child.End;
         }
     }
 

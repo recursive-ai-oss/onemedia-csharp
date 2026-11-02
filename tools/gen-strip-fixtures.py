@@ -4,7 +4,7 @@
 Everything is made up from the published format descriptions; the coordinates are over open water and the serial numbers are invented. One file
 carries every place the strip looks at in an ISO base media file:
 
-  moov/udta   (c)xyz, loci, LENS, CAME, MUID, GUMI (GoPro-style atoms), GPMF (device-level KLV with CASN, MUID, LINF, CINF), Exif (TIFF with a GPS IFD
+  moov/udta   (c)xyz, loci, LENS, CAME, MUID, GUMI (GoPro-style atoms), GPMF (device-level KLV with CASN, MUID, LINF, CINF), QVMI (a TIFF block with a GPS IFD
               and a body serial number), and make/model-style atoms that must stay ((c)mak, (c)mod)
   moov/meta   QuickTime key table with location.ISO6709, content.identifier and a model key that stays
   uuid        an XMP packet with exif:GPS*, exif:BodySerialNumber, aux:SerialNumber, a Dublin Core title that stays
@@ -179,7 +179,7 @@ def build():
                 + struct.pack('>9I', 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000) + b'\0' * 24 + struct.pack('>I', 5))
     udta = box(b'udta', udta_text(b'\xa9xyz', LAT_LON) + udta_text(b'\xa9mak', b'Synthetic') + udta_text(b'\xa9mod', b'ONE') + loci()
                + box(b'LENS', LENS_SERIAL + b'\0' * 40) + box(b'CAME', CAMERA_HASH) + box(b'MUID', CAMERA_HASH + b'\0' * 16) + box(b'GUMI', CAMERA_HASH)
-               + box(b'GPMF', udta_gpmf()) + box(b'Exif', b'Exif\0\0' + tiff()))
+               + box(b'GPMF', udta_gpmf()) + box(b'QVMI', b'Exif\0\0' + tiff()))
     meta = box(b'meta', full(b'hdlr', 0, 0, struct.pack('>I', 0) + b'mdta' + b'\0' * 12 + b'\0')
                + full(b'keys', 0, 0, struct.pack('>I', 3) + b''.join(box(b'mdta', k.encode()) for k in
                    ('com.apple.quicktime.location.ISO6709', 'com.apple.quicktime.content.identifier', 'com.apple.quicktime.model')))

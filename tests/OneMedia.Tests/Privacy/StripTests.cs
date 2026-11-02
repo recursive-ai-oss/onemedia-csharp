@@ -271,7 +271,7 @@ public class StripTests
         Array.Fill(t, (byte)0x77, 150, 24);
         PatchSet patches = new();
         StripSink sink = new(patches);
-        Assert.True(TiffScrub.Scrub(t, 1000, "exif", 0, StripCategories.All, sink));
+        Assert.True(TiffScrub.Scrub(t.AsMemory(), 1000, "exif", 0, StripCategories.All, sink));
         EditPlan plan = patches.ToPlan(2000);
         byte[] file = new byte[2000];
         t.CopyTo(file, 1000);
@@ -297,7 +297,7 @@ public class StripTests
     {
         PatchSet p = new();
         StripSink sink = new(p);
-        Assert.False(TiffScrub.Scrub("not a tiff at all"u8, 0, "exif", 0, StripCategories.All, sink));
+        Assert.False(TiffScrub.Scrub("not a tiff at all"u8.ToArray(), 0, "exif", 0, StripCategories.All, sink));
         Random rnd = new(7);
         byte[] t = new byte[256];
         for (int round = 0; round < 500; round++)
@@ -305,7 +305,7 @@ public class StripTests
             rnd.NextBytes(t);
             "II*\0"u8.CopyTo(t);
             BinaryPrimitives.WriteUInt32LittleEndian(t.AsSpan(4), (uint)rnd.Next(0, 300));
-            TiffScrub.Scrub(t, 0, "exif", 0, StripCategories.All, new StripSink(new PatchSet()));
+            TiffScrub.Scrub(t.AsMemory(), 0, "exif", 0, StripCategories.All, new StripSink(new PatchSet()));
         }
     }
 
