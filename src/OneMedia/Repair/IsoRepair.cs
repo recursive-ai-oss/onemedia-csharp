@@ -750,6 +750,7 @@ internal static partial class IsoRepair
         foreach (TrackInfo t in tracks)
         {
             long[] o = offsets(t);
+            bool ended = false;   // a chunk of this track has been found cut off or missing: nothing after it may be present
             for (int i = 0; i < o.Length; i++)
             {
                 if (t.ChunkSizes[i] == 0)
@@ -761,7 +762,18 @@ internal static partial class IsoRepair
                 bool cut = o[i] + t.ChunkSizes[i] > input.Length;
                 if (o[i] >= input.Length && mdats.Count > 0 && o[i] > mdats[0].Start)
                 {
+                    if (i == 0)
+                    {
+                        return false; // a recording cut off before the track's first chunk is indistinguishable from offsets that are wrong
+                    }
+
+                    ended = true;
                     continue; // the whole chunk is missing
+                }
+
+                if (ended)
+                {
+                    return false;
                 }
 
                 if (o[i] <= 0 || o[i] >= input.Length || !mdats.Exists(x => o[i] >= x.Start && (cut ? o[i] < x.End : o[i] + t.ChunkSizes[i] <= x.End)))
@@ -771,6 +783,7 @@ internal static partial class IsoRepair
 
                 if (cut)
                 {
+                    ended = true;
                     continue;
                 }
 

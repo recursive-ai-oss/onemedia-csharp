@@ -42,6 +42,18 @@ internal static partial class IsoRepair
             return null;
         }
 
+        bool anySamples = false;
+        foreach (SampleCut c in cuts)
+        {
+            anySamples |= c.Samples > 0;
+        }
+
+        if (!anySamples)
+        {
+            report.Warn("No sample lies wholly inside the file; the tables were left as they were.");
+            return null;
+        }
+
         // the edit lists decide the track durations, so they are cut first
         for (int i = 0; i < tracks.Count; i++)
         {
