@@ -168,6 +168,21 @@ public sealed class WriterFixTests : IDisposable
         Assert.Equal(file, WriterTestSupport.Apply(strict.Build(), file));
     }
 
+    /// <summary>
+    /// A fuzz find (600 s run): a nested BW64 chunk stating 0xFFFFFFFF whose end lies past the end of the file, with no defect reported, got its size
+    /// rewritten to the clamped length when headers were regenerated for an untouched file.
+    /// </summary>
+    [Fact]
+    public void RegeneratingHeadersOfAnUntouchedRf64FileKeepsANestedAllOnesSizeThatRunsPastTheEnd()
+    {
+        byte[] raw = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "writer-riff", "writer-riff-nested-bw64-size-ffffffff-past-end.bin"));
+        byte[] file = raw[1..];
+        using MemoryMediaSource src = new(file);
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+        ChunkEditor strict = new(cf, src) { RewriteHeaders = true };
+        Assert.Equal(file, WriterTestSupport.Apply(strict.Build(), file));
+    }
+
     /// <summary>A fuzz find from the first fix: a nested BW64 whose ds64 size runs far past the end of the file is refused, not planned as a copy of bytes that do not exist.</summary>
     [Fact]
     public void RegeneratingHeadersWithADs64SizePastTheEndOfTheFileIsATypedRefusalOrAValidPlan()
