@@ -27,6 +27,7 @@ XiphFlvTargets.Register(targets);
 PcmTargets.Register(targets);
 WriterTarget.Register(targets);
 RemuxTarget.Register(targets);
+TsMuxTarget.Register(targets);
 TagWriteTarget.Register(targets);
 DateWriteTarget.Register(targets);
 FactsTargets.Register(targets);

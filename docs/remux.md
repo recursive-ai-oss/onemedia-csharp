@@ -1,7 +1,7 @@
 # Remux
 
 Normative description of how OneMedia copies the tracks of one container into another (`RecursiveAI.OneMedia.Remuxing`, `Media.Remux`, `onemedia remux`) and
-how it moves the movie box of an MP4 to the front (`Remuxer.Faststart`, `Media.Faststart`). Muxer rules: `docs/muxing.md`. Editors that change a file in place: `docs/writer.md`.
+how it moves the movie box of an MP4 to the front (`Remuxer.Faststart`, `Media.Faststart`). Muxer rules: `docs/muxing.md`; transport stream targets (`.ts`, `.m2ts`, `.mts`, `RemuxFormat.MpegTs`/`M2ts`): `docs/muxing-ts.md`. Editors that change a file in place: `docs/writer.md`.
 
 ## What a remux does
 

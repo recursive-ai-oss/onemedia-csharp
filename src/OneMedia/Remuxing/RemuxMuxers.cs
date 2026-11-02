@@ -19,6 +19,14 @@ internal static class RemuxMuxers
                         DateUtcNanoseconds = options.CreationTime is { } t ? (t.UtcTicks - new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks) * 100 : null,
                     },
                     options.Limits);
+            case RemuxFormat.MpegTs or RemuxFormat.M2ts:
+                return new RecursiveAI.OneMedia.MpegTs.MpegTsMuxer(
+                    output,
+                    new RecursiveAI.OneMedia.MpegTs.MpegTsMuxOptions
+                    {
+                        Layout = format == RemuxFormat.M2ts ? RecursiveAI.OneMedia.MpegTs.TsPacketLayout.M2ts192 : RecursiveAI.OneMedia.MpegTs.TsPacketLayout.Ts188,
+                        Limits = options.Limits,
+                    });
             default:
                 {
                     IsoFileKind kind = format switch

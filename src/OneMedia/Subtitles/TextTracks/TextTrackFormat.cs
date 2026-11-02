@@ -121,6 +121,12 @@ public static class TextTracks
             return TextTrackFormat.Unknown;
         }
 
+        if (target is RemuxFormat.MpegTs or RemuxFormat.M2ts)
+        {
+            // A transport stream holds none of the text track formats; the muxer refuses them and the report says so.
+            return source;
+        }
+
         if (target == RemuxFormat.WebM)
         {
             return TextTrackFormat.WebmWebVtt;
