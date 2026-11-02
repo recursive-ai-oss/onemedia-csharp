@@ -7,13 +7,13 @@
 #   tools/run-writer-review.sh fulldisk   needs `unshare -rm` (user namespaces); skipped with a message otherwise
 #   tools/run-writer-review.sh kill [rounds] [file]   kill -9 the tool at random points of an atomic replace
 #
-# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), W (work dir, default ~/onemedia/u35-review/w).
+# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), W (work dir, default ~/onemedia/writer-review/w).
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$HOME/dotnet10:${ONEMEDIA_ORACLES:-$HOME/onemedia/oracles/bin}:$PATH DOTNET_ROOT=$HOME/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
-W=${W:-$HOME/onemedia/u35-review/w}
-BIN=${BIN:-$HOME/onemedia/u35-review/bin}
+W=${W:-$HOME/onemedia/writer-review/w}
+BIN=${BIN:-$HOME/onemedia/writer-review/bin}
 mkdir -p "$W" "$BIN"
 TAGS() { dotnet "$BIN/onemedia.dll" tags "$@"; }
 sha() { sha256sum "$1" | cut -c1-16; }

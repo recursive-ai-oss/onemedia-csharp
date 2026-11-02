@@ -4,12 +4,12 @@
 #   tools/run-writer-review-tests.sh tests   build and run WriterReviewTests; every input/output pair is kept in $W/pairs
 #   tools/run-writer-review-tests.sh pairs   per pair: ffprobe packet hashes (equal?), ffprobe/MP4Box/mkvalidator errors, ExifTool warnings
 #
-# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), W (work dir, default ~/onemedia/u35-review/w).
+# Environment: ONEMEDIA_ORACLES (default ~/onemedia/oracles/bin), W (work dir, default ~/onemedia/writer-review/w).
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$HOME/dotnet10:${ONEMEDIA_ORACLES:-$HOME/onemedia/oracles/bin}:$PATH DOTNET_ROOT=$HOME/dotnet10 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
-W=${W:-$HOME/onemedia/u35-review/w}
+W=${W:-$HOME/onemedia/writer-review/w}
 mkdir -p "$W"
 
 case "${1:-}" in
