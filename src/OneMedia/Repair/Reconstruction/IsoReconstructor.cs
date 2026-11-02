@@ -952,7 +952,6 @@ public static class IsoReconstructor
         }
 
         // Audio first: it fixes the clock the video rate may be measured against.
-        double audioSeconds = 0;
         int audioTrack = -1;
         for (int t = 0; t < n; t++)
         {
@@ -970,7 +969,6 @@ public static class IsoReconstructor
             }
         }
 
-        _ = audioSeconds;
         for (int t = 0; t < n; t++)
         {
             if (setups[t].IsVideo && byTrack[t].Count > 0)
