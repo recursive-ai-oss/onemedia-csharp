@@ -17,7 +17,7 @@ internal static class RiffTagWriter
     public static TagWritePlan Plan(IMediaSource src, TagEdits edits, TagWriteOptions options, MediaLimits limits, CancellationToken ct)
     {
         ChunkFile cf = ChunkFile.TryOpen(src, limits, new DefectLog(limits)) ?? throw new MediaFormatException("Not a RIFF or IFF file.");
-        ChunkEditor editor = new(cf, src, limits);
+        ChunkEditor editor = new(cf, src, limits) { GrowthPadding = options.PaddingBytes };
         List<SystemWriteReport> reports = [];
         List<string> notes = [];
         ChunkLayout layout = cf.Layout;

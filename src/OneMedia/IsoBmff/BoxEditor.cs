@@ -43,6 +43,13 @@ public sealed class BoxEditor
     /// </summary>
     public bool RewriteHeaders { get; set; }
 
+    /// <summary>
+    /// Bytes of <c>free</c> box to leave after a box that has to grow, or after a box added where there was no padding to take it, so that a
+    /// later edit fits in place. Default 0 (no padding). Values below 8 (the smallest box) are treated as 0. An edit that fits the existing
+    /// layout, and a file that is not edited, never gain padding.
+    /// </summary>
+    public long GrowthPadding { get; set; }
+
     /// <summary>Replaces a box with a new box.</summary>
     /// <param name="node">The box to replace.</param>
     /// <param name="box">The complete new box (header included); its size field must match its length.</param>
@@ -218,6 +225,15 @@ public sealed class BoxEditor
         return null;
     }
 
+    // A box that had to grow leaves a little free space behind it, so that a later edit of the same box can be saved in place.
+    private void AddGrowthPadding(PieceList into)
+    {
+        if (GrowthPadding >= BoxBuilder.MinimumSize)
+        {
+            PaddingPieces.AddFree(into, GrowthPadding);
+        }
+    }
+
     private void PlanReplace(Rewriter rw, HashSet<BoxNode> consumed, Request r, ref long used, ref long available, ref long required)
     {
         BoxNode node = r.Node!;
@@ -234,7 +250,7 @@ public sealed class BoxEditor
         else if (m < n && n - m >= BoxBuilder.MinimumSize)
         {
             repl.AddData(box);
-            repl.AddData(BoxBuilder.CreateFree(n - m));
+            PaddingPieces.AddFree(repl, n - m);
             name += " (remainder kept as free box)";
         }
         else
@@ -247,7 +263,7 @@ public sealed class BoxEditor
                 repl.AddData(box);
                 if (f - (m - n) > 0)
                 {
-                    repl.AddData(BoxBuilder.CreateFree(f - (m - n)));
+                    PaddingPieces.AddFree(repl, f - (m - n));
                 }
 
                 used += m - n;
@@ -258,9 +274,15 @@ public sealed class BoxEditor
             {
                 // Does not fit: the box takes the size it needs and everything after it moves.
                 repl.AddData(box);
+                if (m > n)
+                {
+                    AddGrowthPadding(repl);
+                }
+
                 long free = next is not null && IsPadding(next) && !consumed.Contains(next) ? TotalSize(next) : 0;
                 available += free;
-                required += m > n ? Math.Max(1, m - n - free) : 1;
+                // A shrink that leaves a gap too small for a box header needs the rest of a header, or the exact old size.
+                required += m > n ? Math.Max(1, m - n - free) : BoxBuilder.MinimumSize - (n - m);
             }
         }
 
@@ -274,7 +296,7 @@ public sealed class BoxEditor
         PieceList repl = new();
         if (!r.Reclaim)
         {
-            repl.AddData(BoxBuilder.CreateFree(n));
+            PaddingPieces.AddFree(repl, n);
         }
 
         rw.AddSlot(node, node, repl, r.Reclaim ? $"remove '{node.TypeName}'" : $"clear '{node.TypeName}' to a free box");
@@ -309,7 +331,7 @@ public sealed class BoxEditor
             repl.AddData(box);
             if (f - m > 0)
             {
-                repl.AddData(BoxBuilder.CreateFree(f - m));
+                PaddingPieces.AddFree(repl, f - m);
             }
 
             used += m;
@@ -323,6 +345,7 @@ public sealed class BoxEditor
         required += Math.Max(1, m - free);
         PieceList added = new();
         added.AddData(box);
+        AddGrowthPadding(added);
         rw.AddAppendBox(parent, added);
     }
 

@@ -267,25 +267,26 @@ internal static class AsfTagWriter
         if (pad is null)
         {
             list.AddCopy(ext.Offset + HeaderExtensionHeader, extEnd - ext.Offset - HeaderExtensionHeader);
-            list.AddData(PaddingObject(newPad));
+            AddPaddingObject(list, newPad);
             return;
         }
 
         list.AddCopy(ext.Offset + HeaderExtensionHeader, pad.Offset - ext.Offset - HeaderExtensionHeader);
         if (newPad > 0)
         {
-            list.AddData(PaddingObject(newPad));
+            AddPaddingObject(list, newPad);
         }
 
         list.AddCopy(pad.Offset + pad.Size, extEnd - pad.Offset - pad.Size);
     }
 
-    private static byte[] PaddingObject(long size)
+    // The padding object: its header, then zeros that are generated when the file is written.
+    private static void AddPaddingObject(PieceList list, long size)
     {
-        byte[] b = new byte[size];
+        byte[] b = new byte[ObjectHeader];
         AsfGuids.Padding.TryWriteBytes(b);
         BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(16), (ulong)size);
-        return b;
+        list.AddPadding(b, size - ObjectHeader);
     }
 
     private static byte[] Wrap(Guid id, byte[] body)

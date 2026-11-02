@@ -168,6 +168,11 @@ internal static class TagsCommand
             Console.WriteLine("note: " + n);
         }
 
+        foreach (string warning in report.Warnings)
+        {
+            Console.WriteLine("warning: " + warning);
+        }
+
         if (report.Write is { } w)
         {
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{w.Mode}: {w.BytesWritten} byte(s) written, {w.BytesCopied} copied"));

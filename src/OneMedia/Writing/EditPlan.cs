@@ -93,6 +93,24 @@ public sealed class OutputPiece
     }
 }
 
+/// <summary>Writes a run of zero bytes while the file is written, so padding of any size costs a small buffer and no allocation.</summary>
+internal sealed class ZeroFill(long length) : IPieceGenerator
+{
+    private static readonly byte[] Zeros = new byte[64 * 1024];
+
+    public void Write(Stream output, IMediaSource source, CancellationToken cancellationToken)
+    {
+        long remaining = length;
+        while (remaining > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int n = (int)Math.Min(remaining, Zeros.Length);
+            output.Write(Zeros, 0, n);
+            remaining -= n;
+        }
+    }
+}
+
 /// <summary>One change a plan makes, for the write-back report.</summary>
 /// <param name="Description">What changed, in words (for example <c>replace 'udta'</c>).</param>
 /// <param name="Source">The range of the original file that is replaced, removed or moved; <see cref="ByteRange.None"/> for an insertion.</param>
@@ -293,6 +311,22 @@ internal sealed class PieceList
 
         _pieces.Add(OutputPiece.Data(bytes));
         Length += bytes.Length;
+    }
+
+    /// <summary>Adds a run of zero bytes that is generated while writing, not held.</summary>
+    public void AddZeros(long length)
+    {
+        if (length > 0)
+        {
+            AddGenerated(length, new ZeroFill(length));
+        }
+    }
+
+    /// <summary>Adds a padding element: its header bytes followed by <paramref name="zeros"/> generated zero bytes.</summary>
+    public void AddPadding(ReadOnlyMemory<byte> header, long zeros)
+    {
+        AddData(header);
+        AddZeros(zeros);
     }
 
     public void AddGenerated(long length, IPieceGenerator generator)

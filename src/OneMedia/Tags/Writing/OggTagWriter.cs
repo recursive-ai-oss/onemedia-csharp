@@ -103,7 +103,7 @@ internal static class OggTagWriter
         packets[commentIndex] = kind switch
         {
             "vorbis" => [3, .. "vorbis"u8.ToArray(), .. cr.Block, 1],
-            "opus" => [.. "OpusTags"u8.ToArray(), .. cr.Block],
+            "opus" => OpusTagsPacket(cr.Block, old.Length, options.PaddingBytes),
             _ => [(byte)(old[0] & 0x7F | (old[0] & 0x80)), (byte)(cr.Block.Length >> 16), (byte)(cr.Block.Length >> 8), (byte)cr.Block.Length, .. cr.Block],
         };
 
@@ -131,6 +131,18 @@ internal static class OggTagWriter
 
         EditPlan plan = list.ToPlan(src.Length, 0, 0, Math.Max(0, pages.Sum(p => p.Length) - (pos - first.Length)));
         return new TagWritePlan(plan, new TagWriteReport([cr.Report], delta != 0 ? [$"The header pages changed from {pageCount} to {pages.Count}; later pages of the stream were renumbered and re-checksummed."] : []));
+    }
+
+    // RFC 7845 §5.2: the comment header may end in zero padding after the user comment list. A packet that fits the old length keeps it, so the
+    // pages stay as they were and the edit can be saved in place; a packet that grows leaves some padding for the next edit.
+    private static byte[] OpusTagsPacket(byte[] comments, int oldLength, int growthPadding)
+    {
+        int used = 8 + comments.Length;
+        int total = used <= oldLength ? oldLength : used + Math.Max(0, growthPadding);
+        byte[] packet = new byte[total];
+        "OpusTags"u8.CopyTo(packet);
+        comments.CopyTo(packet, 8);
+        return packet;
     }
 
     private static (Page Page, byte[] Body)? ReadPage(IMediaSource src, long offset)

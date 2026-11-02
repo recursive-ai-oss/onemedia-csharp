@@ -315,17 +315,24 @@ internal static class FlacTagWriter
 
         if (padding > 0)
         {
-            byte[] pad = new byte[padding];
+            // A PADDING block (type 1, last): its header, then zeros that are generated when the file is written.
+            byte[] pad = new byte[4];
             pad[0] = 0x81;
             pad[1] = (byte)((padding - 4) >> 16);
             pad[2] = (byte)((padding - 4) >> 8);
             pad[3] = (byte)(padding - 4);
-            list.AddData(pad);
+            list.AddPadding(pad, padding - 4);
         }
 
         list.NoteChange("FLAC metadata blocks", new ByteRange(start + 4, oldMeta), outStart);
         list.AddCopy(metaEnd, src.Length - metaEnd);
         long required = Math.Max(0, content - (oldMeta - oldPadding));
+        if (content < oldMeta && oldMeta - content < 4)
+        {
+            // A gap smaller than a block header cannot be filled: the block needs the rest of a header, or the exact old size.
+            required = 4 - (oldMeta - content);
+        }
+
         EditPlan plan = list.ToPlan(src.Length, Math.Min(oldPadding, Math.Max(0, content - (oldMeta - oldPadding))), oldPadding, required);
         List<SystemWriteReport> reports = [cr.Report with { Conversions = conv }];
         if (edits.PictureEdits.Any())

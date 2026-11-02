@@ -90,17 +90,20 @@ kill)
   # a reference result of an uninterrupted replace, to compare complete outcomes with
   cp big.mp4 ref.mp4; s=$(date +%s%N); TAGS ref.mp4 --set title=Killed --replace >/dev/null; e=$(date +%s%N); ref=$(sha ref.mp4)
   total_ms=$(( (e - s) / 1000000 )); say "uninterrupted replace: ${total_ms} ms (includes start-up)"
-  orig=0; done_=0; bad=0; strays=0
+  # Leftover temporary files are not deleted between rounds: the next save removes those of killed saves itself, so the count stays small.
+  orig=0; done_=0; bad=0; strays=0; maxstrays=0
   for i in $(seq 1 "$rounds"); do
     cp big.mp4 t.mp4
-    TAGS t.mp4 --set title=Killed --replace >/dev/null 2>&1 & p=$!
+    # exec, so that $! is the tool's own pid: a shell function in the background would leave the tool running after its subshell was killed.
+    ( exec dotnet "$BIN/onemedia.dll" tags t.mp4 --set title=Killed --replace >/dev/null 2>&1 ) & p=$!
     sleep "$(awk -v t=$total_ms -v r=$RANDOM 'BEGIN{printf "%.3f", (0.05 + 1.05*r/32767)*t/1000}')"
     kill -9 $p 2>/dev/null; wait $p 2>/dev/null
     h=$(sha t.mp4)
     if [ "$h" = "$h0" ]; then orig=$((orig+1)); elif [ "$h" = "$ref" ]; then done_=$((done_+1)); else bad=$((bad+1)); say "round $i: NEITHER (hash $h)"; fi
-    n=$(ls -a | grep -c 'onemedia-.*tmp'); strays=$((strays+n)); rm -f .t.mp4.onemedia-*.tmp
+    n=$(ls -a | grep -c 'onemedia-.*tmp'); strays=$((strays+n)); [ "$n" -gt "$maxstrays" ] && maxstrays=$n
   done
-  say "rounds=$rounds original=$orig complete=$done_ neither=$bad stray temp files seen=$strays"
+  say "rounds=$rounds original=$orig complete=$done_ neither=$bad stray temp files: sum of counts after each round=$strays, most at once=$maxstrays, left at the end=$(ls -a | grep -c 'onemedia-.*tmp')"
+  rm -f .t.mp4.onemedia-*.tmp
   ;;
 inplacekill)
   # kill -9 during SaveInPlace of a large cover into the padding of a moov box: what is left is the old file, the new file, or a torn one.
@@ -141,12 +144,12 @@ PY
   orig=0; done_=0; torn=0; bad=0
   for i in $(seq 1 "$rounds"); do
     cp base.mp4 t.mp4
-    TAGS t.mp4 --cover b.png --in-place >/dev/null 2>&1 & p=$!
+    ( exec dotnet "$BIN/onemedia.dll" tags t.mp4 --cover b.png --in-place >/dev/null 2>&1 ) & p=$!
     sleep "$(awk -v t=$total_ms -v r=$RANDOM 'BEGIN{printf "%.3f", (0.45 + 0.6*r/32767)*t/1000}')"
     kill -9 $p 2>/dev/null; wait $p 2>/dev/null
     h=$(sha t.mp4)
     if [ "$h" = "$h0" ]; then orig=$((orig+1)); elif [ "$h" = "$ref" ]; then done_=$((done_+1)); else
-      torn=$((torn+1)); n=$(ffprobe -v error -show_format t.mp4 2>&1 | wc -l); m=$(MP4Box -info t.mp4 2>&1 | grep -ciE 'error|invalid|corrupt'); say "round $i: torn; ffprobe error lines $n, MP4Box error lines $m, bytes differing from complete result: $(cmp -l t.mp4 ref.mp4 | wc -l)"; [ "$n" != 0 ] || [ "$m" != 0 ] && bad=$((bad+1))
+      torn=$((torn+1)); n=$(ffprobe -v error -show_format t.mp4 2>&1 | wc -l); m=$(MP4Box -info t.mp4 2>&1 | grep -ciE 'error|invalid|corrupt'); say "round $i: torn; ffprobe error lines $n, MP4Box error lines $m, size $(stat -c %s t.mp4) (complete: $(stat -c %s ref.mp4)), bytes differing from complete result: $(cmp -l t.mp4 ref.mp4 2>/dev/null | wc -l), from the original: $(cmp -l t.mp4 base.mp4 2>/dev/null | wc -l)"; [ "$n" != 0 ] || [ "$m" != 0 ] && bad=$((bad+1))
     fi
   done
   say "rounds=$rounds original=$orig complete=$done_ torn=$torn (of which unreadable: $bad)"
