@@ -44,15 +44,22 @@ Sniffers for the raw video kinds answer `Likely`, not `Certain`: an Annex B stre
 - **Keyframes.** From the bitstream: H.264 IDR pictures and recovery point SEI messages (the SEI is unescaped before its payload sizes are read), HEVC IRAP pictures, MPEG-2 I pictures,
   MPEG-4 Part 2 intra VOPs; and an H.264 intra picture that opens with a sequence parameter set (cameras that write no recovery point SEI mark GOP starts this way: `avchd_lite…MTS`),
   unless it is the second field of a frame. The adaptation field's `random_access_indicator` is not used: cameras set it inconsistently.
-- **Probe.** Reads from the front until every PMT has been seen and every track is described, but at most 5,000,000 bytes (`MpegTsDemuxer.ProbeLimitBytes`), then the last 1 MiB for the
-  duration. Service information (SDT, EIT) is read only from the probed front. A 2 GB transport stream therefore costs a fixed prefix and a fixed tail, not a scan.
+- **Probe.** Reads from the front until every PMT has been seen and every track is described, but at most 5,000,000 bytes (`MpegTsDemuxer.ProbeLimitBytes`, rounded up to the
+  256 KiB read window, so a probe that uses it reads 5,242,880), then the last 1 MiB for the duration. Service information (SDT, EIT) is read only from the probed front. A 2 GB transport
+  stream therefore costs a fixed prefix and a fixed tail, not a scan. **No range is read twice**: when the tables turn up after the first payloads (or are missing and the streams are
+  guessed), the probe reads the front again so that each stream's first frame describes it, and the second pass is answered from a copy of the first (at most 6.5 MB, rented only
+  while the stream opens). The one exception to the 5 MB bound is the search for program tables, below.
 - **Seeking** has no index to use: the file is bisected on the presentation time of the first video stream (to a 2 MiB window), then read forward to the last keyframe at or before the target.
 - **Descriptors.** Language (`0x0A`), registration (`0x05`), AC-3 (`0x6A`), E-AC-3 (`0x7A`), DTS (`0x7B`), AAC (`0x7C`), Opus/extension (`0x7F`) and the ISO 639 code identify
   codecs and languages; stream types map to codec ids in `TsStreamTypes`. `mpeg1video`, `mp2`, `mp1` and `aac-latm` are codec ids first used here.
 - **M2TS.** A 192-byte stream with an AAC or other private stream and no descriptor is identified by sniffing its first payload (`ProbingAssembler`).
   The probe buffers up to 8 KiB of the stream before it decides, because a capture that starts mid-frame shows its first AC-3 sync word (`0x0B77`, checked against the next frame's) only later.
-- **No tables.** A capture without PAT/PMT in its first packets (`foxksaz.ts`) is described by guessing from the PES stream ids; the search for tables runs for at most 24 MB. Tables that
-  arrive later rewind the read and replace the guesses. ATSC stream type `0x80` is MPEG-2 video unless the packets are M2TS or the program carries an `HDMV` registration (then LPCM); `0x81` is AC-3.
+- **No tables.** A capture without PAT/PMT in its first packets (`foxksaz.ts`, `test-ebu-422.40000.pakets.ts`) is described by guessing from the PES stream ids. A PAT and PMT that are
+  merely late get a longer search than the 5 MB the other work has: up to 6,000,000 bytes (`MpegTsDemuxer.ProbeLimitWithoutTablesBytes`). The corpus needs that much: `vid_0x80.ts` carries one PAT, at
+  5,573,260, and the PMT after it is read by 5.77 MB (the PMT PID also appears at 339,340, but a PMT seen before the PAT names no program, so it cannot be used). Past the bound the search stops with the defect `ts.tables-not-found`
+  (Info, at the first packet) and the streams are guessed; tables that arrive later are not looked for, because the probe has to stay bounded (an earlier version searched 24 MB and read
+  25.4 MB of `foxksaz.ts`, which has none). Tables that arrive inside the bound rewind the read and replace the guesses. ATSC stream type `0x80` is MPEG-2 video unless the packets are M2TS or the program
+  carries an `HDMV` registration (then LPCM); `0x81` is AC-3.
 - **Damaged streams.** A byte that is not `0x47` where a packet should start makes the reader search for the next place where packets line up; the tail scan for the duration does the same.
   A packet with `transport_error_indicator` set, or a repeated packet (same continuity counter and content), is dropped and reported; the unit that spans a loss is marked corrupt.
 

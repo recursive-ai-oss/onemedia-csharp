@@ -87,18 +87,6 @@ public sealed partial class IsoMuxer
             t.Fragment = bigger;
         }
 
-        if (t.FragmentLength + data.Length > t.FragmentData.Length)
-        {
-            byte[] bigger = ArrayPool<byte>.Shared.Rent(Math.Max(1 << 16, Math.Max(t.FragmentData.Length * 2, t.FragmentLength + data.Length)));
-            t.FragmentData.AsSpan(0, t.FragmentLength).CopyTo(bigger);
-            if (t.FragmentData.Length > 0)
-            {
-                ArrayPool<byte>.Shared.Return(t.FragmentData);
-            }
-
-            t.FragmentData = bigger;
-        }
-
         // §8.8.8.1 sample flags: is_leading(2) depends_on(2) is_depended_on(2) has_redundancy(2) padding(3) is_non_sync(1) degradation(16).
         // A sync sample depends on no other (depends_on 2); a non-sync sample does (1) and sets is_non_sync.
         uint flags = info.IsKeyframe ? 0x02000000u : 0x01010000u;
@@ -108,8 +96,7 @@ public sealed partial class IsoMuxer
         }
 
         t.Fragment[t.FragmentCount++] = new PendingSample { Dts = shifted, DeclaredDuration = declaredDuration, Size = data.Length, Flags = flags, CompositionOffset = composition };
-        data.CopyTo(t.FragmentData.AsSpan(t.FragmentLength));
-        t.FragmentLength += data.Length;
+        t.AppendFragmentData(data);
         _fragmentBytes += data.Length;
         _fragmentSamples++;
         t.Samples++;
@@ -289,6 +276,11 @@ public sealed partial class IsoMuxer
             }
         }
 
+        if (!_spoolFragments)
+        {
+            _out.Expect(moofSize + 8L + payload);
+        }
+
         Emit(b.AsSpan());
         Span<byte> mdat = stackalloc byte[8]; // fixed small buffer
         BinaryPrimitives.WriteUInt32BigEndian(mdat, (uint)(payload + 8));
@@ -299,9 +291,13 @@ public sealed partial class IsoMuxer
             MuxTrack t = _tracks[i];
             if (t.FragmentCount > 0)
             {
-                Emit(t.FragmentData.AsSpan(0, t.FragmentLength));
+                for (int c = 0; c < t.FragmentChunkCount; c++)
+                {
+                    Emit(t.FragmentChunk(c));
+                }
+
                 t.FragmentCount = 0;
-                t.FragmentLength = 0;
+                t.ClearFragmentData();
             }
         }
 

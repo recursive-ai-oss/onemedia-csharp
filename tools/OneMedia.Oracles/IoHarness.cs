@@ -11,6 +11,8 @@ internal sealed record IoRow(string File, long FileSize, string Tool, string Mod
 /// <summary>Counts what a reader asks of its source.</summary>
 internal sealed class CountingObserver : IMediaReadObserver
 {
+    // ONEMEDIA_IO_TRACE=1 prints every read (offset, bytes) to stderr, to see which ranges a probe reads twice.
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("ONEMEDIA_IO_TRACE") == "1";
     public long Calls;
     public long Bytes;
 
@@ -18,6 +20,10 @@ internal sealed class CountingObserver : IMediaReadObserver
     {
         Calls++;
         Bytes += returned;
+        if (Trace)
+        {
+            Console.Error.WriteLine($"read {offset} {returned}");
+        }
     }
 }
 

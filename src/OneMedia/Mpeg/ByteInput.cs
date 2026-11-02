@@ -19,6 +19,12 @@ internal sealed class ByteInput : IDisposable
     private long _bufferOffset; // file offset of _buffer[0]
     private bool _atEnd;
 
+    // Front cache: the bytes read from _cacheStart on, kept while a probe may rewind and read the same range again.
+    private byte[]? _cache;
+    private int _cacheLength;
+    private int _cacheLimit;
+    private long _cacheStart;
+
     public ByteInput(IMediaSource source, bool leaveOpen)
     {
         _random = source;
@@ -69,7 +75,7 @@ internal sealed class ByteInput : IDisposable
             while (_end < count && !_atEnd)
             {
                 int n = _random is not null
-                    ? _random.Read(_bufferOffset + _end, buffer.AsSpan(_end))
+                    ? ReadRandom(_bufferOffset + _end, buffer.AsSpan(_end))
                     : _forward!.Read(buffer.AsSpan(_end));
                 if (n <= 0)
                 {
@@ -83,6 +89,82 @@ internal sealed class ByteInput : IDisposable
         }
 
         return buffer.AsSpan(_start, Math.Min(count, _end - _start));
+    }
+
+    /// <summary>
+    /// Starts keeping the bytes read from the current position on, up to <paramref name="limit"/> bytes, so that a later <see cref="Seek"/>
+    /// back into that range is answered from memory and no byte is requested from the source twice. Random-access inputs only.
+    /// The memory (at most <paramref name="limit"/> bytes, grown as the data arrives) is returned by <see cref="EndCache"/>.
+    /// </summary>
+    public void BeginCache(int limit)
+    {
+        EndCache();
+        if (_random is null)
+        {
+            return;
+        }
+
+        _cacheStart = Position;
+        _cacheLimit = limit;
+        _cacheLength = 0;
+        _cache = ArrayPool<byte>.Shared.Rent(WindowSize);
+        // Whatever the window already holds from the current position belongs to the cache.
+        int held = _end - _start;
+        if (held > 0)
+        {
+            Append(_buffer!.AsSpan(_start, held));
+        }
+    }
+
+    /// <summary>Drops the front cache and returns its memory.</summary>
+    public void EndCache()
+    {
+        if (_cache is { } c)
+        {
+            _cache = null;
+            _cacheLength = 0;
+            ArrayPool<byte>.Shared.Return(c);
+        }
+    }
+
+    private int ReadRandom(long offset, Span<byte> destination)
+    {
+        if (_cache is not null && offset >= _cacheStart && offset < _cacheStart + _cacheLength)
+        {
+            int at = (int)(offset - _cacheStart);
+            int n = Math.Min(destination.Length, _cacheLength - at);
+            _cache.AsSpan(at, n).CopyTo(destination);
+            return n;
+        }
+
+        int read = _random!.Read(offset, destination);
+        if (_cache is not null && read > 0 && offset == _cacheStart + _cacheLength)
+        {
+            Append(destination[..read]);
+        }
+
+        return read;
+    }
+
+    private void Append(ReadOnlySpan<byte> bytes)
+    {
+        int n = Math.Min(bytes.Length, _cacheLimit - _cacheLength);
+        if (n <= 0)
+        {
+            return;
+        }
+
+        byte[] cache = _cache!;
+        if (_cacheLength + n > cache.Length)
+        {
+            byte[] bigger = ArrayPool<byte>.Shared.Rent(Math.Min(_cacheLimit, Math.Max(_cacheLength + n, cache.Length * 2)));
+            cache.AsSpan(0, _cacheLength).CopyTo(bigger);
+            ArrayPool<byte>.Shared.Return(cache);
+            _cache = cache = bigger;
+        }
+
+        bytes[..n].CopyTo(cache.AsSpan(_cacheLength));
+        _cacheLength += n;
     }
 
     public void Advance(int count)
@@ -153,6 +235,7 @@ internal sealed class ByteInput : IDisposable
 
     public void Dispose()
     {
+        EndCache();
         if (_buffer is { } b)
         {
             _buffer = null;

@@ -153,9 +153,41 @@ internal sealed class MuxTrack : IDisposable
 
     public int FragmentCount { get; set; }
 
-    public byte[] FragmentData { get; set; } = [];
+    // The payload of the open fragment is kept in fixed-size chunks that are reused from fragment to fragment, so a long fragment costs its own
+    // length once (no doubling chain of ever larger arrays) and the memory stays at the largest fragment so far.
+    private const int FragmentChunkSize = 1 << 18;
+    private readonly List<byte[]> _fragmentChunks = [];
 
-    public int FragmentLength { get; set; }
+    /// <summary>Bytes of sample data in the open fragment.</summary>
+    public int FragmentLength { get; private set; }
+
+    /// <summary>Number of chunks that hold the open fragment's sample data.</summary>
+    public int FragmentChunkCount => (FragmentLength + FragmentChunkSize - 1) / FragmentChunkSize;
+
+    /// <summary>The bytes of chunk <paramref name="index"/>; every chunk but the last is full.</summary>
+    public ReadOnlySpan<byte> FragmentChunk(int index) => _fragmentChunks[index].AsSpan(0, Math.Min(FragmentChunkSize, FragmentLength - (index * FragmentChunkSize)));
+
+    /// <summary>Appends sample data to the open fragment.</summary>
+    public void AppendFragmentData(ReadOnlySpan<byte> data)
+    {
+        while (!data.IsEmpty)
+        {
+            int index = FragmentLength / FragmentChunkSize;
+            int at = FragmentLength % FragmentChunkSize;
+            if (index == _fragmentChunks.Count)
+            {
+                _fragmentChunks.Add(System.Buffers.ArrayPool<byte>.Shared.Rent(FragmentChunkSize));
+            }
+
+            int n = Math.Min(FragmentChunkSize - at, data.Length);
+            data[..n].CopyTo(_fragmentChunks[index].AsSpan(at));
+            FragmentLength += n;
+            data = data[n..];
+        }
+    }
+
+    /// <summary>Forgets the open fragment's sample data; the chunks stay for the next fragment.</summary>
+    public void ClearFragmentData() => FragmentLength = 0;
 
     public bool ForceLargeOffsets { get; set; }
 
@@ -252,11 +284,13 @@ internal sealed class MuxTrack : IDisposable
         SampleToChunk.Dispose();
         ChunkOffsets.Dispose();
         Dependencies?.Dispose();
-        if (FragmentData.Length > 0)
+        foreach (byte[] chunk in _fragmentChunks)
         {
-            System.Buffers.ArrayPool<byte>.Shared.Return(FragmentData);
-            FragmentData = [];
+            System.Buffers.ArrayPool<byte>.Shared.Return(chunk);
         }
+
+        _fragmentChunks.Clear();
+        FragmentLength = 0;
 
         if (Fragment.Length > 0)
         {
