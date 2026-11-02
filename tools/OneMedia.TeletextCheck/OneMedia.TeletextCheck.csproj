@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dumps the teletext subtitle cues of a transport stream as text for tools/teletext-compare.py. Never referenced from src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OneMedia.TeletextCheck</RootNamespace>
+    <AssemblyName>OneMedia.TeletextCheck</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+  </ItemGroup>
+
+</Project>

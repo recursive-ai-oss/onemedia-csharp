@@ -840,6 +840,16 @@ public sealed class MpegPsDemuxer : IDemuxer, IMetadataProvider
                 codec = new CodecId("dvd-subpicture");
                 tag = "dvd-subpicture";
             }
+            else if (sub is >= 0x10 and <= 0x1F)
+            {
+                // ETSI EN 300 472 §4.4: a teletext PES payload opens with a data_identifier in 0x10 to 0x1F. Recorders that keep DVB teletext
+                // in program streams put those PES packets in private stream 1 unchanged, so the first byte is the identifier, not a
+                // sub-stream id, and stays in the packet.
+                kind = TrackKind.Subtitle;
+                a = new PesPassthroughAssembler(index, _queue, _limits, _defects, keyframes: true);
+                codec = new CodecId("dvb-teletext");
+                tag = "dvb-teletext";
+            }
             else
             {
                 kind = TrackKind.Data;
