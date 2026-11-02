@@ -88,6 +88,19 @@ public static class Repairer
     internal static RepairReport RunEngine(string name, IMediaSource source, Stream destination, MediaLimits limits, CancellationToken cancellationToken)
     {
         using var reader = new RepairInput(source, cancellationToken);
+        try
+        {
+            return Dispatch(name, reader, destination, limits, cancellationToken);
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or IndexOutOfRangeException or OverflowException)
+        {
+            // a header field that points outside its own box: hostile or damaged beyond what the repairer can read
+            throw new MediaFormatException("A structure in the input is malformed beyond repair.", e);
+        }
+    }
+
+    private static RepairReport Dispatch(string name, RepairInput reader, Stream destination, MediaLimits limits, CancellationToken cancellationToken)
+    {
         return name switch
         {
             "matroska" => MatroskaRepair.Run(reader, destination, limits, cancellationToken),

@@ -336,6 +336,25 @@ public class RepairTests
         RepairAndCheck(Data("tiny.ts"), b[1234..(b.Length - 100)], ".ts", RepairStatus.Repaired, out _);
     }
 
+    // Inputs the fuzzer found that once escaped as untyped exceptions or reported Repaired with no output.
+    [Theory]
+    [InlineData("avi")]
+    [InlineData("isobmff")]
+    [InlineData("mpegts")]
+    public void FuzzReprosRaiseTypedErrorsOrConsistentReports(string format)
+    {
+        byte[] data = File.ReadAllBytes(Data("fuzz-" + format + ".bin"));
+        using MemoryStream output = new();
+        try
+        {
+            RepairReport r = Repairer.RunEngine(format, new MemoryMediaSource(data), output, MediaLimits.Default, CancellationToken.None);
+            Assert.Equal(r.OutputWritten, output.Length > 0);
+        }
+        catch (MediaException)
+        {
+        }
+    }
+
     private static int IndexOf(byte[] data, byte[] pattern) => data.AsSpan().IndexOf(pattern);
 
     private static int LastIndexOf(byte[] data, byte[] pattern) => data.AsSpan().LastIndexOf(pattern);

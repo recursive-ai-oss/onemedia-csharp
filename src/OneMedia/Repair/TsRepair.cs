@@ -384,6 +384,12 @@ internal static class TsRepair
             }
 
             output.Flush();
+            if (output.Position == 0)
+            {
+                report.Warn("No packet of the input is intact enough to keep.");
+                return report.Build(RepairStatus.Unrepairable, 0);
+            }
+
             return report.Build(RepairStatus.Repaired, output.Position);
         }
     }
