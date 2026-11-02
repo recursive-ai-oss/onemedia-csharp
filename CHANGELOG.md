@@ -4,7 +4,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
-## [0.3.0-preview.1] - DRAFT (date set at release)
+## [0.3.0-preview.1] - 2026-11-02
 
 Writing, remux, editing and playability: the ISO and Matroska muxers, remux and faststart, trim/split/concat, tag editing in every system, `Save`/`SaveAs`/`SaveInPlace`, `CanPlay` and `MakePlayable`. `Save` replaces the file (new inode, the saver's owner and group; extended attributes, ACLs and hard links are not kept); `SaveInPlace` works within existing padding only and is not atomic. The ISO muxer and `CanPlay` shipped as previews in 0.2.0-preview.2 and are now covered by the writer and playback checks. Not in this release: MPEG-TS, WAV and ASF writing, subtitles, repair, packaging.
 
