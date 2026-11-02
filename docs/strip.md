@@ -42,7 +42,7 @@ device identifiers. This page states exactly what is looked for, what is done to
 | `udta` GoPro atoms `LENS`, `CAME`, `MUID`, `GUMI`, `BCID` | | whole atom |
 | `udta` `GPMF` device-level KLV: `CASN`, `MUID`, `LINF`, `CINF` | | value zeroed, key renamed `EMPT` |
 | `udta` `QVMI`, `MVTG`, `RMKN`, `SIGM`, `Exif`: embedded Exif (found with `ExifBlock`) | GPS directory emptied (count, entries, link and every GPS value zero) | `BodySerialNumber`, `LensSerialNumber`, `CameraOwnerName`, `ImageUniqueID`, `CameraSerialNumber`, `MakerNote`: value zero, tag id changed to 0xFFFF |
-| XMP (`uuid` BE7ACFCB…, `XMP_`): any property or attribute whose name contains `gps`, `latitude`, `longitude`, `location`, `geo`, `coordinates`; `photoshop:City/State/Country`; `Iptc4xmpCore:Location/CountryCode` | removed | `serial`, `uniqueid`, `owner`, `deviceid`, `imei`, `udid`, `exif:ImageUniqueID` removed |
+| XMP (`uuid` BE7ACFCB…, `XMP_`): any property or attribute whose name contains `gps`, `latitude`, `longitude`, `location`, `geo`, `coordinates`, or is the word `lat`, `lon`, `lng`; `photoshop:City/State/Country`; `Iptc4xmpCore:Location/CountryCode` | removed | `serial`, `uniqueid`, `owner`, `deviceid`, `imei`, `udid`, `exif:ImageUniqueID` removed |
 | `gpmd` track (GoPro GPMF) | `GPS5`, `GPS9`, `GPSU`, `GPSF`, `GPSP`, `GPSA`, `GPRI`, `GLPI`, `LNED`: value zeroed, key renamed `EMPT` | `CASN`, `MUID`, `LINF`, `CINF` likewise |
 | `camm` track | packet types 4 (local position), 5 (position), 6 (GPS): payload zeroed, type set to 0xFFFF | |
 | `mebx` track | atoms whose key (from the sample entry's key table) contains the location words above, including nested detected-face groups: value zeroed, local id set to 0 | atoms whose key names a serial/id |
@@ -59,12 +59,18 @@ are searched for in every data track that no decoder handles and in the unrefere
 Applied to the bytes of each subtitle/text sample, in order, then overlapping matches merged and blanked with spaces (the sample keeps its length):
 
 1. `key: value` or `key = value`, the key a whole word, case-insensitive: `latitude`, `longitude`, `lat`, `lon`, `lng`, `altitude`, `alt`, `abs_alt`,
-   `rel_alt`, `gps_alt` with a numeric value (key through value); `serial_number`, `serialnumber`, `serial number`, `serial`, `sn` with a word of at
-   least four characters (device IDs).
+   `rel_alt`, `gps_alt` with a numeric value (key through value); `latitude` and `longitude` may also be followed by spaces and the number alone
+   (`latitude 47.62`); `serial_number`, `serialnumber`, `serial number`, `serial`, `sn` with a word of at least four characters (device IDs).
 2. `GPS(…)` or `HOME(…)` (spaces allowed before the bracket) whose contents are only digits, `. , - + ; space m M`.
 3. ISO 6709 strings, `±DD[.d]±DDD[.d][±alt]/` (also the minute and second forms with 4/6 and 5/7 digits), the closing `/` required.
-4. Two decimals with at least three fraction digits, the first within ±90 and the second within ±180, separated by 1–3 of space, comma, semicolon.
+4. Two decimals with at least three fraction digits, the first within ±90 and the second within ±180, separated by up to six of: space, comma,
+   semicolon, tab, line break, a degree sign, and a lone hemisphere letter `N S E W` (`47.62° N, 122.34° W`).
    A number that is the tail of a longer number or word, or followed by a second point (`1.2.345`), does not count.
+5. Degrees, minutes and optional seconds with marks (`47°37'14.8"N`, `47° 37' 14.8" N`; UTF-8 degree sign, ASCII or prime marks), with a hemisphere
+   letter when one follows.
+
+WebVTT cues in ISO files (`wvtt`) are read past their box headers (`vttc`, `payl`, ...), which would otherwise glue to the first word of a cue. Text
+that starts with a UTF-16 byte order mark (3GPP timed text may be UTF-16) is read as UTF-16 and blanked with UTF-16 spaces.
 
 Ordinary subtitle text (times, `1.5`, version numbers, the word "latitude" without a value) is left alone; the tests list the cases. A pair of
 decimals that is not a position (for instance `12.345 6.789` in a caption) is blanked all the same: the rule prefers removing to missing. Standalone
@@ -90,19 +96,24 @@ bytes), follows each H.264 PID, looks in the first 8 KiB of every PES packet for
   A recorder that stores such data elsewhere is not covered.
 - An SEI message that runs past the first 8 KiB of its PES packet is not searched: the report lists it in `NotRemoved`. MDPM in an MP4/MOV (some
   cameras write it there) is not looked for.
+- Bytes dropped or inserted in a recording move the packets after them off the packet grid; the scan then looks for the next run of sync bytes one
+  packet apart and goes on, so the packets after the damage are searched too.
 - Only H.264 video PIDs are followed; MPEG-2 video and other PIDs are not inspected.
 
 ### Other formats
 
 Matroska, ID3, APE, Vorbis comments, RIFF INFO, ASF: every native tag whose key contains one of the words above (`location`, `gps`, `latitude`,
-`longitude`, `serial`, `uniqueid`, `owner`, …; RIFF `IARL`) is removed through the tag writer for that format (`docs/tag-writing.md` describes what it
-rewrites). The report lists them as `Removed`. Where the tag writer refuses a file, the tags are listed in `NotRemoved`. Position or serial data inside
+`longitude`, `serial`, `uniqueid`, `owner`, …; the whole tokens `lat`, `lon`, `lng`, `gnss`, `sn`; RIFF `IARL`; ID3 `TOWN`) is removed through the tag
+writer for that format (`docs/tag-writing.md` describes what it rewrites). In Matroska the removal reaches every copy: tags aimed at a track, chapter,
+edition or attachment, and SimpleTags nested under another. The report lists them as `Removed`. A Matroska Tags element that no SeekHead entry points to
+(after the last Cluster) is invisible to the tag layer; the strip finds it by hopping over the top-level elements and lists it in `NotRemoved`. Where the tag writer refuses a file, the tags are listed in `NotRemoved`. Position or serial data inside
 the streams of these formats is not inspected, except subtitle text (above).
 
 **Layout of these edits (measured on the test files).** The Matroska tag writer turns a removed `SimpleTag` into a `Void` element of the same size and
 fixes the checksum of its parent, so a Matroska strip keeps the layout (`IsSameLayout`; `SaveInPlace` works). The ID3v2 writer keeps the tag's size when
 the remaining frames fit and zeroes the rest as padding, so an MP3 strip keeps the layout too; for that the strip passes no extra padding. Other writers
-(Vorbis, RIFF, APE, ASF) rewrite their tag area and may move bytes: `SaveInPlace` then refuses with `PaddingRequired`. (Frames removed from the end of an
+(Vorbis, RIFF, APE, ASF) rewrite their tag area and may move bytes: `SaveInPlace` then refuses with `PaddingRequired`, leaving the file untouched
+(on the review's test files FLAC, Ogg Opus, WAV and MP3 fitted and matched `SaveAs` byte for byte; a chained Ogg refused). (Frames removed from the end of an
 ID3 tag used to stay in the file as stale bytes inside the padding; the writer now notices and clears them.)
 
 ## Neutral values
@@ -112,7 +123,21 @@ packets are renamed to an unassigned type, GPMF keys to `EMPT`, mebx atoms to lo
 
 ## Not covered (and what the report says)
 
-- Text that matches none of the text rules (a place name in a subtitle, a position written in words). Subtitle blocks in Matroska and the other non-ISO
+Found by the review (`docs/strip-review.md`) and left on purpose or for lack of a layout; none of these is reported unless said so:
+
+- Names the key rules do not know: a custom `mdta` key such as `com.example.position`, `unit_id` or `hardware.id`; ID3 `TXXX`/`GEOB`/`PRIV` frames
+  with unlisted descriptions; RIFF INFO `ISRC`/`IENG`, BWF `bext` originator fields; Matroska track names and titles.
+- Free text: a comment, title or description that contains a coordinate or serial (ISO `©cmt`/`©des`, XMP `dc:description`, Vorbis `COMMENT`, ID3 `COMM`,
+  ID3v1 comment, Matroska `Title`).
+- Positions written as decimal comma (`47,6205 -122,3493`), degrees with plain spaces (`N 47 37 14.8`), full-width digits, UTM/MGRS, plus codes, geo URIs
+  and addresses in subtitle text.
+- Placements the tag layer does not read: a `udta` outside `moov`/`trak`, `udta` or `meta` inside a `traf`, an `xml ` box in `meta`, upper-case
+  `©XYZ`/`LOCI`, a GPS IFD reached from the Exif IFD instead of IFD0, an Exif block in an unlisted atom or a `uuid` box (Canon CMT), bytes appended after
+  the last box, vendor atoms (`gps ` NMEA, Samsung trailers), unknown data tracks (Sony `rtmd`; the report names them in its notes).
+- XMP packets that are not UTF-8: reported in `NotRemoved`.
+- A chained Ogg file: only the first logical stream's comments are read and edited; a later link's comments stay.
+
+- Text that matches none of the text rules (a place name in a subtitle, a position written in words, text in a script the rules do not know). Subtitle blocks in Matroska and the other non-ISO
   formats are only reported, not edited. Standalone subtitle files.
 - DJI's `dbgi` debug track (undocumented layout): not inspected; the report lists it in `NotRemoved`. Fields of `djmd` messages the decoder does not map
   (GPS time, home point, quaternions): not touched; a protocol name not in the decoder's table is reported in `NotRemoved`.
