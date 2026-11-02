@@ -52,7 +52,7 @@ public sealed class MakePlayableTests : IDisposable
         Assert.False(before.Progressive.Plays);
         MakePlayableReport r = PlayableMaker.MakePlayable(src, Out("v.webm"), BrowserProfiles.Firefox);
         Assert.Equal(MakePlayableStatus.Made, r.Status);
-        Assert.Equal(Remuxing.RemuxFormat.WebM, r.Target);
+        Assert.Equal(global::RecursiveAI.OneMedia.Remuxing.RemuxFormat.WebM, r.Target);
         Assert.Empty(r.AudioTranscodes);
         Assert.True(r.After!.Progressive.Plays);
         Assert.Contains(r.Actions, a => a.Kind == MakePlayableActionKind.Remux);
@@ -65,7 +65,7 @@ public sealed class MakePlayableTests : IDisposable
         // Chromium plays MP3 in MP4 but not in Matroska.
         MakePlayableReport r = PlayableMaker.MakePlayable(Data("audio", "mp3.mka"), Out("m.mp4"), BrowserProfiles.Chromium, WithAudio);
         Assert.Equal(MakePlayableStatus.Made, r.Status);
-        Assert.Equal(Remuxing.RemuxFormat.Mp4, r.Target);
+        Assert.Equal(global::RecursiveAI.OneMedia.Remuxing.RemuxFormat.Mp4, r.Target);
         Assert.Empty(r.AudioTranscodes);
         Assert.Equal(Packets(Data("audio", "mp3.mka")).Select(p => p.Data), Packets(Out("m.mp4")).Select(p => p.Data));
     }
@@ -160,5 +160,16 @@ public sealed class MakePlayableTests : IDisposable
         File.WriteAllText(Out("x.webm"), "x");
         Assert.Throws<IOException>(() => PlayableMaker.MakePlayable(src, Out("x.webm"), BrowserProfiles.Chromium));
         Assert.Equal(MakePlayableStatus.AlreadyPlayable, PlayableMaker.MakePlayable(src, Out("x.webm"), BrowserProfiles.Chromium, new MakePlayableOptions { Overwrite = true }).Status);
+    }
+
+    [Fact]
+    public void TheOutputExtensionsContainerIsTriedFirst()
+    {
+        MakePlayableReport r = PlayableMaker.MakePlayable(Data("audio", "aac.m4a"), Out("pref.mka"), BrowserProfiles.Chromium,
+            new MakePlayableOptions { AudioTranscoder = AudioTranscoder.Default, PreferredTarget = global::RecursiveAI.OneMedia.Remuxing.RemuxFormat.Matroska });
+        Assert.Equal(MakePlayableStatus.Made, r.Status);
+        Assert.Equal(global::RecursiveAI.OneMedia.Remuxing.RemuxFormat.Matroska, r.Target);
+        using MediaFile f = Media.Open(Out("pref.mka"));
+        Assert.Equal(MediaFormatId.Matroska, f.Format);
     }
 }

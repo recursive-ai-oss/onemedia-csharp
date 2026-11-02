@@ -12,7 +12,7 @@ internal static class PlayableCommand
     public const string Usage =
         "       onemedia playable <in> <out> [--profile id] [--no-transcode] [--bitrate bits-per-second] [--overwrite]\n"
         + "                      make a file play in a browser profile (default generic-mp4; ids: chrome chromium firefox safari webkit-linux ios-safari android-chrome generic-mp4):\n"
-        + "                      move the movie box first or remux, and re-encode audio to Opus if that is what blocks it; video is never re-encoded.\n"
+        + "                      move the movie box first or remux (into the container the output's extension names if the profile plays it), and re-encode audio to Opus if that is what blocks it; video is never re-encoded.\n"
         + "                      exit 0 when the output plays, 1 when it cannot be made playable (blockers are listed)";
 
     public static int Run(string[] args)
@@ -47,6 +47,7 @@ internal static class PlayableCommand
                 AudioTranscoder = transcode ? AudioTranscoder.Default : null,
                 AudioBitRate = bitRate,
                 Overwrite = overwrite,
+                PreferredTarget = Remuxing.Remuxer.FormatForPath(output),
             });
             Print(r);
             return r.OutputWritten ? 0 : 1;

@@ -403,7 +403,15 @@ internal sealed class OpusTranscode : IAudioTranscode
         _cancellation.ThrowIfCancellationRequested();
         while (_queued < Frame && !_eof)
         {
-            Pull();
+            try
+            {
+                Pull();
+            }
+            catch (OneAudioException e)
+            {
+                // The decoder met bytes it cannot decode part-way through; the caller sees a media error, not a OneAudio one.
+                throw new MediaFormatException($"Audio track {Track.Index} cannot be decoded: {e.Message}");
+            }
         }
 
         if (_queued < Frame)

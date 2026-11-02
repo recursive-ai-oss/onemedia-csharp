@@ -97,6 +97,12 @@ public sealed record MakePlayableOptions
     /// <summary>Replace an existing output file (default false: refuse).</summary>
     public bool Overwrite { get; init; }
 
+    /// <summary>
+    /// The container to try first, usually the one the output's extension names (<see cref="Remuxer.FormatForPath(string)"/>). Default null: MP4, then WebM, Matroska, QuickTime.
+    /// It is used only when the profile plays the result; otherwise the usual order applies and the report's <c>Target</c> says what was written.
+    /// </summary>
+    public RemuxFormat? PreferredTarget { get; init; }
+
     /// <summary>Settings for the remux (limits, tag carry-through, movie timescale). Its <see cref="RemuxOptions.Replacements"/> and <see cref="RemuxOptions.Overwrite"/> are set by <see cref="PlayableMaker"/>.</summary>
     public RemuxOptions? Remux { get; init; }
 }
@@ -171,9 +177,15 @@ public static class PlayableMaker
         List<string> notes = [];
         Plan? plan = null;
         List<PlaybackBlocker> unsolved = [];
+        (RemuxFormat Format, string Key)[] order = s_targets;
+        if (options.PreferredTarget is { } preferred && KeyOf(preferred) is { } preferredKey)
+        {
+            order = [(preferred, preferredKey), .. s_targets.Where(t => t.Key != preferredKey)];
+        }
+
         foreach (bool allowTranscode in new[] { false, true })
         {
-            foreach ((RemuxFormat format, string key) in s_targets)
+            foreach ((RemuxFormat format, string key) in order)
             {
                 if ((profile.ModesFor(key) & PlaybackMode.Progressive) == 0)
                 {
@@ -294,6 +306,15 @@ public static class PlayableMaker
 
         return new Plan(format, key, remaining, actions, transcodes);
     }
+
+    private static string? KeyOf(RemuxFormat f) => f switch
+    {
+        RemuxFormat.Mp4 or RemuxFormat.M4a or RemuxFormat.M4v => "mp4",
+        RemuxFormat.WebM => "webm",
+        RemuxFormat.Matroska => "matroska",
+        RemuxFormat.Mov => "mov",
+        _ => null,
+    };
 
     private static string? CodecStringOf(CodecId c) => c == CodecId.Opus ? "opus" : c == CodecId.Flac ? "flac" : null;
 
@@ -416,7 +437,7 @@ public static class PlayableMaker
             {
                 remux = Remuxer.Remux(inputPath, outputPath, plan.Format, remuxOptions, ct);
             }
-            catch (Exception e) when (e is MuxRefusedException or UnsupportedMediaException)
+            catch (Exception e) when (e is MuxRefusedException or UnsupportedMediaException || (feeds.Count > 0 && e is MediaException))
             {
                 return new MakePlayableReport
                 {
@@ -424,7 +445,7 @@ public static class PlayableMaker
                     Before = before,
                     Status = MakePlayableStatus.Failed,
                     Target = plan.Format,
-                    Remaining = [new PlaybackBlocker(PlaybackBlockerKind.CodecInContainer, "remux.refused", e is MuxRefusedException m ? m.TrackIndex : -1, PlaybackRemedy.None, e.Message)],
+                    Remaining = [new PlaybackBlocker(PlaybackBlockerKind.CodecInContainer, feeds.Count > 0 && e is not MuxRefusedException ? "transcode.failed" : "remux.refused", e is MuxRefusedException m ? m.TrackIndex : -1, PlaybackRemedy.None, e.Message)],
                     Notes = notes,
                 };
             }

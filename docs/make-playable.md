@@ -53,3 +53,26 @@ Codes added here, besides those in `playability.md`: `transcode.no-decoder` (no 
 `tools/playback/run-makeplayable.sh` runs MakePlayable over the playback matrix (or any directory, such as the sample picked by `pick-corpus-sample.sh`) for a profile, plays each written output in the
 named headless browser, and requires: time advances, video frames decode, audio is heard where the input had audio, and the output kept the tracks it should have. `check-makeplayable.py` compares
 untouched tracks' packets with the input's (ffprobe), transcoded tracks' duration and start time, and validates the structure with MP4Box and mkvalidator.
+
+
+## Results
+
+Playback matrix (75 files; Playwright 1.55: Chromium 140, Firefox 141, WebKit 26 on x64 Linux) and a corpus sample (48 files: MKV/WebM, TS, AVI, FLV, MOV, 3GP, MP4, Ogg, ASF, MPEG-PS; up to 40 MB each). Every written output is played in the browser of its profile.
+
+| Profile (browser) | Input | Already playable | Made | Refused | Failed | Written outputs that failed to play |
+|---|---|---|---|---|---|---|
+| chromium | matrix | 22 | 13 | 40 | 0 | 0 of 35 observations |
+| firefox | matrix | 43 | 20 | 12 | 0 | 0 of 63 |
+| webkit-linux (WebKit) | matrix | 64 | 11 | 0 | 0 | 0 of 75 (after the PCM rule below) |
+| chromium | corpus sample | 14 | 7 | 26 | 1 | 0 of 21 |
+| firefox | corpus sample | 13 | 18 | 16 | 1 | 0 of 31 |
+| webkit-linux | corpus sample | 28 | 10 | 9 | 1 | 1 of 38 |
+
+- Every refusal is a video blocker (H.264, HEVC, MPEG-4 or WMV video where the profile lacks the decoder) or a missing audio decoder (`transcode.no-decoder`: WMA, AC-3, E-AC-3, ALAC), reported with its code.
+- The one *Failed* per corpus run is an ASF file whose audio the decoder rejects part-way (`transcode.failed`); the partial output is deleted.
+- The WebKit failure is `webm-vidyo4_720p_60fps.webm`, an unmodified copy (the profile says it plays; WebKit decoded one frame in the harness window). Not caused by MakePlayable; the same bytes were not played un-copied.
+- The matrix found one profile error: WebKit (GStreamer) does not play PCM in MP4 (it does from WAV, AIFF, CAF and QuickTime). The `webkit-linux` rule for PCM now lists those containers, and the CAF PCM file goes to QuickTime.
+- **Untouched tracks** (ffprobe 7.0.2 `-show_packets -show_data_hash`): 91 video and audio streams across the matrix and corpus outputs (47 + 44, of which 5 Annex B video streams compared by packet count, flags and times because the bytes are reframed by design); packet count, size, flags and SHA-256 equal, time stamps shifted by one constant per stream. 0 unexplained.
+- **Transcoded tracks:** 12 matrix and 6 corpus tracks in range, 1 explained. Duration and start time within one frame of the input (AAC frame 21.3 ms). One out of range by the stream-level figure: `ts-aac-only.ts`, where ffprobe reports 3.84 s for the TS audio stream although the 189 AAC packets hold 4.032 s; decoding input and output with ffmpeg gives 193,536 and 193,608 samples (72 apart). Start times differ by the 6.5 ms pre-skip.
+- **Validators:** MP4Box 26.07 `-info` and mkvalidator 0.6.0: no errors, except mkvalidator 0.6.0 rejecting AV1 in WebM (`ERR304`, "codec V_AV1 not supported for profile webm"; the validator predates AV1 in WebM, the file plays in Firefox).
+- **Memory:** a 1.13 GB VP9 + AAC Matroska file (1,468 s) made playable in Chromium's profile (WebM + Opus transcode) in 13 s with a peak RSS of 92 MB.
