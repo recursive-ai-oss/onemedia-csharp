@@ -52,9 +52,29 @@ function Show-InPhotos([string]$full, [string]$shotBase) {
     } catch { $r.launchError = "$_" }
     Start-Sleep -Seconds 10
     try { Save-Screen "$shotBase.photos.png" } catch { $r.screenshotError = "$_" }
-    # The information pane is Ctrl+I in the Photos viewer.
-    try { [System.Windows.Forms.SendKeys]::SendWait('^i'); Start-Sleep -Seconds 3; Save-Screen "$shotBase.photos-info.png" } catch { $r.infoError = "$_" }
-    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'Photos' } | ForEach-Object { try { $_.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 500; if (-not $_.HasExited) { $_.Kill() } } catch { } }
+    # Open the information pane by its automation name (the viewer's Info button); fall back to Ctrl+I.
+    try {
+        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $win = $null
+        foreach ($w in $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+            if ($w.Current.Name -like "$([IO.Path]::GetFileName($full))*") { $win = $w; break }
+        }
+        $done = $false
+        if ($win) {
+            foreach ($n in 'Info', 'File info', 'Information') {
+                $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::NameProperty), $n
+                $btn = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+                if ($btn) { $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); $done = $true; $r.infoButton = $n; break }
+            }
+        }
+        if (-not $done) { [System.Windows.Forms.SendKeys]::SendWait('^i'); $r.infoButton = 'keys' }
+        Start-Sleep -Seconds 3
+        Save-Screen "$shotBase.photos-info.png"
+    } catch { $r.infoError = "$_" }
+    # Close every Photos process so the next window opens in the same place.
+    $r.processes = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'Photos' } | ForEach-Object { $_.ProcessName } | Sort-Object -Unique)
+    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'Photos' } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
     return $r
 }
