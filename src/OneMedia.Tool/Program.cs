@@ -27,6 +27,11 @@ static int Run(string[] args)
         return RemuxCommand.Run(args[1..]);
     }
 
+    if (args.Length >= 1 && args[0] == "playable")
+    {
+        return PlayableCommand.Run(args[1..]);
+    }
+
     if (args.Length >= 2 && args[0] == "info")
     {
         bool json = args.Contains("--json");
@@ -50,6 +55,7 @@ static int Run(string[] args)
     Console.Error.WriteLine("usage: onemedia --version");
     Console.Error.WriteLine("       onemedia info <file> [--json]   format, duration, tracks and defects of a media file");
     Console.Error.WriteLine(RemuxCommand.Usage);
+    Console.Error.WriteLine(PlayableCommand.Usage);
     Console.Error.WriteLine("       onemedia tags <file> [--set field=value]... [--remove field]... [--cover image [--cover-type name]] [--remove-covers]");
     Console.Error.WriteLine("                     [--system name]... [--out new-file | --replace | --in-place]   show or change tags (without an output option: show the plan)");
     Console.Error.WriteLine(RecursiveAI.OneMedia.Tool.EditCommands.Usage);

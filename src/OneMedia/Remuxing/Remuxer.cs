@@ -56,21 +56,28 @@ public static class Remuxer
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
         IDemuxer demuxer = input.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "This file was opened from an asynchronous source; use RemuxAsync.");
-        using RemuxSession session = Begin(input, output, format, options);
-        ApplySelection(demuxer, session);
+        PacketFeeds feeds = PacketFeeds.Of(options);
+        using RemuxSession session = Begin(input, output, format, options, feeds);
+        ApplySelection(demuxer, session, feeds);
         int generation = input.BeginRead();
         try
         {
             while (demuxer.TryReadPacket(out PacketView view))
             {
                 input.EnsureCurrentRead(generation);
+                if (feeds.Any)
+                {
+                    feeds.Drain(session, view.Info.Dts.IsKnown ? view.Info.Dts : view.Info.Pts, false, cancellationToken);
+                }
+
                 session.WritePacket(view.Info, view.Data, cancellationToken);
                 if (session.TakeWantedChange())
                 {
-                    ApplySelection(demuxer, session);
+                    ApplySelection(demuxer, session, feeds);
                 }
             }
 
+            feeds.Drain(session, MediaTime.Unknown, true, cancellationToken);
             return session.Finish(cancellationToken) with { InputDefects = input.Defects.Count };
         }
         finally
@@ -103,8 +110,9 @@ public static class Remuxer
             return Remux(input, output, format, options, cancellationToken);
         }
 
-        using RemuxSession session = Begin(input, output, format, options);
-        ApplySelection(demuxer, session);
+        PacketFeeds feeds = PacketFeeds.Of(options);
+        using RemuxSession session = Begin(input, output, format, options, feeds);
+        ApplySelection(demuxer, session, feeds);
         int generation = await input.BeginReadAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -112,13 +120,19 @@ public static class Remuxer
             {
                 input.EnsureCurrentRead(generation);
                 PacketView view = demuxer.Current;
+                if (feeds.Any)
+                {
+                    feeds.Drain(session, view.Info.Dts.IsKnown ? view.Info.Dts : view.Info.Pts, false, cancellationToken);
+                }
+
                 session.WritePacket(view.Info, view.Data, cancellationToken);
                 if (session.TakeWantedChange())
                 {
-                    ApplySelection(demuxer, session);
+                    ApplySelection(demuxer, session, feeds);
                 }
             }
 
+            feeds.Drain(session, MediaTime.Unknown, true, cancellationToken);
             return session.Finish(cancellationToken) with { InputDefects = input.Defects.Count };
         }
         finally
@@ -266,28 +280,28 @@ public static class Remuxer
         }
     }
 
-    private static void ApplySelection(IMediaContainer container, RemuxSession session)
+    private static void ApplySelection(IMediaContainer container, RemuxSession session, PacketFeeds feeds)
     {
         IReadOnlyList<bool> wanted = session.Wanted;
         for (int i = 0; i < wanted.Count; i++)
         {
-            container.SetTrackEnabled(i, wanted[i]);
+            container.SetTrackEnabled(i, wanted[i] && !feeds.Replaces(i));
         }
     }
 
-    private static RemuxSession Begin(MediaFile input, Stream output, RemuxFormat format, RemuxOptions? options)
+    private static RemuxSession Begin(MediaFile input, Stream output, RemuxFormat format, RemuxOptions? options, PacketFeeds feeds)
     {
-        RemuxSession session = new(input.Tracks, output, format, options);
+        RemuxSession session = new(feeds.Apply(input.Tracks), output, format, options);
         try
         {
             if (input.Demuxer is IsoBmffDemuxer iso)
             {
-                session.IsoOptions = t => IsoTrackOptionsFor(iso, t, session);
+                session.IsoOptions = t => feeds.Replaces(t.Index) ? null : IsoTrackOptionsFor(iso, t, session);
             }
             else
             {
                 object? demuxer = (object?)input.Demuxer ?? input.AsyncDemuxer;
-                session.IsoOptions = t => PcmOptionsFor(demuxer, t);
+                session.IsoOptions = t => feeds.Replaces(t.Index) ? null : PcmOptionsFor(demuxer, t);
             }
 
             Inspect(input, session);
@@ -301,7 +315,7 @@ public static class Remuxer
     }
 
     // The PCM layout (integer or float, width, byte order) is not in the neutral track; the audio-file readers and FLV's codec tag state it.
-    private static IsoTrackOptions? PcmOptionsFor(object? demuxer, MediaTrack t)
+    internal static IsoTrackOptions? PcmOptionsFor(object? demuxer, MediaTrack t)
     {
         if (t.Codec != CodecId.Pcm || t.Kind != TrackKind.Audio)
         {
