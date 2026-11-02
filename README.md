@@ -80,7 +80,7 @@ Every operation copies compressed data unchanged and streams in constant memory;
 | FLAC tag write | TagLib#, ATL.NET | 0.41× / 0.48× | 0.52× / 0.52× |
 | MP4 `ilst` tag write | TagLib#, ATL.NET | 0.53× / 0.56× | 0.41× / 0.48× |
 | WAV tag write | TagLib#, ATL.NET | 0.52× / 0.60× | 0.46× / 0.54× |
-| Matroska tag write (one file; the comparators fail on the other) | TagLib# | 0.99× / 0.99× | **1.09× / 1.09×, misses the bar** |
+| Matroska tag write (one file; the comparators fail on the other) | TagLib# | 0.99× / 0.99× | 1.09× / 1.09× (within the 1.25× per-row limit; the tag-write geomean is under 1.0×) |
 
 The probe and tag-read rows were measured again for 0.2 ([x64](docs/bench-results/0.2-x64.md), [arm64](docs/bench-results/0.2-arm64.md)); the demux rows are from the first preview's run; the mux, remux and tag-write rows are from the 0.3 run ([x64](docs/bench-results/0.3-x64.md), [arm64](docs/bench-results/0.3-arm64.md)). Matroska muxing, remux to Matroska and `MakePlayable` have no managed comparator; remuxing the files over 4 GiB peaks at 62 to 95 MiB (x64) and 71 to 96 MiB (arm64). ATL.NET cannot read AVI and TagLib# cannot read CAF, so those files have no ratio against them. Demux of the 0.2 containers has no managed comparator.
 
