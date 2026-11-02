@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Text;
 
 namespace RecursiveAI.OneMedia.Streaming;
@@ -533,6 +534,7 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
         HlsByteRange? previousRange = null;
         string? previousUri = null;
         int version = EffectiveVersion;
+        IReadOnlyList<HlsKey> previousKeys = [];
         foreach (HlsSegment s in Segments)
         {
             foreach (string t in s.OtherTags)
@@ -543,7 +545,9 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
 
             if (s.KeysChanged)
             {
-                if (s.Keys.Count == 0)
+                // RFC 8216 §4.3.2.4: METHOD=NONE ends every key. Write it first when a key of an earlier segment (by KEYFORMAT) is no longer in effect,
+                // so that reading the output back gives the same keys in effect.
+                if (s.Keys.Count == 0 || previousKeys.Any(p => !s.Keys.Any(k => string.Equals(k.KeyFormat ?? "identity", p.KeyFormat ?? "identity", StringComparison.Ordinal))))
                 {
                     writer.Write("#EXT-X-KEY:METHOD=NONE\n");
                 }
@@ -597,6 +601,7 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
             }
 
             previousUri = s.Uri;
+            previousKeys = s.Keys;
             string duration = version >= 3 ? ManifestText.Seconds(s.Duration) : s.Duration.Rescale(1, MediaRounding.NearestAwayFromZero).Ticks.ToString(CultureInfo.InvariantCulture);
             writer.Write($"#EXTINF:{duration},{s.Title}\n");
             writer.Write(s.Uri);

@@ -292,6 +292,7 @@ public sealed class ManifestTests
 
     [Theory]
     [InlineData("hls-playlist/roundtrip-keys-1.m3u8")]
+    [InlineData("hls-playlist/roundtrip-keys-2.m3u8")]
     [InlineData("dash-mpd/roundtrip-1.mpd")]
     public void FuzzFindingsRewriteToThemselves(string file)
     {
@@ -307,5 +308,13 @@ public sealed class ManifestTests
             string second = HlsPlaylist.Parse(first).ToString();
             Assert.True(first == second, "W1:\n" + first.Replace("\0", "<NUL>") + "\nW2:\n" + second.Replace("\0", "<NUL>"));
         }
+    }
+
+    [Fact]
+    public void AnEncodingSwitchTheTextReaderCannotMakeIsAMalformedDocument()
+    {
+        // Found by fuzzing: the BCL reader threw ArgumentOutOfRangeException, not XmlException, for this declaration.
+        byte[] bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "dash-mpd", "bcl-encoding-1.mpd"));
+        Assert.Throws<ManifestFormatException>(() => DashMpd.Parse(bytes));
     }
 }

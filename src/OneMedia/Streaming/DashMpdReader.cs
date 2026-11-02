@@ -18,7 +18,17 @@ internal static class DashMpdReader
     public static DashMpd Parse(byte[] data, MediaLimits limits)
     {
         using MemoryStream ms = new(data, writable: false);
-        return Parse(XmlReader.Create(ms, Settings(limits)), limits);
+        XmlReader reader;
+        try
+        {
+            reader = XmlReader.Create(ms, Settings(limits));
+        }
+        catch (Exception e) when (e is XmlException or ArgumentException)
+        {
+            throw new ManifestFormatException("The MPD is not well-formed XML: " + e.Message, e);
+        }
+
+        return Parse(reader, limits);
     }
 
     private static XmlReaderSettings Settings(MediaLimits limits) => new()
@@ -43,6 +53,12 @@ internal static class DashMpdReader
         }
         catch (XmlException e)
         {
+            throw new ManifestFormatException("The MPD is not well-formed XML: " + e.Message, e);
+        }
+        catch (ArgumentException e)
+        {
+            // The BCL's text reader throws ArgumentOutOfRangeException, not XmlException, when an XML declaration names an encoding it has to switch to
+            // after it has buffered the declaration (found by fuzzing); the document is malformed all the same.
             throw new ManifestFormatException("The MPD is not well-formed XML: " + e.Message, e);
         }
 
