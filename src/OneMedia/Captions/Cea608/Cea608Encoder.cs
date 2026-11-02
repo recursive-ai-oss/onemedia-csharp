@@ -7,7 +7,7 @@ public static class Cea608Encoder
 {
     private const string Special = "®°½¿™¢£♪à èâêîôû";
     private const string Extended1 = "ÁÉÓÚÜü‘¡*’—©℠•“”ÀÂÇÈÊËëÎÏïÔÙùÛ«»";
-    private const string Extended2 = "ÃãÍÌìÒòÕõ{}\\^_|~ÄäÖöß¥¤│ÅåØø┌┐└┘";
+    private const string Extended2 = "ÃãÍÌìÒòÕõ{}\\^_|~ÄäÖöß¥¤¦ÅåØø┌┐└┘";
 
     /// <summary>Sets the odd-parity bit (bit 7) of a 7-bit value (CEA-608 §4.1).</summary>
     /// <param name="b">A value below 0x80.</param>

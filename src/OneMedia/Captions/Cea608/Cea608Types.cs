@@ -115,7 +115,7 @@ internal static class Cea608Text
         return sb.ToString().TrimEnd();
     }
 
-    // CEA-608 basic character set: ASCII with these substitutions.
+    // 47 CFR 79.101(g), standard characters table: ASCII with these substitutions (7Fh is the solid block).
     public static char Basic(int b) => b switch
     {
         0x2a => 'á',
@@ -131,14 +131,15 @@ internal static class Cea608Text
         _ => (char)b,
     };
 
-    // Special North American characters: b1 = 0x11/0x19, b2 = 0x30–0x3F.
+    // 47 CFR 79.101(g), special characters table: b1 = 0x11/0x19, b2 = 0x30–0x3F (39h is the transparent space).
     private const string Special = "®°½¿™¢£♪à èâêîôû";
 
-    // Extended Western European, first byte 0x12/0x1A, second 0x20–0x3F.
+    // Extended Western European, first byte 0x12/0x1A, second 0x20–0x3F. Not in 47 CFR 79.101; checked against two decoders only (docs/captions.md).
     private const string Extended1 = "ÁÉÓÚÜü‘¡*’—©℠•“”ÀÂÇÈÊËëÎÏïÔÙùÛ«»";
 
-    // Extended Western European, first byte 0x13/0x1B, second 0x20–0x3F.
-    private const string Extended2 = "ÃãÍÌìÒòÕõ{}\\^_|~ÄäÖöß¥¤│ÅåØø┌┐└┘";
+    // Extended Western European, first byte 0x13/0x1B, second 0x20–0x3F. Code 0x37 is ¦: ffmpeg 7.0.2 and ccextractor 0.96.5 both decode it so, and no
+    // table we may read says otherwise (see docs/captions.md, clean-room record).
+    private const string Extended2 = "ÃãÍÌìÒòÕõ{}\\^_|~ÄäÖöß¥¤¦ÅåØø┌┐└┘";
 
     public static char SpecialChar(int b2) => Special[b2 - 0x30];
 

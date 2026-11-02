@@ -138,7 +138,11 @@ breaks the column's pattern (`6B`); we use `6B`.
   marker/valid/type bits and two bytes) and the ITU-T T.35 header (0xB5, 0x0031; H.264/H.265 Annex D, free) rest on the oracles: ffmpeg and ccextractor read the SEI we write
   and we read the PixelTools files they read (`GA94` pairs equal ccextractor's raw output).
 * The extended Western European sets (12h/1Ah and 13h/1Bh, 20h-3Fh) and the "extended character replaces the fallback before it" rule come from CEA-608-B/-E, which we do not have.
-  They were checked against ffmpeg 7.0.2 and ccextractor 0.96.5 decoding SCC files that use every one of the 64 codes (`tools/run-caption-extended-check.sh`).
+  They were checked against ffmpeg 7.0.2 and ccextractor 0.96.5 decoding an SCC that uses every one of the 64 codes plus the specials (`tools/run-caption-extended-check.sh`):
+  the two oracles agree with the table on all but these, where they use approximations or disagree with each other: 12h 26 and 29 (ours ‘ ’; ffmpeg ´ ‘, ccextractor ASCII apostrophes),
+  12h 2A and 2D (ours — •; ffmpeg - and ·, ccextractor agrees with us), 13h 37 (both oracles give ¦, so we do too; it was │), 13h 3C-3F (ours ┌ ┐ └ ┘ as ffmpeg; ccextractor
+  gives corner marks). ccextractor also loses the last character of a row whose column 32 holds an extended character (we had the same defect and fixed it). The glyph choices
+  for these codes are the open detail to settle against CEA-608-E.
 * Field 2 control codes (15h/1Dh instead of 14h/1Ch), XDS (class/type, checksum) and Text mode details beyond TR/RTD: black-box oracle output and the CEA-608 prose in the
   ATSC A/53 Part 4 and A/72 documents, which describe only the carriage.
 * Parity-failing pairs: 79.101(j) shows a solid block for a failed print character; we drop the pair (as ccextractor does on the samples).

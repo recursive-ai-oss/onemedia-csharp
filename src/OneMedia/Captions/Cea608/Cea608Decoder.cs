@@ -257,7 +257,8 @@ public sealed class Cea608Decoder
 
     private static void Pac(Channel ch, int c1, int c2)
     {
-        // CEA-608 Table 53: first byte (low 3 bits, 0x10 = 0 → row 11) and bit 5 of the second byte select the row.
+        // 47 CFR 79.101(i), Preamble Address Codes table: the first byte (low 3 bits; 10h = row 11) and bit 5 of the second byte select the row;
+        // second byte bits 1-4: 0-6 colour, 7 italics, 8-15 indent 0-28 columns (white); bit 0 underline.
         int pair = (c1 & 7) switch { 1 => 0, 2 => 1, 5 => 2, 6 => 3, 7 => 4, 0 => 5, 3 => 6, _ => 7 };
         int row = pair switch { 0 => 1, 1 => 3, 2 => 5, 3 => 7, 4 => 9, 5 => 11, 6 => 12, _ => 14 };
         if ((c2 & 0x20) != 0 && pair != 5)
@@ -307,6 +308,7 @@ public sealed class Cea608Decoder
             return;
         }
 
+        // 47 CFR 79.101(i), Mid-Row Codes table: 20h-2Fh = white, green, blue, cyan, red, yellow, magenta, italics, each with and without underline.
         int style = (c2 >> 1) & 7;
         byte attr = style == 7 ? (byte)8 : (byte)style;
         if ((c2 & 1) != 0)
@@ -339,6 +341,7 @@ public sealed class Cea608Decoder
 
     private void Misc(int field, int dc, FieldState f, MediaTime time, int c2)
     {
+        // 47 CFR 79.101(i), Miscellaneous Control Codes table (14h/1Ch + 20h-2Fh; 22h and 23h are reserved).
         Channel ch;
         switch (c2)
         {
