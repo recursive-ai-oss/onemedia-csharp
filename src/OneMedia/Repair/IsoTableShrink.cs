@@ -462,7 +462,11 @@ internal static partial class IsoRepair
     private static byte[] Patched(byte[] m, (uint Type, int At, int Hdr, int Size) c, int at, int width, long value)
     {
         byte[] copy = m.AsSpan(c.At, c.Size).ToArray();
-        Number(value, width).CopyTo(copy, at - c.At);
+        if (at - c.At >= 0 && at - c.At + width <= copy.Length)
+        {
+            Number(value, width).CopyTo(copy, at - c.At);
+        }
+
         return copy;
     }
 

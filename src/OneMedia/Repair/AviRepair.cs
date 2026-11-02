@@ -782,8 +782,14 @@ internal static class AviRepair
         }
 
         // find indx chunks in the first RIFF's hdrl by re-reading it
-        byte[] hdrl = new byte[riffs[0].Items.Find(x => x.IsHdrl)!.Length];
-        input.Read(riffs[0].Items.Find(x => x.IsHdrl)!.Offset, hdrl);
+        Item? hdrlItem = riffs[0].Items.Find(x => x.IsHdrl);
+        if (hdrlItem is null)
+        {
+            return false;
+        }
+
+        byte[] hdrl = new byte[hdrlItem.Length];
+        input.Read(hdrlItem.Offset, hdrl);
         long[] counted = new long[streams.Count];
         int stream = -1;
         int p = 12;
