@@ -4,6 +4,8 @@ namespace RecursiveAI.OneMedia.Repair;
 
 internal static partial class IsoRepair
 {
+    private const double MinRecoveredFraction = 0.02;
+
     // A file without a (whole) movie box is rebuilt from its media data by IsoReconstructor; this maps its report onto the common one.
     // The output is a new, complete file, so the status is Repaired unless a track the reference described came back empty or the scan
     // left a large share of the media data unframed.
@@ -23,6 +25,16 @@ internal static partial class IsoRepair
                 report.Warn("A reference file from the same device (onemedia repair <in> <out> --reference <file>) may let the recording be rebuilt.");
             }
 
+            return report.Build(RepairStatus.Unrepairable, 0);
+        }
+
+        // Almost nothing framed: the codec setup found in the stream was probably a coincidence (or the reference does not belong to this
+        // recording), and a file of a few stray samples helps nobody.
+        if (r.RecoveredFraction < MinRecoveredFraction)
+        {
+            destination.SetLength(0);
+            destination.Position = 0;
+            report.Warn($"Only {100.0 * r.RecoveredFraction:F2} % of the media data could be cut into samples; the codec setup is probably wrong or missing. A reference file from the same device may let the recording be rebuilt.");
             return report.Build(RepairStatus.Unrepairable, 0);
         }
 

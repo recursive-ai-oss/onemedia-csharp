@@ -4,7 +4,7 @@
 # spot: five ffmpeg-written recordings (H.264 B-frames + AAC, HEVC + AAC, MOV, 3GP with AMR, H.264 + MP3) are cut at 60 % of the media data
 #       (the movie box is lost with the tail), repaired with the healthy file as reference, and the packets of the result are compared with
 #       ffprobe's listing of the original: every packet's size, key flag and decode time must equal the original's first packets.
-#       One of them is also repaired without a reference. Output also goes through `ffmpeg -f null` for decode errors.
+#       One of them is also repaired without a reference, which must be refused (its parameter sets lived in the lost movie box). Output also goes through `ffmpeg -f null` for decode errors.
 # big:  a file of about 4.5 GB made by looping a small clip is cut at 90 % and repaired with the clip as reference; reports peak RSS.
 # ffmpeg/ffprobe come from ~/onemedia/oracles/bin.
 set -euo pipefail
@@ -53,6 +53,12 @@ spot)
     [ "$mode" = ref ] && args+=(--reference "$W/fx/$f")
     dotnet "$TOOL" repair "${args[@]}" > "$W/spot/$base.$mode.report.txt" 2>&1 && rc=0 || rc=$?
     head -1 "$W/spot/$base.$mode.report.txt"
+    if [ "$mode" = noref ]; then
+      # ffmpeg-written MP4 keeps its parameter sets only in the lost movie box, so without a reference there is nothing to rebuild the video from
+      if [ "$rc" = 2 ] && [ ! -e "$out" ]; then echo "   noref: unrepairable, no output left (expected)"; else echo "   noref: unexpected"; fail=1; fi
+      rm -f "$W/spot/$base.$mode.cut.$ext"
+      continue
+    fi
     python3 - "$W/fx/$f" "$out" "$f $mode" <<'EOF' || fail=1
 import subprocess, sys
 def pk(p):
