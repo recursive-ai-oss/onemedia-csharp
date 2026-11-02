@@ -61,3 +61,7 @@ fine for files that fit in memory.
 - Allocation behaviour of the pull path in the browser runtime (excluded above; the NativeAOT smoke app covers the optimised build).
 - Playback in the browser's media elements: that is `tools/playback`, a separate harness against real files.
 - Speed in the browser: the suite runs the interpreter; no timings from it mean anything.
+
+## Phones
+
+The trimmed Release smoke apps for Android and iOS, how to run them and their last results are in [mobile.md](mobile.md).
