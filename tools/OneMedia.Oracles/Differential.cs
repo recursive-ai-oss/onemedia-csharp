@@ -34,6 +34,7 @@ internal static class Readers
         registry.Add(new RecursiveAI.OneMedia.Caf.CafFileFormat());
         registry.Add(new RecursiveAI.OneMedia.Avi.AviFormat());
         registry.Add(new RecursiveAI.OneMedia.Dv.DvFormat());
+        registry.Add(new RecursiveAI.OneMedia.Streaming.Sources.PresentationFormat());
         return registry;
     }
 }
@@ -66,7 +67,10 @@ internal static class OurReader
         {
             using FileMediaSource source = FileMediaSource.Open(path);
             using IDemuxer demuxer = registry.Open(source, new MediaOpenOptions { LeaveOpen = true });
-            MediaTime[] shift = demuxer.Format == MediaFormatId.IsoBmff ? [.. demuxer.Tracks.Select(EditShift)] : [];
+            MediaTime[] shift = demuxer.Format == MediaFormatId.IsoBmff ? [.. demuxer.Tracks.Select(EditShift)]
+                // A presentation of fragmented MP4 segments carries the init segment's edit lists on its tracks, and ffprobe applies them the same way.
+                : demuxer.Format == MediaFormatId.Hls || demuxer.Format == MediaFormatId.Dash ? [.. demuxer.Tracks.Select(t => t.Edit.Edits is null ? MediaTime.Zero : EditShift(t))]
+                : [];
             OurResult result = new() { Format = demuxer.Format.Name, Tracks = [.. demuxer.Tracks], Shifts = shift, IsProtected = demuxer.IsProtected };
             Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
             while (demuxer.TryReadPacket(out PacketView view))
@@ -105,7 +109,7 @@ internal static class OurReader
 
     // ffprobe places ISO samples on the edited timeline: it subtracts the first non-empty edit's start and adds the leading empty edits.
     // Our packets keep the media timeline (edit lists are reported, not applied), so the comparison applies ffprobe's shift to ours.
-    private static MediaTime EditShift(MediaTrack track)
+    internal static MediaTime EditShift(MediaTrack track)
     {
         MediaTime start = MediaTime.Zero;
         foreach (EditSegment e in track.Edit.Edits ?? [])

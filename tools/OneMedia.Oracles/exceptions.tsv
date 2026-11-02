@@ -284,3 +284,5 @@ matroska	info-open	file=atlantis405-test.mkv	ignore	ours	ac3-header-channels: th
 *	streams	file=bad_length.aifc	ignore	ours	garbage-frame-count: the pinned ffprobe fails on the file; ours reads 0 frames (docs/pcm-files.md).
 *	streams	file=o2_728	ignore	ours	ffprobe rejects this AIFF-C ("could not find COMM tag or invalid block_align value"); ours reads it tolerantly (docs/pcm-files.md).
 
+hls	pos	*	ignore	ours	segment-relative-position: a packet of a presentation lies in one of many segment resources, so ours carries no source range; ffprobe prints the position inside the segment (docs/streaming-sources.md).
+dash	pos	*	ignore	ours	segment-relative-position, as for hls.
