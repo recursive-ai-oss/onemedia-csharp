@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- Capture-date writes (`CaptureTimeWriter`, `CaptureTimeOptions`, `CaptureTimeReport`, `Media.SetCaptureTime`, `onemedia tags <file> --capture-time <iso8601>`, `docs/date-writes.md`): set the time a recording was made in every date field a file carries, each in its own notation and zone semantics (MP4/MOV/3GP header times, `©day`, `creationdate`, XMP and Exif dates; Matroska `DateUTC` and tags; RIFF INFO and BWF origination; ID3, Vorbis and ASF dates), with a report of what was written (old and new text), what was left and why, and which dates still disagree (telemetry GPS times are never rewritten). Payload bytes are unchanged. `TagEdits.SetNative` on `xmp` accepts `xmp:`, `photoshop:` and `exif:` properties and on `udta` a `©` atom.
+
+### Fixed
+- Tag writing: an ASF header object or header-extension object with a size near 2^63 no longer wraps the bounds check; a RIFF last chunk that lacks its pad byte no longer leaves an odd padding remainder; ID3v2.3 date writes include the `TIME` frame; the ID3v2.3 recording date read from `TYER`, `TDAT` and `TIME` is no longer dropped when `TIME` is present.
+
 ## [0.3.0-preview.1] - 2026-11-02
 
 Writing, remux, editing and playability: the ISO and Matroska muxers, remux and faststart, trim/split/concat, tag editing in every system, `Save`/`SaveAs`/`SaveInPlace`, `CanPlay` and `MakePlayable`. `Save` replaces the file (new inode, the saver's owner and group; extended attributes, ACLs and hard links are not kept); `SaveInPlace` works within existing padding only and is not atomic. The ISO muxer and `CanPlay` shipped as previews in 0.2.0-preview.2 and are now covered by the writer and playback checks. Not in this release: MPEG-TS, WAV and ASF writing, subtitles, repair, packaging.

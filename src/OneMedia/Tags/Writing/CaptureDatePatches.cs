@@ -87,7 +87,7 @@ internal static class CaptureDatePatches
     private static readonly DateTime MacEpoch = new(1904, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime MatroskaEpoch = new(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    public static string MacText(ulong seconds) => seconds > (ulong)(DateTime.MaxValue - MacEpoch).TotalSeconds ? "(out of range) " + seconds.ToString(CultureInfo.InvariantCulture) : MacEpoch.AddSeconds(seconds).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+    public static string MacText(ulong seconds) => seconds > (ulong)((DateTime.MaxValue - MacEpoch).Ticks / 10_000_000L) ? "(out of range) " + seconds.ToString(CultureInfo.InvariantCulture) : MacEpoch.AddTicks((long)seconds * 10_000_000L).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
     public static void Iso(IMediaSource src, BoxNode moov, CaptureDateEdit d, BoxEditor editor, MediaLimits limits)
     {
@@ -157,8 +157,8 @@ internal static class CaptureDatePatches
             return;
         }
 
-        double secs = (d.HeaderClock - MacEpoch).TotalSeconds;
-        ulong value = (ulong)Math.Floor(secs);
+        // Whole seconds; the range check in CaptureTimeWriter keeps the time after 1904, so the division never rounds a negative.
+        ulong value = (ulong)((d.HeaderClock - MacEpoch).Ticks / 10_000_000L);
         if (version == 0 && value > uint.MaxValue)
         {
             d.Left.Add(new DateFieldLeft(name, "creation_time" + suffix, MacText(oldCreation), "the version 0 box holds 32-bit seconds (to the year 2040) and the time is later"));

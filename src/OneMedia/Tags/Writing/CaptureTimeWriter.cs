@@ -195,7 +195,8 @@ public static class CaptureTimeWriter
         TagEdits edits = new() { HeaderDate = header };
         List<DateFieldWrite> written = header.Written;
         List<DateFieldLeft> left = header.Left;
-        HashSet<string> done = [];
+        // Candidate sources spell keys as the file does (a Vorbis "date" is a "DATE"), so the comparison ignores case.
+        HashSet<string> done = new(StringComparer.OrdinalIgnoreCase);
         BuildTagEdits(file, when, options, edits, written, left, done);
 
         // Native writes are reported here; the header-field writes were added by the format writers while the plan was built.
@@ -418,6 +419,8 @@ public static class CaptureTimeWriter
             done.Add("id3v2:TYER");
             done.Add("id3v2:TDAT");
             done.Add("id3v2:TIME");
+            done.Add("id3v2:TYER+TDAT");
+            done.Add("id3v2:TYER+TDAT+TIME");
         }
 
         if (Old(TagSystems.Id3v2, "TDOR") is not null)

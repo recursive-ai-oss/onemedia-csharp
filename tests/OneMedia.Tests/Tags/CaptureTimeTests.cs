@@ -107,6 +107,16 @@ public sealed class CaptureTimeTests
     }
 
     [Fact]
+    public void RewrittenFieldsAreNotReportedAsDisagreeing()
+    {
+        // The old values are read from the original file; a field the write replaced must not come back as a disagreement (key case, ID3v2.3 composite).
+        (_, CaptureTimeReport flac) = Apply(Fx("dated.flac"), When);
+        Assert.Empty(flac.Disagreements);
+        (_, CaptureTimeReport id3) = Apply(File.ReadAllBytes(WriterTestSupport.Fixture("audio-es", "tagged", "id3v23-basic.mp3")), When);
+        Assert.Empty(id3.Disagreements);
+    }
+
+    [Fact]
     public void EveryHeaderOfAnMp4HoldsTheInstantInUtc()
     {
         (byte[] result, CaptureTimeReport report) = Apply(Fx("plain.mp4"), When);
