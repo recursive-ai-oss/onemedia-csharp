@@ -45,6 +45,9 @@ public sealed class TagEdit
     /// <summary>The native key, for the native edits.</summary>
     public string? Key { get; internal init; }
 
+    /// <summary>For <see cref="TagEditKind.RemoveNative"/> in Matroska: also remove the key from tags aimed at a track, chapter, edition or attachment and from nested SimpleTags (the privacy strip needs every copy gone).</summary>
+    internal bool Everywhere { get; init; }
+
     /// <summary>The picture bytes, for <see cref="TagEditKind.SetPicture"/>.</summary>
     public ReadOnlyMemory<byte> PictureData { get; internal init; }
 
@@ -164,6 +167,14 @@ public sealed class TagEdits
         ArgumentException.ThrowIfNullOrEmpty(system);
         ArgumentException.ThrowIfNullOrEmpty(key);
         _edits.Add(new TagEdit(TagEditKind.RemoveNative) { System = system, Key = key });
+    }
+
+    /// <summary>Removes one native key wherever the system keeps a copy (Matroska: also tags with targets and nested SimpleTags). Used by the privacy strip.</summary>
+    internal void RemoveNativeEverywhere(string system, string key)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(system);
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        _edits.Add(new TagEdit(TagEditKind.RemoveNative) { System = system, Key = key, Everywhere = true });
     }
 
     /// <summary>The effective change of a field after all edits: <c>null</c> when untouched, an empty list when removed, else the values.</summary>

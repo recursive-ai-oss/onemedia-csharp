@@ -139,6 +139,18 @@ internal static class MatroskaTagWriter
             }
         }
 
+        // Removals that must reach every copy: tags aimed at a track or chapter, and SimpleTags nested under another SimpleTag.
+        foreach (TagEdit n in edits.NativeFor(TagSystems.Matroska).Where(e => e.Kind == TagEditKind.RemoveNative && e.Everywhere && options.Wants(TagSystems.Matroska)))
+        {
+            foreach (EbmlElement tagsEl in children.Where(c => c.Id == Tags))
+            {
+                foreach (EbmlElement tag in tagsEl.ChildElements.Where(c => c.Id == Tag))
+                {
+                    RemoveNamed(tag, "", n.Key!, editor, consumed, blocked, seg);
+                }
+            }
+        }
+
         // Title also lives in Segment Info.
         List<CommonField> written = [.. rep.Written];
         List<CommonField> removed = [.. rep.Removed];
@@ -278,6 +290,25 @@ internal static class MatroskaTagWriter
     }
 
     private static byte[] Wrap(List<byte[]> simples) => EbmlWriter.Element(Tag, [.. EbmlWriter.Element(Targets, []), .. simples.SelectMany(s => s)]);
+
+    // The reader names a nested SimpleTag by its path (parent/child); a removed SimpleTag takes its children with it.
+    private static void RemoveNamed(EbmlElement parent, string prefix, string key, EbmlEditor editor, HashSet<long> consumed, HashSet<long> blocked, EbmlElement seg)
+    {
+        foreach (EbmlElement s in parent.ChildElements.Where(c => c.Id == SimpleTag))
+        {
+            string path = prefix.Length == 0 ? NameOf(s) : prefix + "/" + NameOf(s);
+            if (string.Equals(path, key, StringComparison.OrdinalIgnoreCase) && !consumed.Contains(s.Offset))
+            {
+                editor.Remove(s);
+                blocked.Add(TopOf(s, seg));
+                consumed.Add(s.Offset);
+            }
+            else if (!consumed.Contains(s.Offset))
+            {
+                RemoveNamed(s, path, key, editor, consumed, blocked, seg);
+            }
+        }
+    }
 
     private static bool IsFileLevel(EbmlElement tag)
     {

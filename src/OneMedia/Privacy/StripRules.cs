@@ -53,6 +53,12 @@ internal static class StripRules
             return Array.IndexOf(LocationAtoms, key) >= 0 ? StripCategories.Location : StripCategories.None;
         }
 
+        // ID3v2.3 §4.2.1: TOWN is the file owner or licensee, a name of the person or company who holds the file.
+        if (system == Tags.TagSystems.Id3v2 && key.StartsWith("TOWN", StringComparison.Ordinal))
+        {
+            return StripCategories.DeviceIds;
+        }
+
         if (system == Tags.TagSystems.RiffInfo && Array.IndexOf(LocationRiff, key) >= 0)
         {
             return StripCategories.Location;
@@ -70,17 +76,48 @@ internal static class StripRules
     public static StripCategories ClassifyWords(string name)
     {
         StripCategories c = StripCategories.None;
-        if (ContainsAny(name, LocationWords))
+        if (ContainsAny(name, LocationWords) || HasToken(name, LocationTokens))
         {
             c |= StripCategories.Location;
         }
 
-        if (ContainsAny(name, DeviceWords))
+        if (ContainsAny(name, DeviceWords) || HasToken(name, DeviceTokens))
         {
             c |= StripCategories.DeviceIds;
         }
 
         return c;
+    }
+
+    // Short names that say position or serial number only when they stand alone in a dotted, slashed or underscored key (com.example.lat, DEVICE_SN),
+    // since as substrings they would match "translate" and "snow".
+    private static readonly string[] LocationTokens = ["lat", "lon", "lng", "gnss", "latlon", "latlng", "latlong"];
+    private static readonly string[] DeviceTokens = ["sn"];
+
+    private static bool HasToken(string name, string[] tokens)
+    {
+        int start = 0;
+        for (int i = 0; i <= name.Length; i++)
+        {
+            if (i == name.Length || !char.IsLetterOrDigit(name[i]))
+            {
+                if (i > start)
+                {
+                    ReadOnlySpan<char> token = name.AsSpan(start, i - start);
+                    foreach (string t in tokens)
+                    {
+                        if (token.Equals(t, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                start = i + 1;
+            }
+        }
+
+        return false;
     }
 
     private static bool ContainsAny(string name, string[] words)
@@ -117,6 +154,11 @@ internal static class StripRules
     public static StripCategories ClassifyXmp(string ns, string name)
     {
         StripCategories c = ClassifyWords(name);
+        if (name.Contains("geo", StringComparison.OrdinalIgnoreCase))
+        {
+            c |= StripCategories.Location;
+        }
+
         // Photoshop and IPTC core place names.
         if (ns == "http://ns.adobe.com/photoshop/1.0/" && name is "City" or "State" or "Country")
         {
