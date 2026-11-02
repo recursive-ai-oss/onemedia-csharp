@@ -567,9 +567,9 @@ public sealed class ChunkEditor
                 Encoding.ASCII.GetBytes("RF64", head);
                 BinaryPrimitives.WriteUInt32LittleEndian(head.AsSpan(4), 0xFFFF_FFFF);
             }
-            else if (_file.Layout == ChunkLayout.Rf64 && BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(4)) == 0xFFFF_FFFF && (root || newPayload == node.PayloadSize))
+            else if (_file.Layout == ChunkLayout.Rf64 && BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(4)) == 0xFFFF_FFFF && (root || (newPayload == node.PayloadSize && node.PayloadSize <= Source.Length - node.Offset && node.NextOffset <= Source.Length)))
             {
-                // The real size is in ds64; the 32-bit field stays 0xFFFFFFFF (for a nested chunk only while its size is unchanged).
+                // The real size is in ds64; the 32-bit field stays 0xFFFFFFFF (for a nested chunk only while its size is unchanged and inside the file).
             }
             else
             {

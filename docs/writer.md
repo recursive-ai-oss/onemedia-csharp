@@ -91,7 +91,7 @@ real size is stated once content moves. An unedited or same-layout edit leaves t
     user running the save. Extended attributes, ACLs, SELinux labels, hard links and the creation time of the original are **not** carried over (no native calls are made), and a read-only file in a
     writable folder is replaced like any other. A symbolic link is followed: the file it points to is replaced (a temporary file beside that file) and the link stays a link. Two saves of
     the same path at once each write their own temporary file and the later rename wins; there is no lock. The folder itself is not `fsync`ed after the rename, so after a power loss (not a
-    killed process) the old name may still point at the old file. This cannot be done from the BCL: opening a directory for `FlushToDisk` is refused on Linux and macOS
+    killed process) the old name may still point at the old file (a whole old or a whole new file, never a mix; a program that must know the rename is durable has to flush the folder itself). This cannot be done from the BCL: opening a directory for `FlushToDisk` is refused on Linux and macOS
     (`UnauthorizedAccessException`) and shipped packages make no native calls; the file's data is `fsync`ed before the rename.
   - **A plan is checked against the file by length only.** If another program changes the file after it was planned and leaves its length alone, the copied ranges come from the changed file.
 - `SaveInPlace(plan, path)` writes only the changed ranges of a same-layout plan, in place. A plan that is not same-layout throws `PaddingRequiredException` (bytes

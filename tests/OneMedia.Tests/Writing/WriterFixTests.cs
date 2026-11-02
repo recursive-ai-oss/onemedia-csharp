@@ -168,6 +168,23 @@ public sealed class WriterFixTests : IDisposable
         Assert.Equal(file, WriterTestSupport.Apply(strict.Build(), file));
     }
 
+    /// <summary>A fuzz find from the first fix: a nested BW64 whose ds64 size runs far past the end of the file is refused, not planned as a copy of bytes that do not exist.</summary>
+    [Fact]
+    public void RegeneratingHeadersWithADs64SizePastTheEndOfTheFileIsATypedRefusalOrAValidPlan()
+    {
+        byte[] file = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "writer-riff", "writer-riff-nested-bw64-ds64-size-past-end.bin"))[1..];
+        using MemoryMediaSource src = new(file);
+        ChunkFile cf = ChunkFile.TryOpen(src, MediaLimits.Default, new DefectLog())!;
+        try
+        {
+            EditPlan plan = new ChunkEditor(cf, src) { RewriteHeaders = true }.Build();
+            Assert.True(plan.Pieces.All(p => p.Kind != OutputPieceKind.Copy || p.SourceRange.End <= file.Length));
+        }
+        catch (MediaException)
+        {
+        }
+    }
+
     // ---- finding 17: padding on growth ----
 
     private static (byte[] Plain, byte[] Padded) Grow(string fixture, TagEdits edits, TagWriteOptions? padded = null)
