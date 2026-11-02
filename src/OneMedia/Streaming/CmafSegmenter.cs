@@ -338,7 +338,7 @@ public sealed class CmafSegmenter : IDisposable
         {
             _segmentStart = t;
         }
-        else if (sync && t - _segmentStart >= _options.SegmentDuration)
+        else if (sync && t.Subtract(_segmentStart, MediaRounding.NearestAwayFromZero) >= _options.SegmentDuration)
         {
             // The packet about to be written starts the next segment: end the open one first.
             _boundaries.Add(t);

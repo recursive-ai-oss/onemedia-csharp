@@ -311,13 +311,14 @@ public sealed class HlsMediaPlaylist : HlsPlaylist
     {
         get
         {
-            MediaTime sum = MediaTime.Zero;
+            // Summed in nanoseconds: the segments may be in different timescales (a decimal fraction each), which exact addition would refuse.
+            Int128 nanos = 0;
             foreach (HlsSegment s in Segments)
             {
-                sum += s.Duration;
+                nanos += (Int128)s.Duration.Ticks * 1_000_000_000 / s.Duration.Timescale;
             }
 
-            return sum;
+            return new MediaTime((long)Int128.Clamp(nanos, 0, long.MaxValue), 1_000_000_000);
         }
     }
 

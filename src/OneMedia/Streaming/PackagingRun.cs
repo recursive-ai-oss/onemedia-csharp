@@ -420,7 +420,7 @@ internal sealed class PackagingRun : ISegmentSink, IDisposable
             MediaTime x = new(a.Segments[i].Info.StartTicks, a.Track.Timescale);
             MediaTime y = new(b.Segments[i].Info.StartTicks, b.Track.Timescale);
             // Equal to within a millisecond: the encoders cut at the same frame, and the tracks' timescales differ.
-            MediaTime delta = x > y ? x - y : y - x;
+            MediaTime delta = x > y ? x.Subtract(y, MediaRounding.NearestAwayFromZero) : y.Subtract(x, MediaRounding.NearestAwayFromZero);
             if (delta > new MediaTime(1, 1000))
             {
                 return false;

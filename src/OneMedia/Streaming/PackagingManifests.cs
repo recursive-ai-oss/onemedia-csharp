@@ -292,11 +292,13 @@ internal static class PackagingManifests
         }
 
         TrackOut reference = tracks.FirstOrDefault(t => t.Track.Kind == TrackKind.Video) ?? tracks[0];
-        MediaTime window = MediaTime.Zero;
+        long windowTicks = 0;
         foreach (SegmentRecord r in reference.Segments)
         {
-            window += new MediaTime(r.Info.DurationTicks, Math.Max(reference.Track.Timescale, 1));
+            windowTicks += r.Info.DurationTicks;
         }
+
+        MediaTime window = new(windowTicks, Math.Max(reference.Track.Timescale, 1));
 
         DashMpd mpd = new()
         {

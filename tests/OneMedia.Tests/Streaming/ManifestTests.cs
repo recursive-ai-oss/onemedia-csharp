@@ -109,6 +109,14 @@ public sealed class ManifestTests
     }
 
     [Fact]
+    public void TotalDurationAddsSegmentsWrittenWithDifferentFractions()
+    {
+        // Found by fuzzing: durations of 2.5 and 1.333 s are in different power-of-ten timescales and cannot be added exactly in either.
+        HlsMediaPlaylist p = Assert.IsType<HlsMediaPlaylist>(HlsPlaylist.Parse("#EXTM3U\n#EXTINF:2.5,\na\n#EXTINF:1.333,\nb\n"));
+        Assert.Equal(3.833, p.TotalDuration.Ticks / (double)p.TotalDuration.Timescale, 6);
+    }
+
+    [Fact]
     public void SecondsAreExact()
     {
         Assert.True(ManifestText.TryParseSeconds("0.0416667", out MediaTime t));
