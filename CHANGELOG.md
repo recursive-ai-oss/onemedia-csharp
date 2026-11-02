@@ -19,6 +19,8 @@ Writing, remux, editing and playability: the ISO and Matroska muxers, remux and 
 
 ### Fixed
 
+- RIFF/RF64: the reader reports (as a warning, `riff.pad-outside-parent`) a nested chunk whose pad byte lies after its parent's stated end, and an untouched RF64 file with a nested all-ones chunk size that runs past the end of the file keeps that size when headers are regenerated. Both came from 600-second `writer-riff` fuzz runs.
+
 - Tag and structure edits hold padding as generated zeros, so an edit runs in constant memory however large the padding is (an ID3v2 tag with 200 MiB of padding no longer allocates 400 MB), and `SaveInPlace` writes only the bytes that differ from what the file holds (`WriteReport.BytesWritten` is what was written), which also narrows the window a crash can tear.
 - A tag edit that makes a region grow leaves padding behind it (`TagWriteOptions.PaddingBytes`, 1024 by default; `TagWriteOptions.Minimal` for none; `GrowthPadding` on `BoxEditor`, `EbmlEditor` and `ChunkEditor`): a `free` box in MP4, a Void element in Matroska, a `JUNK` chunk in WAVE/AIFF, zero padding in an Opus comment header. A later in-place edit of a somewhat longer value now fits. Unedited files and edits that fit are unchanged.
 - A common `Date` write lists the other date tags the file keeps in `TagWriteReport.Warnings`, and `onemedia tags` prints them.
