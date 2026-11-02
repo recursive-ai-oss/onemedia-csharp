@@ -71,6 +71,7 @@ internal static class StripCommand
                 Console.WriteLine("note: " + n);
             }
 
+            Console.WriteLine("not examined: " + string.Join("; ", StripReport.NotExamined));
             return report.IsComplete ? 0 : 3;
         }
         catch (MediaException ex)

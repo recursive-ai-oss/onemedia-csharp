@@ -31,6 +31,9 @@ g ff_ass.mkv    -i video.mp4 -i cues.ass -map 0 -map 1 -c copy -c:s ass -metadat
 g ff_vtt.mkv    -i video.mp4 -i cues.vtt -map 0 -map 1 -c copy -c:s webvtt -metadata:s:s:0 language=eng
 g ff_vtt.webm   -i video.webm -i cues.vtt -map 0 -map 1 -c copy -c:s webvtt -metadata:s:s:0 language=eng
 g ff_two.mkv    -i video.mp4 -i cues.srt -i cues.ass -map 0 -map 1 -map 2 -c copy -c:s:0 srt -c:s:1 ass -metadata:s:s:0 language=eng -metadata:s:s:1 language=deu -disposition:s:1 +hearing_impaired
+# Several text tracks of one kind in one file (a remux must carry or report every one of them).
+g ff_many.mkv   -i video.mp4 -i cues.srt -i cues.srt -i cues.srt -i cues.ass -i cues.vtt -map 0 -map 1 -map 2 -map 3 -map 4 -map 5 -c copy -c:s:0 srt -c:s:1 srt -c:s:2 srt -c:s:3 ass -c:s:4 webvtt -metadata:s:s:0 language=eng -metadata:s:s:1 language=fra -metadata:s:s:2 language=deu -metadata:s:s:3 language=jpn -metadata:s:s:4 language=spa
+g ff_many.mp4   -i video.mp4 -i cues.srt -i cues.srt -i cues.srt -map 0 -map 1 -map 2 -map 3 -c copy -c:s mov_text -metadata:s:s:0 language=eng -metadata:s:s:1 language=fra -metadata:s:s:2 language=deu
 g cues.ttml -i cues.srt -f ttml
 
 if [ -n "$MP4BOX" ]; then
