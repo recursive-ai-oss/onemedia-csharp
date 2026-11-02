@@ -19,11 +19,26 @@ if (args.Length < 2)
     return 2;
 }
 
+if (args[0] == "dumpsrt")
+{
+    // A DJI sidecar: the same line format as "dump", one channel after the other.
+    foreach (RecursiveAI.OneMedia.Metadata.TelemetryChannel c in RecursiveAI.OneMedia.Metadata.Telemetry.Dji.DjiSrt.Read(args[1]))
+    {
+        int index = 0;
+        foreach (RecursiveAI.OneMedia.Metadata.TelemetrySample smp in c.Samples)
+        {
+            Console.WriteLine(DumpSample(-1, c.Name, 0, index++, smp));
+        }
+    }
+
+    return 0;
+}
+
 using MediaFile media = Media.Open(args[1]);
 List<MediaTrack> tracks = [];
 foreach (MediaTrack t in media.Tracks)
 {
-    if (TelemetryTrackReader.FormatOf(t) != TelemetryFormat.None)
+    if (TelemetryTrackReader.FormatOf(media, t) != TelemetryFormat.None)
     {
         tracks.Add(t);
     }
@@ -135,3 +150,25 @@ foreach (MediaTrack track in tracks)
 }
 
 return 0;
+
+static string DumpSample(long track, string channel, uint device, int index, RecursiveAI.OneMedia.Metadata.TelemetrySample s)
+{
+    StringBuilder sb = new();
+    sb.Append(track).Append('\t').Append(channel).Append('\t').Append(device).Append('\t').Append(index).Append('\t');
+    sb.Append(s.Time.IsKnown ? ((decimal)s.Time.Ticks / s.Time.Timescale).ToString("0.000000", CultureInfo.InvariantCulture) : "?").Append('\t');
+    double[] v = s switch
+    {
+        RecursiveAI.OneMedia.Metadata.GpsSample g => [g.Latitude, g.Longitude, g.Altitude ?? double.NaN],
+        RecursiveAI.OneMedia.Metadata.ScalarSample sc => [.. sc.Values],
+        RecursiveAI.OneMedia.Metadata.CameraSettingsSample c => [c.Iso ?? double.NaN, c.ExposureTime is { } e ? (double)e.Ticks / e.Timescale : double.NaN, c.FNumber ?? double.NaN, c.ExposureCompensationEv ?? double.NaN, c.ColorTemperatureKelvin ?? double.NaN, c.FocalLengthMillimetres ?? double.NaN],
+        RecursiveAI.OneMedia.Metadata.OrientationSample o => [o.YawDegrees ?? double.NaN, o.PitchDegrees ?? double.NaN, o.RollDegrees ?? double.NaN],
+        _ => [],
+    };
+    sb.Append(s.GetType().Name).Append("\t0\t-");
+    foreach (double d in v)
+    {
+        sb.Append('\t').Append(d.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    return sb.ToString();
+}

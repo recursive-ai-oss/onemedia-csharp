@@ -4,7 +4,9 @@ using System.IO;
 using RecursiveAI.OneMedia;
 using RecursiveAI.OneMedia.Metadata.Telemetry;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Camm;
+using RecursiveAI.OneMedia.Metadata.Telemetry.Dji;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Gpmf;
+using RecursiveAI.OneMedia.Metadata.Telemetry.Mdpm;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Mebx;
 
 namespace RecursiveAI.OneMedia.Fuzz;
@@ -22,6 +24,9 @@ internal static class TelemetryTarget
         targets["telemetry-camm"] = Camm;
         targets["telemetry-mebx"] = Mebx;
         targets["telemetry-file"] = File;
+        targets["telemetry-dji-text"] = DjiText;
+        targets["telemetry-djmd"] = Djmd;
+        targets["telemetry-mdpm"] = MdpmGps;
     }
 
     private static void Check(TelemetryCollector c)
@@ -92,6 +97,59 @@ internal static class TelemetryTarget
         MebxDecoder d = new(c, [table]);
         c.Clear();
         d.Decode(data[(1 + keyBytes)..], 0, new MediaTime(0, 600), new MediaTime(600, 600), 0);
+        Check(c);
+    }
+
+    // One text sample through the decoder (twice, so carried state is exercised), and the same bytes as a whole sidecar.
+    private static void DjiText(ReadOnlySpan<byte> data)
+    {
+        DefectLog log = new();
+        TelemetryCollector c = new(log, 1);
+        DjiTextDecoder d = new(c);
+        for (int i = 0; i < 2; i++)
+        {
+            c.Clear();
+            d.Decode(data, 0, new MediaTime(i * 33, 1000), new MediaTime(33, 1000));
+            Check(c);
+        }
+
+        _ = DjiSrt.Read(data).Count;
+    }
+
+    // One protobuf message through the generic reader and the djmd mapper; the first byte picks the protocol so every layout is reached.
+    private static void Djmd(ReadOnlySpan<byte> data)
+    {
+        string[] protocols = ["wm265e", "wm260", "Mavic4", "Air3", "Mini4_Pro", "AVATA2", "NEO2", "ac203", "oq101"];
+        DefectLog log = new();
+        TelemetryCollector c = new(log, 1);
+        DjmdDecoder d = new(c);
+        if (data.Length > 0)
+        {
+            byte[] header = System.Text.Encoding.ASCII.GetBytes("dvtm_" + protocols[data[0] % protocols.Length] + ".proto");
+            byte[] prefix = [0x0A, (byte)(header.Length + 4), 0x0A, (byte)(header.Length + 2), 0x0A, (byte)header.Length, .. header];
+            c.Clear();
+            d.Decode([.. prefix, .. data[1..].ToArray()], 0, new MediaTime(0, 1000), new MediaTime(100, 1000));
+            Check(c);
+        }
+
+        c.Clear();
+        d.Decode(data, 0, new MediaTime(0, 1000), new MediaTime(100, 1000));
+        Check(c);
+        ProtobufReader r = new(data);
+        int n = 0;
+        while (n++ < 100_000 && r.TryRead(out _, out _, out _, out _, out _))
+        {
+        }
+    }
+
+    // A packet of video as the transport stream reader hands it over: start codes and NAL units, some of them SEI with MDPM.
+    private static void MdpmGps(ReadOnlySpan<byte> data)
+    {
+        DefectLog log = new();
+        TelemetryCollector c = new(log, 1);
+        MdpmGpsDecoder d = new(c);
+        c.Clear();
+        d.Decode(data, 0, new MediaTime(0, 90000), new MediaTime(3600, 90000));
         Check(c);
     }
 

@@ -1,7 +1,10 @@
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Camm;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Gpmf;
+using RecursiveAI.OneMedia.Metadata.Telemetry.Dji;
+using RecursiveAI.OneMedia.Metadata.Telemetry.Mdpm;
 using RecursiveAI.OneMedia.Metadata.Telemetry.Mebx;
+using RecursiveAI.OneMedia.MpegTs;
 
 namespace RecursiveAI.OneMedia.Metadata.Telemetry;
 
@@ -23,6 +26,9 @@ public sealed class TelemetryTrackReader : IDisposable
     private readonly GpmfDecoder? _gpmf;
     private readonly CammDecoder? _camm;
     private readonly MebxDecoder? _mebx;
+    private readonly DjiTextDecoder? _djiText;
+    private readonly DjmdDecoder? _djmd;
+    private readonly MdpmGpsDecoder? _mdpm;
     private byte[] _payload = new byte[4096];
     private int _payloadLength;
     private int _next;
@@ -45,6 +51,15 @@ public sealed class TelemetryTrackReader : IDisposable
             case TelemetryFormat.Camm:
                 _camm = new CammDecoder(_collector);
                 break;
+            case TelemetryFormat.DjiText:
+                _djiText = new DjiTextDecoder(_collector);
+                break;
+            case TelemetryFormat.Djmd:
+                _djmd = new DjmdDecoder(_collector);
+                break;
+            case TelemetryFormat.Mdpm:
+                _mdpm = new MdpmGpsDecoder(_collector);
+                break;
             default:
                 _mebx = new MebxDecoder(_collector, tables);
                 break;
@@ -66,28 +81,50 @@ public sealed class TelemetryTrackReader : IDisposable
     public static TelemetryFormat FormatOf(MediaTrack track)
     {
         ArgumentNullException.ThrowIfNull(track);
+        if (track.Kind == TrackKind.Subtitle)
+        {
+            // DJI drones write their per-frame text into a plain timed-text track; the decoder reads nothing from a track that holds real subtitles.
+            return track.Codec == CodecId.TimedText || track.CodecTag is "tx3g" or "text" ? TelemetryFormat.DjiText : TelemetryFormat.None;
+        }
+
         if (track.Kind != TrackKind.Data)
         {
             return TelemetryFormat.None;
         }
 
+        // DJI's second protobuf track, "dbgi", holds hundreds of megabytes of debug values per recording and is not read.
         return track.CodecTag switch
         {
             "gpmd" => TelemetryFormat.Gpmf,
             "camm" => TelemetryFormat.Camm,
             "mebx" => TelemetryFormat.Mebx,
+            "djmd" => TelemetryFormat.Djmd,
             _ => TelemetryFormat.None,
         };
+    }
+
+    /// <summary>
+    /// Which telemetry encoding a track carries, as <see cref="FormatOf(MediaTrack)"/>, and also the camera data (MDPM) in the H.264 video of an
+    /// MPEG transport stream. Reading that data means reading every video packet of the file, because the cameras repeat it in the video stream.
+    /// </summary>
+    /// <param name="file">The open file.</param>
+    /// <param name="track">The track.</param>
+    /// <returns>The encoding.</returns>
+    public static TelemetryFormat FormatOf(MediaFile file, MediaTrack track)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        TelemetryFormat f = FormatOf(track);
+        return f == TelemetryFormat.None && track.Kind == TrackKind.Video && track.Codec == CodecId.H264 && file.Demuxer is MpegTsDemuxer ? TelemetryFormat.Mdpm : f;
     }
 
     internal static TelemetryTrackReader Open(MediaFile file, MediaTrack track)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(track);
-        TelemetryFormat format = FormatOf(track);
+        TelemetryFormat format = FormatOf(file, track);
         if (format == TelemetryFormat.None)
         {
-            throw new ArgumentException("The track is not a GPMF, CAMM or mebx telemetry track.", nameof(track));
+            throw new ArgumentException("The track is not a telemetry track.", nameof(track));
         }
 
         IDemuxer demuxer = file.Demuxer ?? throw new MediaReadStateException(MediaReadStateReason.AsynchronousSource, "This file was opened from an asynchronous source; telemetry is read from synchronous sources.");
@@ -198,6 +235,18 @@ public sealed class TelemetryTrackReader : IDisposable
             else if (_camm is not null)
             {
                 _camm.Decode(bytes, offset, view.Info.Pts, view.Info.Duration);
+            }
+            else if (_djiText is not null)
+            {
+                _djiText.Decode(bytes, offset, view.Info.Pts, view.Info.Duration);
+            }
+            else if (_djmd is not null)
+            {
+                _djmd.Decode(bytes, offset, view.Info.Pts, view.Info.Duration);
+            }
+            else if (_mdpm is not null)
+            {
+                _mdpm.Decode(bytes, offset, view.Info.Pts, view.Info.Duration);
             }
             else
             {

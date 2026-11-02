@@ -78,6 +78,9 @@ public sealed class TelemetryChannel
     /// <summary>The container track the data came from, or -1 for data inside a track's samples or in a sidecar. Defaults to -1.</summary>
     public long TrackId { get; init; } = -1;
 
+    /// <summary>The name the device states for itself (a GPMF <c>DVNM</c> such as <c>Fusion</c> or <c>Camera</c>), or empty. Generic values are not filtered here.</summary>
+    public string DeviceName { get; init; } = string.Empty;
+
     /// <summary>A human-readable label (the GPMF <c>STNM</c> text, a <c>mebx</c> key description), or empty.</summary>
     public string Label { get; init; } = string.Empty;
 

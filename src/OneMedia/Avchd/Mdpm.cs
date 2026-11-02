@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using RecursiveAI.OneMedia.Codecs;
+
 namespace RecursiveAI.OneMedia.Avchd;
 
 /// <summary>One entry of the Modified Digital Video Pack Metadata: a one-byte tag and four data bytes.</summary>
@@ -108,6 +110,37 @@ public sealed class MdpmBlock
 public static class Mdpm
 {
     private static ReadOnlySpan<byte> Uuid => [0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66];
+
+    /// <summary>
+    /// Finds the MDPM entries of one SEI NAL unit without allocating: the unescaped bytes go to <paramref name="scratch"/> (at most 4096 are kept)
+    /// and <paramref name="entries"/> is a slice of it holding the five-byte entries.
+    /// </summary>
+    /// <param name="sei">The NAL unit payload after the one-byte NAL header, as stored.</param>
+    /// <param name="scratch">Working space of at least <c>Math.Min(sei.Length, 4096)</c> bytes.</param>
+    /// <param name="entries">The entries (a tag byte and four data bytes each), a slice of <paramref name="scratch"/>.</param>
+    /// <returns>True when the NAL unit holds an MDPM message with at least one whole entry.</returns>
+    public static bool TryFindEntries(ReadOnlySpan<byte> sei, Span<byte> scratch, out ReadOnlySpan<byte> entries)
+    {
+        entries = default;
+        if (sei.Length < 2 || sei.Length > 4096 || scratch.Length < sei.Length)
+        {
+            return false;
+        }
+
+        int n = EmulationPrevention.Remove(sei, scratch);
+        SeiMessageReader reader = new(scratch[..n]);
+        while (reader.TryRead(out int type, out ReadOnlySpan<byte> payload))
+        {
+            if (type == 5 && payload.Length >= 16 + 4 + 1 && payload[..16].SequenceEqual(Uuid) && payload.Slice(16, 4).SequenceEqual("MDPM"u8))
+            {
+                int count = Math.Min(payload[20], (payload.Length - 21) / 5);
+                entries = payload.Slice(21, count * 5);
+                return count > 0;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Looks through the messages of one SEI NAL unit for MDPM. Emulation prevention bytes are removed first, because message sizes
