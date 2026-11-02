@@ -169,6 +169,70 @@ public sealed class TagResidueTests : IDisposable
         Assert.NotNull(m.Tags.Title);
     }
 
+    // An ID3v2.3 tag with one title frame and 1,070 bytes of padding, in front of audio that ends in an APEv2 tag; optionally a whole stale frame inside the padding.
+    private string PaddedWithApe(string name, bool stale)
+    {
+        byte[] apeFile = Fx("audio-es/ext-ape-mp3gain.mp3");
+        int oldTag = 10 + (apeFile[6] << 21 | apeFile[7] << 14 | apeFile[8] << 7 | apeFile[9]);
+        byte[] frame = [.. "TIT2"u8, 0, 0, 0, 6, 0, 0, 0, .. "Title"u8];
+        byte[] body = new byte[frame.Length + 1070];
+        frame.CopyTo(body, 0);
+        if (stale)
+        {
+            byte[] comm = [.. "COMM"u8, 0, 0, 0, 39, 0, 0, 0, .. "eng"u8, 0, .. Encoding.ASCII.GetBytes(Marker + " stale comment")];
+            comm.CopyTo(body, frame.Length + 20);
+        }
+
+        byte[] head = [.. "ID3"u8, 3, 0, 0, (byte)(body.Length >> 21 & 0x7F), (byte)(body.Length >> 14 & 0x7F), (byte)(body.Length >> 7 & 0x7F), (byte)(body.Length & 0x7F)];
+        return Put(name, [.. head, .. body, .. apeFile.AsSpan(oldTag)]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnInPlaceEditOfTheId3TagFitsItsPaddingWithAnApeTagAtTheEnd(bool stale)
+    {
+        string path = PaddedWithApe("fits.mp3", stale);
+        long length = new FileInfo(path).Length;
+        TagWriteOptions onlyId3 = new() { Systems = [TagSystems.Id3v2] };
+        TagWriter.SaveInPlace(path, Set(CommonField.Title, "Other"), onlyId3);
+        Assert.Equal(length, new FileInfo(path).Length);
+        Assert.False(Contains(path));
+        Assert.Empty(TagWriter.CheckResidue(path));
+        using MediaFile r = Media.Open(path);
+        Assert.Equal("Other", r.Tags.Title);
+    }
+
+    // The same edit written to every tag system the file has would make the APEv2 tag at the end grow, and an APE tag has no padding. The refusal is
+    // right, and it must name that tag rather than blame the ID3v2 padding, which has room.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnInPlaceEditThatMakesTheApeTagGrowIsRefusedAndNamesTheApeTag(bool stale)
+    {
+        string path = PaddedWithApe("ape-grows.mp3", stale);
+        byte[] before = File.ReadAllBytes(path);
+        PaddingRequiredException e = Assert.Throws<PaddingRequiredException>(() => TagWriter.SaveInPlace(path, Set(CommonField.Title, "Other")));
+        Assert.Equal("APEv2 tag", e.ShortfallIn);
+        Assert.Contains("APEv2 tag", e.Message, StringComparison.Ordinal);
+        Assert.Equal(0, e.Available);
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void MediaFileSaveWithNoEditsZeroesLeftoversInThePadding()
+    {
+        string path = PaddedWithApe("media-save.mp3", stale: true);
+        Assert.True(Contains(path));
+        using (MediaFile m = Media.Open(path))
+        {
+            m.Save();
+        }
+
+        Assert.False(Contains(path));
+        Assert.Empty(TagWriter.CheckResidue(path));
+    }
+
     [Fact]
     public void ASaveOfACleanFileWithNoEditsChangesNothing()
     {

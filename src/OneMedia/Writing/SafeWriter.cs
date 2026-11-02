@@ -104,7 +104,7 @@ public static class SafeWriter
         ArgumentException.ThrowIfNullOrEmpty(path);
         if (!plan.IsSameLayout)
         {
-            throw new PaddingRequiredException(Math.Max(1, plan.PaddingRequired), plan.PaddingAvailable);
+            throw new PaddingRequiredException(Math.Max(1, plan.PaddingRequired), plan.PaddingAvailable, plan.ShortfallIn);
         }
 
         cancellationToken.ThrowIfCancellationRequested();

@@ -14,6 +14,7 @@ Fixes for 0.3.0-preview.2, privacy first.
 
 ### Fixed
 
+- A refused in-place edit says where the room is missing. `onemedia tags file.mp3 --set title=x --in-place` on an MP3 with an ID3v2 tag and an APEv2 tag at the end is refused because the edit goes to both tags and the APE tag has no padding to grow into; the message used to blame "padding" and quote the ID3v2 tag's free bytes ("needs 19 byte(s), the file has 1070 of padding"). It now reads "The edit does not fit in place: the APEv2 tag would grow by 19 byte(s) and has no padding to take it ...", `PaddingRequiredException.ShortfallIn` names the part, and `--system id3v2` (`TagWriteOptions.Systems`) writes the edit in place. The refusal itself is unchanged from 0.3.0-preview.2.
 - `onemedia info` no longer offers the file's last-write time as a capture-time candidate unless asked, so its output repeats from run to run. Add `--file-times` for the old behaviour. The library's `MediaFile.UseFileSystemTime` (default true) controls the same candidate.
 - The AVI codec-string example in the preview.2 entry below said `avc1.64001E` for a Sintel file; that string is High profile level 3.0 (the small test fixtures). Sintel's own stream is High level 4.0, `avc1.640028`, which is what ffprobe 7.0.2 reports for it.
 - Public docs lost internal planning markers; `docs/telemetry.md` says that privacy strip is not in this release.

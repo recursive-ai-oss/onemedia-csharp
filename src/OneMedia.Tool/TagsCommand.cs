@@ -126,7 +126,9 @@ internal static class TagsCommand
         }
         catch (PaddingRequiredException e)
         {
-            Console.Error.WriteLine($"the edit needs {e.Required} byte(s) and the file has {e.Available} of padding; use --out or --replace");
+            Console.Error.WriteLine(e.ShortfallIn is null
+                ? $"the edit needs {e.Required} byte(s) and the file has {e.Available} of padding; use --out or --replace"
+                : $"{e.Message} Use --out or --replace, or --system to limit the edit.");
             return 1;
         }
         catch (MediaException e)

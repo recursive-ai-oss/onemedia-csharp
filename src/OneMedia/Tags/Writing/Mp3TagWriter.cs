@@ -27,6 +27,7 @@ internal static class ReplacementPlan
         PieceList list = new();
         long pos = 0;
         long required = 0;
+        List<string> growing = [];
         foreach (Replacement r in replacements.OrderBy(x => x.Offset))
         {
             list.AddCopy(pos, r.Offset - pos);
@@ -36,11 +37,17 @@ internal static class ReplacementPlan
             list.NoteChange(r.Description, new ByteRange(r.Offset, r.Length), start);
             // Growth padding (ZeroPad) is optional: only the bytes the edit itself needs count as a shortfall.
             required += Math.Max(0, r.Data.Length - r.Length);
+            if (r.Data.Length > r.Length)
+            {
+                growing.Add(r.Description);
+            }
             pos = r.Offset + r.Length;
         }
 
         list.AddCopy(pos, sourceLength - pos);
-        return list.ToPlan(sourceLength, 0, paddingAvailable, required);
+        // Only an ID3v2 tag has padding to give; any other part that grows is where the room is missing, and the padding of the ID3v2 tag is not available to it.
+        string? where = growing.Count > 0 && growing.TrueForAll(d => !d.StartsWith("ID3v2", StringComparison.Ordinal)) ? string.Join(" and ", growing) : null;
+        return list.ToPlan(sourceLength, 0, where is null ? paddingAvailable : 0, required, where);
     }
 }
 
