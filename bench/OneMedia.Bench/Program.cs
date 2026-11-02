@@ -51,6 +51,19 @@ if (args[0] == "subsdump")
     return SubtitleDump.Run([.. args.Skip(1)]);
 }
 
+if (args[0] == "memcheck")
+{
+    // memcheck AREA INPUT OUTPUT-DIR: one operation on one file, then the process's peak resident set. Areas: demux, remux, package, repair, tag.
+    return MemCheck.Run(args[1], args[2], args[3]);
+}
+
+if (args[0] == "tagwsplit")
+{
+    // tagwsplit RELATIVE-PATH RUNS: plan, write and a bare copy timed apart, for tuning the tag-write rows.
+    WriteImpls.TagWriteSplit(Path.Combine(home, "corpus", args[1]), int.Parse(args[2], CultureInfo.InvariantCulture));
+    return 0;
+}
+
 if (args[0] == "crossread")
 {
     // crossread FILE: what ATL.NET and TagLib# read back from a file the tag-write check wrote.
@@ -69,8 +82,19 @@ if (args[0] == "pullalloc")
     foreach (string rel in args.Skip(1))
     {
         string path = Path.IsPathRooted(rel) ? rel : Path.Combine(home, "corpus", rel);
-        (long packets, long bytes) = Impls.PullAllocation(path);
-        Console.WriteLine($"{rel}: {packets} packets, {bytes} bytes allocated, {(packets == 0 ? 0 : (double)bytes / packets):0.000} B per packet");
+        long packets, bytes, ownedPackets, ownedBytes;
+        try
+        {
+            (packets, bytes) = Impls.PullAllocation(path);
+            (ownedPackets, ownedBytes) = Impls.OwnedAllocation(path);
+        }
+        catch (RecursiveAI.OneMedia.MediaException e)
+        {
+            Console.WriteLine($"{rel}: not measured, {e.GetType().Name}: {e.Message}");
+            continue;
+        }
+
+        Console.WriteLine($"{rel}: {packets} packets, {bytes} bytes allocated, {(packets == 0 ? 0 : (double)bytes / packets):0.000} B per packet; owned path {ownedPackets} packets, {(ownedPackets == 0 ? 0 : (double)ownedBytes / ownedPackets):0.0} B per packet");
     }
 
     return 0;

@@ -277,7 +277,7 @@ internal sealed class Runner
         StringBuilder sb = new();
         CultureInfo c = CultureInfo.InvariantCulture;
         sb.Append(c, $"## Run {DateTime.UtcNow:yyyy-MM-dd HH:mm}Z{(stopped ? " (stopped at the time budget)" : string.Empty)}\n\n");
-        sb.Append(c, $"- Host: {Environment.MachineName}; {Machine.Cpu()}; {Environment.ProcessorCount} logical cores; {RuntimeInformation_Os()}\n");
+        sb.Append(c, $"- Host: {Environment.GetEnvironmentVariable("ONEMEDIA_HOST_LABEL") ?? "unlabelled"}; {Machine.Cpu()}; {Environment.ProcessorCount} logical cores; {RuntimeInformation_Os()}\n");
         sb.Append(c, $"- ISA: {Machine.IsaFlags()}\n");
         sb.Append(c, $"- Storage of the corpus: {Machine.Storage(_corpus)}; every file is read once before its rows, so it is in the page cache for all of them\n");
         sb.Append(c, $"- .NET: {Environment.Version} ({System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription})\n");

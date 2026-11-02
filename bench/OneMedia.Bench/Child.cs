@@ -114,7 +114,8 @@ internal static class Child
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            return Failed(row, impl, relative, "fail", e.GetType().Name + ": " + e.Message, baseline);
+            // A library's message often names the file by its full path; the table keeps the corpus-relative part only.
+            return Failed(row, impl, relative, "fail", e.GetType().Name + ": " + e.Message.Replace(path, relative, StringComparison.Ordinal), baseline);
         }
     }
 

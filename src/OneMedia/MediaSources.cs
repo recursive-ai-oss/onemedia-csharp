@@ -30,6 +30,19 @@ public sealed class MemoryMediaSource : IMediaSource, IAsyncMediaSource
         return n;
     }
 
+    /// <summary>The bytes of a range, without copying, so a writer can hand them to its output directly. False when the range is not wholly inside.</summary>
+    internal bool TryGetRange(long offset, long length, out ReadOnlyMemory<byte> bytes)
+    {
+        if (offset < 0 || length < 0 || offset + length > _data.Length)
+        {
+            bytes = default;
+            return false;
+        }
+
+        bytes = _data.Slice((int)offset, (int)length);
+        return true;
+    }
+
     /// <inheritdoc />
     public ValueTask<int> ReadAsync(long offset, Memory<byte> destination, CancellationToken cancellationToken = default)
     {

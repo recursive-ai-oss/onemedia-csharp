@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using RecursiveAI.OneMedia.Remuxing;
 using RecursiveAI.OneMedia.Tags;
 using Atl = ATL;
@@ -32,7 +33,7 @@ internal static class WriteImpls
     }
 
     // The same four common fields everywhere.
-    private static TagEdits Edits()
+    internal static TagEdits Edits()
     {
         TagEdits edits = new();
         edits.Set(CommonField.Title, "Bench title, edited");
@@ -50,6 +51,35 @@ internal static class WriteImpls
         using MemoryStream output = new(data.Length + 4096);
         SafeWriter.Write(plan.Plan, source, output);
         return new Work(1, 0, 1);
+    }
+
+    /// <summary>Times the planning and the writing of the tag edit apart, for tuning: microseconds per run of each, and of a bare copy.</summary>
+    public static void TagWriteSplit(string path, int runs)
+    {
+        byte[] data = Load(path);
+        long plan = 0, write = 0, copy = 0;
+        for (int i = 0; i < runs + 200; i++)
+        {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            using MemoryMediaSource source = new(data);
+            TagWritePlan p = TagWriter.Plan(source, Edits());
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            using MemoryStream output = new(data.Length + 4096);
+            SafeWriter.Write(p.Plan, source, output);
+            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+            using MemoryStream bare = new(data.Length + 4096);
+            bare.Write(data);
+            long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (i >= 200)
+            {
+                plan += t1 - t0;
+                write += t2 - t1;
+                copy += t3 - t2;
+            }
+        }
+
+        double us = 1e6 / System.Diagnostics.Stopwatch.Frequency / runs;
+        Console.WriteLine($"{path}: {data.Length} bytes; plan {plan * us:0.0} us, write {write * us:0.0} us, bare copy {copy * us:0.0} us");
     }
 
     private static MemoryStream Copy(byte[] data)
@@ -150,6 +180,38 @@ internal static class WriteImpls
         finally
         {
             File.Delete(output);
+        }
+    }
+
+    /// <summary>Rebuilds a healthy file's index into a memory stream: the cost of the scan-and-rewrite path (Matroska, AVI, MP4).</summary>
+    public static Work OursRepair(string path)
+    {
+        using FileMediaSource source = FileMediaSource.Open(path);
+        using MemoryStream output = new(1 << 20);
+        RecursiveAI.OneMedia.Repair.RepairReport report = RecursiveAI.OneMedia.Repair.Repairer.Repair(source, output);
+        return new Work(report.Tracks.Count, output.Length);
+    }
+
+    private static long _packageRun;
+
+    /// <summary>Packages a file as HLS (CMAF segments and playlists) into a fresh directory under the scratch area, then removes it.</summary>
+    public static Work OursPackageHls(string path)
+    {
+        string dir = Path.Combine(Environment.GetEnvironmentVariable("ONEMEDIA_BENCH_TMP") ?? Path.GetTempPath(), "pkg-" + Environment.ProcessId + "-" + (_packageRun++));
+        try
+        {
+            RecursiveAI.OneMedia.Streaming.PackagingReport report = Media.PackageHls(path, dir);
+            long bytes = 0;
+            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                bytes += new FileInfo(f).Length;
+            }
+
+            return new Work(report.Tracks.Sum(t => t.Segments), bytes);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
         }
     }
 }

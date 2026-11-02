@@ -15,6 +15,9 @@ row. It is a console app, not packed, and the only project that references the c
 | `mp4-mux` | write the frames of an AAC track held in memory as an MP4 in memory (moov-first; moov-last beside it) | SharpMP4 | – |
 | `mp4-remux` | read the AAC track of a file and write it as an MP4 in memory | SharpMP4 (its reader and builder) | `ffmpeg -c copy -map 0:a:0 -f mp4` |
 | `mkv-mux` | read every packet and write a Matroska/WebM file to a counting sink | none (no managed Matroska writer) | `ffmpeg -c copy -f matroska`, `mkvmerge` |
+| `mpeg-demux`, `asf-demux` | read every packet of MPEG-TS/M2TS/PS and ASF files, up to 2 GiB | none (absolute times) | `ffmpeg -c copy -f null` |
+| `repair-index` | rebuild the index of a healthy Matroska, AVI or MP4 file into memory | none | – |
+| `package-hls` | HLS CMAF packaging to disk (the output directory is removed after each run) | none | – |
 | `tagw-id3`, `tagw-flac`, `tagw-ilst`, `tagw-riff`, `tagw-mkv` | change title, artist, album and comment of a tagged file held in memory; the edited file ends up in memory | TagLib#, ATL.NET (a library that cannot write the format shows `fail` or no row) | – |
 | `remux-mem` | remux each file over 4 GiB into Matroska and MP4 on disk; peak resident memory is the figure | none | `ffmpeg -c copy -f matroska` |
 | `playable` | `MakePlayable` for the generic MP4 profile on one H.264+AAC Matroska file | none (information) | `ffmpeg -c copy -f mp4` |
@@ -58,6 +61,10 @@ row the obvious public call is used: SharpMP4 reads track by track with `ReadSam
   row and no file above 1.25×. Rows with no managed comparator pass.
 - Every run records CPU, logical cores, ISA flags, storage of the corpus, runtime, restored package versions, tool versions and the
   one-minute load average before, during (mean and max of 5 s samples) and after.
+
+## Other commands
+
+`pullalloc FILE...` measures the pull path's allocation per packet (gate: 0) and the owned path's; `memcheck AREA FILE DIR` and `memory.sh` give the peak resident set of demux, remux, packaging, repair and tag edits on a small file and on one past 4 GiB; `tagwsplit FILE RUNS` times a tag edit's planning, writing and a bare copy apart; `subsbench` times the subtitle rows. The host label in a report comes from `ONEMEDIA_HOST_LABEL` (the machine's own name is never written) and failure notes keep corpus-relative paths. Rows open files through the default registry (`MediaFormats.Default`), so the cost of finding the format is part of every OneMedia time.
 
 ## Running it
 

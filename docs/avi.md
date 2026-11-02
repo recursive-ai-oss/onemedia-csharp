@@ -106,11 +106,7 @@ end of the file costs a seek and one block read for the first chunks, not a scan
 `LIST INFO` and `IDIT` chunks (which writers put right after `hdrl` or after `movi`), and for DV type 1 the first video frame's header
 blocks.
 
-Measured over HTTP range requests on 70 files (probe plus metadata, see [io-results.txt](io-results.txt)): 4.4 to 7.8 KB in 20 to 32 requests
-for every file with a `movi` list, whatever its size; the OpenDML files of 1.29 GB and 4.65 GB take 4,748 B / 32 and 4,844 B / 32 (ffprobe
-1.67 MB / 11 and 3.35 MB / 23, MediaInfo 11 MB / 173 and 11.4 MB / 176 through `strace`, ExifTool 47 KB / 8 and 71 KB / 11). The one file
-that needs a scan is a sample with no `movi` list: the bounded search for stream chunks (4 MiB at most) read 75 KB in 451 requests. Raw DV
-reads 64 KiB (the first frames' header blocks) in 3 requests.
+Measured over HTTP range requests on 70 files (probe plus metadata, see [io-results.txt](io-results.txt)): a median of 114,509 B in 9 requests and at most 273,716 B in 13 for every file with a `movi` list, whatever its size; the OpenDML files of 1.29 GB and 4.65 GB take about 172 KB in 9 to 10 requests (ffprobe 1.67 MB / 11 and 3.35 MB / 23, MediaInfo 11 MB / 173 and 11.4 MB / 176 through `strace`, ExifTool 47 KB / 8 and 71 KB / 11). Opening reads the first 32 KiB (more when the header list is longer) into a front cache, then serves the many small reads of the header list from it and later reads through a 32 KiB read-ahead window; a probe is 10 to 50 reads of the file instead of about 100 one-chunk reads. Before that change the same probe fetched 4,559 B (median) in 32 requests; fewer round trips cost more bytes, and a smaller window (8 KiB gave 45 KB in 10 requests) is a follow-up. Opening also no longer walks the first 64 video chunks of a file whose video track is not H.264 or HEVC (DV-in-AVI is the common case): that walk made one 4 KiB read per chunk for nothing. The one file that needs a scan is a sample with no `movi` list: the bounded search for stream chunks (4 MiB at most) read 75 KB in 451 requests. Raw DV reads 64 KiB (the first frames' header blocks) in 3 requests.
 
 ## Deviations from ffprobe 7.0.2
 

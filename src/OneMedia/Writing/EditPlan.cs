@@ -527,6 +527,14 @@ internal static class PieceWriter
 
     private static void CopyRange(IMediaSource source, ByteRange range, Stream output, byte[] buffer, CancellationToken cancellationToken)
     {
+        // A source held in memory hands its bytes straight to the output: one copy instead of two.
+        if (source is MemoryMediaSource memory && memory.TryGetRange(range.Offset, range.Length, out ReadOnlyMemory<byte> bytes))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            output.Write(bytes.Span);
+            return;
+        }
+
         long pos = range.Offset;
         long remaining = range.Length;
         while (remaining > 0)
