@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.8.0-preview.1] - 2026-11-02
+
+Hardening: every parser fuzzed, the speed, allocation, memory and I/O tables for every area on x64 and arm64, the test suite in headless Chromium, phone smoke runs, and migration pages. Everything in 0.7.0-preview.1 stays; packaging, sources, repair, subtitles, captions, capture facts, telemetry and timed events are still previews.
+
 ### Fixed
 
 - The transport-stream probe read some ranges twice when it had to go back to the start (tables after the first payloads, or none at all), and searched 24 MB for missing program tables. The second pass now comes from a copy of the first, the table search stops at 6 MB with the defect `ts.tables-not-found`, and no stream reads more than 7.1 MB at open (four corpus streams read 9 to 25 MB before).
@@ -11,15 +15,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - Packaging a transport stream whose timestamps do not fit the 90 kHz clock in 64 bits raised `OverflowException`; it is now a typed `MuxRefusedException` (found by the `package` fuzz target).
 - The duration of an HLS presentation rounded each `EXTINF` to a whole second while adding them up, so a 52.208 s stream read 51 s. `EXTINF` values are decimals and are now summed exactly (a DASH period's start, when derived from the previous period, had the same rounding). `docs/streaming-sources.md` also states that `PresentationVariant.Bandwidth` is `AVERAGE-BANDWIDTH` when present and `BANDWIDTH` otherwise.
 - Reconstructing a recording with no reference file, when the video's parameter sets lived only in the lost movie box, could still end with the muxer's "a video track needs a width and height" text. The scan took a few stray bytes inside the H.264 data for an AV1 sequence header; it now needs a frame size and a second well-formed temporal unit behind it, so the rebuild says that a reference file is needed. A frame size the sample entry cannot hold (over 65535) now also gets that lead message.
+- Writing TTML could repeat an attribute (a style with an unreadable `tts:color` kept as written, over a colour inherited from a referenced style), which made the XML malformed (found by the `subs-ttml` fuzz target).
 
 ### Changed
 
 - Planning a Matroska tag edit is faster and allocates less: the sizes of the stored positions are settled without rewriting the tree three times, the safety check opens the Matroska reader directly with a rented buffer, and small rewritten Cues are built once. The files written are byte-identical to before. `MediaFormats.Default`'s documentation now lists every format it opens.
+- Opening AVI files reads the header lists through a small front cache, in far fewer reads (a 4.6 GB OpenDML file: 48 instead of about 99), and skips the walk for parameter sets unless a track needs them; ASF reassembly reuses pooled buffers, so pulling packets allocates nothing.
 
 ### Added
 
 - `MediaTrack` forwards one-line fields: `Width`, `Height`, `RotationDegrees`, `FrameRate` (video) and `SampleRate`, `Channels` (audio), all nullable, so `media.Video?.Width` and `media.Audio?.SampleRate` read as the README sketch does. They read the existing `Video` and `Audio` info; nothing else changes.
 - The unit-test suite runs in headless Chromium on the browser-wasm runtime (`tests/OneMedia.Tests.Browser`, `tools/wasm-suite`, `docs/platforms.md`), and a CI job runs it. In that runtime `FileMediaSource.ReadAsync` completes in place, and the readers written as synchronous code (MPEG-TS/PS, AVI, DV, FLAC, FLV, WAV and the other audio files) refuse a source that answers later with a `NotSupportedException` instead of waiting for ever.
+- Smoke apps for Android and iOS (`smoke/OneMedia.Android`, `smoke/OneMedia.iOS`, `docs/mobile.md`): trimmed Release builds that run the shared smoke checks plus a tag edit, a remux and an AAC decode in an Android 16 emulator and an iOS 27.1 simulator.
+- Migration pages (`docs/migration/`) for ffprobe/FFMpegCore, TagLib#, ATL.NET, MetadataExtractor, MediaInfo and ExifTool, and a compiled samples project (`samples/OneMedia.Samples`) that runs every happy-path task.
+- Speed, allocation, memory and I/O results for every area on x64 and arm64 (`docs/bench-results/0.8-*.md`), and fuzz targets for trim, split, concat, packaging, playability and growing files.
 
 ## [0.7.0-preview.1] - 2026-11-02
 
