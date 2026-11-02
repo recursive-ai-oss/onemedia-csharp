@@ -1,5 +1,6 @@
 using System.Buffers;
 using RecursiveAI.OneMedia.Metadata;
+using RecursiveAI.OneMedia.Metadata.Telemetry;
 using RecursiveAI.OneMedia.Tags;
 
 namespace RecursiveAI.OneMedia;
@@ -327,6 +328,22 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     // call instead of returning packets from a position someone else moved. Silent empty output is never the result.
     private bool _readStarted;
     private int _generation;
+
+    private IReadOnlyList<TelemetryChannel>? _telemetry;
+
+    /// <summary>
+    /// The decoded telemetry of the file (GoPro GPMF, Google CAMM, Apple <c>mebx</c> tracks), one channel per sensor or key, read on first use and kept.
+    /// Reads every telemetry sample into memory; stream a long recording with <see cref="TelemetryTrackReader"/> instead.
+    /// Empty when the file has no telemetry track.
+    /// </summary>
+    /// <exception cref="MediaReadStateException">The file was opened from an asynchronous source, or its source cannot seek after an earlier read.</exception>
+    public IReadOnlyList<TelemetryChannel> Telemetry => _telemetry ??= TelemetryChannels.Read(this);
+
+    /// <summary>Opens a track's telemetry for one-at-a-time reading in constant memory (see <see cref="TelemetryTrackReader"/>).</summary>
+    /// <param name="track">A telemetry track: <see cref="TelemetryTrackReader.FormatOf"/> is not <c>None</c>.</param>
+    /// <returns>The reader; dispose it before reading the file another way.</returns>
+    /// <exception cref="ArgumentException">The track is not a telemetry track.</exception>
+    public TelemetryTrackReader OpenTelemetry(MediaTrack track) => TelemetryTrackReader.Open(this, track);
 
     /// <summary>Starts a read: returns the file to its beginning if it was read before, and returns the read's generation. Other tracks must already be switched off.</summary>
     internal int BeginRead()
