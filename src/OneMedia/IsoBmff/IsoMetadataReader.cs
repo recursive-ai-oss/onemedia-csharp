@@ -188,6 +188,10 @@ internal sealed class IsoMetadataReader
             {
                 AddXmp(atom, trackId);
             }
+            else if (atom.TypeName is "QVMI" or "MVTG" or "RMKN" or "SIGM")
+            {
+                ReadExifAtom(atom);
+            }
             else if (atom.TypeName == "chpl" && trackId == 0)
             {
                 ReadChapterList(atom);
@@ -241,6 +245,24 @@ internal sealed class IsoMetadataReader
 
     private static readonly uint Id32Type = BoxTypes.Make("ID32");
     private const int Id32Prefix = 6;
+
+    // Camera makers store a TIFF/Exif block in some user-data atoms (listed as Exif-structured in ExifTool's QuickTime tag documentation: Casio QVMI,
+    // FujiFilm MVTG, Ricoh RMKN, Sigma SIGM). A few bytes of wrapper may precede the TIFF header; the reader looks for it. An atom that holds no TIFF
+    // header is left alone.
+    private void ReadExifAtom(BoxNode atom)
+    {
+        if (atom.PayloadSize > _limits.MaxTagBytes)
+        {
+            _defects.Add(DefectKind.LimitReached, DefectSeverity.Warning, atom.Offset, "A user-data Exif atom is larger than the tag limit and is not read.", "exif.limit");
+            return;
+        }
+
+        byte[] payload = atom.ReadPayload(_limits.MaxTagBytes);
+        if (Exif.ExifBlock.TryParse(payload, atom.Header.PayloadOffset, _limits, _defects, out Exif.ExifBlock block))
+        {
+            _facts.AddEvidence(block.ToEvidence("exif:" + atom.TypeName));
+        }
+    }
 
     private void AddXmp(BoxNode box, long trackId) =>
         _containers.Add(XmpPacket.Read(_source, new ByteRange(box.Offset, box.Header.HeaderSize + box.PayloadSize), new ByteRange(box.Header.PayloadOffset, box.PayloadSize), _limits, _defects, trackId));

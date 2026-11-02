@@ -177,8 +177,9 @@ public sealed class XmpPacket : ITagContainer
                 }
             }
         }
-        catch (XmlException e)
+        catch (Exception e) when (e is XmlException or ArgumentException)
         {
+            // XmlReader raises ArgumentException (not XmlException) from its encoding detection on some malformed declarations; found by fuzzing.
             defects.Add(DefectKind.InvalidValue, DefectSeverity.Warning, offset, "The XMP packet is not well-formed XML: " + e.Message, "tags.xmp-malformed");
         }
     }

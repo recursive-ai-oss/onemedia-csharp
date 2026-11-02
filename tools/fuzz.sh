@@ -93,6 +93,17 @@ seed() {
             { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f").seed"
             { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
           done ;;
+    exif) # The whole input is a TIFF/Exif block (its first byte also picks how far a header may be searched for).
+          for f in "$here"/testdata/facts/*.tiff; do
+            [ -f "$f" ] && cp "$f" "$corpus/$(basename "$f").seed"
+          done ;;
+    sidecars) # The first byte picks the parser (0 XMP, 1 Sony XML, 2 DJI SRT, 3 auto-detect); the rest is the sidecar.
+          for f in "$here"/testdata/facts/sidecar.xmp "$here"/testdata/facts/sony-clip.xml "$here"/testdata/facts/dji.srt; do
+            [ -f "$f" ] || continue
+            case "$f" in *.xmp) b=0;; *.xml) b=1;; *) b=2;; esac
+            { printf "\\$(printf '%03o' $b)"; cat "$f"; } > "$corpus/$(basename "$f").seed"
+            { printf '\003'; cat "$f"; } > "$corpus/$(basename "$f")-auto.seed"
+          done ;;
     mpegts) # The first byte picks the path (bit 0: forward-only; bit 1: seek and read the metadata); the rest is the file.
             for f in "$here"/testdata/mpeg/*.ts "$here"/testdata/mpeg/*.m2ts; do
               [ -f "$f" ] || continue

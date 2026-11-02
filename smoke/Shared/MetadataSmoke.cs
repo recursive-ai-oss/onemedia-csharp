@@ -38,7 +38,16 @@ internal static class MetadataSmoke
             check("metadata: MediaFile facts", media.Device is not null && media.Rotation is not null && media.CaptureTime is not null);
             NativeTag first = media.Metadata.NativeTags[0];
             check("metadata: MediaFile native", media.Native[first.System, first.Key] is not null);
+            check("facts: resolution reason", media.Location.Resolution is { Reason.Length: > 0 });
         }
+
+        // Facts: a Sony XML sidecar, an Exif block and telemetry GPS time through the default resolver.
+        EvidenceSet sony = Sidecars.Read("<NonRealTimeMeta><CreationDate value=\"2016-01-03T06:12:00-04:00\"/><Device manufacturer=\"Sony\" modelName=\"X\" serialNo=\"7\"/></NonRealTimeMeta>"u8.ToArray())!;
+        GpsSample fix = new(MediaTime.Zero, MediaTime.Unknown, ByteRange.None, 1, 2, Fix: GpsFixKind.Fix3D, GpsTime: new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        MediaFacts facts = DefaultFactResolver.Instance.Resolve(new FactEvidence { Telemetry = [new TelemetryChannel(TelemetryKind.Gps, "smoke", "gps", [fix])] }.With(sony));
+        check("facts: sidecar beats telemetry", facts.CaptureTime.Best?.Source == "sidecar:sony-xml:CreationDate" && facts.CaptureTime.Candidates.Count == 2 && facts.Device.Serial.Best?.Value == "7");
+        byte[] tiff = [(byte)'I', (byte)'I', 0x2A, 0, 8, 0, 0, 0, 1, 0, 0x0F, 0x01, 2, 0, 2, 0, 0, 0, (byte)'A', 0, 0, 0, 0, 0, 0, 0];
+        check("facts: exif", Exif.ExifBlock.TryParse(tiff, 0, MediaLimits.Default, new DefectLog(), out Exif.ExifBlock exif) && exif.ToEvidence().Make.Count == 1);
 
         // Matroska: a global TITLE tag, read synchronously and through a ranged source.
         byte[] simple = El(0x67C8, El(0x45A3, "TITLE"u8.ToArray()), El(0x4487, "Smoke title"u8.ToArray()));

@@ -15,13 +15,38 @@ namespace RecursiveAI.OneMedia.Metadata;
 /// <param name="Range">The bytes in the file the reading came from, or <see cref="ByteRange.None"/>.</param>
 public sealed record FactCandidate<T>(T Value, string Source, string RawValue, string Interpretation, TimeZoneCertainty Certainty = TimeZoneCertainty.Unknown, ByteRange Range = default);
 
+/// <summary>Creates facts from candidates.</summary>
+public static class Fact
+{
+    /// <summary>
+    /// Creates a fact from candidates a resolver has ordered, best first. This is how a custom <see cref="IFactResolver"/> returns its answer.
+    /// </summary>
+    /// <typeparam name="T">The type of the fact's value.</typeparam>
+    /// <param name="candidates">The readings, best first; copied.</param>
+    /// <param name="resolution">Which reading won and why, or <c>null</c> when the order is not the result of a resolution.</param>
+    /// <returns>The fact; with no candidates it has no value.</returns>
+    public static Fact<T> Create<T>(IEnumerable<FactCandidate<T>> candidates, FactResolution? resolution = null)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        List<FactCandidate<T>> list = [.. candidates];
+        return new Fact<T>(list, resolution);
+    }
+}
+
 /// <summary>
 /// A fact with every reading found, best first. The order is the documented interim precedence; a later resolver may reorder or replace it.
 /// </summary>
 /// <typeparam name="T">The type of the fact's value.</typeparam>
 public sealed class Fact<T>
 {
-    internal Fact(IReadOnlyList<FactCandidate<T>> candidates) => Candidates = candidates;
+    internal Fact(IReadOnlyList<FactCandidate<T>> candidates, FactResolution? resolution = null)
+    {
+        Candidates = candidates;
+        Resolution = resolution;
+    }
+
+    /// <summary>Which reading won and why, when a resolver produced this fact; <c>null</c> for the container-only interim order.</summary>
+    public FactResolution? Resolution { get; }
 
     internal static Fact<T> None { get; } = new([]);
 
@@ -76,7 +101,11 @@ public readonly record struct FrameSize(int CodedWidth, int CodedHeight, int Dis
 /// <param name="Make">The device maker.</param>
 /// <param name="Model">The device model.</param>
 /// <param name="Software">The software that recorded or wrote the file.</param>
-public sealed record DeviceFacts(Fact<string> Make, Fact<string> Model, Fact<string> Software);
+public sealed record DeviceFacts(Fact<string> Make, Fact<string> Model, Fact<string> Software)
+{
+    /// <summary>The device's serial number (a per-unit device identifier), with its candidates. Empty when no source states one.</summary>
+    public Fact<string> Serial { get; init; } = Fact<string>.None;
+}
 
 /// <summary>
 /// The basic facts a file states about itself: how long, when and where it was captured, on what, and how it is oriented. Each is a
@@ -87,9 +116,22 @@ public sealed record DeviceFacts(Fact<string> Make, Fact<string> Model, Fact<str
 /// </summary>
 public sealed class MediaFacts
 {
-    internal MediaFacts(Fact<MediaTime> duration, Fact<MediaDateTime> captureTime, Fact<GeoLocation> location, Fact<string> make, Fact<string> model, Fact<string> software,
-        Fact<VideoOrientation> orientation, Fact<FrameSize> frameSize)
+    /// <summary>Creates a set of facts; a custom <see cref="IFactResolver"/> returns one of these.</summary>
+    /// <param name="duration">Duration.</param>
+    /// <param name="captureTime">Capture time.</param>
+    /// <param name="location">Location.</param>
+    /// <param name="make">Device maker.</param>
+    /// <param name="model">Device model.</param>
+    /// <param name="software">Recording software.</param>
+    /// <param name="orientation">Display orientation.</param>
+    /// <param name="frameSize">Picture size.</param>
+    /// <param name="serial">Device serial number; none when <c>null</c>.</param>
+    /// <param name="profile">The device profile that applied, or <c>null</c>.</param>
+    public MediaFacts(Fact<MediaTime> duration, Fact<MediaDateTime> captureTime, Fact<GeoLocation> location, Fact<string> make, Fact<string> model, Fact<string> software,
+        Fact<VideoOrientation> orientation, Fact<FrameSize> frameSize, Fact<string>? serial = null, DeviceProfile? profile = null)
     {
+        Serial = serial ?? Fact<string>.None;
+        Profile = profile;
         Duration = duration;
         CaptureTime = captureTime;
         Location = location;
@@ -110,7 +152,13 @@ public sealed class MediaFacts
     public Fact<GeoLocation> Location { get; }
 
     /// <summary>The device maker, model and software together.</summary>
-    public DeviceFacts Device => new(Make, Model, Software);
+    public DeviceFacts Device => new(Make, Model, Software) { Serial = Serial };
+
+    /// <summary>The device serial number, with its candidates.</summary>
+    public Fact<string> Serial { get; }
+
+    /// <summary>The device profile the resolver applied (it decides, for example, whether the movie header is local time), or <c>null</c>.</summary>
+    public DeviceProfile? Profile { get; }
 
     /// <summary>The device maker.</summary>
     public Fact<string> Make { get; }
