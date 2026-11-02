@@ -17,6 +17,7 @@
     <Using Include="System.Threading.Tasks" />
     <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
     <Compile Include="../../tools/OneMedia.IsoBmffDiff/Mp4Builder.cs" Link="Shared/Mp4Builder.cs" />
+    <Compile Include="../../tests/OneMedia.Tests/Captions/TeletextBuilder.cs" Link="Shared/TeletextBuilder.cs" />
     <WasmExtraFilesToDeploy Include="main.mjs" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
     <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />

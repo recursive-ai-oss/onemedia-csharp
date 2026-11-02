@@ -124,6 +124,7 @@ internal static class SmokeRun
         SmokeAudio.Run(Check);
         MpegSmoke.Run(Check);
         TextTrackSmoke.Run(Check);
+        TeletextSmoke.Run(Check);
         await AudioStreamSmoke.RunAsync(Check);
         await MetadataSmoke.RunAsync(Check);
         await XiphFlvSmoke.RunAsync(Check);

@@ -9,6 +9,8 @@
   <ItemGroup>
     <PackageReference Include="SharpFuzz" />
     <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <!-- The teletext seed writer reuses the test project's packet builders. -->
+    <Compile Include="../../tests/OneMedia.Tests/Captions/TeletextBuilder.cs" Link="TeletextBuilder.cs" />
   </ItemGroup>
 
 </Project>

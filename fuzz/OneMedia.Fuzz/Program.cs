@@ -34,6 +34,7 @@ TelemetryTarget.Register(targets);
 StripTarget.Register(targets);
 SubtitleTargets.Register(targets);
 TextTrackTarget.Register(targets);
+TeletextTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;

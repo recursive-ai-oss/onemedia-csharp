@@ -19,8 +19,14 @@ mkdir -p "$C/_dl"
 # manifest columns: id path url archive dl_sha256 dl_size file_sha256 file_size licence use
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 
-download() { # download URL DEST: resumable, stops when a benchmark lock appears
-  curl -fsSL --retry 3 -C - -o "$2" "$1" &
+download() { # download URL DEST: resumable, stops when a benchmark lock appears. A URL ending in #bytes=A-B fetches that range only.
+  local url="${1%%#*}" range=""
+  case "$1" in *'#bytes='*) range="${1##*#bytes=}" ;; esac
+  if [ -n "$range" ]; then
+    curl -fsSL --retry 3 -r "$range" -o "$2" "$url" &
+  else
+    curl -fsSL --retry 3 -C - -o "$2" "$url" &
+  fi
   local pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if [ -n "${ONEMEDIA_BENCH_LOCK:-}" ] && [ -e "$ONEMEDIA_BENCH_LOCK" ]; then kill "$pid" 2>/dev/null || true; echo "benchmark lock present; stopping" >&2; exit 3; fi
