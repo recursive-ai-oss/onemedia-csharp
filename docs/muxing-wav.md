@@ -102,3 +102,32 @@ Memory is constant (a 64 KiB scratch for byte swapping). `MediaLimits.MaxPacketB
 - AIFF/CAF channel layouts (`chan`) are not read, so a layout other than the default for the count is lost (the report says a mask was assigned).
 - PCM in MPEG-TS/PS (LPCM) is not carried: the TS and PS readers expose no PCM codec.
 - ffprobe reports no channel layout for a plain one- or two-channel `fmt` record; a source that stated mono or stereo then reads as unspecified.
+
+## Results
+
+Oracles: ffmpeg and ffprobe 7.0.2 (static release build), MediaInfo 26.10, ExifTool 13.60; run as binaries only.
+
+**Round trip on generated files.** 113 files (WAV, BWF, RF64, W64, AIFF/AIFC, CAF, MOV, MKV and AVI carrying unsigned 8-bit, signed 16/24/32-bit, float 32/64, A-law and mu-law, 1 to 8 channels, 8 to 192 kHz) were remuxed to WAVE with `onemedia remux`. ffmpeg's decoded samples (whole-stream md5 and normalised frame md5) and the stream bytes (`-c copy -f data`, after applying independently the byte swap or 8-bit offset the input's codec implies) are equal for 102; 11 differ only in the channel mask, because their sources state no layout and the muxer assigns the conventional one. No file differs otherwise. Our reader and ffprobe list the same packets on all 113 outputs (1,307 packets).
+
+**Corpus.** 217 PCM-family corpus files under 300 MB: 158 equal, 14 layout or default-mask only, 36 refused (compressed codecs the muxer does not carry, such as ALAC, Opus, IMA4, GSM and G.72x without a format record, and damaged inputs), 8 differences. All 8 are on the input side (ffmpeg cannot read the input or reads it differently), with our output readable by ffmpeg and ffprobe and holding the bytes our reader found:
+
+| File | What ffmpeg does with the input | Our output |
+|---|---|---|
+| `ext-unknown-sub.wav` (extensible, unknown sub-format) | reads it, but cannot decode the sub-format (0 bytes decoded) | same packets (400 bytes) as the input |
+| `huge-chunk-size.wav`, `no-data.wav` | "no 'data' tag found", input rejected | a valid, empty WAVE |
+| `bad_length.aifc` | input rejected | a valid WAVE with the samples our reader found |
+| `Fnonull.aif`, `Ptjunk.aif` | input rejected (0 bytes) | 9 samples; for `Ptjunk` the SSND offset (5) is skipped and the COMM frame count (9) is honoured, as AIFF defines |
+| `Poffset.aif` | reads 0 bytes (honours the COMM frame count, ours uses the SSND size) | 15 bytes |
+| `voxware.wav` (a codec ffmpeg does not decode) | 0 bytes decoded | the same 2,592 packet bytes as ffprobe lists for the input |
+
+**Metadata.** `bext` (Description, Originator, OriginatorReference, date, time, TimeReference, CodingHistory), iXML (project, scene, take) and `LIST INFO` (INAM, IART, ICMT, ICRD, ISFT) written by `WavMuxer` read back identically in ExifTool and MediaInfo. Neither shows `cart` (ExifTool lists it as an unknown binary block), so `cart` is checked only by our own reader.
+
+**Large file.** A 4,939,212,494-byte file (24-bit, 48 kHz, stereo) is written as RF64 in 2.8 s with a peak resident set of 35 MB; ffprobe reports 17,150.043021 s, MediaInfo 17,150,043 ms and ExifTool 4:45:50. The packet differential on it lists 200,978 equal packets.
+
+**Kill test.** `tools/wav/wav-kill-test.py`: 300 rounds of `kill -9` at a random moment while a 1.5 GiB file was being written, half over an absent target and half over an earlier complete file. 300 killed, 150 old files kept untouched, 150 targets absent, 0 corrupt.
+
+**Fuzzing.** Target `wavmux` (a track description, options and a run of packets with arbitrary times and lengths; accepted output must read back with the samples it was given): 600 s, 18,752,708 executions, 31,202 per second, 227 corpus entries, no crash.
+
+**MOV/MP4 PCM remux (shared code).** The WAVE work changed how PCM sample entries are read for ISO remux (`enda` marks little-endian 24/32-bit entries; 8-bit `sowt`/`twos` entries are signed bytes). `tools/wav/iso-pcm-regress.py` writes 62 files with ffmpeg (u8, s8, s16, s24, s32, f32, f64, A-law, mu-law, both byte orders, mono, stereo and 5.1, MOV and MP4), remuxes each to MP4, MOV and Matroska, and compares ffmpeg's decoded samples of input and output. Before the change: 71 equal, 30 different, 85 refused. After: 83 equal, 0 different, 103 refused; no row got worse. The refusals are existing limits: the ISO muxer has no sample entry for companded PCM, 8-bit signed PCM or little-endian 24/32-bit and float in QuickTime, and the Matroska muxer does not write PCM at all. The existing remux differential (`tools/run-remux-diff.sh`) on the 83 written files (50 MP4, 33 MOV): 3,652 packets, 0 differences from ffprobe, 0 new MP4Box or ffmpeg messages.
+
+**Write speed (indicative; shared worker under heavy load, so not a published row).** A 288,000,102-byte 24-bit stereo WAV remuxed to WAV, warm page cache, three runs: `onemedia remux` 0.33, 0.35 and 0.35 s including process start; `ffmpeg -c copy` 0.14, 0.26 and 0.24 s. Peak resident set 36 to 37 MB. A big-endian AIFF of the same size is written as WAVE with the byte swap in 0.75 s; ffmpeg cannot copy big-endian PCM into WAVE (it refuses the codec), so there is no row to compare.

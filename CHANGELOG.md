@@ -4,6 +4,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+- WAV, Broadcast Wave and RF64 writing (`WavMuxer`, `WavMuxOptions`, `BextChunk`, `CartChunk`, `docs/muxing-wav.md`): one audio track from any container that carries PCM, A-law or mu-law, as RIFF WAVE, with `bext`, `cart`, iXML, `LIST INFO` and other chunks, extensible format records for more than two channels or wider samples, and an automatic switch to RF64 past 4 GiB without moving a sample byte. `Remuxer.Remux` accepts `RemuxFormat.Wav` and `Rf64` (`onemedia remux in out.wav`, `--format wav|rf64`); chunks of a WAV or RF64 input travel unchanged. `WavMuxer.CreateFile` writes under a temporary name and renames when complete. Checked against ffmpeg 7.0.2 decoded samples and ffprobe packets on 113 generated files, against ExifTool and MediaInfo for the metadata chunks, and with 300 `kill -9` rounds (0 corrupt files).
+- Fix: remuxing QuickTime PCM from MOV/MP4 read little-endian 24-bit, 32-bit and float entries (`enda`) as big-endian and wrote corrupt samples; they are now read correctly, and the QuickTime muxer refuses them where it has no little-endian entry. 8-bit signed `sowt`/`twos` entries were read as 16-bit and are now read as 8-bit.
+
 ## [0.4.0-preview.1] - 2026-11-02
 
 The privacy strip and capture-date writes, subtitles and captions, timed events, AAC and FLAC targets for `MakePlayable`, and fixes. Capture facts and telemetry shipped as unadvertised previews in 0.3.0-preview.2 and are described here as previews.
