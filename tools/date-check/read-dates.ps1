@@ -18,7 +18,7 @@ $props = 'System.Media.DateEncoded', 'System.ItemDate', 'System.Photo.DateTaken'
 $sh = New-Object -ComObject Shell.Application
 $ns = $sh.Namespace((Resolve-Path $Folder).Path)
 
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Runtime.WindowsRuntime
 function Save-Screen([string]$path) {
     $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
     $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
@@ -59,6 +59,7 @@ function Show-InPhotos([string]$full, [string]$shotBase) {
     return $r
 }
 
+$photosPackage = Get-AppxPackage -Name 'Microsoft.Windows.Photos' -ErrorAction SilentlyContinue | Select-Object -First 1
 $tz = Get-TimeZone
 $rows = @()
 foreach ($f in (Get-ChildItem -File $Folder | Sort-Object Name)) {
@@ -85,6 +86,6 @@ foreach ($f in (Get-ChildItem -File $Folder | Sort-Object Name)) {
     $rows += [pscustomobject]$v
     Write-Output "done $($f.Name)"
 }
-[pscustomobject]@{ timeZone = $tz.Id; utcOffset = $tz.BaseUtcOffset.ToString(); os = (Get-CimInstance Win32_OperatingSystem).Caption + ' ' + (Get-CimInstance Win32_OperatingSystem).Version; files = $rows } |
+[pscustomobject]@{ photosPackage = $(if ($photosPackage) { $photosPackage.Version.ToString() } else { $null }); timeZone = $tz.Id; utcOffset = $tz.BaseUtcOffset.ToString(); os = (Get-CimInstance Win32_OperatingSystem).Caption + ' ' + (Get-CimInstance Win32_OperatingSystem).Version; files = $rows } |
     ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $Out 'dates.json') -Encoding UTF8
 Write-Output 'finished'
