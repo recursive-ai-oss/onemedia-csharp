@@ -5,8 +5,9 @@ usage: check-remux-losses.py <remuxcheck.dll> <exiftool> <mediainfo> <workdir> <
 
 For each file: remux to MP4 with OneMedia.RemuxCheck (--report), then read the descriptive tags (title, artist, album, comment, genre,
 description, copyright, composer, year) of the input and of the output with ExifTool and MediaInfo. The report is right when
-  - the input has tags and the report lists a Tag loss (tags were not written, so it must say so), or the input has none and the report lists none;
-  - the output has none of these tags (nothing was carried that the report does not say);
+  - every tag the input has and the output lacks is covered by a Tag loss in the report (tags are carried through the common view; what the output
+    format cannot hold or has no common field for is reported), and a Tag loss is only reported when the input has some descriptive tags or native-only ones;
+  - the output has no descriptive tag the input did not have (nothing invented);
   - every dropped track the report names (Track loss) is absent from the output: the output has as many video/audio streams as the report says were written.
 Prints one TSV line per file: name, tags in input (ExifTool/MediaInfo), Tag losses reported, tags in output, tracks reported written / found by MediaInfo, verdict.
 """
@@ -69,12 +70,12 @@ def main():
         counts = [int(x or 0) for x in sv.split("/")] if "/" in sv else [0, 0]
         found = sum(counts)
         problems = []
-        if (tin_e or tin_m) and not tag_losses:
-            problems.append("input has tags but no Tag loss reported")
-        if tag_losses and not (tin_e or tin_m):
-            problems.append("Tag loss reported but neither tool sees descriptive tags in the input")
-        if tout_e or tout_m:
-            problems.append("output still has tags")
+        if (tin_e - tout_e) and not tag_losses:
+            problems.append("tags lost (%s) without a Tag loss" % sorted(tin_e - tout_e))
+        if (tin_m - tout_m) and not tag_losses:
+            problems.append("MediaInfo: tags lost (%s) without a Tag loss" % sorted(tin_m - tout_m))
+        if (tout_e - tin_e) and tin_e:
+            problems.append("output has tags the input does not (%s)" % sorted(tout_e - tin_e))
         if written != found:
             problems.append("tracks written %d, MediaInfo finds %d video+audio" % (written, found))
         if problems:

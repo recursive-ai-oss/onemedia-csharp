@@ -123,3 +123,18 @@ re-framed video keeps its NAL units: the NAL units of the input (parameter sets 
 differences: a track marked `annexb-to-length-prefixed` or `adts-to-raw` is compared by size and hash with what was written (`.pkts`), because the bytes differ by design, and the class `untimed-input` covers raw elementary streams, which
 have no time stamps for ffprobe to print. `tools/run-remux-diff.sh` adds the structure check (MP4Box `-info`, mkvalidator for Matroska) and `ffmpeg -f null` on input and output and counts messages that appear only for the output.
 `tools/run-mux-diff.sh`-style summaries are written to `summary.tsv`.
+
+## Differential results
+
+Every corpus file up to 1 GiB remuxed, then packets compared with ffprobe 7.0.2 (`tools/remux-compare.py`: payload hash after the documented framing change, times after the documented shift, flags), the output checked with MP4Box -info or mkvalidator, and decoded to null with ffmpeg. Files a target cannot hold are refused with a typed reason and counted as not written.
+
+| Target | Files compared | Packets | Match | Differences | Not written |
+|---|---|---|---|---|---|
+| MP4 | 698 | 962,615 | 962,615 | 0 | 284 |
+| Matroska | 647 | 1,301,013 | 1,300,594 | 419 (one AVCHD file) | 335 |
+| WebM (`.webm .opus .ogg` inputs) | 47 | 222,821 | 222,821 | 0 | 1 |
+
+- The 419: `avchd_lite_14s_playback_speed_problems.MTS` declares a field rate in its SPS (59.96 per second) while the pictures are 3003 ticks apart, so the TS reader's per-packet duration is 1501 ticks where ffprobe reports 3003; the Matroska output keeps the reader's duration. Timestamps and payloads match.
+- MP4Box messages new in the output: 3 files (zero `stts` deltas from repeated input decode times). ffmpeg messages new in the output: 55 files, of which 10 are the cover pictures of tagged MP3 fixtures, now carried into `covr` (the fixture images are not valid PNG); the rest are ffmpeg's non-monotonic-DTS warnings for index-less inputs and decoder messages on damaged samples.
+- mkvalidator messages new in the output: 2 files (`h264-aac-errorflag.ts`); the input is a TS file mkvalidator cannot read, so its message list is empty and any line counts as new (the line is an empty `file ""` banner).
+- Tag carry spot check (26 files, ExifTool 13.60, MediaInfo 26.10): tags the input had reappear in the output of ID3, CAF and TS service-name inputs; unreadable-to-ExifTool inputs (CAF, TS) show the carried tags.
