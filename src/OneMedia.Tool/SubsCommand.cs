@@ -11,7 +11,7 @@ namespace RecursiveAI.OneMedia.Tool;
 internal static class SubsCommand
 {
     public const string Usage =
-        "       onemedia subs info <file> [--encoding name]   format, encoding, cues, styles, features used and defects\n"
+        "       onemedia subs info <file> [--encoding name] [--cues]   format, encoding, cues, styles, features used and defects (--cues: one line per cue, times in ms)\n"
         + "       onemedia subs <in> --to <out> [--format name] [--offset seconds] [--align-to media] [--encoding name] [--overwrite] [--report]\n"
         + "                      convert a subtitle file (srt, webvtt, ass/ssa, ttml/dfxp, sbv, lrc; format by content) into the format <out> names\n"
         + "                      (or --format), optionally shifting times; prints what the target could not carry (--report lists every cue)";
@@ -21,7 +21,7 @@ internal static class SubsCommand
         bool info = args.Length > 0 && args[0] == "info";
         string? input = null, output = null, format = null, alignTo = null, encoding = null;
         string? offset = null;
-        bool overwrite = false, report = false;
+        bool overwrite = false, report = false, cues = false;
         for (int i = info ? 1 : 0; i < args.Length; i++)
         {
             string a = args[i];
@@ -34,6 +34,7 @@ internal static class SubsCommand
                 case "--encoding" when i + 1 < args.Length: encoding = args[++i]; break;
                 case "--overwrite": overwrite = true; break;
                 case "--report": report = true; break;
+                case "--cues": cues = true; break;
                 default:
                     if (a.StartsWith("--", StringComparison.Ordinal) || input is not null)
                     {
@@ -61,7 +62,7 @@ internal static class SubsCommand
             SubtitleDocument doc = source.Read(data, defects, null, options);
             if (info)
             {
-                return Info(doc, source, defects);
+                return Info(doc, source, defects, cues);
             }
 
             if (offset is not null)
@@ -100,7 +101,7 @@ internal static class SubsCommand
         }
     }
 
-    private static int Info(SubtitleDocument doc, SubtitleFormat format, DefectLog defects)
+    private static int Info(SubtitleDocument doc, SubtitleFormat format, DefectLog defects, bool cues)
     {
         Console.WriteLine($"format:   {format.DisplayName} ({format.Name})");
         Console.WriteLine($"encoding: {doc.TextEncoding}{(doc.ByteOrderMark ? " with byte order mark" : "")}, line ending {(doc.NewLine == "\r\n" ? "CRLF" : doc.NewLine == "\r" ? "CR" : "LF")}");
@@ -133,6 +134,15 @@ internal static class SubsCommand
         foreach (MediaDefect d in defects)
         {
             Console.WriteLine($"defect:   {d}");
+        }
+
+        if (cues)
+        {
+            for (int i = 0; i < doc.Cues.Count; i++)
+            {
+                SubtitleCue c = doc.Cues[i];
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"cue\t{i}\t{c.Start.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks}\t{c.End.Rescale(1000, MediaRounding.NearestAwayFromZero).Ticks}\t{c.Text.Replace("\n", "\\n", StringComparison.Ordinal)}"));
+            }
         }
 
         return 0;
