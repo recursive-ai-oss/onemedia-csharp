@@ -137,33 +137,13 @@ internal static class IsoStrip
         }
     }
 
-    // A tag is removed by turning its atom into padding. In an item list of QuickTime keys the item's type is the key's number, so the item stays and
-    // its value atoms (data, mean, name) become padding instead: a number whose type is "free" would read as a key that does not exist.
+    // A tag is removed by turning its atom (in an item list: its item) into a free box of the same size. Readers skip free boxes in an item list;
+    // leaving the item with only its value atoms turned to padding made ExifTool report the key with the text "#free".
     private static void FreeTag(FileMediaSource source, NativeTag tag, StripCategories c, StripSink sink, HashSet<long> freed)
     {
         if (!freed.Add(tag.Range.Offset))
         {
             sink.Note(c, tag.System, tag.Key, tag.TrackId, tag.Range.Offset, 0, StripAction.ConvertedToPadding, 0);
-            return;
-        }
-
-        if (tag.System == TagSystems.QuickTimeKeys)
-        {
-            long pos = tag.Range.Offset;
-            if (!BoxReader.TryRead(source, pos, tag.Range.End, false, null, out BoxHeader item))
-            {
-                sink.Leftover(c, tag.System, tag.Key, tag.TrackId, tag.Range, "The item's box header could not be read.");
-                return;
-            }
-
-            long at = item.PayloadOffset;
-            while (at < tag.Range.End && BoxReader.TryRead(source, at, tag.Range.End, false, null, out BoxHeader child))
-            {
-                MakeFree(sink, child, c, tag, count: false);
-                at = child.End;
-            }
-
-            sink.Note(c, tag.System, tag.Key, tag.TrackId, tag.Range.Offset, tag.Range.Length, StripAction.ConvertedToPadding, tag.Range.Length - item.HeaderSize);
             return;
         }
 
