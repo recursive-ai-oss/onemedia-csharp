@@ -81,6 +81,18 @@ internal static class IsoStrip
         return new StripPlan(patches.ToPlan(source.Length), new StripReport(cats, sink.Entries(), sink.Leftovers, sink.Notes));
     }
 
+    // A value found in another place is usually stored without the NUL padding the labelled field had.
+    private static byte[] Trimmed(byte[] v)
+    {
+        int n = v.Length;
+        while (n > 0 && v[n - 1] == 0)
+        {
+            n--;
+        }
+
+        return n == v.Length ? v : v[..n];
+    }
+
     private static void AddSecret(List<Secret> secrets, StripCategories c, string name, string value)
     {
         if (value.Length >= 6 && !secrets.Any(x => x.Name == name && x.Bytes.AsSpan().SequenceEqual(Encoding.UTF8.GetBytes(value))))
@@ -100,6 +112,7 @@ internal static class IsoStrip
                 value = Encoding.UTF8.GetBytes(text.TrimEnd('\0'));
             }
 
+            value = Trimmed(value);
             if (value.Length >= 6)
             {
                 secrets.Add(new Secret(c, tag.System + ":" + tag.Key, value));
@@ -195,7 +208,7 @@ internal static class IsoStrip
             }
             else if (StripRules.ClassifyGpmf(key) is { } c and not StripCategories.None && c != StripCategories.Location && avail >= 6)
             {
-                secrets.Add(new Secret(c, "GPMF:" + key, data.Slice(body, avail).ToArray()));
+                secrets.Add(new Secret(c, "GPMF:" + key, Trimmed(data.Slice(body, avail).ToArray())));
             }
 
             long step = 8 + ((length + 3) & ~3L);

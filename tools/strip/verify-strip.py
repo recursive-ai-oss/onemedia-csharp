@@ -109,15 +109,17 @@ def search(path, pats):
 
 
 def av_hashes(ffprobe, path):
-    out = run([ffprobe, '-v', 'error', '-show_entries', 'packet=stream_index,codec_type:stream=index,codec_type', '-show_data_hash', 'SHA256', '-of', 'csv', path])
     types = {}
-    hashes = {}
-    for line in out.splitlines():
+    for line in run([ffprobe, '-v', 'error', '-show_entries', 'stream=index,codec_type', '-of', 'csv', path]).splitlines():
         parts = line.split(',')
         if parts[0] == 'stream' and len(parts) >= 3:
             types[parts[1]] = parts[2]
-        elif parts[0] == 'packet' and len(parts) >= 4:
-            hashes.setdefault(parts[1], hashlib.sha256()).update(parts[-1].encode())
+    hashes = {}
+    out = run([ffprobe, '-v', 'error', '-show_entries', 'packet=stream_index,data_hash', '-show_data_hash', 'SHA256', '-of', 'csv', path])
+    for line in out.splitlines():
+        parts = line.split(',')
+        if parts[0] == 'packet' and len(parts) >= 3:
+            hashes.setdefault(parts[1], hashlib.sha256()).update(parts[2].encode())
     return {k: v.hexdigest() for k, v in hashes.items() if types.get(k) in ('video', 'audio')}
 
 

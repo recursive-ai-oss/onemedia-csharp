@@ -78,6 +78,9 @@ internal sealed class StripSink
 internal static class TelemetryScrub
 {
     private const int MaxDepth = 8;
+    private static readonly byte[] EmptyKey = "EMPT"u8.ToArray();
+    private static readonly byte[] UnknownCammType = [0xFF, 0xFF];
+    private static readonly byte[] PlaceholderId = [0, 0, 0, 0];
 
     /// <summary>
     /// GoPro GPMF (GoPro's GPMF format documentation): a stream of KLV items, each a four-character key, a type byte, a size byte, a 16-bit big-endian
@@ -106,6 +109,8 @@ internal static class TelemetryScrub
                 if ((c & cats) != 0 && avail > 0 && fileOffset >= 0)
                 {
                     sink.Zero(c, system, key, trackId, fileOffset + body, avail);
+                    // The key becomes EMPT, a key GoPro's documentation lists as an empty item, so readers no longer report the stream or field.
+                    sink.Patches.Write(fileOffset + pos, EmptyKey);
                 }
             }
 
@@ -135,6 +140,8 @@ internal static class TelemetryScrub
         if (type is 4 or 5 or 6)
         {
             sink.Zero(StripCategories.Location, "camm", "camm type " + type, trackId, fileOffset + 4, data.Length - 4);
+            // The packet type becomes 0xFFFF, which the CAMM specification does not assign, so a reader skips the packet.
+            sink.Patches.Write(fileOffset + 2, UnknownCammType);
         }
     }
 
@@ -158,6 +165,8 @@ internal static class TelemetryScrub
             if ((c & cats) != 0 && fileOffset >= 0)
             {
                 sink.Zero(c & cats, "mebx", key!.Key, trackId, fileOffset + payload, end - payload);
+                // Local id 0 marks a placeholder atom, which readers of the sample skip.
+                sink.Patches.Write(fileOffset + payload - 4, PlaceholderId);
             }
             else if (key is null && depth < MaxDepth && end - payload >= 8)
             {
@@ -181,7 +190,7 @@ internal static class TelemetryScrub
 
         foreach (Secret s in secrets)
         {
-            if ((s.Category & cats) == 0 || s.Bytes.Length == 0)
+            if ((s.Category & cats) == 0 || s.Bytes.Length < 6)
             {
                 continue;
             }

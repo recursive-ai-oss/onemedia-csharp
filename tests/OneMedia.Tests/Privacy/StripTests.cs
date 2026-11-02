@@ -122,7 +122,7 @@ public class StripTests
                     }
                 }
 
-                Assert.True(gps > 0, "the GPS samples are still there, with neutral values");
+                Assert.Equal(0, gps); // the GPS streams are renamed to EMPT, so no GPS sample is reported any more
                 Assert.Contains(reader.Channels, c => c.Name == "ACCL");
             }
 
