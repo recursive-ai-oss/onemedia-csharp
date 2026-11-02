@@ -40,6 +40,7 @@
     <None Include="../../testdata/playback/*" Link="testdata/playback/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Tagged fixtures and the rendered mapping table. -->
     <None Include="../../testdata/metadata/*" Link="testdata/metadata/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../testdata/facts/*" Link="testdata/facts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/tags/*" Link="testdata/fuzz/tags/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/isobmff/*" Link="testdata/fuzz/isobmff/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../testdata/fuzz/registry/*" Link="testdata/fuzz/registry/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

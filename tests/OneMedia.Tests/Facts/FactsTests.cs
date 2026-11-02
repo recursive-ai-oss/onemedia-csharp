@@ -457,3 +457,43 @@ public class FactsHappyPathTests
         }
     }
 }
+
+public class FactsFixtureTests
+{
+    private static byte[] Fixture(string name) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "facts", name));
+
+    [Theory]
+    [InlineData("exif-le.tiff", false)]
+    [InlineData("exif-be.tiff", true)]
+    public void ExifFixturesParseInBothByteOrders(string name, bool big)
+    {
+        DefectLog defects = new();
+        Assert.True(ExifBlock.TryParse(Fixture(name), 0, MediaLimits.Default, defects, out ExifBlock b));
+        Assert.Empty(defects);
+        Assert.Equal(big, b.BigEndian);
+        EvidenceSet e = b.ToEvidence();
+        Assert.Equal("Acme", e.Make.Single().Value);
+        Assert.Equal(120, e.CaptureTime[0].Value.OffsetMinutes);
+        Assert.Equal(8.5, e.Location.Single().Value.Longitude, 6);
+    }
+
+    [Theory]
+    [InlineData("sidecar.xmp", SidecarKind.Xmp, "EOS R5")]
+    [InlineData("sony-clip.xml", SidecarKind.SonyXml, "FDR-AX100")]
+    public void SidecarFixturesAreDetectedAndRead(string name, SidecarKind kind, string model)
+    {
+        byte[] bytes = Fixture(name);
+        Assert.Equal(kind, Sidecars.Sniff(bytes));
+        EvidenceSet e = Sidecars.Read(bytes)!;
+        Assert.Equal(model, e.Model.Single().Value);
+        Assert.Empty(e.Defects);
+    }
+
+    [Fact]
+    public void DjiFixtureGivesPosition()
+    {
+        EvidenceSet e = Sidecars.Read(Fixture("dji.srt"))!;
+        Assert.Equal(46.619111, e.Location.Single().Value.Latitude);
+        Assert.Equal(new DateTime(2023, 2, 24, 8, 47, 37, 832), e.CaptureTime.Single().Value.Value);
+    }
+}
