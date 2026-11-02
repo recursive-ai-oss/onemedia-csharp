@@ -35,6 +35,10 @@ EXIFTOOL_SHA=c8e3c42576f46d862e4cd9c192989776e7363931e890c95056bcd6293e83ea36
 CCEXTRACTOR_VER=0.96.6
 CCEXTRACTOR_URL=https://github.com/CCExtractor/ccextractor/releases/download/v0.96.6/ccextractor-x86_64.AppImage
 CCEXTRACTOR_SHA=176790ad21035ecdfcc28ef7f882a3ae60bdb6cd57ec393aa1fb66c7c3320d31
+TSDUCK_VER=3.44-4676
+TSDUCK_URL=https://github.com/tsduck/tsduck/releases/download/v3.44-4676/tsduck_3.44-4676.ubuntu24_amd64.deb
+TSDUCK_SHA=03a983a5147c5f733ef89aafd23f2d83e19a9e987ae4a575a7ee62ab4b16986e
+LIBSRT_SHA=1abe18145e0b888c6a3a931e19d881dfc1aee54316552e5e947474f3abdce277
 # -------------------------------------------------------------------------------------------------
 
 sha() { sha256sum "$1" | cut -d' ' -f1; }
@@ -127,6 +131,23 @@ fi
 CCX=$(find "$O/ccextractor/squashfs-root" -type f -name ccextractor | head -1)
 wrap ccextractor "LD_LIBRARY_PATH=\"$(dirname "$CCX")/../lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\" exec \"$CCX\" \"\$@\""
 
+# TSDuck (BSD-2-Clause): the release package unpacked user-locally, used only as a black-box reference for SCTE 35 and timed ID3
+# (tstables, tsp); its one missing runtime library (libsrt, Ubuntu 24.04 archive) is fetched with apt-get download and pinned.
+fetch tsduck "$TSDUCK_URL" "$TSDUCK_SHA" tsduck.deb
+if ! installed tsduck-$TSDUCK_VER "$TSDUCK_SHA"; then
+  rm -rf "$O/tsduck-$TSDUCK_VER"; mkdir -p "$O/tsduck-$TSDUCK_VER"; dpkg-deb -x "$D/tsduck.deb" "$O/tsduck-$TSDUCK_VER"
+  f=$(ls "$D"/libsrt1.5-openssl_*.deb 2>/dev/null | head -1 || true)
+  if [ -z "$f" ] || [ "$(sha "$f")" != "$LIBSRT_SHA" ]; then
+    rm -f "$D"/libsrt1.5-openssl_*.deb; ( cd "$D" && apt-get download libsrt1.5-openssl >/dev/null ); f=$(ls "$D"/libsrt1.5-openssl_*.deb | head -1)
+    got=$(sha "$f"); if [ "$got" != "$LIBSRT_SHA" ]; then [ "${RECORD:-0}" = 1 ] && echo "RECORD libsrt sha256 $got" || { echo "libsrt: sha256 $got does not match the pin" >&2; exit 4; }; fi
+  fi
+  dpkg-deb -x "$f" "$O/tsduck-$TSDUCK_VER"
+  echo "$TSDUCK_SHA" > "$O/tsduck-$TSDUCK_VER/.pin"
+fi
+for t in tstables tsp tsanalyze; do
+  wrap "$t" "LD_LIBRARY_PATH=\"$O/tsduck-$TSDUCK_VER/usr/lib/x86_64-linux-gnu:$O/tsduck-$TSDUCK_VER/usr/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\" exec \"$O/tsduck-$TSDUCK_VER/usr/bin/$t\" \"\$@\""
+done
+
 # mkvalidator, when a build exists (see build-mkvalidator.sh).
 [ -x "$O/bin/mkvalidator" ] || echo "note: mkvalidator not installed (tools/oracles/build-mkvalidator.sh)"
 
@@ -136,6 +157,7 @@ echo "=== versions"
 "$O/bin/mkvinfo" --version | head -1
 "$O/bin/mediainfo" --Version | tail -1
 echo "exiftool $("$O/bin/exiftool" -ver)"
+"$O/bin/tstables" --version 2>&1 | head -1
 "$O/bin/ccextractor" --version 2>&1 | head -1
 echo "=== sha256 (as pinned)"
-for n in FFMPEG GPAC MKVTOOLNIX MEDIAINFO EXIFTOOL CCEXTRACTOR; do v=${n}_SHA; echo "$n ${!v}"; done
+for n in FFMPEG GPAC MKVTOOLNIX MEDIAINFO EXIFTOOL CCEXTRACTOR TSDUCK; do v=${n}_SHA; echo "$n ${!v}"; done

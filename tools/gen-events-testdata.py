@@ -6,6 +6,7 @@
   emsg.expected.txt    what those emsg boxes should resolve to (times derived from the fragments' own tfdt boxes)
   timecode-df.mov      ffmpeg -timecode 01:02:03;04 (drop-frame, 29.97 fps)
   timecode-ndf.mp4     ffmpeg -timecode 10:00:00:12 (non-drop, 25 fps)
+  timecode.mkv         ffmpeg -timecode 01:02:03;04 into Matroska: stored only as a TIMECODE tag, no timecode track
 
 The transport stream and the emsg boxes are built here, byte by byte, from the layouts the standards describe; the C# parsers are
 written separately and the tests compare them with the values listed here and with independent tools' readings of the same files.
@@ -338,6 +339,7 @@ def main():
     build_emsg_mp4(emsg, os.path.join(outdir, "emsg.expected.txt"))
     run("-f", "lavfi", "-i", "testsrc2=s=64x48:r=30000/1001:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "40", "-timecode", "01:02:03;04", os.path.join(outdir, "timecode-df.mov"))
     run("-f", "lavfi", "-i", "testsrc2=s=64x48:r=25:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "40", "-timecode", "10:00:00:12", os.path.join(outdir, "timecode-ndf.mp4"))
+    run("-f", "lavfi", "-i", "testsrc2=s=64x48:r=30000/1001", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "40", "-frames:v", "3", "-timecode", "01:02:03;04", os.path.join(outdir, "timecode.mkv"))
 
 
 if __name__ == "__main__":

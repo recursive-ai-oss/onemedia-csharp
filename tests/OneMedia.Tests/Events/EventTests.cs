@@ -1,4 +1,5 @@
 using System.Globalization;
+using RecursiveAI.OneMedia.Tags;
 using RecursiveAI.OneMedia.TimedEvents;
 using RecursiveAI.OneMedia.Tags.Id3;
 
@@ -460,5 +461,36 @@ public sealed class EventTests
         Assert.False(EventMessageBox.TryParse(v0.AsSpan(0, 10), 0, out _, log));
         Assert.False(EventMessageBox.TryParse([2, 0, 0, 0, 0], 0, out _, log));
         Assert.Equal(2, log.Count);
+    }
+
+    [Fact]
+    public void MatroskaStoresTimecodeOnlyAsATag()
+    {
+        // ffmpeg -timecode into Matroska writes a TIMECODE tag on the video track and no timecode track: it is a native tag, not an event.
+        using MediaFile f = Open("timecode.mkv");
+        Assert.Empty(f.Events);
+        Assert.Equal("01:02:03;04", f.Native.Find(TagSystems.Matroska, "TIMECODE").Single().Text);
+    }
+
+    [Fact]
+    public void EmsgDeltaInADifferentTimescaleThanTheSegmentIsRounded()
+    {
+        // Found by fuzzing: a version 0 message whose timescale does not divide the segment's made the exact sum throw ArithmeticException.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "events-file", "emsg-delta-timescale-mismatch.bin"));
+        MediaOpenOptions open = new() { Limits = new MediaLimits { MaxAllocationBytes = 4 << 20, MaxPacketBytes = 1 << 20, MaxElementCount = 100_000 } };
+        using MediaFile f = MediaFile.Open(new MemoryMediaSource(input), null, open);
+        foreach (EventChannel c in MediaEvents.List(f, open.Limits))
+        {
+            _ = c.Events.Count;
+        }
+    }
+
+    [Fact]
+    public void TimecodeLookupAcceptsATimeInAnotherTimescale()
+    {
+        using MediaFile f = Open("timecode-ndf.mp4");
+        EventChannel c = f.Events.Single();
+        Assert.True(c.TryGetTimecodeAt(MediaTime.FromTimeSpan(TimeSpan.FromSeconds(0.44)), out Timecode t));
+        Assert.Equal("10:00:00:23", t.ToString());
     }
 }

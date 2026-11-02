@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using RecursiveAI.OneMedia;
@@ -8,8 +9,15 @@ using RecursiveAI.OneMedia.Tags.Id3;
 using RecursiveAI.OneMedia.TimedEvents;
 
 // Usage: EventsCheck <file> [--kind tmcd|scte|id3|emsg|all]
+//        EventsCheck <file> --io     bytes and reads of Open, then of listing the event channels (tracks and the emsg walk), then of reading their events
 // Prints one line per event in a stable text form that tools/events-compare.py compares with the oracles' output.
 string path = args[0];
+if (args.Length > 1 && args[1] == "--io")
+{
+    IoReport(path);
+    return 0;
+}
+
 string kind = "all";
 for (int i = 1; i + 1 < args.Length; i++)
 {
@@ -208,4 +216,37 @@ static string Scte(Scte35Event e)
     }
 
     return b.ToString();
+}
+
+static void IoReport(string path)
+{
+    IoCounter counter = new();
+    using FileMediaSource source = FileMediaSource.Open(path);
+    using ObservedMediaSource observed = new(source, null, counter);
+    using MediaFile file = MediaFile.Open(observed, null, new MediaOpenOptions { LeaveOpen = true });
+    Console.WriteLine($"{Path.GetFileName(path)}: size={source.Length} open: reads={counter.Reads} bytes={counter.Bytes} tracks={file.Tracks.Count}");
+    (long r, long b) = (counter.Reads, counter.Bytes);
+    IReadOnlyList<EventChannel> channels = file.Events;
+    Console.WriteLine($"  Events listing: +reads={counter.Reads - r} +bytes={counter.Bytes - b} channels={channels.Count}");
+    (r, b) = (counter.Reads, counter.Bytes);
+    long events = 0;
+    foreach (EventChannel c in channels)
+    {
+        events += c.Events.Count;
+    }
+
+    Console.WriteLine($"  Events read: +reads={counter.Reads - r} +bytes={counter.Bytes - b} events={events}");
+}
+
+internal sealed class IoCounter : IMediaReadObserver
+{
+    public long Reads { get; private set; }
+
+    public long Bytes { get; private set; }
+
+    public void OnRead(long offset, int requested, int returned)
+    {
+        Reads++;
+        Bytes += returned;
+    }
 }

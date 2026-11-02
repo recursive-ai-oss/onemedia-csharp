@@ -147,25 +147,34 @@ public sealed class EventChannel
             return false;
         }
 
-        // Whole frames elapsed since the sample began: floor((time - start) / frame duration), exact in rational arithmetic.
-        MediaTime elapsed = time - at.Time;
-        MediaTime frame = entry.FrameTime;
-        long frames = FloorDivide(elapsed, frame);
-        timecode = entry.FromFrameNumber(at.FrameNumber + frames);
+        // Whole frames elapsed since the sample began: floor((time - start) / frame duration), exact in rational arithmetic
+        // (the two times may use different timescales, so the difference is never formed as a MediaTime).
+        long frames = FloorFrames(time, at.Time, entry.FrameTime);
+        timecode = entry.FromFrameNumber(Saturate((System.Numerics.BigInteger)at.FrameNumber + frames));
         return true;
     }
 
-    private static long FloorDivide(MediaTime elapsed, MediaTime frame)
+    private static long FloorFrames(MediaTime time, MediaTime start, MediaTime frame)
     {
-        // elapsed.Ticks/elapsed.Timescale divided by frame.Ticks/frame.Timescale = (e.Ticks*f.Timescale) / (e.Timescale*f.Ticks)
-        System.Numerics.BigInteger numerator = (System.Numerics.BigInteger)elapsed.Ticks * frame.Timescale;
-        System.Numerics.BigInteger denominator = (System.Numerics.BigInteger)elapsed.Timescale * frame.Ticks;
+        // (t.Ticks/t.Scale - s.Ticks/s.Scale) / (f.Ticks/f.Scale)
+        //   = (t.Ticks*s.Scale - s.Ticks*t.Scale) * f.Scale / (t.Scale*s.Scale*f.Ticks)
+        System.Numerics.BigInteger numerator = ((System.Numerics.BigInteger)time.Ticks * start.Timescale - (System.Numerics.BigInteger)start.Ticks * time.Timescale) * frame.Timescale;
+        System.Numerics.BigInteger denominator = (System.Numerics.BigInteger)time.Timescale * start.Timescale * frame.Ticks;
+        if (denominator.Sign < 0)
+        {
+            numerator = -numerator;
+            denominator = -denominator;
+        }
+
         System.Numerics.BigInteger q = System.Numerics.BigInteger.DivRem(numerator, denominator, out System.Numerics.BigInteger r);
         if (r.Sign < 0)
         {
             q -= 1;
         }
 
-        return (long)q;
+        return Saturate(q);
     }
+
+    private static long Saturate(System.Numerics.BigInteger value) =>
+        value > long.MaxValue ? long.MaxValue : value < long.MinValue ? long.MinValue : (long)value;
 }

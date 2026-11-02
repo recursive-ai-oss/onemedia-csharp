@@ -304,7 +304,8 @@ public static class MediaEvents
                     foreach (EventMessageBox box in waiting)
                     {
                         MediaTime delta = box.Timescale == 0 ? MediaTime.Unknown : new MediaTime(box.PresentationTimeDelta, box.Timescale);
-                        found.Add(start.IsKnown && delta.IsKnown ? new EmsgFound(box, start + delta, true) : new EmsgFound(box, delta, false));
+                        // The segment and the message may use different timescales: add in the segment's, rounding to the nearest tick.
+                        found.Add(start.IsKnown && delta.IsKnown && TryAdd(start, delta, out MediaTime sum) ? new EmsgFound(box, sum, true) : new EmsgFound(box, delta, false));
                     }
 
                     waiting.Clear();
@@ -328,6 +329,20 @@ public static class MediaEvents
         }
 
         return found;
+    }
+
+    private static bool TryAdd(MediaTime a, MediaTime b, out MediaTime sum)
+    {
+        try
+        {
+            sum = a.Add(b, MediaRounding.NearestAwayFromZero);
+            return true;
+        }
+        catch (OverflowException)
+        {
+            sum = default;
+            return false;
+        }
     }
 
     // The base media decode time of the first track fragment in a moof, as a time. Only the first 4 KiB of the moof are read: mfhd, traf, tfhd
