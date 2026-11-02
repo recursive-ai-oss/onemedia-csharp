@@ -64,6 +64,9 @@ seed() {
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
                { printf '\014'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
              done ;;
+    subs-*) # The whole input is a subtitle file. Seeds: the sample of that format.
+            case "$target" in subs-srt) ext=srt;; subs-webvtt) ext=vtt;; subs-ass) ext=ass;; subs-ttml) ext=ttml;; subs-sbv) ext=sbv;; subs-lrc) ext=lrc;; esac
+            cp "$here/testdata/subtitles/sample.$ext" "$corpus/sample.$ext.seed" ;;
     faststart) # The whole input is an ISO file. Seeds: every progressive file we have, moov-last copies included once the remux check wrote them.
              for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/isobmff/*.mov "$here"/testdata/isobmff/*.3gp "$here"/testdata/isobmff/family/*.mp4 "$here"/testdata/isobmff/family/*.3gp; do
                [ -f "$f" ] || continue

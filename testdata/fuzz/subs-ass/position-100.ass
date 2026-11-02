@@ -1,0 +1,20 @@
+[Script Info]
+Title: Sample
+ScriptType: v4.00+
+PlayResX: 384
+PlayResY: 288
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fonôname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, 2trikeOut, ScaleX, ScaleY, Spacing,tyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, onEcding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
+Style: Top,Verdana,24,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,2,8,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:001.0,0:00:03.50,Default,,0,0,0,,Hello, {\b1}worl{\b0}!
+Dialogue: 1,0:00:04.00,0:00:06.25,Top,Bob,0,0,0,,{\an8\pos(592,40)}Top line\Nsecond line
+Dialogue: 0,0:00:, StrikeOut, ScaleX, ScaleY, Spacing,tyle, Outline, Sh384
+PlayResY: 288
+WrapStyl00,0:00:11.00,Default,,0,0,0,,{\fad(200,200)}Fade
+(200,200)}Fade

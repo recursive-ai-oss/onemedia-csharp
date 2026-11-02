@@ -15,6 +15,9 @@
     <PackageReference Include="MetadataExtractor" />
     <PackageReference Include="TagLibSharp" />
     <PackageReference Include="z440.atl.core" />
+    <PackageReference Include="SubtitlesParser" />
+    <!-- GPL: bench project only, public API, never shipped. -->
+    <PackageReference Include="libse" />
   </ItemGroup>
 
 </Project>

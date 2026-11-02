@@ -1295,7 +1295,7 @@ internal sealed class TtmlFormat : SubtitleFormat
         }
 
         x = Math.Clamp(x, 0, 100);
-        w = Math.Clamp(w, 1, 100 - x);
+        w = Math.Clamp(w, Math.Min(1, 100 - x), 100 - x);
         string origin = SubtitleNumbers.Format(x) + "% " + SubtitleNumbers.Format(y) + "%";
         string extent = SubtitleNumbers.Format(w) + "% " + SubtitleNumbers.Format(h) + "%";
         string? writing = p.Writing switch { SubtitleWriting.VerticalRightToLeft => "tbrl", SubtitleWriting.VerticalLeftToRight => "tblr", _ => null };

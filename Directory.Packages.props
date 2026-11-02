@@ -15,5 +15,7 @@
     <PackageVersion Include="MetadataExtractor" Version="2.9.3" />
     <PackageVersion Include="TagLibSharp" Version="2.3.0" />
     <PackageVersion Include="z440.atl.core" Version="7.19.0" />
+    <PackageVersion Include="SubtitlesParser" Version="1.5.1" />
+    <PackageVersion Include="libse" Version="5.3.0" />
   </ItemGroup>
 </Project>

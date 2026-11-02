@@ -33,6 +33,12 @@ if (args[0] == "child")
     return 0;
 }
 
+if (args[0] == "subsbench")
+{
+    // subsbench [CUES]: indicative subtitle parse/convert timings next to SubtitlesParser and the Subtitle Edit core library.
+    return SubtitleBench.Run([.. args.Skip(1)]);
+}
+
 if (args[0] == "crossread")
 {
     // crossread FILE: what ATL.NET and TagLib# read back from a file the tag-write check wrote.

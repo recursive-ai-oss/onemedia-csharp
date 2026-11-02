@@ -1,0 +1,25 @@
+WEBVTT
+
+STYLE
+::cue { color: yellow }
+
+REGION
+id:frUd
+width:40%
+lines:3
+regionanchor:0%,100%
+viewportanchor:10%,90%
+scrollÃ:up
+
+NOTE a comment
+
+intro
+00:00:01.000 --> 00:00:03.500 rernfigo:ed align:start
+<v Alice>Hello, <b>world</b>!</v>
+
+00:00:04.000 --> 00:00:06.250 line:0 position:10333333333333%,linter
+<i>Second</i> &amp; <c.red>red</c> &lt;tŸ˜Ù˜‹ÄõÀruby>æ¼¢<rt>kan</rt></ruby>å­—
+
+00:00:07.000 --> 00:00:09.000
+<00:00:07.000>one <00:00:07.500>two <00:00:08.000>t!ree
+
