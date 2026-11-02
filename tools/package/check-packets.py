@@ -68,7 +68,8 @@ def compare(src, out, with_bytes):
     for i in range(n):
         s, o = src[i], out[i]
         if s[3] != o[3]:
-            diff["size"] += 1
+            # Without --bytes the source is re-framed (Annex B start codes and in-band parameter sets, ADTS headers), so sizes differ by design.
+            diff["size" if with_bytes else "size(reframed, explained)"] += 1
         if with_bytes and s[5] != o[5]:
             diff["hash"] += 1
         if (s[4][:1] == "K") != (o[4][:1] == "K"):
@@ -127,7 +128,7 @@ def main():
         o = next(iter(out.values()))
         d, shift = compare(s, o, with_bytes)
         total += len(s)
-        bad += sum(d.values())
+        bad += sum(v for k, v in d.items() if not k.endswith("(explained)"))
         print("%s HLS  packets %d/%d shift %s diffs %s" % (track, len(s), len(o), "%.6f" % shift if shift is not None else "n/a", dict(d) or "none"))
     mpd = os.path.join(outdir, "manifest.mpd")
     if os.path.isfile(mpd):
