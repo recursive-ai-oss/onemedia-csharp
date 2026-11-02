@@ -124,7 +124,7 @@ The probe and tag-read rows were measured again for 0.2 ([x64](docs/bench-result
 
 The first open in a process includes JIT time: about 17–23 ms for MP4 and 12–16 ms for Matroska, against 10–14 ms and about 3 ms for those libraries.
 
-Every parser is fuzzed (75 targets, 600 seconds each for this release, no open crash); damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
+Every parser is fuzzed (78 targets, 600 seconds each for this release, no open crash); damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
 
 ## Packages
 
