@@ -14,7 +14,7 @@ namespace RecursiveAI.OneMedia;
 /// </summary>
 public sealed class MediaFile : IDisposable, IAsyncDisposable
 {
-    private readonly IDemuxer? _sync;
+    private IDemuxer? _sync;
     private readonly IAsyncDemuxer? _async;
 
     private MediaFile(IDemuxer? sync, IAsyncDemuxer? async)
@@ -37,7 +37,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(source);
         try
         {
-            return new MediaFile((registry ?? MediaFormats.Default).Open(source, options, cancellationToken), null) { SourcePath = (source as FileMediaSource)?.Path };
+            return new MediaFile((registry ?? MediaFormats.Default).Open(source, options, cancellationToken), null) { SourcePath = (source as FileMediaSource)?.Path, _openRegistry = registry, _openOptions = options };
         }
         catch
         {
@@ -128,13 +128,21 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Writes the tags staged on <see cref="Tags"/> (title, artist, pictures…) by atomic replacement of the file: a temporary file next to it, then a rename. Only metadata
-    /// ranges change; media payload bytes are copied. The open file is stale afterwards: open it again to read the new tags.
+    /// ranges change; media payload bytes are copied. A file opened from a path closes its own handle around the replace (Windows cannot replace an open file) and
+    /// opens the new file afterwards, so this object then reads the saved file: <see cref="Tags"/>, <see cref="Tracks"/> and the rest are those of the new file and
+    /// staged edits are cleared. Do not use packets, readers or demuxer references taken before the save. If the save fails the original is reopened and the staged edits are kept.
     /// </summary>
     /// <param name="cancellationToken">Cancels before the rename.</param>
     /// <returns>What was written to which tag system, what could not be represented, and the byte-level report.</returns>
     /// <exception cref="InvalidOperationException">The file was not opened from a path.</exception>
     /// <exception cref="UnsupportedMediaException">The format cannot be written.</exception>
-    public TagWriteReport Save(CancellationToken cancellationToken = default) => TagWriter.Save(WritePath, Tags.Pending, null, cancellationToken);
+    /// <exception cref="FileInUseException">Another process holds the file open on Windows; the original is untouched.</exception>
+    public TagWriteReport Save(CancellationToken cancellationToken = default)
+    {
+        string path = WritePath;
+        TagEdits edits = Tags.Pending;
+        return WithHandleReleased(() => TagWriter.Save(path, edits, null, cancellationToken));
+    }
 
     /// <summary>Writes the staged tags to a new file and leaves this one untouched.</summary>
     /// <param name="destination">The new file.</param>
@@ -149,7 +157,50 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     /// <returns>The report.</returns>
     /// <exception cref="PaddingRequiredException">The edit does not fit; the file is untouched.</exception>
     /// <exception cref="InvalidOperationException">The file was not opened from a path.</exception>
-    public TagWriteReport SaveInPlace(CancellationToken cancellationToken = default) => TagWriter.SaveInPlace(WritePath, Tags.Pending, null, cancellationToken);
+    public TagWriteReport SaveInPlace(CancellationToken cancellationToken = default)
+    {
+        string path = WritePath;
+        TagEdits edits = Tags.Pending;
+        return WithHandleReleased(() => TagWriter.SaveInPlace(path, edits, null, cancellationToken));
+    }
+
+    private MediaFormatRegistry? _openRegistry;
+    private MediaOpenOptions? _openOptions;
+
+    // Closes this file's own handle, runs a write that replaces or edits the file, then opens the file again whether or not the write succeeded.
+    // A source the caller supplied and asked to leave open is not ours to close, so that case writes with the handle held (as before).
+    private T WithHandleReleased<T>(Func<T> write)
+    {
+        string path = WritePath;
+        if (_sync is null || _openOptions?.LeaveOpen == true)
+        {
+            return write();
+        }
+
+        _sync.Dispose();
+        _sync = null;
+        bool wrote = false;
+        try
+        {
+            T result = write();
+            wrote = true;
+            return result;
+        }
+        finally
+        {
+            _sync = (_openRegistry ?? MediaFormats.Default).Open(FileMediaSource.Open(path), _openOptions, default);
+            _readStarted = false;
+            _generation++;
+            if (wrote)
+            {
+                // Everything cached came from the old file.
+                _metadata = null;
+                _subtitles = null;
+                _telemetry = null;
+                _resolved = null;
+            }
+        }
+    }
 
     private string WritePath => SourcePath ?? throw new InvalidOperationException("Tags can be saved only for a file opened from a path.");
 
