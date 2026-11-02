@@ -14,5 +14,7 @@ rm -rf "$W/aot"; dotnet publish smoke/OneMedia.AotSmoke -c Release -r linux-x64 
 "$W/aot/OneMedia.AotSmoke" | grep -cE "^ok"; "$W/aot/OneMedia.AotSmoke" | grep -E "FAIL|reconstruct"
 echo "=== wasm"
 dotnet build smoke/OneMedia.WasmSmoke -c Release -p:NuGetAudit=false 2>&1 | grep -E "error|Warn|warning" | head -5
-( cd "$W/scratch/artifacts/bin/OneMedia.WasmSmoke/release_browser-wasm/AppBundle" && node main.mjs 2>&1 | grep -cE "^ok"; node main.mjs 2>&1 | grep -E "FAIL|reconstruct" )
+BUNDLE=$(find "$W/scratch/artifacts" -type d -name AppBundle | head -1)
+echo "bundle: $BUNDLE"
+( cd "$BUNDLE" && node main.mjs > "$W/wasm.log" 2>&1; grep -cE "^ok" "$W/wasm.log"; grep -E "FAIL|reconstruct" "$W/wasm.log"; tail -3 "$W/wasm.log" )
 rm -rf "$W/aot" "$W/scratch"
