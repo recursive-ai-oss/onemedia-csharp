@@ -106,21 +106,44 @@ internal static class AviTracks
     // FourCC avc1/hvc1/vvc1. When that record parses it names the codec exactly; the reader looks at the in-band parameter sets only without it.
     private static CodecParameters? DescribeExtradata(CodecId codec, byte[] format)
     {
-        if (codec.Name is not ("h264" or "hevc" or "vvc") || format.Length <= BitmapInfoHeader.Size)
+        if (!TryGetRecord(codec, format, out string form, out ReadOnlyMemory<byte> record))
         {
             return null;
         }
 
-        int start = BitmapInfoHeader.TryParse(format, out BitmapInfoHeader bmp) && bmp.HeaderSize > BitmapInfoHeader.Size && bmp.HeaderSize < format.Length
-            ? (int)bmp.HeaderSize : BitmapInfoHeader.Size;
+        return CodecParameterReader.TryDescribe(codec, new CodecConfiguration(record, form), out CodecParameters? p) ? p : null;
+    }
+
+    /// <summary>
+    /// Finds the <c>avcC</c>/<c>hvcC</c>/<c>vvcC</c> record of a stream written by copy from MP4, in the bytes after the bitmap header.
+    /// Writers set <c>biSize</c> to 40 plus the record's length and pad the chunk to an even size (RIFF), so an odd record is followed by one
+    /// pad byte that is not part of it; the record ends at <c>biSize</c> when that lies within the data, else at its end.
+    /// </summary>
+    internal static bool TryGetRecord(CodecId codec, byte[] format, out string form, out ReadOnlyMemory<byte> record)
+    {
+        form = codec.Name == "h264" ? "avcC" : codec.Name == "hevc" ? "hvcC" : "vvcC";
+        record = default;
+        if (codec.Name is not ("h264" or "hevc" or "vvc") || format.Length <= BitmapInfoHeader.Size || !BitmapInfoHeader.TryParse(format, out BitmapInfoHeader bmp))
+        {
+            return false;
+        }
+
+        // A BITMAPV4HEADER/V5HEADER (108/124 bytes) carries its own fields first; the record then follows the whole header.
+        if (bmp.HeaderSize is 108 or 124 && bmp.HeaderSize < format.Length && format[(int)bmp.HeaderSize] == 1)
+        {
+            record = format.AsMemory((int)bmp.HeaderSize);
+            return true;
+        }
+
         // configurationVersion is 1 in all three records; Annex B extradata (start codes) is not a record.
-        if (format[start] != 1)
+        if (format[BitmapInfoHeader.Size] != 1)
         {
-            return null;
+            return false;
         }
 
-        string form = codec.Name == "h264" ? "avcC" : codec.Name == "hevc" ? "hvcC" : "vvcC";
-        return CodecParameterReader.TryDescribe(codec, new CodecConfiguration(format.AsMemory(start), form), out CodecParameters? p) ? p : null;
+        int end = bmp.HeaderSize > BitmapInfoHeader.Size && bmp.HeaderSize <= format.Length ? (int)bmp.HeaderSize : format.Length;
+        record = format.AsMemory(BitmapInfoHeader.Size, end - BitmapInfoHeader.Size);
+        return true;
     }
 
     private static VideoTrackInfo VideoInfo(AviStreamInfo s, AviHeaderList headers, long scale, long rate, out CodecId codec, out string? tag)

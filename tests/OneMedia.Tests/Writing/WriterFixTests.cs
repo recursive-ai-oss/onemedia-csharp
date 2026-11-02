@@ -368,6 +368,58 @@ public sealed class WriterFixTests : IDisposable
         Assert.Equal(5, ex.Required);
     }
 
+    // The growth padding a save leaves behind is optional, so a refused in-place edit must ask for the bytes the edit itself lacks, not those plus the padding.
+    [Theory]
+    [InlineData("audio-es/plain.mp3")]
+    [InlineData("pcm/aiff-id3.aiff")]
+    [InlineData("xiph-flv/tags.flac")]
+    [InlineData("xiph-flv/tags.opus")]
+    [InlineData("metadata/tags_ilst.mp4")]
+    public void ARefusedInPlaceEditAsksForTheRealShortfallNotTheGrowthPadding(string fixture)
+    {
+        string path = Put("short" + Path.GetExtension(fixture), Fx(fixture));
+        TagWriter.Save(path, Title(new string('T', 700)), TagWriteOptions.Minimal);
+        long ForOptions(TagWriteOptions options) => Assert.Throws<PaddingRequiredException>(() => TagWriter.SaveInPlace(path, Title(new string('U', 30000)), options)).Required;
+        long minimal = ForOptions(TagWriteOptions.Minimal);
+        long defaults = ForOptions(new TagWriteOptions());
+        Assert.Equal(minimal, defaults);
+        // The title grows by 29,300 characters, at most two bytes each.
+        Assert.InRange(minimal, 1, 70000);
+    }
+
+    // Privacy: frames or fields removed from the end of a tag must not stay behind as stale bytes where padding now starts.
+    [Theory]
+    [InlineData("audio-es/plain.mp3")]
+    [InlineData("pcm/aiff-id3.aiff")]
+    [InlineData("pcm/bwf-v0.wav")]
+    [InlineData("xiph-flv/tags.flac")]
+    [InlineData("xiph-flv/tags.opus")]
+    [InlineData("audio/opus.ogg")]
+    [InlineData("metadata/tags_ilst.mp4")]
+    [InlineData("metadata/mkv_ffmpeg_tags.mkv")]
+    public void FieldsRemovedInPlaceLeaveNoStaleBytesInTheFile(string fixture)
+    {
+        const string Marker = "QZXSECRETPLACEMARKER";
+        string path = Put("stale" + Path.GetExtension(fixture), Fx(fixture));
+        TagEdits add = new();
+        add.Set(CommonField.Title, "kept");
+        add.Set(CommonField.Comment, Marker + " comment");
+        add.Set(CommonField.Composer, Marker + " composer");
+        TagWriter.Save(path, add);
+        Assert.Contains(Marker, System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(path)).Replace("\0", string.Empty, StringComparison.Ordinal));
+
+        TagEdits remove = new();
+        remove.Remove(CommonField.Comment);
+        remove.Remove(CommonField.Composer);
+        TagWriter.SaveInPlace(path, remove);
+
+        byte[] after = File.ReadAllBytes(path);
+        string text = System.Text.Encoding.Latin1.GetString(after).Replace("\0", string.Empty, StringComparison.Ordinal);
+        Assert.DoesNotContain(Marker, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRETPLACE", text, StringComparison.Ordinal);
+        Assert.Equal("kept", TitleOf(path));
+    }
+
     // ---- finding 10: the message ----
 
     [Fact]

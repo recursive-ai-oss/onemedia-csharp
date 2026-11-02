@@ -455,6 +455,24 @@ public static class PlayableMaker
                 actions.Add(new MakePlayableAction(MakePlayableActionKind.DropTrack, loss.InputTrack, $"{loss.Subject}: {loss.Detail}"));
             }
 
+            // A file that lost its picture (or all its sound) is not playable in any sense the caller asked for, even if what is left plays.
+            if (remux.LostMediaTracks.Count > 0)
+            {
+                File.Delete(outputPath);
+                return new MakePlayableReport
+                {
+                    ProfileId = profile.Id,
+                    Before = before,
+                    Status = MakePlayableStatus.Failed,
+                    Target = plan.Format,
+                    Actions = actions,
+                    Remux = remux,
+                    Remaining = [.. remux.LostMediaTracks.Select(i => new PlaybackBlocker(PlaybackBlockerKind.CodecInContainer, "remux.dropped-track", i, PlaybackRemedy.None,
+                        remux.Losses.FirstOrDefault(l => l.Kind == LossKind.Track && l.InputTrack == i)?.Detail ?? $"Input track {i} could not be written."))],
+                    Notes = notes,
+                };
+            }
+
             PlaybackVerdict after;
             using (MediaFile result = Media.Open(outputPath))
             {

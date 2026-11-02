@@ -18,6 +18,10 @@ $FF $Q $V $O -c:v libx264 -profile:v high -level 3.0 -preset ultrafast -g 5 -bsf
 # H.264 in AVI from an MP4 by stream copy: avc1 with the avcC record after the BITMAPINFOHEADER. avcc-source.mp4 is the MP4 it came from.
 $FF $Q $V $O -c:v libx264 -profile:v high -level 3.0 -preset ultrafast -g 5 -movflags +faststart avcc-source.mp4
 $FF $Q -i avcc-source.mp4 $O -c copy -f avi avcc.avi
+# The same with a record of odd length (96x64 baseline: biSize 77, strf 78 with the pad byte) and an MP3 track, for the RIFF pad rule.
+$FF $Q -f lavfi -i testsrc2=size=96x64:rate=10:duration=0.5 -f lavfi -i sine=frequency=440:sample_rate=44100:duration=0.5 $O -c:v libx264 -profile:v baseline -level 3.0 -preset ultrafast -g 5 -bf 0 -c:a libmp3lame -b:a 32k \
+  -movflags +faststart avcc-odd-source.mp4
+$FF $Q -i avcc-odd-source.mp4 $O -c copy -f avi avcc-odd.avi
 $FF $Q $V $A $O -c:v mpeg4 -q:v 5 -c:a libmp3lame -b:a 32k -flags:v +bitexact -flags:a +bitexact \
   -metadata title="Test title" -metadata artist="Test artist" -metadata comment="A comment" -metadata date=2021-06-05 \
   -metadata creation_time=2021-06-05T10:11:12Z -f avi tagged.avi

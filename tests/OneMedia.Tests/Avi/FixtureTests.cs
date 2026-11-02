@@ -53,6 +53,25 @@ public class FixtureTests
         Assert.Equal(mp4.Video!.DescribeCodec()!.Level, avi.Video!.DescribeCodec()!.Level);
     }
 
+    // RIFF pads a chunk to an even size: a 37-byte record (biSize 77) sits in a 78-byte strf whose last byte is the pad, which is not part of the record.
+    [Fact]
+    public void AnAvcCRecordOfOddLengthIsReadDespiteTheRiffPadByte()
+    {
+        byte[] bytes = File.ReadAllBytes(Fixture("avcc-odd.avi"));
+        int strf = bytes.AsSpan().IndexOf("strf"u8);
+        Assert.True(strf > 0);
+        uint chunkSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(strf + 4));
+        uint biSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(strf + 8));
+        Assert.Equal(0u, chunkSize % 2);
+        Assert.Equal(1u, biSize % 2); // the fixture really has the padded form
+
+        using MediaFile avi = Media.Open(Fixture("avcc-odd.avi"));
+        using MediaFile mp4 = Media.Open(Fixture("avcc-odd-source.mp4"));
+        Assert.NotNull(avi.Video!.Rfc6381Codec());
+        Assert.Equal(mp4.Video!.Rfc6381Codec(), avi.Video!.Rfc6381Codec());
+        Assert.Equal(mp4.Video!.DescribeCodec()!.Profile, avi.Video!.DescribeCodec()!.Profile);
+    }
+
     // The SPS timing counts half-frame ticks (20/2 for 10 fps); the rate is given in lowest terms, in AVI and MP4 alike.
     [Theory]
     [InlineData("h264.avi")]

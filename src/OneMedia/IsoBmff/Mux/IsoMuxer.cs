@@ -279,10 +279,12 @@ public sealed partial class IsoMuxer : IMuxer
                 t.ReplacedDurations++;
             }
 
+            t.NotePresentation(t.PreviousShiftedDts, t.PreviousComposition, delta);
             t.CommitDuration(delta);
         }
 
         t.PreviousDeclared = declaredDuration;
+        t.PreviousComposition = composition;
         t.AddComposition(composition);
         uint size = (uint)data.Length;
         t.Sizes.Add(size);

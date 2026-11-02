@@ -33,6 +33,8 @@ def patch(name, off_v0, off_v1, size_v1, value):
 patch(b"mdhd", 20, 28, 0, 4096)
 open("frag_stale_duration.m4a", "wb").write(d)
 PY
+# Matroska with reordered frames and no edit list, the input of the remux that must keep every frame (tests/OneMedia.Tests/Remuxing/ReorderedFramesTests).
+$FF $Q -i bframes_aac.mp4 -c copy -map_metadata -1 -fflags +bitexact bframes.mkv
 { "$FF" -version | head -1; } > VERSIONS.txt
 for f in *.mp4 *.mov *.3gp; do
   $FP -v error -show_packets -show_entries packet=stream_index,pts,dts,duration,size,pos,flags -of csv=p=0 "$f" > "$f.packets.csv"

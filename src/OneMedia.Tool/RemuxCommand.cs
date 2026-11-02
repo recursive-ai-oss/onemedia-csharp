@@ -90,6 +90,12 @@ internal static class RemuxCommand
             };
             RemuxReport report = Remuxer.Remux(input, output, format.Value, options);
             Print(report);
+            if (report.LostMediaTracks.Count > 0)
+            {
+                Console.Error.WriteLine("warning: input track(s) " + string.Join(", ", report.LostMediaTracks) + " were not written; the output lacks media the input had (see the list above)");
+                return 3;
+            }
+
             return 0;
         }
         catch (Exception ex) when (ex is MediaException or ArgumentException or FormatException or IOException or UnauthorizedAccessException or MediaReadStateException)

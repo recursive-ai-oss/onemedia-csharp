@@ -197,6 +197,14 @@ public sealed class RemuxSession : IDisposable
         {
             bool stored = t.Configuration.Format is "avcC" or "hvcC" && !t.Configuration.IsEmpty;
             s.Nal = t.Codec == CodecId.H264 ? NalCodec.H264 : NalCodec.Hevc;
+            // AVI written by copy from MP4 keeps the record after the bitmap header and length-prefixed samples.
+            if (!stored && t.Configuration.Format == "bitmapinfoheader"
+                && Avi.AviTracks.TryGetRecord(t.Codec, t.Configuration.Data.ToArray(), out string recordForm, out ReadOnlyMemory<byte> aviRecord))
+            {
+                s.Derived = new CodecConfiguration(aviRecord.ToArray(), recordForm);
+                stored = true;
+            }
+
             if (stored)
             {
                 s.Resolved = true;
@@ -253,6 +261,15 @@ public sealed class RemuxSession : IDisposable
     }
 
     private TrackEdit? Edit(int index) => _options.Edits is { } e && e.TryGetValue(index, out TrackEdit? edit) ? edit : null;
+
+    // Muxers number tracks by the order they were added (output index) in their messages ("Track 2: ..."). A loss names the input track, so the
+    // muxer's prefix is replaced by the input index the caller knows.
+    private static string InputTrackMessage(string message, int inputIndex)
+    {
+        int colon = message.IndexOf(':', StringComparison.Ordinal);
+        string rest = colon > 0 && message.StartsWith("Track ", StringComparison.Ordinal) && int.TryParse(message.AsSpan(6, colon - 6), out _) ? message[(colon + 1)..].TrimStart() : message;
+        return $"Input track {inputIndex}: {rest}";
+    }
 
     private static string Describe(MediaTrack t) => t.CodecTag is { Length: > 0 } tag ? $"{t.Kind} {t.Codec.Name} [{tag}]" : $"{t.Kind} {t.Codec.Name}";
 
@@ -362,13 +379,13 @@ public sealed class RemuxSession : IDisposable
                 if (AdtsRepackager.TryCreateConfig(data, w))
                 {
                     s.Derived = new CodecConfiguration(w.WrittenMemory.ToArray(), "asc");
-                    _changes.Add($"Track {s.Input.Index}: the AudioSpecificConfig was derived from the first ADTS header.");
+                    _changes.Add($"Input track {s.Input.Index}: the AudioSpecificConfig was derived from the first ADTS header.");
                 }
             }
 
             if (adts)
             {
-                _changes.Add($"Track {s.Input.Index}: ADTS headers were removed from the AAC packets; the configuration is stored once.");
+                _changes.Add($"Input track {s.Input.Index}: ADTS headers were removed from the AAC packets; the configuration is stored once.");
             }
 
             s.Resolved = true;
@@ -441,7 +458,7 @@ public sealed class RemuxSession : IDisposable
         if (!s.Derived.IsEmpty)
         {
             s.Resolved = true;
-            _changes.Add($"Track {s.Input.Index}: the {(s.Nal == NalCodec.H264 ? "avcC" : "hvcC")} record was built from the parameter sets in the stream, and NAL units were re-framed from Annex B to 4-byte lengths; parameter sets equal to the record's were moved out of the samples.");
+            _changes.Add($"Input track {s.Input.Index}: the {(s.Nal == NalCodec.H264 ? "avcC" : "hvcC")} record was built from the parameter sets in the stream, and NAL units were re-framed from Annex B to 4-byte lengths; parameter sets equal to the record's were moved out of the samples.");
         }
     }
 
@@ -466,7 +483,7 @@ public sealed class RemuxSession : IDisposable
                         : "No packet arrived to show how the track is framed."));
                 if (!_options.AllowDrop)
                 {
-                    throw new MuxRefusedException(MuxRefusalReason.MissingConfiguration, $"Track {s.Input.Index}: no codec configuration could be derived.", s.Input.Index, s.Input.Codec);
+                    throw new MuxRefusedException(MuxRefusalReason.MissingConfiguration, $"Input track {s.Input.Index}: no codec configuration could be derived.", s.Input.Index, s.Input.Codec);
                 }
 
                 continue;
@@ -489,7 +506,7 @@ public sealed class RemuxSession : IDisposable
             {
                 s.Dropped = true;
                 bool cmafFull = _format == RemuxFormat.Cmaf && _tracks.Exists(x => x.Out >= 0);
-                _losses.Add(new RemuxLoss(LossKind.Track, cmafFull ? LossReason.TargetLimit : ReasonOf(e.Reason, s.Input), s.Input.Index, Describe(s.Input), e.Message));
+                _losses.Add(new RemuxLoss(LossKind.Track, cmafFull ? LossReason.TargetLimit : ReasonOf(e.Reason, s.Input), s.Input.Index, Describe(s.Input), InputTrackMessage(e.Message, s.Input.Index)));
             }
         }
 
@@ -538,7 +555,7 @@ public sealed class RemuxSession : IDisposable
         if (t.Codec == CodecId.Alac && s.Derived.IsEmpty && AlacBoxPayload(config.Data.Span) is { } alac && !alac.AsSpan().SequenceEqual(config.Data.Span))
         {
             config = new CodecConfiguration(alac, "alac");
-            _changes.Add($"Track {t.Index}: the ALAC magic cookie was unwrapped to the configuration the ISO 'alac' box holds.");
+            _changes.Add($"Input track {t.Index}: the ALAC magic cookie was unwrapped to the configuration the ISO 'alac' box holds.");
         }
 
         MediaTrack declared = t with { Configuration = config };
@@ -568,7 +585,7 @@ public sealed class RemuxSession : IDisposable
         {
             s.Shift = t.Edit.Priming;
             declared = declared with { Edit = t.Edit with { PacketTimesIncludePriming = false } };
-            _changes.Add($"Track {t.Index}: packet times were moved forward by the priming ({t.Edit.Priming.Ticks}/{t.Edit.Priming.Timescale} s) so the first packet starts at zero; the priming is kept in the edit information.");
+            _changes.Add($"Input track {t.Index}: packet times were moved forward by the priming ({t.Edit.Priming.Ticks}/{t.Edit.Priming.Timescale} s) so the first packet starts at zero; the priming is kept in the edit information.");
         }
 
         if (_format is RemuxFormat.Mp4 or RemuxFormat.M4a or RemuxFormat.M4v or RemuxFormat.Mov or RemuxFormat.ThreeGp or RemuxFormat.ThreeG2 or RemuxFormat.FragmentedMp4 or RemuxFormat.Cmaf)
@@ -598,7 +615,7 @@ public sealed class RemuxSession : IDisposable
                 _losses.Add(new RemuxLoss(LossKind.CodecField, LossReason.NotWritten, t.Index, "colour", "WebM output omits the Colour element and the SegmentUID (the validator used for the writer rejects them there)."));
             }
 
-            _changes.Add($"Track {t.Index}: BlockAdditions, interlacing and stereo mode are not written to Matroska.");
+            _changes.Add($"Input track {t.Index}: BlockAdditions, interlacing and stereo mode are not written to Matroska.");
         }
 
         return declared;
@@ -680,7 +697,7 @@ public sealed class RemuxSession : IDisposable
         if (!s.ReportedDerivedDts)
         {
             s.ReportedDerivedDts = true;
-            _changes.Add($"Track {s.Input.Index}: decode times were derived from the order of the presentation times, because the input stores none; presentation lags decoding by {s.Lag} of {s.TimeScale} s at most.");
+            _changes.Add($"Input track {s.Input.Index}: decode times were derived from the order of the presentation times, because the input stores none; presentation lags decoding by {s.Lag} of {s.TimeScale} s at most.");
         }
 
         try
@@ -724,7 +741,7 @@ public sealed class RemuxSession : IDisposable
                 }
                 else
                 {
-                    throw new MediaFormatException($"Track {s.Input.Index}: a packet does not start with a complete ADTS frame.") { Offset = info.SourceRange.IsNone ? -1 : info.SourceRange.Offset };
+                    throw new MediaFormatException($"Input track {s.Input.Index}: a packet does not start with a complete ADTS frame.") { Offset = info.SourceRange.IsNone ? -1 : info.SourceRange.Offset };
                 }
 
                 break;
@@ -832,7 +849,7 @@ public sealed class RemuxSession : IDisposable
                 if (!s.ReportedRetime)
                 {
                     s.ReportedRetime = true;
-                    _changes.Add($"Track {s.Input.Index}: packets of laced blocks without a duration were spaced by their frame lengths.");
+                    _changes.Add($"Input track {s.Input.Index}: packets of laced blocks without a duration were spaced by their frame lengths.");
                 }
             }
         }
@@ -946,7 +963,27 @@ public sealed class RemuxSession : IDisposable
             tracks.Add(new RemuxTrackReport(s.Input.Index, s.Out, s.Packets, s.Mode switch { Repack.AnnexB => "annexb-to-length-prefixed", Repack.Adts => "adts-to-raw", _ => "none" }));
         }
 
-        return new RemuxReport(mux, tracks, _losses, _changes, 0);
+        // A video track, or every audio track the input had, that was dropped for any reason but the caller's own choice.
+        List<int> lost = [];
+        bool anyAudioIn = false, anyAudioOut = false;
+        foreach (TrackState s in _tracks)
+        {
+            if (s.Input.Kind == TrackKind.Audio && s.Wanted)
+            {
+                anyAudioIn = true;
+                anyAudioOut |= s.Out >= 0;
+            }
+        }
+
+        foreach (TrackState s in _tracks)
+        {
+            if (s.Wanted && s.Out < 0 && (s.Input.Kind == TrackKind.Video || (s.Input.Kind == TrackKind.Audio && anyAudioIn && !anyAudioOut)))
+            {
+                lost.Add(s.Input.Index);
+            }
+        }
+
+        return new RemuxReport(mux, tracks, _losses, _changes, 0) { LostMediaTracks = lost };
     }
 
     /// <summary>Releases the muxer. Without <see cref="Finish"/> the output stays incomplete.</summary>

@@ -135,7 +135,9 @@ public sealed partial class IsoMuxer
             if (t.Samples > 0)
             {
                 // The last sample's duration is the one it declared, else the gap before it, else nothing.
-                t.CommitDuration(t.PreviousDeclared >= 0 ? t.PreviousDeclared : Math.Max(t.LastDelta, 0));
+                long last = t.PreviousDeclared >= 0 ? t.PreviousDeclared : Math.Max(t.LastDelta, 0);
+                t.NotePresentation(t.PreviousShiftedDts, t.PreviousComposition, last);
+                t.CommitDuration(last);
             }
 
             t.FlushDurationRun();
@@ -256,6 +258,10 @@ public sealed partial class IsoMuxer
         }
     }
 
+    // ISO/IEC 14496-12 §8.6.6: an edit's segment_duration is on the presentation timeline, so it must reach the end of the last frame shown,
+    // which with reordered frames is later than the end of the last decode time.
+    private static long PresentationSpanEnd(MuxTrack t) => Math.Max(t.DurationSum, t.PresentationEnd);
+
     private long ToMovie(long trackTicks, MuxTrack t) => Rescale(trackTicks, t.Timescale, _movieTimescale);
 
     private static long Rescale(long ticks, long from, long to)
@@ -302,7 +308,7 @@ public sealed partial class IsoMuxer
                         if (duration == 0 && e == edits.Count - 1 && !fragmented)
                         {
                             // A last segment of length zero means "to the end" in a fragmented source; a complete file states it.
-                            duration = ToMovie(Math.Max(0, t.DurationSum - mediaTime), t);
+                            duration = ToMovie(Math.Max(0, PresentationSpanEnd(t) - mediaTime), t);
                         }
                     }
 
@@ -328,7 +334,7 @@ public sealed partial class IsoMuxer
                     }
 
                     // Zero means "to the end" while the length is not known (fragmented output).
-                    long length = fragmented ? 0 : ToMovie(Math.Max(0, t.DurationSum - mediaStart - padding), t);
+                    long length = fragmented ? 0 : ToMovie(Math.Max(0, PresentationSpanEnd(t) - mediaStart - padding), t);
                     s.Edits.Add((length, mediaStart));
                 }
             }
