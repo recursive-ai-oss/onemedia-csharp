@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
 using RecursiveAI.OneMedia.Codecs;
+using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Riff;
 
 namespace RecursiveAI.OneMedia.Avi;
@@ -124,7 +125,10 @@ internal sealed class AviReader : IDisposable
 
     private void OpenSeekable(ReadOnlySpan<byte> head)
     {
-        IMediaSource source = _source!;
+        // The header list is parsed with many tiny reads; one read-ahead window turns them into a few reads. It is given back when the
+        // structure is open, after which reads go straight to the file.
+        using FrontCacheSource front = FrontCacheSource.Load(_source!, head, _cancellation);
+        using ReadAheadSource source = new(front, head);
         if (head.Length < 12 || !head[..4].SequenceEqual("RIFF"u8))
         {
             throw new MediaFormatException("The data does not start with a RIFF header.") { Offset = 0 };
@@ -204,10 +208,22 @@ internal sealed class AviReader : IDisposable
     // AVI keeps no avcC: the SPS and PPS ride in the first key frame's chunk (Annex B). Reading the first few video chunks at the front of
     // movi, at most 128 KiB of each, gives the track its profile and level for RFC 6381 strings. The cost is a handful of small reads
     // next to the header list; nothing is scanned.
-    private void DescribeVideoFromStream(IMediaSource source, long pos, long end)
+    private void DescribeVideoFromStream(ReadAheadSource source, long pos, long end)
     {
         const int MaxChunks = 64;
         const int MaxRead = 128 * 1024;
+        // Only H.264 and HEVC video carry parameter sets in the stream; any other file would walk the chunks for nothing.
+        bool any = false;
+        foreach (MediaTrack candidate in Tracks)
+        {
+            any |= candidate.Kind == TrackKind.Video && candidate.StreamParameters is null && candidate.Codec.Name is "h264" or "hevc";
+        }
+
+        if (!any)
+        {
+            return;
+        }
+
         List<MediaTrack>? updated = null;
         Span<byte> h = stackalloc byte[8]; // chunk header, fixed
         int examined = 0;
@@ -265,7 +281,7 @@ internal sealed class AviReader : IDisposable
     // offset of the first chunk header, or -1.
     private const long MaxScanBytes = 4 * 1024 * 1024;
 
-    private long ScanForStreamChunks(IMediaSource source, long from, long length)
+    private long ScanForStreamChunks(ReadAheadSource source, long from, long length)
     {
         const int Block = 64 * 1024;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(Block + 16);
