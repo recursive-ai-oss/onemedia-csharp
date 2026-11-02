@@ -97,3 +97,5 @@ Constant memory: 900 s of 1280x720 at 6 Mbit/s written without throttling (61,26
 ## Fuzzing
 
 The `presentation` target feeds a playlist or manifest and up to 63 further resources (served in order of first request) through `PresentationSource`, reading up to 5,000 packets and seeking. Seeds are built from `testdata/streaming` by `tools/make-presentation-fuzz-seeds.py`.
+
+A 600 s run found one crash (an exception other than `MediaException`: a multivariant playlist whose entries were all dropped by the lenient reader left no variant to choose). It now raises `ManifestFormatException`; the input is `testdata/fuzz/presentation/no-variant-crash.seed` and a unit test covers the case. After the fix a 600 s run made 1,308,379 executions (47,000 coverage features) without a crash.
