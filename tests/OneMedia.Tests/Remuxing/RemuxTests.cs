@@ -268,6 +268,15 @@ public class RemuxTests
     }
 
     [Fact]
+    public void FlvAacReachesMatroskaWithItsAudioSpecificConfig()
+    {
+        (byte[] output, RemuxReport report) = Remux(Data("xiph-flv", "h264-aac.flv"), RemuxFormat.Matroska);
+        using MediaFile result = Media.Open(output);
+        Assert.Contains(result.Tracks, t => t.Codec == CodecId.Aac);
+        Assert.DoesNotContain(report.Losses, l => l.Kind == LossKind.Track);
+    }
+
+    [Fact]
     public void ObserverSeesEveryPacketAsWritten()
     {
         long count = 0;
@@ -400,6 +409,32 @@ public class RemuxTests
         Assert.True(at > 0);
         bytes[at + 8] = 0x7f; // after the type come the version/flags word and then the entry count
         Assert.ThrowsAny<MediaException>(() => Remuxer.Faststart(new MemoryMediaSource(bytes), new MemoryStream()));
+    }
+
+    [Fact]
+    public void DerivedDecodeTimesDoNotLetAudioRunAheadOfVideoInTheOutput()
+    {
+        // Video held back for its decode times must not leave the other tracks' packets far ahead of it in the file: a browser's MediaSource
+        // refuses a block whose time falls behind one already appended.
+        using MediaFile source = Media.Open(Data("isobmff", "bframes_aac.mp4"));
+        int video = source.Video!.Index;
+        using MemoryStream ms = new();
+        using (RemuxSession session = new(source.Tracks, ms, RemuxFormat.Matroska))
+        {
+            IDemuxer d = source.Demuxer!;
+            while (d.TryReadPacket(out PacketView v))
+            {
+                session.WritePacket(v.Info.TrackIndex == video ? v.Info with { Dts = MediaTime.Unknown } : v.Info, v.Data);
+            }
+
+            session.Finish();
+        }
+
+        using MediaFile result = Media.Open(ms.ToArray());
+        List<Pkt> output = ReadAll(result);
+        int firstVideo = output.FindIndex(p => p.Track == result.Video!.Index);
+        MediaTime start = output[firstVideo].Pts;
+        Assert.All(output.Take(firstVideo), p => Assert.True(p.Pts <= start.Add(new MediaTime(1, 4), MediaRounding.NearestAwayFromZero)));
     }
 
     [Fact]

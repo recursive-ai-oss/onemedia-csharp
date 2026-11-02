@@ -76,6 +76,9 @@ public sealed class RemuxSession : IDisposable
 
         public bool ReportedDerivedDts { get; set; }
 
+        // True once the track's packets go through the decode-time derivation (and so are written late).
+        public bool Derives { get; set; }
+
         public bool ReportedRetime { get; set; }
     }
 
@@ -625,6 +628,7 @@ public sealed class RemuxSession : IDisposable
             return;
         }
 
+        s.Derives = true;
         byte[] copy = ArrayPool<byte>.Shared.Rent(Math.Max(data.Length, 1));
         data.CopyTo(copy);
         s.Queue.Add(new Pending(info, copy, data.Length));
@@ -747,6 +751,67 @@ public sealed class RemuxSession : IDisposable
             p = RetimeLaced(s, p, data);
         }
 
+        Route(s, p, payload, cancellationToken);
+    }
+
+    // A track whose decode times are derived is written about a window late. The other tracks' packets wait for it, so the output keeps the
+    // order of the input's interleave (Matroska readers, browsers' MediaSource among them, expect block times that do not jump back across
+    // tracks inside a Cluster). The wait is bounded by the same window and by ReorderByteCap.
+    private readonly List<(TrackState Track, PacketInfo Info, byte[] Data, int Length)> _waiting = [];
+    private long _waitingBytes;
+
+    private void Route(TrackState s, PacketInfo p, ReadOnlySpan<byte> payload, CancellationToken cancellationToken)
+    {
+        if (s.Derives)
+        {
+            ReleaseWaiting(p.Pts.IsKnown ? p.Pts : p.Dts, cancellationToken);
+            WriteNow(s, p, payload, cancellationToken);
+        }
+        else if (_tracks.Exists(t => t.Derives))
+        {
+            byte[] copy = ArrayPool<byte>.Shared.Rent(Math.Max(payload.Length, 1));
+            payload.CopyTo(copy);
+            _waiting.Add((s, p, copy, payload.Length));
+            _waitingBytes += payload.Length;
+            if (_waitingBytes > ReorderByteCap)
+            {
+                ReleaseWaiting(MediaTime.Unknown, cancellationToken);
+            }
+        }
+        else
+        {
+            WriteNow(s, p, payload, cancellationToken);
+        }
+    }
+
+    // Writes the waiting packets whose time is not after limit; an unknown limit releases all of them.
+    private void ReleaseWaiting(MediaTime limit, CancellationToken cancellationToken)
+    {
+        int n = 0;
+        try
+        {
+            for (; n < _waiting.Count; n++)
+            {
+                (TrackState t, PacketInfo info, byte[] data, int length) = _waiting[n];
+                MediaTime at = info.Pts.IsKnown ? info.Pts : info.Dts;
+                if (limit.IsKnown && at.IsKnown && at > limit)
+                {
+                    break;
+                }
+
+                WriteNow(t, info, data.AsSpan(0, length), cancellationToken);
+                _waitingBytes -= length;
+                ArrayPool<byte>.Shared.Return(data);
+            }
+        }
+        finally
+        {
+            _waiting.RemoveRange(0, n);
+        }
+    }
+
+    private void WriteNow(TrackState s, PacketInfo p, ReadOnlySpan<byte> payload, CancellationToken cancellationToken)
+    {
         _options.Observer?.Invoke(p, payload);
         _muxer!.WritePacket(p, payload, cancellationToken);
         s.Packets++;
@@ -866,6 +931,7 @@ public sealed class RemuxSession : IDisposable
         }
 
         DrainReordered(cancellationToken);
+        ReleaseWaiting(MediaTime.Unknown, cancellationToken);
         _finished = true;
         if (!_tracks.Exists(t => t.Out >= 0))
         {
