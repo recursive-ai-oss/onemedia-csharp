@@ -297,6 +297,8 @@ internal static class IsoSampleEntries
             case "fl32": return new PcmSampleFormat(PcmEncoding.FloatingPoint, 32, 32, true);
             case "fl64": return new PcmSampleFormat(PcmEncoding.FloatingPoint, 64, 64, true);
             case "raw ": return new PcmSampleFormat(PcmEncoding.UnsignedInteger, 8, 8, false);
+            case "alaw": return new PcmSampleFormat(PcmEncoding.ALaw, 8, 8, false);
+            case "ulaw": return new PcmSampleFormat(PcmEncoding.MuLaw, 8, 8, false);
             case "ipcm" or "fpcm" when t.Configuration.Format == "pcmC" && t.Configuration.Data.Length >= 6:
                 {
                     ReadOnlySpan<byte> c = t.Configuration.Data.Span;

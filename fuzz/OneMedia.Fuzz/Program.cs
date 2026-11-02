@@ -39,6 +39,7 @@ BitmapSubtitleTargets.Register(targets);
 CaptionTargets.Register(targets);
 EventTargets.Register(targets);
 RepairTarget.Register(targets);
+WavMuxTarget.Register(targets);
 
 string? name = Environment.GetEnvironmentVariable("ONEMEDIA_FUZZ_TARGET");
 int first = 0;
