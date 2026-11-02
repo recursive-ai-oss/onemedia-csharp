@@ -116,24 +116,26 @@ open('a.png', 'wb').write(png(20 * 1024 * 1024, 31))
 open('b.png', 'wb').write(png(24 * 1024 * 1024, 37))
 PY
   # A moov-last MP4 (so growing the movie box moves no chunk), with a 64 MiB free box added at the end of the movie box.
-  ffmpeg -v error -y -f lavfi -i testsrc2=size=320x240:rate=25:duration=3 -c:v mpeg4 src.mp4
+  ffmpeg -v error -y -f lavfi -i testsrc2=size=320x240:rate=25:duration=3 -c:v mpeg4 -map_metadata -1 -fflags +bitexact -flags:v +bitexact src.mp4
   python3 - <<'PY'
 import struct
 b = bytearray(open('src.mp4', 'rb').read())
-p = 0
-while p + 8 <= len(b):
-    size, t = struct.unpack('>I4s', b[p:p + 8])
-    if t == b'moov':
-        assert p + size == len(b), 'moov is not last'
-        pad = 64 * 1024 * 1024
-        b[p:p + 4] = struct.pack('>I', size + pad)
-        b += struct.pack('>I4s', pad, b'free') + bytes(pad - 8)
-        break
-    p += size
+import struct
+pad = 64 * 1024 * 1024
+# The padding goes directly after the ilst box (inside udta/meta, last in the movie box), where a longer cover can grow into it.
+i = b.rindex(b'ilst') - 4
+ilst = struct.unpack('>I', b[i:i + 4])[0]
+end = i + ilst
+m = b.rindex(b'moov') - 4
+assert m + struct.unpack('>I', b[m:m + 4])[0] == len(b) == end, 'ilst is not last in moov'
+for t in (b'moov', b'udta', b'meta'):
+    j = b.rindex(t, 0, i) - 4
+    b[j:j + 4] = struct.pack('>I', struct.unpack('>I', b[j:j + 4])[0] + pad)
+b += struct.pack('>I4s', pad, b'free') + bytes(pad - 8)
 open('padded.mp4', 'wb').write(b)
 PY
   ls -l padded.mp4 | awk '{print "padded file bytes", $5}'
-  TAGS padded.mp4 --cover a.png --in-place | tail -1
+  TAGS padded.mp4 --cover a.png --in-place | tail -2
   cp padded.mp4 base.mp4; h0=$(sha base.mp4)
   cp base.mp4 ref.mp4; s=$(date +%s%N); TAGS ref.mp4 --cover b.png --in-place | tail -1; e=$(date +%s%N); ref=$(sha ref.mp4); total_ms=$(( (e - s) / 1000000 )); say "uninterrupted in-place: ${total_ms} ms"
   orig=0; done_=0; torn=0; bad=0
