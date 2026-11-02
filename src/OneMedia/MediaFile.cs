@@ -345,7 +345,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
         return ++_generation;
     }
 
-    private async ValueTask<int> BeginReadAsync(CancellationToken cancellationToken)
+    internal async ValueTask<int> BeginReadAsync(CancellationToken cancellationToken)
     {
         if (_readStarted)
         {

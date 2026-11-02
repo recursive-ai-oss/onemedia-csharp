@@ -54,4 +54,29 @@ public static partial class Media
         using MediaFile file = Open(path);
         return file.CanPlay(profile);
     }
+
+    /// <summary>Copies the tracks of a file into another container without touching the compressed data. The container comes from the output's extension.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The new file (<c>.mp4</c>, <c>.m4a</c>, <c>.mov</c>, <c>.3gp</c>, and so on); refused if it exists.</param>
+    /// <returns>What was written and everything that did not carry over.</returns>
+    /// <exception cref="ArgumentException">The extension names no container.</exception>
+    /// <exception cref="UnsupportedMediaException">The input is not recognised, or the container cannot be written.</exception>
+    /// <exception cref="MuxRefusedException">No track of the input can be written.</exception>
+    public static Remuxing.RemuxReport Remux(string input, string output) => Remuxing.Remuxer.Remux(input, output);
+
+    /// <summary>Copies the tracks of a file into a chosen container without touching the compressed data.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The new file; refused if it exists.</param>
+    /// <param name="format">The container to write.</param>
+    /// <returns>What was written and everything that did not carry over.</returns>
+    /// <exception cref="UnsupportedMediaException">The input is not recognised, or the container cannot be written.</exception>
+    /// <exception cref="MuxRefusedException">No track of the input can be written.</exception>
+    public static Remuxing.RemuxReport Remux(string input, string output, Remuxing.RemuxFormat format) => Remuxing.Remuxer.Remux(input, output, format);
+
+    /// <summary>Moves the movie box of a progressive MP4/MOV/3GP file to the front, copying all other bytes unchanged, so playback can start while the file is still downloading.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The new file; refused if it exists.</param>
+    /// <returns>What was moved.</returns>
+    /// <exception cref="UnsupportedMediaException">The input is not a progressive ISO base media file.</exception>
+    public static Remuxing.FaststartReport Faststart(string input, string output) => Remuxing.Remuxer.Faststart(input, output);
 }

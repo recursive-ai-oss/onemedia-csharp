@@ -132,6 +132,7 @@ internal static class SmokeRun
         TagWriteSmoke.Run(Check);
         MatroskaMuxSmoke.Run(Check);
         MuxSmoke.Run(Check);
+        RemuxSmoke.Run(Check);
         EditSmoke.Run(Check);
         // Codec headers: parameter sets, configuration records and the explicit codec tables.
         byte[] sps = Convert.FromHexString("6764000cacd941419f9f011000000300100000030320f1429960");

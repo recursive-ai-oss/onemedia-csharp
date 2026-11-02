@@ -64,6 +64,18 @@ seed() {
                { printf '\001'; cat "$f"; } > "$corpus/$(basename "$f")-fwd.seed"
                { printf '\014'; cat "$f"; } > "$corpus/$(basename "$f")-async.seed"
              done ;;
+    faststart) # The whole input is an ISO file. Seeds: every progressive file we have, moov-last copies included once the remux check wrote them.
+             for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/isobmff/*.mov "$here"/testdata/isobmff/*.3gp "$here"/testdata/isobmff/family/*.mp4 "$here"/testdata/isobmff/family/*.3gp; do
+               [ -f "$f" ] || continue
+               cp "$f" "$corpus/$(basename "$f").seed"
+             done ;;
+    remux) # The first byte picks the output (bit 0: fragmented, bit 1: movie box last); the rest is any media file.
+             for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/audio/* "$here"/testdata/xiph-flv/* "$here"/testdata/mpeg/* "$here"/testdata/audio-es/*.* "$here"/testdata/avi/*.avi; do
+               [ -f "$f" ] || continue
+               [ "$(stat -c %s "$f")" -le 262144 ] || continue
+               { printf '\000'; cat "$f"; } > "$corpus/$(basename "$f").seed"
+               { printf '\002'; cat "$f"; } > "$corpus/$(basename "$f")-last.seed"
+             done ;;
     registry) # The first byte picks the path (bit 0: seek around; bit 1: read the metadata); the rest is the file. Seeds: one of every format we have.
              for f in "$here"/testdata/isobmff/*.mp4 "$here"/testdata/audio/* "$here"/testdata/xiph-flv/* "$here"/testdata/pcm/* "$here"/testdata/asf/* "$here"/testdata/mpeg/* "$here"/testdata/audio-es/*.* "$here"/testdata/audio-es/tagged/*.mp3 "$here"/testdata/matroska/*.mkv; do
                [ -f "$f" ] || continue
