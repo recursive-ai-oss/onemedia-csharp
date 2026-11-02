@@ -4,6 +4,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+- Subtitle parse and convert speed is published against SubtitlesParser 1.5.1 and the Subtitle Edit core library 5.3.0: on 14 rows (20,000 and 100,000 cues) the geometric mean of our median over the fastest comparator is 0.47× on x64 and 0.52× on arm64, the worst row 1.21× on both ([docs/bench-results/0.5-x64.md](docs/bench-results/0.5-x64.md), [0.5-arm64.md](docs/bench-results/0.5-arm64.md)); SRT parsing and 100,000-cue ASS parsing are near Subtitle Edit's speed, not ahead of it.
+
 ## [0.4.0-preview.1] - 2026-11-02
 
 The privacy strip and capture-date writes, subtitles and captions, timed events, AAC and FLAC targets for `MakePlayable`, and fixes. Capture facts and telemetry shipped as unadvertised previews in 0.3.0-preview.2 and are described here as previews.
