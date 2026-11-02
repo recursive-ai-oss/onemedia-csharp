@@ -1519,6 +1519,19 @@ internal sealed class TtmlFormat : SubtitleFormat
                 ok &= char.IsAsciiLetterOrDigit(ch) || ch is ':' or '-' or '_' or '.';
             }
 
+            // XML allows an attribute once per element. A value that did not parse (tts:color="yell)w") is kept raw, and the style or span may
+            // also carry the typed value inherited from a referenced style; the typed one, written first, wins.
+            int tag = sb.Length;
+            while (tag > 0 && sb[tag - 1] != '<')
+            {
+                tag--;
+            }
+
+            if (ok && sb.ToString(tag, sb.Length - tag).Contains(" " + name + "=\"", StringComparison.Ordinal))
+            {
+                ok = false;
+            }
+
             if (ok)
             {
                 sb.Append(' ').Append(name).Append("=\"").Append(Esc(nameValue[(eq + 1)..])).Append('"');
