@@ -102,6 +102,37 @@ kill)
   done
   say "rounds=$rounds original=$orig complete=$done_ neither=$bad stray temp files seen=$strays"
   ;;
+inplacekill)
+  # kill -9 during SaveInPlace of a large cover into the padding of a moov box: what is left is the old file, the new file, or a torn one.
+  rounds=${2:-150}
+  cd "$W" && rm -rf ik && mkdir ik && cd ik
+  python3 - <<'PY'
+import struct, zlib, base64
+def png(n, seed):
+    ihdr = struct.pack('>IIBBBBB', 1, 1, 8, 0, 0, 0, 0)
+    def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', ihdr) + ch(b'prVt', bytes((i * seed) & 255 for i in range(n))) + ch(b'IDAT', zlib.compress(b'\x00\x00')) + ch(b'IEND', b'')
+open('a.png', 'wb').write(png(20 * 1024 * 1024, 31))
+open('b.png', 'wb').write(png(24 * 1024 * 1024, 37))
+PY
+  cp "$HERE/testdata/metadata/tags_ilst.mp4" src.mp4
+  MP4Box -moovpad 67108864 -add src.mp4 -new padded.mp4 >/dev/null 2>&1; ls -l padded.mp4 | awk '{print "padded file bytes", $5}'
+  TAGS padded.mp4 --cover a.png --in-place | tail -1
+  cp padded.mp4 base.mp4; h0=$(sha base.mp4)
+  cp base.mp4 ref.mp4; s=$(date +%s%N); TAGS ref.mp4 --cover b.png --in-place | tail -1; e=$(date +%s%N); ref=$(sha ref.mp4); total_ms=$(( (e - s) / 1000000 )); say "uninterrupted in-place: ${total_ms} ms"
+  orig=0; done_=0; torn=0; bad=0
+  for i in $(seq 1 "$rounds"); do
+    cp base.mp4 t.mp4
+    TAGS t.mp4 --cover b.png --in-place >/dev/null 2>&1 & p=$!
+    sleep "$(awk -v t=$total_ms -v r=$RANDOM 'BEGIN{printf "%.3f", (0.45 + 0.6*r/32767)*t/1000}')"
+    kill -9 $p 2>/dev/null; wait $p 2>/dev/null
+    h=$(sha t.mp4)
+    if [ "$h" = "$h0" ]; then orig=$((orig+1)); elif [ "$h" = "$ref" ]; then done_=$((done_+1)); else
+      torn=$((torn+1)); n=$(ffprobe -v error -show_format t.mp4 2>&1 | wc -l); m=$(MP4Box -info t.mp4 2>&1 | grep -ciE 'error|invalid|corrupt'); say "round $i: torn; ffprobe error lines $n, MP4Box error lines $m, bytes differing from complete result: $(cmp -l t.mp4 ref.mp4 | wc -l)"; [ "$n" != 0 ] || [ "$m" != 0 ] && bad=$((bad+1))
+    fi
+  done
+  say "rounds=$rounds original=$orig complete=$done_ torn=$torn (of which unreadable: $bad)"
+  ;;
 report)
   # What the write-back report claims against what ExifTool and MediaInfo read back, for one edit set per fixture.
   cd "$W" && rm -rf rep && mkdir rep && cd rep
