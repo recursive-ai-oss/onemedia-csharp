@@ -24,7 +24,7 @@ using var pcm = media.Decode();   // the audio track, decoded by OneAudio
 
 `onemedia info <file>` (or `--json`) prints tracks, codecs (RFC 6381 strings), tags and facts with their candidate sources.
 
-### Support (0.7)
+### Support (0.8)
 
 | Format | Read | Write | Tag edit | Packets vs ffprobe 7.0.2 | Probe + metadata I/O (local reads), ours vs ffprobe / MediaInfo / ExifTool | Documented deviations |
 |---|---|---|---|---|---|---|
@@ -35,7 +35,7 @@ using var pcm = media.Decode();   // the audio track, decoded by OneAudio
 | MP3 (ID3v1/v2, APE, Lyrics3), ADTS AAC, AC-3/E-AC-3, AMR/AMR-WB files | ✓ demux, Xing/Info/LAME tags, priming and padding, native tags in the common view | — | ✓ ID3v2, ID3v1, APEv2 | 134 corpus files, 10,544,449 packets, 0 unexplained (2 free-format MP3 that ffprobe cannot open) | 2.2 GB MP3: 151,783 B in 12 reads vs 163,968 B / 5 (ffprobe), 147,616 B / 4 (MediaInfo), 96,159 B / 16 (ExifTool) | [docs/audio-es.md](docs/audio-es.md): duration of streams without a frame count is an estimate; AC-3/E-AC-3 do not decode through `.Audio` |
 | Ogg (Vorbis, Opus, FLAC, Theora, Speex), native FLAC | ✓ demux of all logical streams, chained files, Vorbis comments and FLAC blocks as tags, pictures | — | ✓ Vorbis comments, FLAC blocks (picture dimensions written as 0) | 72 corpus files, 246,857 packets, 0 unexplained | 2.2 GB FLAC: 69,666 B in 3 reads vs 229,376 B / 7 (ffprobe), 65,696 B / 2 (MediaInfo), 38,783 B / 8 (ExifTool) | [docs/ogg.md](docs/ogg.md), [docs/flac.md](docs/flac.md), [docs/vorbis-comment.md](docs/vorbis-comment.md) |
 | FLV | ✓ demux (Enhanced FLV codecs), `onMetaData` tags | — | — | 30 corpus files, 217,868 packets, 0 unexplained | 3.63 GB file: 69,632 B in 2 reads vs 2,228,087 B / 47 (ffprobe), 5,830,707 B / 115 (MediaInfo), 30,448 B / 5 (ExifTool) | [docs/flv.md](docs/flv.md) |
-| AVI (OpenDML), DV | ✓ demux of AVI, OpenDML, DV in AVI and raw DV; `LIST INFO` and `IDIT` tags | — | — (`LIST INFO` editing is not implemented) | AVI 70 files, 164,648 packets, 0 unexplained; DV 14 files, 5,073 packets (ffprobe lists the audio inside DV frames as extra streams) | 4.65 GB OpenDML file: 4,821 B in 40 reads vs 1,308,840 B / 29 (ffprobe), 11,416,591 B / 176 (MediaInfo), 71,408 B / 11 (ExifTool) | [docs/avi.md](docs/avi.md), [docs/dv.md](docs/dv.md): DV audio is not de-shuffled, so DV type 1 and raw DV have no audio track |
+| AVI (OpenDML), DV | ✓ demux of AVI, OpenDML, DV in AVI and raw DV; `LIST INFO` and `IDIT` tags | — | — (`LIST INFO` editing is not implemented) | AVI 70 files, 164,648 packets, 0 unexplained; DV 14 files, 5,073 packets (ffprobe lists the audio inside DV frames as extra streams) | 4.65 GB OpenDML file: 172,065 B in 10 reads vs 1,308,840 B / 29 (ffprobe), 11,416,591 B / 176 (MediaInfo), 71,408 B / 11 (ExifTool) | [docs/avi.md](docs/avi.md), [docs/dv.md](docs/dv.md): DV audio is not de-shuffled, so DV type 1 and raw DV have no audio track |
 | WAV/BWF/RF64/W64, AIFF/AIFC, CAF | ✓ demux (PCM and compressed), `LIST INFO`, `bext`, iXML, ID3 chunks, cue points | — | ✓ WAV/RF64 `LIST INFO`, `bext`, iXML, ID3 chunk; AIFF; not W64, CAF | 225 corpus files, 2,204,392 packets, 0 unexplained (222 equal; 3 NIST SPHERE files named `.wav` are not RIFF and not read) | 4.4 GB RF64 file: 4,216 B in 9 reads vs 884,816 B / 27 (ffprobe), 1,048,576 B / 16 (MediaInfo), 22,256 B / 5 (ExifTool) | [docs/pcm-files.md](docs/pcm-files.md): one AIFF-C layout (`digit0v0.aiff`) is misread as empty; `.Audio` does not decode PCM or ADPCM |
 
 Bytes and request counts for every corpus file of every family, over HTTP range requests and local reads, are in [docs/io-results.txt](docs/io-results.txt) (method in [docs/harness.md](docs/harness.md)). Audio tracks of MP4/3GP equal OneAudio's own MP4 reader packet for packet (250,469 packets over 64 files). Tags and facts agree with ExifTool 13.60 and MediaInfo 26.10 on 116 files, with every difference explained in [docs/tags.md](docs/tags.md); the field mapping is [docs/tag-mapping.md](docs/tag-mapping.md). The audio adapter is described in [docs/audio-adapter.md](docs/audio-adapter.md), the comparison method in [docs/harness.md](docs/harness.md), and the benchmarks in [docs/bench.md](docs/bench.md).
@@ -108,31 +108,37 @@ Every operation copies compressed data unchanged and streams in constant memory;
 
 **Writer limits fixed in the 0.3 previews** ([docs/writer-review.md](docs/writer-review.md) section 6, [docs/writer.md](docs/writer.md)). Padding is generated as zero runs and an in-place save writes only the bytes that changed: a 3-byte ID3 title edit in a tag with 200 MiB of padding allocates 138 KB and writes 3 bytes (before: 419.5 MB and 209.7 MB), and `SaveAs` tag edits of files over 4 GB peak at 46 to 53 MiB. A growing edit leaves 1,024 bytes of padding so the next edit can be saved in place (`TagWriteOptions.Minimal` turns that off). Temporary files carry a recognisable name and stale ones are removed on the next save. `SaveInPlace` kill tests: 3 torn files in 300 rounds, which is why it stays documented as not atomic. What is tested for `Save` is `kill -9` (500 rounds, 0 corrupt targets); a power loss is not tested. The file is `fsync`ed before the rename, but the folder cannot be (the .NET base library cannot flush a directory), so after a power loss the rename may not be durable and the old name may still point at the old file.
 
-**Speed** against the fastest managed library per task (ratio = OneMedia time ÷ theirs, steady state; lower is better). Full tables, allocations, memory, first-call times and the native tools' times are in [docs/bench-results](docs/bench-results); the method is in [docs/bench.md](docs/bench.md).
+**Speed** against the fastest managed library per task (ratio = OneMedia time ÷ theirs, steady state, median; lower is better). The 0.8 run covers every row below on both machines, as exclusive bench jobs; full tables with allocations, peak memory, first-open times and the native tools' times are in [docs/bench-results/0.8-x64.md](docs/bench-results/0.8-x64.md) and [0.8-arm64.md](docs/bench-results/0.8-arm64.md), the method in [docs/bench.md](docs/bench.md).
 
 | Task | Compared with | x64 (Ryzen 9 7950X3D) geomean / worst file | arm64 (Apple M2) geomean / worst file |
 |---|---|---|---|
-| MP4 demux, every packet | SharpMP4 | 0.10× / 0.21× | 0.09× / 0.20× |
-| MP4 audio track only | OneAudio `Mp4PacketSource` | 0.53× / 0.82× | 0.49× / 0.61× |
-| MP4 probe (tracks, duration) | MetadataExtractor, TagLib#, ATL.NET | 0.10× / 0.41× | 0.12× / 0.27× |
-| Matroska demux | Matroska (NEbml) | 0.26× / 0.31× | 0.25× / 0.41× |
-| Matroska probe | NEbml element reader | 0.68× / 0.79× | 0.59× / 0.78× |
-| MP3 tags (ID3v1/v2, APE) | TagLib#, ATL.NET | 0.50× / 0.63× | 0.63× / 1.04× |
-| FLAC and Ogg tags | TagLib#, ATL.NET | 0.56× / 0.76× | 0.73× / 0.91× |
-| ASF/WMA tags | TagLib#, ATL.NET | 0.60× / 0.75× | 0.74× / 0.93× |
-| WAV/AIFF/CAF open and tags | TagLib#, ATL.NET | 0.50× / 0.70× | 0.59× / 0.88× |
-| AVI probe | MetadataExtractor, TagLib# | 0.82× / 0.84× | 0.78× / 0.81× |
-| MP4 mux (AAC track, in memory) | SharpMP4 | 0.15× / 0.33× | 0.09× / 0.18× |
-| MP4 remux (AAC track) | SharpMP4 | 0.10× / 0.20× | 0.08× / 0.15× |
-| ID3 tag write | TagLib#, ATL.NET | 0.44× / 0.48× | 0.49× / 0.53× |
-| FLAC tag write | TagLib#, ATL.NET | 0.41× / 0.48× | 0.52× / 0.52× |
-| MP4 `ilst` tag write | TagLib#, ATL.NET | 0.53× / 0.56× | 0.41× / 0.48× |
-| WAV tag write | TagLib#, ATL.NET | 0.52× / 0.60× | 0.46× / 0.54× |
-| Matroska tag write (one file; the comparators fail on the other) | TagLib# | 0.99× / 0.99× | 1.09× / 1.09× (within the 1.25× per-row limit; the tag-write geomean is under 1.0×) |
+| MP4 demux, every packet | SharpMP4 | 0.10× / 0.23× | 0.08× / 0.19× |
+| MP4 audio track only | OneAudio `Mp4PacketSource` | 0.47× / 0.72× | 0.51× / 0.56× |
+| MP4 probe (tracks, duration) | MetadataExtractor, TagLib#, ATL.NET | 0.11× / 0.42× | 0.12× / 0.28× |
+| Matroska demux | Matroska (NEbml) | 0.26× / 0.38× | 0.25× / 0.33× |
+| Matroska probe | NEbml element reader | 0.71× / 0.88× | 0.56× / 0.72× |
+| MP3 tags (ID3v1/v2, APE) | TagLib#, ATL.NET | 0.50× / 0.63× | 0.61× / 0.87× |
+| FLAC and Ogg tags | TagLib#, ATL.NET | 0.56× / 0.78× | 0.73× / 1.13× |
+| ASF/WMA tags | TagLib#, ATL.NET | 0.56× / 0.65× | 0.72× / 0.94× |
+| WAV/AIFF/CAF open and tags | TagLib#, ATL.NET | 0.51× / 0.74× | 0.61× / 0.88× |
+| AVI probe | MetadataExtractor, TagLib# | 0.52× / 0.67× | 0.57× / 0.69× |
+| MP4 mux (AAC track, in memory) | SharpMP4 | 0.15× / 0.35× | 0.09× / 0.18× |
+| MP4 remux (AAC track) | SharpMP4 | 0.12× / 0.20× | 0.09× / 0.17× |
+| ID3 tag write | TagLib#, ATL.NET | 0.42× / 0.45× | 0.42× / 0.46× |
+| FLAC tag write | TagLib#, ATL.NET | 0.37× / 0.45× | 0.41× / 0.41× |
+| MP4 `ilst` tag write | TagLib#, ATL.NET | 0.52× / 0.56× | 0.34× / 0.40× |
+| WAV tag write | TagLib#, ATL.NET | 0.51× / 0.59× | 0.36× / 0.37× |
+| Matroska tag write (one file; the comparators fail on the other) | TagLib# | 0.95× / 0.95× | **1.03×** / 1.03× (above 1.0× on this single file, inside the 1.25× per-row limit; the tag-write rows together are far below 1.0×) |
+| Subtitle parse (SRT, WebVTT, ASS, TTML; 20,000 and 100,000 cues) | SubtitlesParser, Subtitle Edit core (bench only) | 0.53× / 1.16× | 0.51× / 1.07× |
+| Subtitle convert (SRT to WebVTT, ASS, TTML) | Subtitle Edit core | 0.40× / 1.14× | 0.42× / 0.90× |
 
-The probe and tag-read rows were measured again for 0.2 ([x64](docs/bench-results/0.2-x64.md), [arm64](docs/bench-results/0.2-arm64.md)); the demux rows are from the first preview's run; the mux, remux and tag-write rows are from the 0.3 run ([x64](docs/bench-results/0.3-x64.md), [arm64](docs/bench-results/0.3-arm64.md)). Matroska muxing, remux to Matroska and `MakePlayable` have no managed comparator; remuxing the files over 4 GiB peaks at 62 to 95 MiB (x64) and 71 to 96 MiB (arm64). ATL.NET cannot read AVI and TagLib# cannot read CAF, so those files have no ratio against them. Demux of the 0.2 containers has no managed comparator.
+Over all 91 (x64) and 84 (arm64) per-file and per-workload ratios the geometric mean is **0.39×** and **0.40×**; the worst single ratios are 1.16× (x64, SRT parse at 100,000 cues) and 1.13× (arm64, one Ogg file). The arm64 machine reported a one-minute load average of 3 to 6 on its 8 cores while its queue was empty (macOS counts system activity); the figures are recorded in each table. Readers with no managed comparator (MPEG-TS/PS, ASF, AVI and FLV demux, index repair, HLS packaging, Matroska mux) have their absolute times in the same tables and pass. ATL.NET cannot read AVI and TagLib# cannot read CAF, so those files have no ratio against them.
 
-The first open in a process includes JIT time: about 17–23 ms for MP4 and 12–16 ms for Matroska, against 10–14 ms and about 3 ms for those libraries.
+Reading pulls packets with **zero allocations per packet** on every reader measured (41 files, 24 readers; the owned-path figure is 24 bytes per packet), and the working set stays flat from a small file to one past 4 GiB for demux, remux, repair and tag edits (peak 35–85 MiB); packaging peaks at 173–189 MiB on the two 4 GiB test files (open item). Tables: [docs/bench-results/0.8-allocations-memory-io.md](docs/bench-results/0.8-allocations-memory-io.md).
+
+The first open in a process includes JIT time: about 17–25 ms for MP4 and 12–17 ms for Matroska, against about 8–50 ms and about 3 ms for those libraries (each table lists it per file).
+
+**Gaps in this table, stated plainly.** Probe and metadata reads of four unusual MPEG transport streams read past the documented bound (up to 25 MB of a 30 MB file; ffprobe reads 6–14 MB on the same files): an open item. Probing an AVI now makes 10 reads instead of about 100 but fetches about 170 KB in the largest case (before: 5 KB in 40 reads). The arm64 numbers were taken on the Mac mini that has no multi-gigabyte corpus files and no MPEG transport streams, so its MPEG and over-4 GiB rows are absent.
 
 Every parser is fuzzed (600 seconds per target when its code last changed; for this release the targets whose code changed since 0.6.0-preview.1, the manifest and presentation targets among them, were run again for 600 seconds, no open crash); damaged input is reported as typed defects with byte offsets and never surfaces as an untyped exception. Reading pulls packets with zero allocations per packet and constant memory at any file size.
 
