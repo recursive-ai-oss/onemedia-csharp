@@ -32,6 +32,44 @@ public static class Repairer
             throw new UnsupportedMediaException("The format of " + input + " is not recognised.");
         }
 
-        throw new UnsupportedMediaException("There is no repairer for " + match.Format.Id.Name + " yet.");
+        using var reader = new RepairInput(source, cancellationToken);
+        MediaLimits limits = MediaLimits.Default;
+        string name = match.Format.Id.Name;
+        RepairReport report;
+        try
+        {
+            report = name switch
+            {
+                "matroska" => MatroskaRepair.Run(reader, output, limits, cancellationToken),
+                "avi" => AviRepair.Run(reader, output, limits, cancellationToken),
+                _ => throw new UnsupportedMediaException("There is no repairer for " + name + " yet."),
+            };
+        }
+        catch
+        {
+            DeleteQuietly(output);
+            throw;
+        }
+
+        if (report.Status == RepairStatus.Unrepairable)
+        {
+            DeleteQuietly(output);
+        }
+
+        return report;
+    }
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }
