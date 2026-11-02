@@ -121,7 +121,7 @@ public static class TelemetryChannels
         {
             case TelemetryKind.Gps when v.Length >= 2:
                 return new GpsSample(item.Time, item.Duration, item.Range, v[0], v[1], Opt(v, 2), Opt(v, 3), Opt(v, 4), item.Fix, Opt(v, 5),
-                    item.GpsTimeTicks > 0 ? new DateTime(item.GpsTimeTicks, DateTimeKind.Utc) : null);
+                    item.GpsTimeTicks is > 0 and <= 3155378975999999999L ? new DateTime(item.GpsTimeTicks, DateTimeKind.Utc) : null);
             case TelemetryKind.Accelerometer or TelemetryKind.Gyroscope or TelemetryKind.Magnetometer or TelemetryKind.Gravity when v.Length >= 3:
                 return new Vector3Sample(item.Time, item.Duration, item.Range, v[0], v[1], v[2]);
             case TelemetryKind.Orientation when v.Length >= 4:

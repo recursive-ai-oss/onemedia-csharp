@@ -330,6 +330,15 @@ public class TelemetryTests
     }
 
     [Fact]
+    public void ImplausibleGpsTimesGiveNoTime()
+    {
+        // Found by fuzzing: a GPS9 day count far outside any calendar made the sample's time a DateTime that cannot exist.
+        byte[] input = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "fuzz", "telemetry-file", "gps9-time-out-of-range.bin"));
+        using MediaFile media = MediaFile.Open(new MemoryMediaSource(input.AsSpan(1).ToArray()));
+        Assert.NotEmpty(media.Telemetry);
+    }
+
+    [Fact]
     public void AxesRemapToTheRequestedOrderAndSign()
     {
         // HERO6 stores ACCL as Y, -X, Z (ORIN "YxZ") and asks for Z, X, Y (ORIO "ZXY").

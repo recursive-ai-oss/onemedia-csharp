@@ -455,7 +455,11 @@ internal sealed class GpmfDecoder
             v[7] = days;
             v[8] = secs;
             item.Count = 9;
-            item.GpsTimeTicks = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks + (long)Math.Round(days * TimeSpan.TicksPerDay) + (long)Math.Round(secs * TimeSpan.TicksPerSecond);
+            // A damaged file can hold any double here; times outside 2000..2253 are not plausible and give no time.
+            double total = (days * 86400.0) + secs;
+            item.GpsTimeTicks = total >= 0 && total <= 8e9
+                ? new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks + (long)Math.Round(total * TimeSpan.TicksPerSecond)
+                : 0;
             item.Fix = FixOf((int)fix);
         }
         else
