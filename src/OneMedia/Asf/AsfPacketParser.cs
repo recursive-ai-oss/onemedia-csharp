@@ -116,7 +116,8 @@ internal static class AsfPacketParser
             uint length;
             if (multiple)
             {
-                if (!TryRead(p, ref pos, payloadLengthType, out length))
+                // The length field itself may reach past the end of the payload area (into the padding); that leaves no room for data.
+                if (!TryRead(p, ref pos, payloadLengthType, out length) || pos > end)
                 {
                     return "short";
                 }
