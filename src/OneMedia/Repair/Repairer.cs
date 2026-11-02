@@ -27,14 +27,23 @@ public static class Repairer
         }
 
         using FileMediaSource source = FileMediaSource.Open(input);
-        if (!MediaFormats.Default.TrySniff(source, out FormatMatch match, cancellationToken))
+        string name;
+        if (MediaFormats.Default.TrySniff(source, out FormatMatch match, cancellationToken))
+        {
+            name = match.Format.Id.Name;
+        }
+        else if (TsRepair.LooksLikeTransportStream(source, cancellationToken))
+        {
+            // a transport stream cut at an arbitrary byte does not start with a sync byte, so the sniffer cannot recognise it
+            name = "mpegts";
+        }
+        else
         {
             throw new UnsupportedMediaException("The format of " + input + " is not recognised.");
         }
 
         using var reader = new RepairInput(source, cancellationToken);
         MediaLimits limits = MediaLimits.Default;
-        string name = match.Format.Id.Name;
         RepairReport report;
         try
         {
@@ -42,6 +51,8 @@ public static class Repairer
             {
                 "matroska" => MatroskaRepair.Run(reader, output, limits, cancellationToken),
                 "avi" => AviRepair.Run(reader, output, limits, cancellationToken),
+                "mpegts" => TsRepair.Run(reader, output, limits, cancellationToken),
+                "isobmff" => IsoRepair.Run(reader, output, limits, cancellationToken),
                 _ => throw new UnsupportedMediaException("There is no repairer for " + name + " yet."),
             };
         }

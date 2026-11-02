@@ -29,6 +29,45 @@ if (args.Length >= 3 && args[0] == "repair")
     return 0;
 }
 
+if (args.Length >= 3 && args[0] == "subseq")
+{
+    // every packet of the repaired file must be one of the original's, in order (some of the original's may be missing: dropped as damaged)
+    var a = Load(args[1]);
+    var b = Load(args[2]);
+    long matched = 0, extra = 0, missing = 0;
+    foreach (var kv in b)
+    {
+        var x = a.TryGetValue(kv.Key, out var xx) ? xx : [];
+        int j = 0;
+        foreach (var pk in kv.Value)
+        {
+            int k = j;
+            while (k < x.Count && x[k] != pk)
+            {
+                k++;
+            }
+
+            if (k < x.Count)
+            {
+                matched++;
+                j = k + 1;
+            }
+            else
+            {
+                extra++;
+            }
+        }
+    }
+
+    foreach (var kv in a)
+    {
+        missing += kv.Value.Count - (b.TryGetValue(kv.Key, out var yy) ? yy.Count : 0);
+    }
+
+    Console.WriteLine($"RESULT matched={matched} mismatches={extra} dropped={missing}");
+    return extra == 0 ? 0 : 1;
+}
+
 if (args.Length >= 3 && args[0] == "diff")
 {
     Dictionary<int, List<(int Size, string Hash, string Pts, string Dts, bool Key)>> a = Load(args[1]);

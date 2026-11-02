@@ -12,7 +12,7 @@ for f in "$D"/*."$ext"; do
   n=$(basename "$f"); r="$O/$n"; rm -f "$r"
   res=$(dotnet exec "$RC" repair "$f" "$r" 2>&1 | head -1)
   if [ ! -f "$r" ]; then echo "$n: NOOUT $res"; continue; fi
-  d=$(dotnet exec "$RC" diff "$H" "$r" 2>&1 | grep RESULT)
+  d=$(dotnet exec "$RC" ${MODE:-diff} "$H" "$r" 2>&1 | grep RESULT)
   e=$($FFPROBE -v error -show_entries format=duration -of csv=p=0 "$r" 2>&1 | grep -vc '^[0-9.]*$')
   dur=$($FFPROBE -v error -show_entries format=duration -of csv=p=0 "$r" 2>/dev/null | head -1)
   dd=$($FFPROBE -v error -show_entries format=duration -of csv=p=0 "$f" 2>&1 | grep -vc '^[0-9.]*$')
