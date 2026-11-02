@@ -39,6 +39,12 @@ if (args[0] == "subsbench")
     return SubtitleBench.Run([.. args.Skip(1)]);
 }
 
+if (args[0] == "subsloop")
+{
+    // subsloop WORK CUES SECONDS: one subtitle workload in a loop, for profiling.
+    return SubtitleBench.Loop([.. args.Skip(1)]);
+}
+
 if (args[0] == "subsdump")
 {
     // subsdump [-v INDEX FORMAT] [-m MUTATIONS] FILE...: hashes of what the subtitle readers and writers produce, to diff two builds.

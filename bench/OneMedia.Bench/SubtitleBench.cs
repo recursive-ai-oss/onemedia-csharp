@@ -57,6 +57,35 @@ internal static class SubtitleBench
         return 0;
     }
 
+    /// <summary>Usage: <c>subsloop WORK CUES SECONDS</c>; repeats one OneMedia workload (parse-srt, parse-vtt, parse-ass, convert-vtt, convert-ass) so that a sampling profiler has something to see.</summary>
+    public static int Loop(string[] args)
+    {
+        int cues = int.Parse(args[1], CultureInfo.InvariantCulture);
+        byte[] srt = MakeSrt(cues);
+        SubtitleDocument doc = SubtitleFormats.Srt.Read(srt);
+        byte[] vtt = SubtitleFormats.WebVtt.Write(doc).Data;
+        byte[] ass = SubtitleFormats.Ass.Write(doc).Data;
+        Func<int> work = args[0] switch
+        {
+            "parse-srt" => () => SubtitleFormats.Srt.Read(srt).Cues.Count,
+            "parse-vtt" => () => SubtitleFormats.WebVtt.Read(vtt).Cues.Count,
+            "parse-ass" => () => SubtitleFormats.Ass.Read(ass).Cues.Count,
+            "convert-vtt" => () => SubtitleFormats.WebVtt.Write(SubtitleFormats.Srt.Read(srt)).Data.Length,
+            "convert-ass" => () => SubtitleFormats.Ass.Write(SubtitleFormats.Srt.Read(srt)).Data.Length,
+            _ => throw new ArgumentException("unknown work " + args[0]),
+        };
+        long end = Stopwatch.GetTimestamp() + (long)(double.Parse(args[2], CultureInfo.InvariantCulture) * Stopwatch.Frequency);
+        int runs = 0;
+        while (Stopwatch.GetTimestamp() < end)
+        {
+            work();
+            runs++;
+        }
+
+        Console.WriteLine($"{args[0]} {cues} cues: {runs} runs");
+        return 0;
+    }
+
     private static void RunSize(int cues, string filter, int samples)
     {
         byte[] srt = MakeSrt(cues);

@@ -134,3 +134,7 @@ formats and prints one SHA-256 per input and format over everything the model ho
 defects with offsets, plus what each writer produces from it and its loss report. Diffing the output of two builds proves a
 performance change did not change behaviour: the tuning of the subtitle layer was held to 0 differences over 30,000 input/format
 pairs (testdata sidecars, a rich generated document in five formats, 120 damaged variants of each).
+
+`OneMedia.Bench subsloop WORK CUES SECONDS` repeats one OneMedia subtitle workload (`parse-srt`, `parse-vtt`, `parse-ass`, `convert-vtt`,
+`convert-ass`) for a sampling profiler such as `dotnet-trace`. At 100,000 cues a run allocates 54–110 MB and keeps tens of MB alive until
+it ends, so garbage-collector time is a large share of every row; medians on a shared machine swing more than the minimum.
