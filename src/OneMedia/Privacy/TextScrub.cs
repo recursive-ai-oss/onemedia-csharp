@@ -30,7 +30,7 @@ internal static class TextScrub
     /// <summary>Whether the text holds anything the rules match (for formats where the sample cannot be edited).</summary>
     public static bool Any(ReadOnlySpan<byte> text, StripCategories cats) => Utf16Start(text) is { } start ? Find(Narrow(text, start, out _), cats).Count > 0 : Find(text, cats).Count > 0;
 
-    // 3GPP TS 26.245 §5.16: tx3g text may be UTF-16 and then starts with a byte order mark, after the two-byte length of the sample. The byte order mark
+    // 3GPP TS 26.245: tx3g text may be UTF-16 and then starts with a byte order mark, after the two-byte length of the sample. The byte order mark
     // decides the byte order; the index returned is where the mark sits.
     private static int? Utf16Start(ReadOnlySpan<byte> t)
     {
@@ -81,7 +81,7 @@ internal static class TextScrub
         }
     }
 
-    // WebVTT in ISO files (ISO/IEC 14496-30) wraps each cue in boxes: the text follows the four type bytes of a payload box directly, so "payl" would
+    // WebVTT in ISO files wraps each cue in boxes (vttc, payl, ...): the text follows the four type bytes of a payload box directly, so "payl" would
     // glue itself to the first word or number of the cue and hide it from the whole-word rules. Box headers are blanked to 0x01 in the copy the rules read.
     private static readonly string[] CueBoxes = ["payl", "sttg", "iden", "ctim", "vtta", "vttc", "vtte"];
 

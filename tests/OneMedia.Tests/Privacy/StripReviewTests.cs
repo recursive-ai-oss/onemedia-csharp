@@ -190,6 +190,32 @@ public class StripReviewTests
         return count;
     }
 
+    [Fact]
+    public void RiffInfoArchivalLocationIsReallyRemovedWhenTheReportSaysSo()
+    {
+        static byte[] Chunk(string id, byte[] data) => [.. Encoding.ASCII.GetBytes(id), .. BitConverter.GetBytes(data.Length), .. data, .. (data.Length % 2 == 1 ? new byte[1] : [])];
+        byte[] fmt = [1, 0, 1, 0, 0x40, 0x1F, 0, 0, 0x80, 0x3E, 0, 0, 2, 0, 16, 0];
+        byte[] info = [.. "INFO"u8, .. Chunk("IARL", [.. "+47.620512-122.349312+184.5/"u8, 0]), .. Chunk("ICMT", [.. "kept"u8, 0])];
+        // A first INFO list of its own (many writers add one with their name) and a second one holding the location.
+        byte[] firstList = [.. "INFO"u8, .. Chunk("ISFT", [.. "writer"u8, 0])];
+        byte[] body = [.. "WAVE"u8, .. Chunk("fmt ", fmt), .. Chunk("LIST", firstList), .. Chunk("data", new byte[64]), .. Chunk("LIST", info)];
+        byte[] wav = [.. "RIFF"u8, .. BitConverter.GetBytes(body.Length), .. body];
+        string path = Temp("archival.wav");
+        try
+        {
+            File.WriteAllBytes(path, wav);
+            StripPlan plan = PrivacyStrip.Plan(path);
+            byte[] output = WriterTestSupport.Apply(plan.Plan, wav);
+            Assert.Contains(plan.Report.Entries, e => e.Name == "IARL");
+            Assert.False(Has(output, "47.620512"), "the report lists IARL as removed, so it must be gone");
+            Assert.True(Has(output, "kept"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static int CountOf(byte[] data, string text)
     {
         byte[] needle = Encoding.UTF8.GetBytes(text);

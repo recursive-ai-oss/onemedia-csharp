@@ -166,8 +166,8 @@ def iso_cases():
     out('iso-top-level-meta', assemble(top_extra=plain_meta([('com.apple.quicktime.location.ISO6709', POS, 1), ('com.apple.quicktime.content.identifier', SN, 1)])))
     out('iso-qt-plain-meta', assemble(moov_meta=plain_meta([('com.apple.quicktime.location.ISO6709', POS, 1)]).replace(b'meta', b'meta', 1)))
     # QuickTime's own meta box has no version/flags word
-    pm = plain_meta([('com.apple.quicktime.location.ISO6709', POS, 1), ('com.apple.quicktime.serialnumber', SN, 1)])
-    out('iso-qt-nofullbox-meta', assemble(moov_meta=pm))
+    nofull = plain_meta([('com.apple.quicktime.location.ISO6709', POS, 1), ('com.apple.quicktime.serialnumber', SN, 1)])
+    out('iso-qt-nofullbox-meta', assemble(moov_meta=nofull))
     out('iso-meta-in-trak', assemble([fx.track(1, b'meta', fx.entry_box(b'fdsc'), [b'x' * 40])], trak_extra={1: plain_meta([('com.apple.quicktime.location.ISO6709', POS, 1)])}))
     out('iso-meta-twice', assemble(moov_meta=plain_meta([('com.apple.quicktime.model', b'Model', 1)]) + plain_meta([('com.apple.quicktime.location.ISO6709', POS, 1)])))
     out('iso-itunes-freeform', assemble(udta=box(b'udta', box(b'meta', b'\0\0\0\0' + box(b'hdlr', b'\0' * 24) + box(b'ilst',
