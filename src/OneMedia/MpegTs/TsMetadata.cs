@@ -238,14 +238,31 @@ internal static class TsMetadata
         {
             string text = w.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
             AddTo(tags, io, MpegTsTagSystems.CameraData, "DateTimeOriginal", text);
-            facts.CaptureTime.Add(35, new FactCandidate<MediaDateTime>(new MediaDateTime(w, null, TimeZoneCertainty.Unknown), "mdpm:DateTimeOriginal", text,
-                "camera clock from MDPM entries 0x18 and 0x19; the zone flag byte is not decoded, so the zone is unknown"));
+            if (block.UtcOffsetMinutes is { } offset && block.TimeZone is { } zone)
+            {
+                // The flags byte of entry 0x18 names the camera's zone (see MdpmBlock.TimeZone), so this is a time with an offset.
+                int abs = Math.Abs(zone.StandardOffsetMinutes);
+                AddTo(tags, io, MpegTsTagSystems.CameraData, "TimeZone", string.Create(CultureInfo.InvariantCulture, $"{(zone.StandardOffsetMinutes < 0 ? '-' : '+')}{abs / 60:00}:{abs % 60:00}{(zone.DaylightSaving ? " DST" : string.Empty)}"));
+                facts.CaptureTime.Add(FactsBuilder.RankVendorCreationTime, new FactCandidate<MediaDateTime>(new MediaDateTime(w, offset, TimeZoneCertainty.Offset), "mdpm:DateTimeOriginal", text,
+                    "camera clock from MDPM entries 0x18 and 0x19; the zone is the standard offset in the flags byte plus one hour when its daylight saving bit is set"));
+            }
+            else
+            {
+                facts.CaptureTime.Add(35, new FactCandidate<MediaDateTime>(new MediaDateTime(w, null, TimeZoneCertainty.Unknown), "mdpm:DateTimeOriginal", text,
+                    "camera clock from MDPM entries 0x18 and 0x19; the zone flag byte is not in the layout seen in files, so the zone is unknown"));
+            }
         }
 
         if (make is not null)
         {
             AddTo(tags, io, MpegTsTagSystems.CameraData, "Make", make);
             facts.Make.Add(0, new FactCandidate<string>(make, "mdpm:Make", make, "maker code of MDPM entry 0xE0"));
+        }
+
+        if (block.Model is { } model)
+        {
+            AddTo(tags, io, MpegTsTagSystems.CameraData, "Model", model);
+            facts.Model.Add(0, new FactCandidate<string>(model, "mdpm:Model", model, "model name in MDPM entries 0xE4 to 0xE6 (Sony cameras)"));
         }
 
         foreach (Avchd.MdpmEntry e in block.Entries)

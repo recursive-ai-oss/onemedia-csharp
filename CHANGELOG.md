@@ -4,6 +4,13 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- QuickTime PCM audio (`sowt`, `twos`, ...) whose sample table states a size of one byte per frame came out in packets a quarter or half of the real size. The frame size is taken from the sample description (checked on Canon, Nikon and Olympus recordings against ffprobe).
+- PCM packets in ISO files no longer run across a chunk boundary (checked on a multi-track 24-bit recording).
+- AVCHD: the flags byte of the camera clock now gives the time zone (offset-bearing capture time) and Sony model names are read from MDPM (checked on 63 camcorder files against ExifTool).
+- `manu` and `modl` user-data atoms give Make and Model (checked on a Canon PowerShot MP4).
+
 ## [0.8.0-preview.3] - 2026-11-03
 
 Fixes from review of 0.8.0-preview.2, including a correction to its repair notes (below). Previews stay previews as before.

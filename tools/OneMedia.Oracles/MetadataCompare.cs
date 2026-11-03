@@ -276,7 +276,9 @@ internal static partial class MetadataCompare
             List<DateTime> miDates = [.. DateValues(mi, ["Recorded_Date", "Encoded_Date", "Tagged_Date", "Mastered_Date"])];
             FactCandidate<MediaDateTime> best = f.CaptureTime.Best!;
             DateTime oursUtc = Instant(best.Value);
-            bool inEt = etDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
+            // The wall-clock time as ExifTool prints it counts too: a camera zone with a daylight saving flag ("+01:00 DST") is not a plain offset.
+            List<DateTime> etLocalDates = [.. DateValues(et, ["CreationDate", "DateTimeOriginal", "CreateDate", "DateUTC", "MediaCreateDate", "TrackCreateDate"], local: true)];
+            bool inEt = etDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1) || etLocalDates.Exists(x => Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
             bool inMi = miDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
             bool anyEt = f.CaptureTime.Candidates.Any(cand => etDates.Exists(x => Math.Abs((x - Instant(cand.Value)).TotalSeconds) < 1 || Math.Abs((x - cand.Value.Value).TotalSeconds) < 1));
             rows.Add(new Row(name, "fact", "CaptureTime", $"{best.Value} [{best.Source}] ({f.CaptureTime.Candidates.Count} candidates)", inEt ? "same" : etDates.Count == 0 ? "-" : anyEt ? "other-candidate" : "absent",
@@ -421,7 +423,7 @@ internal static partial class MetadataCompare
         return null;
     }
 
-    private static IEnumerable<DateTime> DateValues(Dictionary<string, List<string>> d, string[] keys)
+    private static IEnumerable<DateTime> DateValues(Dictionary<string, List<string>> d, string[] keys, bool local = false)
     {
         foreach (string v in Values(d, keys))
         {
@@ -436,7 +438,7 @@ internal static partial class MetadataCompare
 
                 DateTime dt = new(p[0], p[1], p[2], p[3], p[4], p[5]);
                 Match z = OffsetRegex().Match(v[m.Length..]);
-                if (z.Success)
+                if (z.Success && !local)
                 {
                     int sign = z.Groups[1].Value == "-" ? -1 : 1;
                     dt = dt.AddMinutes(-sign * ((int.Parse(z.Groups[2].Value, CultureInfo.InvariantCulture) * 60) + int.Parse(z.Groups[3].Value, CultureInfo.InvariantCulture)));

@@ -54,6 +54,41 @@ public class IsoSampleEntryTests
         Assert.Equal(chunk2, first.Info.SourceRange.Offset);
     }
 
+    // QuickTime File Format, sound sample description version 1 for 16-bit little-endian stereo: 1 sample per packet, 4 bytes per frame.
+    private static byte[] SowtEntry(int version) => version == 1
+        ? Box("sowt", new byte[6], U16(1), U16(1), U16(0), U32(0), U16(2), U16(16), U16(0), U16(0), U32(48000u << 16), U32(1), U32(2), U32(4), U32(2))
+        : Box("sowt", new byte[6], U16(1), U16(0), U16(0), U32(0), U16(2), U16(16), U16(0), U16(0), U32(48000u << 16));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void PcmWhoseTableSizeIsOneBytePerFrameTakesTheFrameSizeFromTheDescription(int version)
+    {
+        // Compact cameras write the stsz sample size as 1 and count frames: 2,500 frames of 4 bytes are 10,000 bytes in one chunk. The builder lays
+        // out one byte per table sample, so the data is padded to the real length.
+        TrackSpec audio = new()
+        {
+            Id = 1,
+            Handler = "soun",
+            Timescale = 48000,
+            SampleCount = 2500,
+            SizeOf = _ => 1,
+            DurationOf = _ => 1,
+            ConstantSizeBox = true,
+            SamplesPerChunk = 2500,
+            SampleEntries = SowtEntry(version),
+        };
+        Layout layout = Build([audio], moovFirst: true, brand: "qt  ");
+        byte[] file = [.. layout.ToArray([audio]), .. new byte[7500]];
+        List<Got> got = IsoBmffTestHelpers.Demux(file, out _, out DefectLog defects);
+        Assert.Empty(defects);
+        // 1024 frames = 4096 bytes per packet
+        Assert.Equal([4096, 4096, 1808], got.Select(g => g.Size));
+        Assert.Equal([1024L, 1024, 452], got.Select(g => g.Duration));
+        long chunk = layout.SampleOffsets[0][0];
+        Assert.Equal([chunk, chunk + 4096, chunk + 8192], got.Select(g => g.Pos));
+    }
+
     // The real entry of a QuickTime AAC file: sound description version 1 followed by a 'wave' atom that holds the 'esds' box.
     private const string QuickTimeAacEntry =
         "0000009d6d7034610000000000000001000100000000000000020010fffe0000562200000000040000000001000000020000000200000069776176650000000c66726d616d7034610000000c6d703461000000000000003965736473000000000380808028000000048080801a401500180000007d0000009c40058080800813800484000020000680808001020000000800000000000000004005800d";

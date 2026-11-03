@@ -18,8 +18,9 @@ internal enum UserDataLayout
 
 internal static class UserDataClassifier
 {
-    // Asset boxes that only 3GPP defines.
-    private static readonly uint[] ThreeGppOnly = [BoxTypes.Make("loci"), BoxTypes.Make("yrrc"), BoxTypes.Make("kywd"), BoxTypes.Make("albm"), BoxTypes.Make("rtng"), BoxTypes.Make("clsf")];
+    // Asset boxes that only 3GPP defines, and the camera maker and model strings (manu, modl) that some cameras write in the same layout:
+    // version and flags, a packed language, a zero-terminated string (observed in a compact-camera MP4, where ExifTool lists them as Make and Model).
+    private static readonly uint[] ThreeGppOnly = [BoxTypes.Make("loci"), BoxTypes.Make("yrrc"), BoxTypes.Make("kywd"), BoxTypes.Make("albm"), BoxTypes.Make("rtng"), BoxTypes.Make("clsf"), BoxTypes.Make("manu"), BoxTypes.Make("modl")];
 
     // Atoms both QuickTime and 3GPP define with different payloads: told apart by their first bytes.
     private static readonly uint[] Shared = [BoxTypes.Make("titl"), BoxTypes.Make("dscp"), BoxTypes.Make("cprt"), BoxTypes.Make("perf"), BoxTypes.Make("auth"), BoxTypes.Make("gnre")];

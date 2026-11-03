@@ -275,12 +275,15 @@ internal static class Program
         {
             MediaTrack t = d.Tracks[p.Info.TrackIndex];
             double scale = t.Timescale;
+            // Presentation times are compared after the edit list's start (the track's priming): a rebuilt file writes the video reorder delay
+            // as an edit, while a device may have put the same delay into its composition offsets.
+            double priming = t.Edit.Priming.IsKnown ? t.Edit.Priming.Rescale(t.Timescale, MediaRounding.NearestAwayFromZero).Ticks : 0;
             all[p.Info.TrackIndex].Add(new Pkt(
                 p.Info.Size,
                 BitConverter.ToUInt64(SHA256.HashData(p.Data)),
                 p.Info.IsKeyframe,
                 p.Info.Dts.IsKnown ? p.Info.Dts.Ticks / scale : double.NaN,
-                p.Info.Pts.IsKnown ? p.Info.Pts.Ticks / scale : double.NaN,
+                p.Info.Pts.IsKnown ? (p.Info.Pts.Ticks - priming) / scale : double.NaN,
                 p.Info.Duration.IsKnown ? p.Info.Duration.Ticks / scale : 0));
         }
 

@@ -125,6 +125,18 @@ internal sealed class FactsBuilder(DefectLog defects)
                 }
 
                 break;
+            case TagSystems.ThreeGpp when t.TrackId == 0:
+                switch (t.Key)
+                {
+                    case "manu":
+                        AddString(Make, 22, t, text, source);
+                        break;
+                    case "modl":
+                        AddString(Model, 22, t, text, source);
+                        break;
+                }
+
+                break;
             case TagSystems.QuickTimeUserData:
                 switch (t.Key)
                 {

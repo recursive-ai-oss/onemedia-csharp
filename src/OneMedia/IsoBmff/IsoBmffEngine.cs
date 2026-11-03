@@ -35,6 +35,12 @@ internal sealed class TrackState
     /// </summary>
     public (int SamplesPerPacket, int BytesPerFrame)[]? SamplePackets { get; init; }
 
+    /// <summary>
+    /// PCM whose sample table counts sample frames but states a size of one byte for each (QuickTime sound description version 1, as written by
+    /// several compact cameras): the bytes in one frame, by sample description (1-based). Null when the table sizes are the frame sizes.
+    /// </summary>
+    public int[]? PcmFrameBytes { get; init; }
+
     public bool ReportedRange { get; set; }
 }
 
@@ -68,7 +74,7 @@ internal sealed class IsoBmffEngine
             MediaTrack info = BuildTrack(t, movie, qt, sidxDuration, tableSource, ref gaplessUsed, out long editStart);
             infos[i] = info;
             SampleCursor? cursor = t.HasSampleTable && t.SampleCount > 0 ? new SampleCursor(t.Layout, tableSource, defects, fileLength, movie.Range.Offset) : null;
-            States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart, GroupFrames = info.Kind == TrackKind.Audio && info.Codec == CodecId.Pcm, SamplePackets = SamplePacketsOf(t, info.Kind, info.Codec) };
+            States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart, GroupFrames = info.Kind == TrackKind.Audio && info.Codec == CodecId.Pcm, SamplePackets = SamplePacketsOf(t, info.Kind, info.Codec), PcmFrameBytes = PcmFrameBytesOf(t, info.Kind, info.Codec) };
             if (cursor is not null && !cursor.IsValid)
             {
                 States[i].Cursor = null;
@@ -99,6 +105,39 @@ internal sealed class IsoBmffEngine
             if (e.SoundVersion == 1 && e.SamplesPerPacket > 1 && e.BytesPerFrame > 0)
             {
                 result[i] = (e.SamplesPerPacket, e.BytesPerFrame);
+                any = true;
+            }
+        }
+
+        return any ? result : null;
+    }
+
+    // QuickTime File Format, sound sample description version 1: a "sample" of uncompressed audio is one frame of BytesPerFrame bytes. Some writers
+    // state the table size of that sample as 1 (the stsz sample_size field is a placeholder), so the frame size comes from the description.
+    // Observed in files from compact cameras whose sowt tracks list 4 bytes per frame for a table size of 1.
+    private static int[]? PcmFrameBytesOf(IsoTrack t, TrackKind kind, CodecId codec)
+    {
+        if (kind != TrackKind.Audio || codec != CodecId.Pcm || t.Layout.ConstantSize != 1)
+        {
+            return null;
+        }
+
+        int[] result = new int[t.SampleEntries.Count];
+        bool any = false;
+        for (int i = 0; i < result.Length; i++)
+        {
+            SampleEntry e = t.SampleEntries[i];
+            // Only a description that states the frame size, or names a linear PCM format, is trusted: the sample size field of u-law and A-law
+            // descriptions says 16 bits for one-byte frames. Observed: version 0 "sowt" with a table size of 1 and ffprobe packets of 1024 frames.
+            int frame = e.SoundVersion == 1 ? e.BytesPerFrame : 0;
+            if (frame <= 1 && e.Format is "sowt" or "twos" or "in24" or "in32" or "fl32" or "fl64")
+            {
+                frame = e.ChannelCount * ((e.SampleSizeBits + 7) / 8);
+            }
+
+            if (frame is > 1 and <= MaxFrameBytes)
+            {
+                result[i] = frame;
                 any = true;
             }
         }
@@ -586,12 +625,30 @@ internal sealed class IsoBmffEngine
             cursor.MoveNext();
             long duration = sample.Duration;
             int size = sample.Size;
-            if (best.GroupFrames && size is > 0 and <= MaxFrameBytes)
+            if (best.GroupFrames && size == 1 && best.PcmFrameBytes is { } tableFrames && sample.DescriptionIndex >= 1 && sample.DescriptionIndex <= tableFrames.Length && tableFrames[sample.DescriptionIndex - 1] > 1)
+            {
+                // The table lists one placeholder byte per frame: frames are bytesPerFrame apart in the chunk and join into packets as below.
+                int bytesPerFrame = tableFrames[sample.DescriptionIndex - 1];
+                offset = chunkStart + ((sample.Offset - chunkStart) * bytesPerFrame);
+                size = bytesPerFrame;
+                int frames = 1;
+                while (frames < FramesPerPacket && cursor.IsValid && cursor.ChunkStartOffset == chunkStart && cursor.Current.Offset == sample.Offset + frames
+                    && cursor.Current.DescriptionIndex == sample.DescriptionIndex && cursor.Current.Size == 1)
+                {
+                    size += bytesPerFrame;
+                    duration += cursor.Current.Duration;
+                    frames++;
+                    cursor.MoveNext();
+                }
+            }
+            else if (best.GroupFrames && size is > 0 and <= MaxFrameBytes)
             {
                 // PCM is stored one sample frame per table sample (QuickTime sound sample descriptions); a packet of one frame is useless, so the frames
-                // that follow each other in the file are joined, up to 1024 frames per packet, the size most players and tools use.
+                // that follow each other in a chunk are joined, up to 1024 frames per packet, the size most players and tools use. A packet never crosses
+                // a chunk boundary, even where the next chunk happens to start right after this one: observed in 24-bit multi-track recordings,
+                // where ffprobe ends a packet at the end of every chunk.
                 int frames = 1;
-                while (frames < FramesPerPacket && cursor.IsValid && cursor.Current.Offset == sample.Offset + size && cursor.Current.DescriptionIndex == sample.DescriptionIndex
+                while (frames < FramesPerPacket && cursor.IsValid && cursor.ChunkStartOffset == chunkStart && cursor.Current.Offset == sample.Offset + size && cursor.Current.DescriptionIndex == sample.DescriptionIndex
                     && cursor.Current.Size is > 0 and <= MaxFrameBytes)
                 {
                     size += cursor.Current.Size;
