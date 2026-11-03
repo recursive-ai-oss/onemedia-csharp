@@ -152,9 +152,8 @@ bytes), and the window is a fixed size.
   last fragment and are the business of index repair.
 - A reference track whose codec has no framer here (VP9, ProRes, ALAC, Opus in MP4 and so on) is left out with a note.
 - MBAFF/field streams: access units are cut correctly, but output order is not worked out (decode order with a note).
-- HEVC open-GOP leading pictures and dependent slice segments follow the slice-header rules above; real-device files with exotic structure are not
-  yet in the test set (the device corpus would add real interleave patterns, field/MBAFF H.264, HEVC from phones, and dashcam streams with unusual
-  metadata tracks).
+- HEVC open-GOP leading pictures and dependent slice segments follow the slice-header rules above; 12 device models are in the device-corpus check
+  ([device-corpus.md](device-corpus.md)); field/MBAFF H.264 and dashcam originals with unusual metadata tracks are still absent.
 - `tmcd` timecode tracks (4-byte samples), GoPro `fdsc` (16-byte samples) and other tracks without content to check are skipped and show
   up as `Unframed` ranges; they push the recovered fraction down by their share of the media data (about 1 % in the GoPro samples).
 - GoPro `gpmd` samples that hold more than one top-level `DEVC` item (the hero6 file with a Bluetooth remote) are cut into one sample per item,

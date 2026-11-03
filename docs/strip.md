@@ -46,7 +46,7 @@ device identifiers. This page states exactly what is looked for, what is done to
 | `gpmd` track (GoPro GPMF) | `GPS5`, `GPS9`, `GPSU`, `GPSF`, `GPSP`, `GPSA`, `GPRI`, `GLPI`, `LNED`: value zeroed, key renamed `EMPT` | `CASN`, `MUID`, `LINF`, `CINF` likewise |
 | `camm` track | packet types 4 (local position), 5 (position), 6 (GPS): payload zeroed, type set to 0xFFFF | |
 | `mebx` track | atoms whose key (from the sample entry's key table) contains the location words above, including nested detected-face groups: value zeroed, local id set to 0 | atoms whose key names a serial/id |
-| `djmd` track (DJI protobuf, protocols in the table of `DjmdDecoder`) | the position message (latitude, longitude, units), `abs_alt`, `rel_alt`: value overwritten with zeros (a varint as `80 … 00`, the same length), key changed to field 15 of the same wire type | the aircraft serial number (path 1-1-5): zeros, key changed to field 15. The model string stays |
+| `djmd` track (DJI protobuf, protocols in the table of `DjmdDecoder`) | the position message (latitude, longitude, units), `abs_alt`, `rel_alt`: value overwritten with zeros (a varint as `80 … 00`, the same length), key changed to field 15 of the same wire type | the serial number (path 1-1-5): zeros, key changed to field 15, **only for samples whose protocol name is in the table** (`wm265e`, `pm320`, `wm260`, `wm261`, `Mavic4`, `Air3`, `Air3s`, `Lito_X1`, `Mini4_Pro`, `wa345e`, `AVATA2`, `NEO2`, `dji_neo`, `ac203`, `ac204`, `ac206`, `oq101`). A sample naming another protocol is left unchanged, position and serial included, and the track is listed in `NotRemoved`. **DJI Osmo Pocket 3** (protocol `PP-101`) is such a camera: its serial number and position stay in its `djmd` samples. The model string stays |
 | subtitle and text tracks in ISO files (`tx3g`, `text`, `wvtt`, `stpp`, DJI per-frame text) | text rules below: overwritten with spaces | `serial`-style keys |
 | GoPro settings block (start of `mdat` before the first sample, and `fdsc` samples) | the position string by value | lens serial (48 bytes), camera-serial hash (16), camera serial (15) after the `FIRM` string; and every value read from a removed field, by value |
 
@@ -142,7 +142,7 @@ Found by the review (`docs/strip-review.md`) and left on purpose or for lack of 
 - Text that matches none of the text rules (a place name in a subtitle, a position written in words, text in a script the rules do not know). Subtitle blocks in Matroska and the other non-ISO
   formats are only reported, not edited. Standalone subtitle files.
 - DJI's `dbgi` debug track (undocumented layout): not inspected; the report lists it in `NotRemoved`. Fields of `djmd` messages the decoder does not map
-  (GPS time, home point, quaternions): not touched; a protocol name not in the decoder's table is reported in `NotRemoved`.
+  (GPS time, home point, quaternions): not touched; a protocol name not in the decoder's table (for example the Osmo Pocket 3's `PP-101`) leaves the whole sample unchanged, serial and position included, and is reported in `NotRemoved`.
 - The names in a `keys` box and in `mebx` sample entries stay (a name is not a value); values are gone.
 - Sidecar files next to the video (DJI `.SRT`, Sony clip XML, XMP): the strip works on one file.
 - Position or serial data the strip does not know a name for. The rules are the tables in `StripRules`; unknown vendor atoms stay.
