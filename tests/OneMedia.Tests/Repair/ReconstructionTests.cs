@@ -434,18 +434,8 @@ public sealed class ReconstructionTests
             Assert.Contains("no video parameter sets", r.Warnings[0], StringComparison.Ordinal);
             Assert.Contains(r.Warnings, w => w.StartsWith("Only ", StringComparison.Ordinal));
 
-            TextWriter original = Console.Out;
             using StringWriter captured = new();
-            Console.SetOut(captured);
-            int exit;
-            try
-            {
-                exit = RecursiveAI.OneMedia.Tool.RepairCommand.Run([input, output]);
-            }
-            finally
-            {
-                Console.SetOut(original);
-            }
+            int exit = RecursiveAI.OneMedia.Tool.RepairCommand.Run([input, output], captured);
 
             string[] lines = captured.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
             Assert.Equal(2, exit);
@@ -521,17 +511,8 @@ public sealed class ReconstructionTests
             }
 
             File.Delete(output);
-            TextWriter original = Console.Out;
             using StringWriter captured = new();
-            Console.SetOut(captured);
-            try
-            {
-                Assert.Equal(2, RecursiveAI.OneMedia.Tool.RepairCommand.Run([input, output]));
-            }
-            finally
-            {
-                Console.SetOut(original);
-            }
+            Assert.Equal(2, RecursiveAI.OneMedia.Tool.RepairCommand.Run([input, output], captured));
 
             string[] lines = captured.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
             Assert.StartsWith("Unrepairable", lines[0], StringComparison.Ordinal);

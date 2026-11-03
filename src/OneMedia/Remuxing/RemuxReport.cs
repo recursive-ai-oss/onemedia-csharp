@@ -107,8 +107,23 @@ public sealed record RemuxReport(
     /// </summary>
     public IReadOnlyList<string> CarriedCaptions { get; init; } = [];
 
-    /// <summary>A one-line summary: tracks and losses. The data is in the properties.</summary>
-    public override string ToString() => $"Remuxed: {Tracks.Count} track{(Tracks.Count == 1 ? "" : "s")}, {Losses.Count} loss{(Losses.Count == 1 ? "" : "es")} (see Losses)";
+    /// <summary>A one-line summary: tracks written out of the input tracks, and losses. The data is in the properties.</summary>
+    public override string ToString()
+    {
+        int written = 0;
+        foreach (RemuxTrackReport t in Tracks)
+        {
+            if (t.OutputTrack >= 0)
+            {
+                written++;
+            }
+        }
+
+        string tracks = written == Tracks.Count
+            ? $"{written} track{(written == 1 ? "" : "s")} written"
+            : $"{written} of {Tracks.Count} tracks written, {Tracks.Count - written} left out";
+        return $"Remuxed: {tracks}, {Losses.Count} loss{(Losses.Count == 1 ? "" : "es")} (see Losses)";
+    }
 
     /// <summary>True when anything other than a caller's own choice (<see cref="LossReason.Deselected"/>) did not carry over.</summary>
     public bool HasLosses

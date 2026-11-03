@@ -348,7 +348,7 @@ internal sealed class IsoMetadataReader
         {
             _facts.CaptureTime.Add(FactsBuilder.RankMovieHeader, new FactCandidate<MediaDateTime>(
                 new MediaDateTime(created.UtcDateTime, null, TimeZoneCertainty.Utc), "mvhd", movie.Header.CreationSeconds.ToString(CultureInfo.InvariantCulture),
-                "seconds since 1904-01-01 UTC; some devices store local time here", TimeZoneCertainty.Utc));
+                "seconds since 1904-01-01 UTC; some devices store local time here", TimeZoneCertainty.Utc, movie.Header.CreationRange));
         }
 
         IsoTrack? video = null;

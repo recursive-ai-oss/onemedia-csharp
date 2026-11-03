@@ -62,7 +62,7 @@ internal static class EngineHost
     // monitors cannot be waited on. Readers written against synchronous sources reach this when they are given a source that answers later.
     private static NotSupportedException CannotBlock() => new(
         "This reader reads through synchronous code, and the source did not answer at once. A single-threaded host (browser WebAssembly) cannot wait for it; " +
-        "give the reader a source that answers immediately (bytes already in memory, or a file in the virtual file system), or use a format with an asynchronous reader (ISO BMFF, Matroska, ASF, Ogg).");
+        "give the reader a source that answers immediately (bytes already in memory, or a file in the virtual file system), or use a format with an asynchronous reader (ISO BMFF, Matroska, ASF, Ogg, WAV, AIFF, CAF, MP3, ADTS, AC-3, AMR).");
 
     /// <summary>Opens an engine over a synchronous source; the source is disposed when opening fails.</summary>
     public static T Open<T>(T engine, IDisposable? owned, CancellationToken ct) where T : ISequentialEngine

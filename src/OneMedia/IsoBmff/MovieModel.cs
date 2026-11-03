@@ -51,6 +51,9 @@ public sealed record FileTypeBox(string MajorBrand, uint MinorVersion, IReadOnly
 /// <param name="NextTrackId">The next free track id.</param>
 public sealed record MovieHeader(uint Timescale, ulong Duration, ulong CreationSeconds, ulong ModificationSeconds, uint NextTrackId)
 {
+    /// <summary>Where the creation time field lies in the source, or <see cref="ByteRange.None"/> when the header was missing or too short to hold it.</summary>
+    public ByteRange CreationRange { get; init; } = ByteRange.None;
+
     /// <summary>Creation time as a UTC instant, or <c>null</c> when unset or out of range.</summary>
     public DateTimeOffset? CreationTime => FromMacSeconds(CreationSeconds);
 

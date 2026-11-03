@@ -100,7 +100,7 @@ public sealed record RepairReport(
     public Reconstruction.ReconstructionReport? Reconstruction { get; init; }
 
     /// <summary>A one-line summary: status, format and counts. The data is in the properties.</summary>
-    public override string ToString() => $"Repair {Status}: {Format}, {Items.Count} action{(Items.Count == 1 ? "" : "s")}, confidence {Confidence}, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Items)";
+    public override string ToString() => $"Repair {Status}: {Format}, {Items.Count} action{(Items.Count == 1 ? "" : "s")}, confidence {Confidence}, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Items, Warnings)";
 
     /// <summary>True when an output file was written (every status but <see cref="RepairStatus.Unrepairable"/>).</summary>
     public bool OutputWritten => Status != RepairStatus.Unrepairable;

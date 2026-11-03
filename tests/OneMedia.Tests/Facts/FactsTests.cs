@@ -599,6 +599,44 @@ public class FactsFuzzRegressionTests
     }
 
     [Fact]
+    public void MovieHeaderCandidateNamesTheCreationTimeBytesAndNoCandidateHoldsAnEmptyRange()
+    {
+        // The fixtures carry a zero creation time, so write one into the movie header (a version 0 header).
+        string source = Path.Combine(AppContext.BaseDirectory, "testdata", "isobmff", "bframes_aac.mp4");
+        byte[] file = File.ReadAllBytes(source);
+        int mvhd = file.AsSpan().IndexOf("mvhd"u8);
+        Assert.True(mvhd > 0);
+        int payload = mvhd + 4;
+        Assert.Equal(0, file[payload]);
+        BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(payload + 4), 3_700_000_000u);
+        string path = Path.Combine(Path.GetTempPath(), "onemedia-mvhd-" + Guid.NewGuid().ToString("N") + ".mp4");
+        File.WriteAllBytes(path, file);
+        try
+        {
+            using MediaFile f = Media.Open(path);
+            int seen = 0;
+            foreach (FactCandidate<MediaDateTime> c in f.CaptureTime.Candidates)
+            {
+                Assert.True(c.Range.IsNone || c.Range.Length > 0, c.Source + " has an empty range at " + c.Range.Offset);
+                if (c.Source == "mvhd")
+                {
+                    seen++;
+                    Assert.Equal(new ByteRange(payload + 4, 4), c.Range);
+                    Assert.Equal("3700000000", c.RawValue);
+                }
+            }
+
+            Assert.Equal(1, seen);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        Assert.True(new FactCandidate<string>("x", "s", "x", "i").Range.IsNone);
+    }
+
+    [Fact]
     public void OffsetBeyondFourteenHoursHasNoInstant()
     {
         Assert.True(MediaDateTime.TryParse("2023-04-05T10:00:00+22:00", out MediaDateTime dt, out _));

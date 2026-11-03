@@ -278,7 +278,7 @@ public sealed class TagWriteReport
     public SystemWriteReport? For(string system) => Systems.FirstOrDefault(s => s.System == system);
 
     /// <summary>A one-line summary. The data is in the properties.</summary>
-    public override string ToString() => $"Tag write: {Systems.Count} system{(Systems.Count == 1 ? "" : "s")}, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Systems)";
+    public override string ToString() => $"Tag write: {Systems.Count} system{(Systems.Count == 1 ? "" : "s")}, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Systems, Warnings)";
 }
 
 /// <summary>A planned tag write: the byte-level <see cref="EditPlan"/> and the write-back report.</summary>
