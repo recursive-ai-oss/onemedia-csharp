@@ -82,6 +82,12 @@ internal sealed class FactsBuilder(DefectLog defects)
             return;
         }
 
+        if (text is null && t.System == TagSystems.QuickTimeUserData && t.Kind == TagValueKind.Binary)
+        {
+            AddVendorCameraAtom(t);
+            return;
+        }
+
         if (text is null)
         {
             return;
@@ -152,6 +158,10 @@ internal sealed class FactsBuilder(DefectLog defects)
                     case "©mod":
                         AddString(Model, 20, t, text, source);
                         break;
+                    case "©mdl":
+                        // DJI writes its camera model here, as bare text.
+                        AddString(Model, 21, t, text, source);
+                        break;
                     case "©swr":
                         AddString(Software, 20, t, text, source);
                         break;
@@ -207,6 +217,41 @@ internal sealed class FactsBuilder(DefectLog defects)
             case TagSystems.CafInfo when t.Key == "encoding application":
                 AddString(Software, 30, t, text, source);
                 break;
+        }
+    }
+
+    // Compact cameras and DSLRs keep maker, model and software in atoms of their own; see VendorCameraRecords for the layouts.
+    private void AddVendorCameraAtom(NativeTag t)
+    {
+        if (t.Key is not ("NCDT" or "TAGS" or "PANA" or "CNMN") || t.ValueRange.Length <= 0)
+        {
+            return;
+        }
+
+        byte[] head = t.ReadValuePrefix(VendorCameraRecords.PrefixBytes);
+        VendorCameraRecords.Identity id = t.Key switch
+        {
+            "NCDT" => VendorCameraRecords.ReadNikonNcdt(head),
+            "PANA" => VendorCameraRecords.ReadPanasonicPana(head),
+            "CNMN" => VendorCameraRecords.ReadCanonCnmn(head),
+            _ => VendorCameraRecords.ReadNikonTags(head) is { IsEmpty: false } nikon ? nikon : VendorCameraRecords.ReadOlympusTags(head),
+        };
+        AddVendorIdentity(id, $"{t.System}:{t.Key}", t.ValueRange);
+    }
+
+    /// <summary>Adds the identity read from a vendor AVI chunk.</summary>
+    public void AddVendorIdentity(VendorCameraRecords.Identity id, string source, ByteRange range)
+    {
+        AddVendorString(Make, id.Make, source, range);
+        AddVendorString(Model, id.Model, source, range);
+        AddVendorString(Software, id.Software, source, range);
+    }
+
+    private static void AddVendorString(CandidateList<string> list, string? value, string source, ByteRange range)
+    {
+        if (value is { Length: > 0 })
+        {
+            list.Add(24, new FactCandidate<string>(value, source, value, "text in the camera maker's own atom", Range: range));
         }
     }
 
