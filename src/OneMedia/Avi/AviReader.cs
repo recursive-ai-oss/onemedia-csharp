@@ -586,7 +586,8 @@ internal sealed class AviReader : IDisposable
     // start of the chunk (seeking walks only headers).
     private bool KeyFlag(ChunkHeader chunk, bool indexed, AviIndexEntry entry, ReadOnlySpan<byte> payload = default)
     {
-        if (indexed)
+        // Every audio chunk is a key frame, whatever the index flags say: some writers leave the flag clear on sound chunks.
+        if (indexed && !(chunk.Stream < Tracks.Count && Tracks[chunk.Stream].Kind == TrackKind.Audio))
         {
             return entry.IsKeyframe;
         }

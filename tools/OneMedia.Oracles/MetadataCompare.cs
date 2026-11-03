@@ -264,7 +264,8 @@ internal static partial class MetadataCompare
 
         if (f.Orientation.Best is { } o)
         {
-            double? r = FirstNumber(etn, "Rotation"), x = FirstNumber(mi, "Rotation");
+            // ExifTool's Composite Rotation is derived from the track matrix; a maker tag of the same name (a Panasonic orientation code) is not degrees.
+            double? r = FirstNumber(etn, "Rotation", "Composite"), x = FirstNumber(mi, "Rotation");
             double ours = o.Value.RotationDegrees;
             string verdict = (r is null && x is null) ? (ours == 0 ? "match-absent" : "unreported") : Verdict(ours, r is null ? null : Mod360(r.Value), x is null ? null : Mod360(x.Value), 0.5);
             rows.Add(new Row(name, "fact", "Rotation", ours.ToString(CultureInfo.InvariantCulture) + (o.Value.MirrorHorizontal ? "+mirror" : ""), r?.ToString(CultureInfo.InvariantCulture) ?? "-", x?.ToString(CultureInfo.InvariantCulture) ?? "-", verdict, State(r is not null, r is not null && Math.Abs(Mod360(r.Value) - ours) <= 0.5), State(x is not null, x is not null && Math.Abs(Mod360(x.Value) - ours) <= 0.5)));
@@ -276,7 +277,9 @@ internal static partial class MetadataCompare
             List<DateTime> miDates = [.. DateValues(mi, ["Recorded_Date", "Encoded_Date", "Tagged_Date", "Mastered_Date"])];
             FactCandidate<MediaDateTime> best = f.CaptureTime.Best!;
             DateTime oursUtc = Instant(best.Value);
-            bool inEt = etDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
+            // The wall-clock time as ExifTool prints it counts too: a camera zone with a daylight saving flag ("+01:00 DST") is not a plain offset.
+            List<DateTime> etLocalDates = [.. DateValues(et, ["CreationDate", "DateTimeOriginal", "CreateDate", "DateUTC", "MediaCreateDate", "TrackCreateDate"], local: true)];
+            bool inEt = etDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1) || etLocalDates.Exists(x => Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
             bool inMi = miDates.Exists(x => Math.Abs((x - oursUtc).TotalSeconds) < 1 || Math.Abs((x - best.Value.Value).TotalSeconds) < 1);
             bool anyEt = f.CaptureTime.Candidates.Any(cand => etDates.Exists(x => Math.Abs((x - Instant(cand.Value)).TotalSeconds) < 1 || Math.Abs((x - cand.Value.Value).TotalSeconds) < 1));
             rows.Add(new Row(name, "fact", "CaptureTime", $"{best.Value} [{best.Source}] ({f.CaptureTime.Candidates.Count} candidates)", inEt ? "same" : etDates.Count == 0 ? "-" : anyEt ? "other-candidate" : "absent",
@@ -421,7 +424,7 @@ internal static partial class MetadataCompare
         return null;
     }
 
-    private static IEnumerable<DateTime> DateValues(Dictionary<string, List<string>> d, string[] keys)
+    private static IEnumerable<DateTime> DateValues(Dictionary<string, List<string>> d, string[] keys, bool local = false)
     {
         foreach (string v in Values(d, keys))
         {
@@ -436,7 +439,7 @@ internal static partial class MetadataCompare
 
                 DateTime dt = new(p[0], p[1], p[2], p[3], p[4], p[5]);
                 Match z = OffsetRegex().Match(v[m.Length..]);
-                if (z.Success)
+                if (z.Success && !local)
                 {
                     int sign = z.Groups[1].Value == "-" ? -1 : 1;
                     dt = dt.AddMinutes(-sign * ((int.Parse(z.Groups[2].Value, CultureInfo.InvariantCulture) * 60) + int.Parse(z.Groups[3].Value, CultureInfo.InvariantCulture)));

@@ -103,6 +103,79 @@ public sealed class MdpmBlock
     /// <summary>The two-byte maker code and the two-byte model code of tag 0xE0, or -1 each when absent.</summary>
     public (int Maker, int Model) MakerModelCodes => TryGet(0xE0, out MdpmEntry e) ? ((int)(e.Data >> 16), (int)(e.Data & 0xFFFF)) : (-1, -1);
 
+    /// <summary>
+    /// The camera's time zone from the flags byte of tag 0x18, or null when the tag is absent or the byte does not follow the layout below.
+    /// Observed by comparing ExifTool 13.60's printed zone with the byte on 63 camcorder and compact-camera recordings (9 distinct values):
+    /// bit 5 (0x20) set means west of UTC, bits 0-4 count half hours of the standard offset, and bit 6 (0x40) says daylight saving time is in
+    /// effect. The clock then shows standard time plus one hour: every recording with bit 6 set in the sample set was made in a month when the
+    /// zone it names was on summer time. Bit 7 and half-hour counts above 28 are not seen in any file and give null.
+    /// </summary>
+    public (int StandardOffsetMinutes, bool DaylightSaving)? TimeZone
+    {
+        get
+        {
+            int flags = RecordingTimeFlags;
+            if (flags < 0 || (flags & 0x80) != 0)
+            {
+                return null;
+            }
+
+            int halfHours = flags & 0x1F;
+            if (halfHours > 28)
+            {
+                return null;
+            }
+
+            int minutes = halfHours * 30;
+            return ((flags & 0x20) != 0 ? -minutes : minutes, (flags & 0x40) != 0);
+        }
+    }
+
+    /// <summary>The offset of the camera clock from UTC in minutes: the standard offset of <see cref="TimeZone"/> plus 60 when daylight saving time is in effect; null when the zone is unknown.</summary>
+    public int? UtcOffsetMinutes => TimeZone is { } z ? z.StandardOffsetMinutes + (z.DaylightSaving ? 60 : 0) : null;
+
+    /// <summary>
+    /// The camera model name that Sony cameras spread over tags 0xE4, 0xE5 and 0xE6 (four ASCII characters each, ending at the first zero byte),
+    /// or null when 0xE4 is absent or the text is not printable ASCII.
+    /// </summary>
+    public string? Model
+    {
+        get
+        {
+            if (!TryGet(0xE4, out _))
+            {
+                return null;
+            }
+
+            System.Text.StringBuilder text = new();
+            foreach (byte tag in (ReadOnlySpan<byte>)[0xE4, 0xE5, 0xE6])
+            {
+                if (!TryGet(tag, out MdpmEntry e))
+                {
+                    break;
+                }
+
+                for (int shift = 24; shift >= 0; shift -= 8)
+                {
+                    byte c = (byte)(e.Data >> shift);
+                    if (c == 0)
+                    {
+                        return text.Length == 0 ? null : text.ToString();
+                    }
+
+                    if (c is < 0x20 or > 0x7E)
+                    {
+                        return null;
+                    }
+
+                    text.Append((char)c);
+                }
+            }
+
+            return text.Length == 0 ? null : text.ToString();
+        }
+    }
+
     private static int Bcd(byte b) => (b >> 4) > 9 || (b & 0xF) > 9 ? -1 : ((b >> 4) * 10) + (b & 0xF);
 }
 

@@ -94,11 +94,8 @@ internal sealed class AudioFramer : TrackFramer
 /// Raw PCM has no framing to validate: any bytes are samples. It is recognised only when nothing else is, and only with a reference file
 /// that says the track exists. It claims the bytes up to the next place another track's sample starts.
 /// </summary>
-internal sealed class PcmFramer(int blockAlign, int packetFrames, bool fixedPackets = false) : TrackFramer
+internal sealed class PcmFramer(int blockAlign, int packetFrames) : TrackFramer
 {
-    /// <summary>True when the reference file's PCM packets all have one size, so a run of PCM ends on a packet boundary.</summary>
-    public bool FixedPackets { get; } = fixedPackets;
-
     public int BlockAlign { get; } = blockAlign;
 
     /// <summary>Frames per packet, from the reference's typical packet.</summary>

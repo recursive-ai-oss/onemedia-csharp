@@ -234,6 +234,20 @@ public class IsoTagTests
     }
 
     [Fact]
+    public void ManuAndModlAtomsGiveMakeAndModel()
+    {
+        // Written by some compact cameras in the 3GPP layout: version/flags, packed language, zero-terminated text.
+        byte[] manu = Full("manu", 0, 0, U16(0x15C7), TagTestHelpers.Utf8("Contoso\0"));
+        byte[] modl = Full("modl", 0, 0, U16(0x15C7), TagTestHelpers.Utf8("Pocket 9\0"));
+        TagTestHelpers.WithIso(TagTestHelpers.IsoWith(Box("udta", manu, modl)), m =>
+        {
+            Assert.Equal("Contoso", m.Facts.Make.Value);
+            Assert.Equal("Pocket 9", m.Facts.Model.Value);
+            Assert.Contains("manu", m.Facts.Make.Best!.Source, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void ThreeGppBoxesAreReadAndShortOnesReported()
     {
         // titl: version/flags, language (packed 'eng'), zero-terminated UTF-8.

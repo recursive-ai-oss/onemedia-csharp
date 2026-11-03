@@ -88,9 +88,10 @@ public static class IsoReconstructor
         }
 
         List<TrackSetup> setups = [];
+        List<(int Min, int Max)> fillers = [];
         if (reference is not null)
         {
-            LoadReference(reference, setups, options, notes, cancellationToken);
+            LoadReference(reference, setups, fillers, options, notes, cancellationToken);
             if (setups.Count == 0)
             {
                 throw new ReconstructionException(ReconstructionFailure.NoTracks, "The reference file has no track this reconstruction can frame (H.264, HEVC, AV1 video; AAC with the audio adapter, AMR, MP3, AC-3, PCM audio; GoPro metadata).");
@@ -125,6 +126,7 @@ public static class IsoReconstructor
         bool discoverAudio = reference is null;
         List<IAudioFrameProbe> probes = [.. options.AudioProbes];
         MediaDataScanner scanner = new(input, loc.PayloadStart, loc.PayloadEnd, framers, probes, options.Limits, discoverAudio, options.GuessConfirmSamples, pcm, pcmTrack, cancellationToken);
+        scanner.SetFillerSizes(fillers);
         scanner.OnTrackDiscovered = f =>
         {
             f.MaxSample = (int)Math.Min(options.Limits.MaxPacketBytes, int.MaxValue / 2);
@@ -314,6 +316,9 @@ public static class IsoReconstructor
 
         /// <summary>Median sample duration of the reference, in the reference track's timescale; 0 when there is no reference.</summary>
         public long ReferenceFrameTicks { get; set; }
+
+        /// <summary>True when more than a tenth of the reference's sample durations differ from the median (a variable frame rate).</summary>
+        public bool ReferenceDurationsVary { get; set; }
 
         public bool IsVideo => Framer.Kind == TrackKind.Video;
 
@@ -569,7 +574,7 @@ public static class IsoReconstructor
 
     private static readonly HashSet<string> s_carriedEntryBoxes = ["colr", "clap", "fiel", "gama", "btrt", "chnl", "srat", "mdcv", "clli", "pasp"];
 
-    private static void LoadReference(IMediaSource reference, List<TrackSetup> setups, ReconstructionOptions options, List<string> notes, CancellationToken ct)
+    private static void LoadReference(IMediaSource reference, List<TrackSetup> setups, List<(int Min, int Max)> fillers, ReconstructionOptions options, List<string> notes, CancellationToken ct)
     {
         IsoBmffDemuxer d;
         try
@@ -585,6 +590,8 @@ public static class IsoReconstructor
         {
             Dictionary<int, List<long>> durations = [];
             Dictionary<int, Dictionary<int, int>> sizeHistogram = [];
+            HashSet<int> unescaped = [];
+            Dictionary<int, int> videoChecked = [];
             int total = 0;
             while (total < 4000 && d.TryReadPacket(out PacketView p))
             {
@@ -603,6 +610,15 @@ public static class IsoReconstructor
                     sizeHistogram[ti][p.Info.Size] = sizeHistogram[ti].GetValueOrDefault(p.Info.Size) + 1;
                 }
 
+                if (d.Tracks[ti].Kind == TrackKind.Video && !unescaped.Contains(ti) && videoChecked.GetValueOrDefault(ti) < 100)
+                {
+                    videoChecked[ti] = videoChecked.GetValueOrDefault(ti) + 1;
+                    if (NalLengthSize(d.Tracks[ti]) is > 0 and int lengthSize && HasUnescapedNal(p.Data, lengthSize))
+                    {
+                        unescaped.Add(ti);
+                    }
+                }
+
                 if (durations.Count == d.Tracks.Count && durations.Values.All(l => l.Count >= 300))
                 {
                     break;
@@ -614,6 +630,12 @@ public static class IsoReconstructor
                 TrackSetup? s = SetupFromReference(d, t, options, notes);
                 if (s is null)
                 {
+                    // A track nobody can frame still sits between the others' samples: remember how big its samples are.
+                    if (sizeHistogram.TryGetValue(t.Index, out Dictionary<int, int>? unframed) && unframed.Values.Sum() >= 8 && unframed.Keys.Max() - unframed.Keys.Min() <= 64)
+                    {
+                        fillers.Add((unframed.Keys.Min(), unframed.Keys.Max()));
+                    }
+
                     continue;
                 }
 
@@ -621,6 +643,7 @@ public static class IsoReconstructor
                 list.RemoveAll(x => x <= 0);
                 list.Sort();
                 s.ReferenceFrameTicks = list.Count > 0 ? list[list.Count / 2] : 0;
+                s.ReferenceDurationsVary = list.Count >= 20 && list.Count(x => x != s.ReferenceFrameTicks) * 10 > list.Count;
                 if (sizeHistogram.TryGetValue(t.Index, out Dictionary<int, int>? sizes) && sizes.Count > 0)
                 {
                     // A sample of this track is not many times bigger than the biggest one seen; a generous bound keeps stray data from being read as a huge sample.
@@ -644,18 +667,58 @@ public static class IsoReconstructor
                         }
                     }
 
-                    int histTotal = 0;
-                    foreach (int c in hist.Values)
-                    {
-                        histTotal += c;
-                    }
+                    s.Framer = new PcmFramer(((PcmFramer)s.Framer).BlockAlign, Math.Max(1, best / ((PcmFramer)s.Framer).BlockAlign));
+                }
 
-                    s.Framer = new PcmFramer(((PcmFramer)s.Framer).BlockAlign, Math.Max(1, best / ((PcmFramer)s.Framer).BlockAlign), bestCount * 10 >= histTotal * 8);
+                if (s.Framer is NalVideoFramer nalFramer && unescaped.Contains(t.Index))
+                {
+                    nalFramer.ExpectEscapedPayloads = false;
+                    notes.Add($"Reference track {t.Index} stores NAL units without emulation prevention bytes; that check is not applied to the video.");
                 }
 
                 setups.Add(s);
             }
         }
+    }
+
+    private static int NalLengthSize(MediaTrack t)
+    {
+        if (t.Codec == CodecId.H264 && H264.AvcDecoderConfigurationRecord.TryParse(t.Configuration.Data, out H264.AvcDecoderConfigurationRecord? avc) && avc is not null)
+        {
+            return avc.LengthSize;
+        }
+
+        return t.Codec == CodecId.Hevc && Hevc.HevcDecoderConfigurationRecord.TryParse(t.Configuration.Data, out Hevc.HevcDecoderConfigurationRecord? hevc) && hevc is not null ? hevc.LengthSize : 0;
+    }
+
+    // True when a NAL unit of the length-prefixed sample holds 00 00 00, 00 00 01 or 00 00 02 after its header: the encoder did not insert emulation prevention bytes.
+    private static bool HasUnescapedNal(ReadOnlySpan<byte> sample, int lengthSize)
+    {
+        int pos = 0;
+        while (pos + lengthSize + 3 <= sample.Length)
+        {
+            long len = 0;
+            for (int i = 0; i < lengthSize; i++)
+            {
+                len = (len << 8) | sample[pos + i];
+            }
+
+            int start = pos + lengthSize;
+            if (len < 4 || len > sample.Length - start)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> payload = sample.Slice(start + 2, (int)len - 2);
+            if (payload.IndexOf((ReadOnlySpan<byte>)[0, 0, 0]) >= 0 || payload.IndexOf((ReadOnlySpan<byte>)[0, 0, 1]) >= 0 || payload.IndexOf((ReadOnlySpan<byte>)[0, 0, 2]) >= 0)
+            {
+                return true;
+            }
+
+            pos = start + (int)len;
+        }
+
+        return false;
     }
 
     private static TrackSetup? SetupFromReference(IsoBmffDemuxer d, MediaTrack t, ReconstructionOptions options, List<string> notes)
@@ -1138,6 +1201,12 @@ public static class IsoReconstructor
         {
             timescale = s.Track.Timescale;
             frame = s.ReferenceFrameTicks;
+            if (s.ReferenceDurationsVary)
+            {
+                // The recorder lengthens and shortens frames with the scene (a phone's variable frame rate); the real times were in the lost sample table.
+                t.Notes.Add("The reference file's frame durations vary; the typical duration was used for every frame, so sample times can differ from the recording's.");
+                t.TimingEstimated = true;
+            }
         }
         else
         {

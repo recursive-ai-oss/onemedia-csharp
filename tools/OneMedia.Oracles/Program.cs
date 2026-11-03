@@ -58,6 +58,7 @@ internal static class Program
         switch (args[0])
         {
             case "diff": return Diff(o);
+            case "device-triage": return DeviceTriage.Run(o.Files);
             case "presdiff": return StreamingChecks.PresentationDiff(o.Files, o.Out, o.Exceptions is null ? Oracles.Exceptions.None : Oracles.Exceptions.Load(o.Exceptions));
             case "growing": return StreamingChecks.Growing(o.Files, o.Out, o.Exceptions);
             case "presio": return StreamingChecks.PresentationIo(o.Files, o.Root, o.Out);

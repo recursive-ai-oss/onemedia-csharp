@@ -209,6 +209,42 @@ public class MpegTests
     }
 
     [Theory]
+    [InlineData(0x00, 0, false, 0)]
+    [InlineData(0x02, 60, false, 60)]
+    [InlineData(0x42, 60, true, 120)]
+    [InlineData(0x12, 540, false, 540)]
+    [InlineData(0x2C, -360, false, -360)]
+    [InlineData(0x6E, -420, true, -360)]
+    public void MdpmFlagsByteNamesTheCameraZone(int flags, int standard, bool dst, int utcOffset)
+    {
+        // Flags byte layout observed against ExifTool 13.60 on camera recordings: 0x20 west, 0x40 daylight saving, low five bits in half hours.
+        byte[] uuid = [0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66];
+        byte[] body = [.. uuid, .. "MDPM"u8.ToArray(), 2, 0x18, (byte)flags, 0x20, 0x12, 0x01, 0x19, 0x26, 0x09, 0x18, 0x35];
+        Assert.True(Mdpm.TryParse([5, (byte)body.Length, .. body, 0x80], out MdpmBlock? block));
+        Assert.Equal((standard, dst), block!.TimeZone);
+        Assert.Equal(utcOffset, block.UtcOffsetMinutes);
+    }
+
+    [Fact]
+    public void MdpmHighBitInTheFlagsByteGivesNoZone()
+    {
+        byte[] uuid = [0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66];
+        byte[] body = [.. uuid, .. "MDPM"u8.ToArray(), 1, 0x18, 0xFF, 0x20, 0x12, 0x01];
+        Assert.True(Mdpm.TryParse([5, (byte)body.Length, .. body, 0x80], out MdpmBlock? block));
+        Assert.Null(block!.TimeZone);
+        Assert.Null(block.UtcOffsetMinutes);
+    }
+
+    [Fact]
+    public void MdpmSonyModelIsSpreadOverThreeEntries()
+    {
+        byte[] uuid = [0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66];
+        byte[] body = [.. uuid, .. "MDPM"u8.ToArray(), 3, 0xE4, (byte)'D', (byte)'S', (byte)'C', (byte)'-', 0xE5, (byte)'W', (byte)'X', (byte)'3', (byte)'5', 0xE6, (byte)'0', 0, 0, 0];
+        Assert.True(Mdpm.TryParse([5, (byte)body.Length, .. body, 0x80], out MdpmBlock? block));
+        Assert.Equal("DSC-WX350", block!.Model);
+    }
+
+    [Theory]
     [InlineData("mpeg2-mp2.ts")]
     [InlineData("h264-aac.ts")]
     [InlineData("h264-ac3.ts")]

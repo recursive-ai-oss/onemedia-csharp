@@ -43,6 +43,12 @@ internal static class AviMetadataReader
             }
         }
 
+        if (reader.Root?.Find(RiffChunk.Ids.List, "ncdt")?.Find(RiffChunk.Make("nctg")) is { } nctg)
+        {
+            // Nikon cameras keep their maker, model and software in a LIST ncdt / nctg chunk.
+            facts.AddVendorIdentity(VendorCameraRecords.ReadNikonAviTags(nctg.ReadData(4096, cancellationToken)), "riff:ncdt/nctg", nctg.Range);
+        }
+
         if (reader.Duration.IsKnown)
         {
             facts.Duration.Add(0, new FactCandidate<MediaTime>(reader.Duration, "container", reader.Duration.ToString(), "the longest stream: length times scale over rate"));

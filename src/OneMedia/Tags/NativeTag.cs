@@ -240,6 +240,9 @@ public sealed class NativeTag
         return Loader is not null ? Loader() : _io.Read(ValueRange);
     }
 
+    /// <summary>Reads at most <paramref name="max"/> leading bytes of the stored value, for atoms that hold a few strings before large payloads.</summary>
+    internal byte[] ReadValuePrefix(int max) => Loader is not null ? Loader() : _io.ReadUpTo(ValueRange, max);
+
     private string? LoadText()
     {
         try
