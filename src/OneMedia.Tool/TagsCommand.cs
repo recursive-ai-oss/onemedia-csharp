@@ -12,7 +12,30 @@ namespace RecursiveAI.OneMedia.Tool;
 /// <summary>The <c>tags</c> command: shows a file's tags, or changes them through <see cref="TagWriter"/>.</summary>
 internal static class TagsCommand
 {
-    public static int Run(string[] args)
+    // Standard output for the running command. A test (or any host) passes its own writer to Run, so nothing depends on the process-wide Console.
+    [ThreadStatic]
+    private static TextWriter? t_out;
+
+    private static TextWriter Out => t_out ?? Console.Out;
+
+    public static int Run(string[] args) => Run(args, Console.Out);
+
+    /// <summary>Runs the command writing its normal output to <paramref name="output"/> (errors still go to standard error).</summary>
+    public static int Run(string[] args, TextWriter output)
+    {
+        TextWriter? previous = t_out;
+        t_out = output;
+        try
+        {
+            return RunCore(args);
+        }
+        finally
+        {
+            t_out = previous;
+        }
+    }
+
+    private static int RunCore(string[] args)
     {
         string path = args[0];
         TagEdits edits = new();
@@ -125,23 +148,23 @@ internal static class TagsCommand
                 IReadOnlyList<TagResidue> residue = TagWriter.CheckResidue(path);
                 foreach (TagResidue r in residue)
                 {
-                    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{r.System}: {r.Kind} at {r.Offset}, {r.Length} byte(s): {r.Detail}"));
+                    Out.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{r.System}: {r.Kind} at {r.Offset}, {r.Length} byte(s): {r.Detail}"));
                 }
 
                 IReadOnlyList<CommonValue> present = absent.Count > 0 ? TagWriter.FindPresent(path, absent) : [];
                 foreach (CommonValue v in present)
                 {
-                    Console.WriteLine($"{v.Field}: still present in {v.Source.System}:{v.Source.Key}");
+                    Out.WriteLine($"{v.Field}: still present in {v.Source.System}:{v.Source.Key}");
                 }
 
                 string covered = "no leftovers in ID3v2 padding";
                 if (residue.Count > 0)
                 {
-                    Console.WriteLine($"leftovers found: save the file to zero them: onemedia tags {Quote(path)} --replace");
+                    Out.WriteLine($"leftovers found: save the file to zero them: onemedia tags {Quote(path)} --replace");
                 }
                 else if (present.Count == 0)
                 {
-                    Console.WriteLine(absent.Count > 0
+                    Out.WriteLine(absent.Count > 0
                         ? $"{covered}; fields absent in every tag system: {string.Join(", ", absent.Distinct())}"
                         : $"{covered}; fields still present in the tag are not checked (use --absent field,field to check them)");
                 }
@@ -182,7 +205,7 @@ internal static class TagsCommand
             else
             {
                 report = TagWriter.Plan(path, edits, options).Report;
-                Console.WriteLine("plan only (no --out, --replace or --in-place): nothing was written");
+                Out.WriteLine("plan only (no --out, --replace or --in-place): nothing was written");
             }
 
             Print(report);
@@ -233,28 +256,28 @@ internal static class TagsCommand
         else
         {
             report = CaptureTimeWriter.Plan(path, when, options).Report;
-            Console.WriteLine("plan only (no --out, --replace or --in-place): nothing was written");
+            Out.WriteLine("plan only (no --out, --replace or --in-place): nothing was written");
         }
 
-        Console.WriteLine("header times: " + report.HeaderTimesBasis);
+        Out.WriteLine("header times: " + report.HeaderTimesBasis);
         foreach (DateFieldWrite w in report.Written)
         {
-            Console.WriteLine($"written  {w.System} {w.Field}: {w.OldValue ?? "(none)"} -> {w.NewValue}   [{w.Semantics}]");
+            Out.WriteLine($"written  {w.System} {w.Field}: {w.OldValue ?? "(none)"} -> {w.NewValue}   [{w.Semantics}]");
         }
 
         foreach (DateFieldLeft l in report.Left)
         {
-            Console.WriteLine($"left     {l.System} {l.Field}: {l.Value ?? "(none)"}   [{l.Reason}]");
+            Out.WriteLine($"left     {l.System} {l.Field}: {l.Value ?? "(none)"}   [{l.Reason}]");
         }
 
         foreach (DateDisagreement d in report.Disagreements)
         {
-            Console.WriteLine($"differs  {d.Source}: {d.RawValue}   [{d.Note}]");
+            Out.WriteLine($"differs  {d.Source}: {d.RawValue}   [{d.Note}]");
         }
 
         if (report.Write is { } w2)
         {
-            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{w2.Mode}: {w2.BytesWritten} byte(s) written, {w2.BytesCopied} copied"));
+            Out.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{w2.Mode}: {w2.BytesWritten} byte(s) written, {w2.BytesCopied} copied"));
         }
 
         return 0;
@@ -272,13 +295,13 @@ internal static class TagsCommand
         {
             foreach (CommonValue v in media.Tags.Values(f))
             {
-                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{f}: {v.Text}   [{v.Source.System}:{v.Source.Key}]"));
+                Out.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{f}: {v.Text}   [{v.Source.System}:{v.Source.Key}]"));
             }
         }
 
         foreach (TagPicture p in media.Tags.Pictures)
         {
-            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Picture: {p.Type} {p.MimeType} {p.Length} bytes   [{p.Source.System}:{p.Source.Key}]"));
+            Out.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Picture: {p.Type} {p.MimeType} {p.Length} bytes   [{p.Source.System}:{p.Source.Key}]"));
         }
 
         return 0;
@@ -288,31 +311,31 @@ internal static class TagsCommand
     {
         foreach (SystemWriteReport s in report.Systems)
         {
-            Console.WriteLine($"{s.System}{(s.Created ? " (created)" : "")}: written [{string.Join(", ", s.Written)}] removed [{string.Join(", ", s.Removed)}]");
+            Out.WriteLine($"{s.System}{(s.Created ? " (created)" : "")}: written [{string.Join(", ", s.Written)}] removed [{string.Join(", ", s.Removed)}]");
             foreach ((CommonField field, string reason) in s.NotRepresentable)
             {
-                Console.WriteLine($"  not written: {field}: {reason}");
+                Out.WriteLine($"  not written: {field}: {reason}");
             }
 
             foreach (string c in s.Conversions)
             {
-                Console.WriteLine("  converted: " + c);
+                Out.WriteLine("  converted: " + c);
             }
         }
 
         foreach (string n in report.Notes)
         {
-            Console.WriteLine("note: " + n);
+            Out.WriteLine("note: " + n);
         }
 
         foreach (string warning in report.Warnings)
         {
-            Console.WriteLine("warning: " + warning);
+            Out.WriteLine("warning: " + warning);
         }
 
         if (report.Write is { } w)
         {
-            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{w.Mode}: {w.BytesWritten} byte(s) written, {w.BytesCopied} copied"));
+            Out.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{w.Mode}: {w.BytesWritten} byte(s) written, {w.BytesCopied} copied"));
         }
     }
 }

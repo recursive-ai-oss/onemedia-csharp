@@ -117,9 +117,11 @@ public static class MovieReader
         }
 
         int next = v1 ? 108 : 96;
+        // 14496-12 §8.2.2: after version and flags (4 bytes) comes creation_time, 4 bytes in version 0 and 8 in version 1.
+        ByteRange creation = new(node.Offset + node.HeaderSize + 4, v1 ? 8 : 4);
         return v1
-            ? new MovieHeader(Be.U32(p, 20), Be.U64(p, 24), Be.U64(p, 4), Be.U64(p, 12), Be.U32(p, next))
-            : new MovieHeader(Be.U32(p, 12), Be.U32(p, 16) == uint.MaxValue ? ulong.MaxValue : Be.U32(p, 16), Be.U32(p, 4), Be.U32(p, 8), Be.U32(p, next));
+            ? new MovieHeader(Be.U32(p, 20), Be.U64(p, 24), Be.U64(p, 4), Be.U64(p, 12), Be.U32(p, next)) { CreationRange = creation }
+            : new MovieHeader(Be.U32(p, 12), Be.U32(p, 16) == uint.MaxValue ? ulong.MaxValue : Be.U32(p, 16), Be.U32(p, 4), Be.U32(p, 8), Be.U32(p, next)) { CreationRange = creation };
     }
 
     private static IsoTrack? ReadTrack(BoxNode trak, int index, IMediaSource source, MediaLimits limits, DefectLog defects, bool isQuickTime)

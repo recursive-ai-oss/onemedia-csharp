@@ -4,9 +4,19 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- `track.Decode(out AudioDecodeReport report)` in `RecursiveAI.OneMedia.Audio`: the track-level form of `media.Decode(out report, track)`, so HE-AAC rate and channel signalling can be read without the file.
+- `MovieHeader.CreationRange`: where the movie header's creation time lies in the file.
+
 ### Fixed
 
-- Repairing a cut recording whose video setup lived only in the lost movie box now says so on every path. The earlier fix covered files where nothing looked like a parameter set; it did not cover the real cut Sintel trailer, where a run of AAC audio bytes read as a one-byte-length SPS and PPS and became a bogus video track, so the report showed only "Only 0.51 %" and never asked for a reference file. A parameter set found in the stream now has to be followed by another well-formed access unit before it counts. `onemedia repair`, `Media.Repair` and `AacReconstructionProbe.Repair` lead with the missing parameter sets for that file; repair with a reference is unchanged.
+- **Correction to 0.8.0-preview.2.** Its notes say the missing-parameter-set note "now leads `RepairReport.Warnings` on every path" and that `onemedia repair` prints it. That did not hold for the real cut Sintel trailer (`sintel_trailer-480p.mp4`, 4,372,373 bytes, cut at 2,623,423): a run of AAC audio bytes was read as a one-byte-length SPS and PPS, became a bogus video track, and the report ended "Only 0.51 %" with no request for a reference file. A parameter set found in the stream now counts only when a well-formed access unit follows it. Checked on that cut file through `onemedia repair`, `Media.Repair` and `AacReconstructionProbe.Repair`: each leads with the missing parameter sets and asks for a reference file from the same device; with the reference the file still repairs at High confidence.
+- `RemuxReport.ToString()` counted the input tracks as written: an audio-only remux of a two-track file printed "2 tracks". It now counts tracks written ("1 of 2 tracks written, 1 left out").
+- `RepairReport.ToString()` pointed at `Items` for its warnings; it now points at `Items, Warnings`, and the capture-time and tag-write summaries name `Warnings` too.
+- The movie header (`mvhd`) capture-time candidate carried an empty byte range at offset 0 that was not `ByteRange.None`; it now carries the creation-time field's real range. Candidates built without a range now hold `ByteRange.None`, so no evidence source reports an empty range as if it were a location.
+- `docs/platforms.md`: the prose and the table disagreed about which readers refuse a late-answering source. Checked against the code: WAV/BWF/RF64/W64, AIFF/AIFC, CAF, MP3, ADTS, AC-3/E-AC-3 and AMR have retrying asynchronous engines and read such sources (now also tested); MPEG-TS/PS, video elementary streams, AVI, DV, FLAC and FLV refuse in the browser. (The 0.8.0-preview.2 notes list WAV and the other audio files among the refusing readers; that was wrong.)
+- Tests no longer capture the process-wide console: the repair and tags commands take a `TextWriter`, so parallel tests cannot see each other's output (a reconstruction test failed on CI when another test printed in between).
 
 ## [0.8.0-preview.2] - 2026-11-03
 

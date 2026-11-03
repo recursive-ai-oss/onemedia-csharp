@@ -103,17 +103,9 @@ public sealed class TagResidueTests : IDisposable
 
     private static (int Exit, string Out) RunTags(params string[] args)
     {
-        TextWriter original = Console.Out;
         using StringWriter captured = new();
-        Console.SetOut(captured);
-        try
-        {
-            return (RecursiveAI.OneMedia.Tool.TagsCommand.Run(args), captured.ToString());
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
+        int exit = RecursiveAI.OneMedia.Tool.TagsCommand.Run(args, captured);
+        return (exit, captured.ToString());
     }
 
     [Fact]

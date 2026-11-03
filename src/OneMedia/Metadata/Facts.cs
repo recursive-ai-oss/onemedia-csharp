@@ -13,7 +13,11 @@ namespace RecursiveAI.OneMedia.Metadata;
 /// <param name="Interpretation">How <paramref name="RawValue"/> was turned into <paramref name="Value"/>, in words.</param>
 /// <param name="Certainty">For date-times, what the source says about the time zone; <see cref="TimeZoneCertainty.Unknown"/> for other facts.</param>
 /// <param name="Range">The bytes in the file the reading came from, or <see cref="ByteRange.None"/>.</param>
-public sealed record FactCandidate<T>(T Value, string Source, string RawValue, string Interpretation, TimeZoneCertainty Certainty = TimeZoneCertainty.Unknown, ByteRange Range = default);
+public sealed record FactCandidate<T>(T Value, string Source, string RawValue, string Interpretation, TimeZoneCertainty Certainty = TimeZoneCertainty.Unknown, ByteRange Range = default)
+{
+    /// <summary>The bytes in the file the reading came from, or <see cref="ByteRange.None"/> when no range is known (an omitted range is <see cref="ByteRange.None"/>, not an empty range at offset 0).</summary>
+    public ByteRange Range { get; init; } = Range.Offset == 0 && Range.Length == 0 ? ByteRange.None : Range;
+}
 
 /// <summary>Creates facts from candidates.</summary>
 public static class Fact

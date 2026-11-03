@@ -32,6 +32,14 @@ public class LateAnsweringSourceTests
     [InlineData("audio", "opus.webm")]
     [InlineData("audio", "opus.ogg")]
     [InlineData("asf", "wmav2-tagged.wma")]
+    [InlineData("pcm", "bwf-v0.wav")]
+    [InlineData("pcm", "aiff-odd-rates.aiff")]
+    [InlineData("pcm", "caf-info-chan.caf")]
+    [InlineData("audio-es", "plain.mp3")]
+    [InlineData("audio-es", "lc.aac")]
+    [InlineData("audio-es", "ac3.ac3")]
+    [InlineData("audio-es", "eac3.eac3")]
+    [InlineData("audio-es", "nb.amr")]
     public async Task FormatsWithAnAsynchronousReaderOpenOnASourceThatAnswersLater(string dir, string name)
     {
         await using MediaFile media = await OpenLate(Data(dir, name));

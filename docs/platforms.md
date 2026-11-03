@@ -51,15 +51,16 @@ the suite has no such tests (oracle differentials, corpus runs and multi-gigabyt
 | Reader | Source that answers later (a `Blob` slice, an HTTP range) | Source that answers at once (memory, file) |
 |---|---|---|
 | ISO BMFF / QuickTime, Matroska / WebM, ASF, Ogg | works: asynchronous engines, one awaited read per range | works |
-| MPEG-TS / M2TS, MPEG-PS, elementary streams, AVI, DV, FLAC, FLV, WAV/BWF/RF64, AIFF, CAF, ADTS/AC-3/MP3/AMR | `NotSupportedException` in the browser (works elsewhere by waiting on a pool thread) | works |
+| WAV/BWF/RF64/W64, AIFF/AIFC, CAF, MP3, ADTS, AC-3/E-AC-3, AMR | works: the reader runs on ranges fetched ahead and retries after fetching what it missed (`AudioFileAsyncDemuxer`, `AudioStreamAsyncDemuxer`) | works |
+| MPEG-TS / M2TS, MPEG-PS, video elementary streams (Annex B, MPEG video, IVF), AVI, DV, FLAC, FLV | `NotSupportedException` in the browser (works elsewhere by waiting on a pool thread) | works |
 
-The second row needs a true asynchronous engine per format (the readers parse with synchronous byte reads, and a read that has to wait cannot be
+The third row needs a true asynchronous engine per format (the readers parse with synchronous byte reads, and a read that has to wait cannot be
 rolled back and retried without rewriting each reader's state handling). Until then, a browser page opening one of those formats from a `Blob` reads the bytes into memory first (`Media.Open(byte[])`), which is
 fine for files that fit in memory.
 
 ## Known limits in the browser runtime
 
-- **Most synchronous readers need a source that answers at once.** MPEG-TS and MPEG-PS, elementary streams, AVI, DV, FLAC, FLV, WAV/RF64/W64, AIFF and CAF work over memory and virtual-file-system sources. Over a source that answers later, such as a `Blob` slice, they refuse with `NotSupportedException`. ISO BMFF, Matroska, ASF and Ogg read such sources. Asynchronous engines for the other formats are planned, one format at a time, after 1.0.
+- **Most synchronous readers need a source that answers at once.** MPEG-TS and MPEG-PS, video elementary streams (Annex B, MPEG video, IVF), AVI, DV, FLAC and FLV work over memory and virtual-file-system sources. Over a source that answers later, such as a `Blob` slice, they refuse with `NotSupportedException`. ISO BMFF, Matroska, ASF, Ogg, WAV/BWF/RF64/W64, AIFF/AIFC, CAF and the audio elementary streams (MP3, ADTS, AC-3/E-AC-3, AMR) read such sources. Asynchronous engines for the other formats are planned, one format at a time, after 1.0.
 
 ## Not covered by the suite
 

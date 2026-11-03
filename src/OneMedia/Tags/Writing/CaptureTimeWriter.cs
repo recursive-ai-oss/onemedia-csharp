@@ -84,7 +84,7 @@ public sealed class CaptureTimeReport
     public WriteReport? Write { get; internal set; }
 
     /// <summary>A one-line summary. The data is in the properties.</summary>
-    public override string ToString() => $"Capture time: {Written.Count} field{(Written.Count == 1 ? "" : "s")} written, {Left.Count} left, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Written, Left)";
+    public override string ToString() => $"Capture time: {Written.Count} field{(Written.Count == 1 ? "" : "s")} written, {Left.Count} left, {Warnings.Count} warning{(Warnings.Count == 1 ? "" : "s")} (see Written, Left, Warnings)";
 }
 
 /// <summary>A planned capture-time write: the byte-level plan and the report.</summary>

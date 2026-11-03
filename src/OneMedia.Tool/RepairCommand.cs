@@ -14,7 +14,10 @@ internal static class RepairCommand
         + "                     an MP4/MOV/3GP cut off before its movie box is rebuilt from its media data (--reference gives the codec setup);\n"
         + "                     exit 0 when repaired or nothing to repair (the output is then a byte-identical copy), 1 when only partly repaired, 2 when nothing could be recovered";
 
-    public static int Run(string[] args)
+    public static int Run(string[] args) => Run(args, Console.Out);
+
+    /// <summary>Runs the command writing its normal output to <paramref name="stdout"/> (errors still go to standard error).</summary>
+    public static int Run(string[] args, TextWriter stdout)
     {
         string? input = null;
         string? output = null;
@@ -49,20 +52,20 @@ internal static class RepairCommand
         try
         {
             RepairReport r = AacReconstructionProbe.Repair(input, output, reference);
-            Console.WriteLine($"{r.Status}: {r.Format}, {r.InputLength} bytes in, {r.OutputLength} bytes out, confidence {r.Confidence}, {r.DroppedBytes} bytes dropped");
+            stdout.WriteLine($"{r.Status}: {r.Format}, {r.InputLength} bytes in, {r.OutputLength} bytes out, confidence {r.Confidence}, {r.DroppedBytes} bytes dropped");
             foreach (string w in r.Warnings)
             {
-                Console.WriteLine("  note: " + w);
+                stdout.WriteLine("  note: " + w);
             }
 
             foreach (RepairItem i in r.Items)
             {
-                Console.WriteLine($"  {i.Action,-8} {i.Structure}{(i.Track >= 0 ? " (track " + i.Track + ")" : string.Empty)} @{i.Range.Offset}+{i.Range.Length} [{i.Confidence}] {i.Detail}");
+                stdout.WriteLine($"  {i.Action,-8} {i.Structure}{(i.Track >= 0 ? " (track " + i.Track + ")" : string.Empty)} @{i.Range.Offset}+{i.Range.Length} [{i.Confidence}] {i.Detail}");
             }
 
             foreach (RepairTrackReport t in r.Tracks)
             {
-                Console.WriteLine($"  track {t.Track} {t.Codec}: {t.Packets} packets, {t.DroppedPackets} dropped [{t.Confidence}]{(t.Ranges.Count > 0 ? ", " + t.Ranges.Count + " input ranges" : string.Empty)}");
+                stdout.WriteLine($"  track {t.Track} {t.Codec}: {t.Packets} packets, {t.DroppedPackets} dropped [{t.Confidence}]{(t.Ranges.Count > 0 ? ", " + t.Ranges.Count + " input ranges" : string.Empty)}");
             }
 
             return r.Status switch

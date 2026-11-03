@@ -286,7 +286,11 @@ public class AdapterTests
     public void ReportsPrintOneLine()
     {
         var report = new RecursiveAI.OneMedia.Remuxing.RemuxReport(new MuxReport(10, [], []), [new(0, 0, 3, "none")], [], [], 0);
-        Assert.Equal("Remuxed: 1 track, 0 losses (see Losses)", report.ToString());
+        Assert.Equal("Remuxed: 1 track written, 0 losses (see Losses)", report.ToString());
+        // An audio-only remux of a two-track file lists both input tracks but wrote one.
+        var partial = new RecursiveAI.OneMedia.Remuxing.RemuxReport(new MuxReport(10, [], []), [new(0, -1, 0, "none"), new(1, 0, 3, "none")], [], [], 0);
+        Assert.Equal("Remuxed: 1 of 2 tracks written, 1 left out, 0 losses (see Losses)", partial.ToString());
+        Assert.Contains("Warnings", new RecursiveAI.OneMedia.Repair.RepairReport(RecursiveAI.OneMedia.Repair.RepairStatus.Repaired, "isobmff", 1, 1, [], [], RecursiveAI.OneMedia.Repair.RepairConfidence.High, ["w"]).ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain('\n', new RecursiveAI.OneMedia.Repair.RepairReport(RecursiveAI.OneMedia.Repair.RepairStatus.Repaired, "isobmff", 1, 1, [], [], RecursiveAI.OneMedia.Repair.RepairConfidence.High, ["w"]).ToString());
     }
 
@@ -320,6 +324,16 @@ public class AdapterTests
         Assert.Equal(AudioSeamLimitations.None, report.Limitations);
         Assert.Equal(0, report.SignalledSampleRate);
         Assert.Equal(media.Audio.Audio!.Value.SampleRate, report.DecodedSampleRate);
+    }
+
+    [Fact]
+    public void TrackDecodeWithReportEqualsTheFileLevelCall()
+    {
+        using MediaFile media = Media.Open(IsoFixture("bframes_aac.mp4"));
+        using IAudioDecoder viaFile = media.Decode(out AudioDecodeReport expected);
+        using IAudioDecoder viaTrack = media.Audio!.Decode(out AudioDecodeReport actual);
+        Assert.Equal(expected, actual);
+        Assert.Equal(viaFile.Format, viaTrack.Format);
     }
 
     [Fact]
