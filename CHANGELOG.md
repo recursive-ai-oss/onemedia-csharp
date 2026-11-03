@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-03
+
+First stable release. The public API is the one in 0.8.0-preview.4, unchanged, and is now kept compatible under package validation. Every area keeps the verification limits its documentation states; the items planned for 1.0.x are listed in the README and [docs/device-corpus.md](docs/device-corpus.md), first among them that strip leaves the location and serial number in DJI `djmd` samples of protocols outside the known table (the DJI Osmo Pocket 3).
+
 ### Fixed
 
 - Correction to the 0.8.0-preview.4 notes: strip leaves both the position and the serial number in DJI `djmd` samples whose protocol is not in the table of known layouts, not only the serial. The DJI Osmo Pocket 3 (protocol `PP-101`) is such a camera; the report lists those samples as not removed ([docs/strip.md](docs/strip.md)).
