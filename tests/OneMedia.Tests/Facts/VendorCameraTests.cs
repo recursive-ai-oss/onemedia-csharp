@@ -125,6 +125,32 @@ public class VendorCameraTests
         Assert.True(VendorCameraRecords.ReadPanasonicPana(new byte[200]).IsEmpty);
     }
 
+    [Fact]
+    public void PanasonicPanaAtomGivesSoftwareFromItsExifBlock()
+    {
+        // SOI, APP1 "Exif", then a little-endian TIFF with one IFD0 entry: Software (0x0131), ASCII, 10 bytes stored after the directory.
+        byte[] exif = new byte[12 + 8 + 2 + 12 + 4 + 10];
+        exif[0] = 0xFF; exif[1] = 0xD8; exif[2] = 0xFF; exif[3] = 0xE1;
+        Encoding.ASCII.GetBytes("Exif").CopyTo(exif, 6);
+        Span<byte> t = exif.AsSpan(12);
+        t[0] = (byte)'I'; t[1] = (byte)'I'; t[2] = 0x2A;
+        BinaryPrimitives.WriteUInt32LittleEndian(t[4..], 8);
+        BinaryPrimitives.WriteUInt16LittleEndian(t[8..], 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(t[10..], 0x0131);
+        BinaryPrimitives.WriteUInt16LittleEndian(t[12..], 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(t[14..], 10);
+        BinaryPrimitives.WriteUInt32LittleEndian(t[18..], 26);
+        Encoding.ASCII.GetBytes("Ver.9.9  ").CopyTo(t[26..]);
+        byte[] pana = new byte[0x200080 + exif.Length];
+        Text("DC-X1", 16).CopyTo(pana, 12);
+        exif.CopyTo(pana, 0x200080);
+        TagTestHelpers.WithIso(TagTestHelpers.IsoWith(Box("udta", Box("PANA", pana))), m =>
+        {
+            Assert.Equal("DC-X1", m.Facts.Model.Value);
+            Assert.Equal("Ver.9.9", m.Facts.Software.Value);
+        });
+    }
+
     // The strd chunk of a Fujifilm AVI: "AVIF", four bytes, then a TIFF-style directory whose text values are counted from the directory start.
     private static byte[] FujifilmStrd(string make, string model)
     {

@@ -243,7 +243,7 @@ internal sealed class FactsBuilder(DefectLog defects)
         }
     }
 
-    // The PANA atom is a fixed layout (the model name sits at byte 12); at byte 0x200080 it holds a TIFF/Exif block whose IFD0 Software field is the
+    // The PANA atom is a fixed layout (the model name sits at byte 12); at byte 0x200080 it holds a JPEG-wrapped (SOI, APP1 "Exif") TIFF block whose IFD0 Software field is the
     // firmware revision the camera prints ("Ver.2.0"). Observed in a Lumix mirrorless file, where it is the only place that names the firmware; only the
     // Software text is taken from the block, not its times or position.
     private const long PanaExifOffset = 0x200080;
@@ -257,7 +257,7 @@ internal sealed class FactsBuilder(DefectLog defects)
         }
 
         byte[] exif = t.ReadValueAt(PanaExifOffset, PanaExifMaxBytes);
-        if (Exif.ExifBlock.TryParse(exif, t.ValueRange.Offset + PanaExifOffset, t.IoLimits, defects, out Exif.ExifBlock block, searchBytes: 0)
+        if (Exif.ExifBlock.TryParse(exif, t.ValueRange.Offset + PanaExifOffset, t.IoLimits, defects, out Exif.ExifBlock block)
             && block.Find("IFD0", 0x0131) is { } e && e.AsText()?.Trim() is { Length: > 0 } software)
         {
             AddVendorString(Software, software, $"{t.System}:{t.Key}:IFD0.Software", e.ValueRange);
