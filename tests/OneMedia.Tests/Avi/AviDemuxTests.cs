@@ -84,6 +84,23 @@ public class AviDemuxTests
     }
 
     [Fact]
+    public void AudioChunksAreKeyFramesEvenWhenTheIndexClearsTheFlag()
+    {
+        AviBuilder b = Sample();
+        b.Chunks.Clear();
+        for (int i = 0; i < 4; i++)
+        {
+            b.Chunks.Add(new AviBuilder.ChunkSpec(0, Payload(100 + i, i), i == 0));
+            b.Chunks.Add(new AviBuilder.ChunkSpec(1, Payload(3840, 100 + i), false, "wb"));
+        }
+
+        using AviDemuxer d = AviDemuxer.Open(new MemoryMediaSource(b.Build()));
+        List<(PacketInfo Info, byte[] Data)> packets = ReadAll(d);
+        Assert.All(packets.Where(p => p.Info.TrackIndex == 1), p => Assert.True(p.Info.IsKeyframe));
+        Assert.Equal([true, false, false, false], packets.Where(p => p.Info.TrackIndex == 0).Select(p => p.Info.IsKeyframe));
+    }
+
+    [Fact]
     public void SourceRangePointsAtThePayload()
     {
         byte[] file = Sample().Build();

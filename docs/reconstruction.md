@@ -72,6 +72,8 @@ NAL validity checks (ITU-T H.264 §7.3.1.2, §7.4.1; H.265 §7.3.1.2):
 1. forbidden_zero_bit is 0; nal_ref_idc/nal_unit_type combinations the standard allows (for example nal_ref_idc is 0 for SEI/AUD, non-zero for
    IDR); HEVC temporal id plus one is non-zero and nuh_layer_id within bounds.
 2. A NAL's payload holds no `00 00 00`, `00 00 01` or `00 00 02` (emulation prevention, H.264 §7.4.1), which stray data almost always does.
+   With a reference file this check is switched off when the reference's own pictures break it: some cameras (a Nikon compact, 358 of 570 pictures
+   checked) do not escape slice data, and every picture would otherwise be rejected.
 3. The first slice header is parsed with range checks (H.264 §7.3.3: first_mb_in_slice, slice_type, pic_parameter_set_id known, frame_num within its
    bits, IDR gives frame_num 0, picture order count LSB, reference list modification and marking commands, cabac_init_idc, QP between 0 and 51,
    deblocking fields; H.265 §7.3.6: slice type, IRAP pictures are I). Parameter sets learned from the reference or the stream supply the field
@@ -92,7 +94,8 @@ same picture cannot be told). One that would run past the end is dropped and rep
 | MP3 (and MP2 with a reference) | one frame | header parse (ISO/IEC 11172-3 / 13818-3), sample rate and layer equal the track's, frame length from the header |
 | AC-3 / E-AC-3 | one sync frame | ETSI TS 102 366 §5.3 sync word, frame size from the header, sample rate equal |
 | AAC | one raw_data_block | `AacFrameProbe` (OneAudio 1.7) through `RecursiveAI.OneMedia.Audio`; without the adapter an AAC reference track is dropped with a note |
-| PCM | a fixed run | bytes between other tracks' samples, cut at the reference's usual packet size; no check is possible, confidence Medium |
+| PCM | a run | bytes between other tracks' samples, cut at the reference's usual packet size (a short last packet per chunk, as the original); a run ends at a *confirmed* picture or sample at any position, not only at a multiple of the packet size; no check of the bytes themselves is possible, confidence Medium |
+| tracks with no framer (metadata `mett`, `tmcd`, ...) | skipped by size | the reference's sample sizes for such a track (at least 8 samples whose sizes span 64 bytes or less; a constant size also counts multiples of it up to 64 KiB) set the hop and the gap allowed in a confirmation chain, so a small interleaved metadata track no longer breaks the chain of the track around it |
 | GoPro `gpmd` | a KLV block | GPMF key/size structure |
 
 Without a reference an audio track is **discovered** at a sample boundary when the candidate framer chains six samples in a row with no bytes
@@ -164,6 +167,9 @@ bytes), and the window is a fixed size.
   stream: video times use one frame period, so later samples can be offset from the original by those holds while bytes, keyframes and order are
   equal (observed on a Blender clip: sample 0 lasts 11 frames and two later samples 2 frames each).
 - Dependence on a reference for PCM and for video without in-band parameter sets is by design (see above).
+- Variable frame rate phones: with a reference the original's real durations are in the lost sample table, so video times follow the reference's usual duration. Bytes, order and key frames are equal; the report's confidence is Medium with a note when the reference's durations vary (observed on two Android recordings: 3 and 6 of 197 and 609 pictures with equal times).
+- Leading pictures before the first I picture in the original's edit list (a Nikon D5300 and an Olympus TG-4) are hidden by its edit; ours has no edit, the media timelines are equal.
+- An AAC track recovered with *another* recording of the same model as the reference can fail where the recording itself as the reference succeeds (one Pixel recording: 7 of 343 AAC packets equal with a sibling reference, 348 of 348 with itself; cause not found).
 
 ## Checks
 

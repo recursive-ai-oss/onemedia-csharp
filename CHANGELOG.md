@@ -10,6 +10,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - PCM packets in ISO files no longer run across a chunk boundary (checked on a multi-track 24-bit recording).
 - AVCHD: the flags byte of the camera clock now gives the time zone (offset-bearing capture time) and Sony model names are read from MDPM (checked on 63 camcorder files against ExifTool).
 - `manu` and `modl` user-data atoms give Make and Model (checked on a Canon PowerShot MP4).
+- Make, Model and Software are read from Nikon `NCDT`/`NCTG` and `TAGS`, Olympus `TAGS`, Panasonic `PANA`, Canon `CNMN` and DJI `©mdl` atoms and from the Nikon AVI chunk (checked on 37 compact-camera files against ExifTool 13.60: every Make and Model row matches except one Fujifilm AVI).
+- Reconstruction of cut Nikon L340 and D5300 recordings with a reference file: the cameras do not escape slice data, which made every picture fail the escape check. The L340 recording went from 1 of 570 pictures to 337 of 337, with its PCM packets equal to the original's (checked on that file and the D5300, TG-4, Canon 550D and TG-830 recordings).
+- Reconstruction of a cut Pixel recording: a small metadata track (`mett`) between the samples broke AAC discovery; with the recording itself as reference 348 of 348 AAC packets are now equal (was 7), and a Xiaomi recording gets 991 of 991. With another recording of the same model as the reference the Pixel AAC track is still wrong (7 of 343).
+- Reconstruction reports Medium confidence, with a note, when the reference's frame durations vary (two Android recordings): the original's real durations are lost with its sample table.
+- AVI: audio chunks are key frames even when the index leaves the flag clear (checked on one PCM AVI against ffprobe, 37 of 37).
 
 ## [0.8.0-preview.3] - 2026-11-03
 
