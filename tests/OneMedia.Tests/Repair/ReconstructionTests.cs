@@ -460,6 +460,91 @@ public sealed class ReconstructionTests
         }
     }
 
+    [Fact]
+    public void ParameterSetsThatAreOnlyAudioBytesDoNotHideTheMissingParameterSetsNote()
+    {
+        // A cut x264 recording (a trailer with AAC audio) whose parameter sets lived only in the lost movie box: somewhere in the media data, a
+        // run of bytes read as a one-byte NAL length, an SPS and a PPS that parse, and the scan took it for the video track. No video
+        // was ever found, yet the parameter sets were never mentioned and the report ended at "Only n %" (with the planted run in place and
+        // without the continuation check, this file gives exactly the notes of that real file: the media data is cut, the input's brands are
+        // kept, 98 % is unrecognised, "Only 1.95 %"). The planted run stands for that coincidence; the first warning must now be the missing
+        // parameter sets, as it is when nothing at all looks like a parameter set.
+        byte[] video = Cut(File.ReadAllBytes(Fixture("bframes_aac.mp4")), 1.0, jitter: 0);
+        byte[] audio = Cut(File.ReadAllBytes(Fixture("mp3.mp4")), 1.0, jitter: 0);
+        byte[] whole = File.ReadAllBytes(Fixture("bframes_aac.mp4")); // the cut copy has lost its movie box, where the avcC record is
+        int avcC = whole.AsSpan().IndexOf("avcC"u8);
+        Assert.True(RecursiveAI.OneMedia.Codecs.H264.AvcDecoderConfigurationRecord.TryParse(whole.AsMemory(avcC + 4, (int)BinaryPrimitives.ReadUInt32BigEndian(whole.AsSpan(avcC - 4)) - 8), out RecursiveAI.OneMedia.Codecs.H264.AvcDecoderConfigurationRecord? rec));
+        // Parameter sets, then the head of a real slice (the first NAL unit of the video run is an SEI in some encoders; take the first IDR one).
+        int ftypEnd = video.AsSpan().IndexOf("mdat"u8) + 4;
+        int idr = -1;
+        for (int at = ftypEnd; at + 5 < video.Length && idr < 0; at++)
+        {
+            if (video[at] == 0 && video[at + 1] == 0 && video[at + 4] == 0x65)
+            {
+                idr = at + 4;
+            }
+        }
+
+        Assert.True(idr > 0);
+        byte[] stray =
+        [
+            (byte)rec!.SequenceParameterSets[0].Length, .. rec.SequenceParameterSets[0].Span,
+            (byte)rec.PictureParameterSets[0].Length, .. rec.PictureParameterSets[0].Span,
+            200, .. video.AsSpan(idr, 200),
+        ];
+
+        int ftyp = video.AsSpan().IndexOf("mdat"u8) - 4;
+        using MemoryStream recording = new();
+        recording.Write(video, 0, ftyp + 8);
+        recording.Write(stray);
+        recording.Write(audio, audio.AsSpan().IndexOf("mdat"u8) + 4, audio.Length - audio.AsSpan().IndexOf("mdat"u8) - 4);
+        // The rest of the media data is bytes no track can claim (the recording's other, unframeable payload).
+        byte[] noise = new byte[2 << 20];
+        new Random(80).NextBytes(noise);
+        recording.Write(noise);
+
+        string input = TempFile(recording.ToArray());
+        string output = input + ".fixed.mp4";
+        try
+        {
+            foreach (Func<string, string, RecursiveAI.OneMedia.Repair.RepairReport> repair in new Func<string, string, RecursiveAI.OneMedia.Repair.RepairReport>[]
+            {
+                (i, o) => Media.Repair(i, o),
+                (i, o) => RecursiveAI.OneMedia.Audio.AacReconstructionProbe.Repair(i, o),
+            })
+            {
+                File.Delete(output);
+                RecursiveAI.OneMedia.Repair.RepairReport r = repair(input, output);
+                Assert.True(r.Status == RecursiveAI.OneMedia.Repair.RepairStatus.Unrepairable, r.Status + ": " + string.Join(" | ", r.Warnings));
+                Assert.True(r.Warnings[0].Contains("video parameter sets", StringComparison.Ordinal), string.Join(" | ", r.Warnings));
+                Assert.Contains("reference file from the same device", r.Warnings[0], StringComparison.Ordinal);
+            }
+
+            File.Delete(output);
+            TextWriter original = Console.Out;
+            using StringWriter captured = new();
+            Console.SetOut(captured);
+            try
+            {
+                Assert.Equal(2, RecursiveAI.OneMedia.Tool.RepairCommand.Run([input, output]));
+            }
+            finally
+            {
+                Console.SetOut(original);
+            }
+
+            string[] lines = captured.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            Assert.StartsWith("Unrepairable", lines[0], StringComparison.Ordinal);
+            Assert.StartsWith("  note: ", lines[1], StringComparison.Ordinal);
+            Assert.Contains("video parameter sets", lines[1], StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(input);
+            File.Delete(output);
+        }
+    }
+
     [Theory]
     [InlineData(0, 0)]
     [InlineData(65536, 64)]

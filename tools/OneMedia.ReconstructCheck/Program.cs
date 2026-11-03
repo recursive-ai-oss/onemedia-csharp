@@ -26,6 +26,11 @@ internal static class Program
             return Reconstruct(args);
         }
 
+        if (args.Length == 2 && args[0] == "note")
+        {
+            return MissingSetupNote(args[1]);
+        }
+
         if (args.Length == 3 && args[0] == "compare")
         {
             return Compare(args[1], args[2]);
@@ -118,6 +123,35 @@ internal static class Program
 
         Console.Error.WriteLine("usage: reconstruct IN OUT [--ref FILE] [--no-aac] | compare ORIGINAL RECONSTRUCTED | inband IN OUT");
         return 2;
+    }
+
+    // note IN: a cut recording whose video setup is lost must lead with the missing parameter sets through both library entry points.
+    private static int MissingSetupNote(string input)
+    {
+        int bad = 0;
+        foreach ((string name, Func<string, string, RecursiveAI.OneMedia.Repair.RepairReport> repair) in new (string, Func<string, string, RecursiveAI.OneMedia.Repair.RepairReport>)[]
+        {
+            ("Media.Repair", (i, o) => Media.Repair(i, o)),
+            ("AacReconstructionProbe.Repair", (i, o) => AacReconstructionProbe.Repair(i, o)),
+        })
+        {
+            string output = Path.Combine(Path.GetTempPath(), "note-" + Guid.NewGuid().ToString("N") + ".mp4");
+            try
+            {
+                RecursiveAI.OneMedia.Repair.RepairReport r = repair(input, output);
+                bool ok = r.Status == RecursiveAI.OneMedia.Repair.RepairStatus.Unrepairable && r.Warnings.Count > 0
+                    && r.Warnings[0].Contains("video parameter sets", StringComparison.Ordinal)
+                    && r.Warnings[0].Contains("reference file from the same device", StringComparison.Ordinal);
+                Console.WriteLine($"{name}: {r.Status}, first warning: {(r.Warnings.Count > 0 ? r.Warnings[0] : "(none)")} => {(ok ? "ok" : "MISSING NOTE")}");
+                bad |= ok ? 0 : 1;
+            }
+            finally
+            {
+                File.Delete(output);
+            }
+        }
+
+        return bad;
     }
 
     private static int Reconstruct(string[] args)
