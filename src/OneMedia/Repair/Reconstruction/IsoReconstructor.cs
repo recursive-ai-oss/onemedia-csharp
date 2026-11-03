@@ -788,10 +788,14 @@ public static class IsoReconstructor
     {
         long end = Math.Min(loc.PayloadEnd, loc.PayloadStart + (8L << 20));
         ByteWindow w = new(src, loc.PayloadEnd, ct);
+        Span<byte> headBuffer = stackalloc byte[12]; // fixed small buffer: the bytes at the position being tried
         for (long p = loc.PayloadStart; p < end; p++)
         {
             ct.ThrowIfCancellationRequested();
-            ReadOnlySpan<byte> head = w.Get(p, 12);
+            // A copy of at most 12 bytes: the window moves when the code below reads further ahead, which would invalidate a slice of it.
+            ReadOnlySpan<byte> got = w.Get(p, 12);
+            Span<byte> head = headBuffer[..Math.Min(12, got.Length)];
+            got[..head.Length].CopyTo(head);
             if (head.Length < 8)
             {
                 break;
@@ -838,6 +842,11 @@ public static class IsoReconstructor
                     continue;
                 }
 
+                if (!ContinuesAsVideo(f, w, p + info.Length))
+                {
+                    continue;
+                }
+
                 TrackSetup? s = BuildInStreamVideo(f, notes);
                 if (s is null)
                 {
@@ -849,6 +858,27 @@ public static class IsoReconstructor
                 return;
             }
         }
+    }
+
+    // This runs at every byte of the first 8 MiB, so audio data that happens to read as a length, an SPS-like header byte and a parseable
+    // parameter set (a one-byte length prefix makes that likely) must not become a video track: a real stream goes on with another
+    // well-formed access unit, or ends exactly here. Observed on a cut x264 recording whose parameter sets lived only in the lost movie box.
+    private static bool ContinuesAsVideo(NalVideoFramer found, ByteWindow w, long after)
+    {
+        ReadOnlySpan<byte> rest = w.Get(after, 1 << 20);
+        if (rest.IsEmpty)
+        {
+            return true;
+        }
+
+        NalVideoFramer trial = new(found.Codec, found.LengthSize) { MaxSample = found.MaxSample };
+        foreach (byte[] set in found.ParameterSetNals)
+        {
+            trial.LearnParameterSet(set);
+        }
+
+        // A cut recording may end inside this unit, so a partial one is fine; one that is wrong from its first bytes is not a stream.
+        return trial.TryFrame(rest, w.ReachesEnd(after, rest.Length), out _) is FrameStatus.Ok or FrameStatus.Partial;
     }
 
     private static bool TryAv1(ByteWindow w, long p, ReconstructionOptions options, out TrackSetup? setup)

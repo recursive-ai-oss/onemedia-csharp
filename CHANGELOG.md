@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- Repairing a cut recording whose video setup lived only in the lost movie box now says so on every path. The earlier fix covered files where nothing looked like a parameter set; it did not cover the real cut Sintel trailer, where a run of AAC audio bytes read as a one-byte-length SPS and PPS and became a bogus video track, so the report showed only "Only 0.51 %" and never asked for a reference file. A parameter set found in the stream now has to be followed by another well-formed access unit before it counts. `onemedia repair`, `Media.Repair` and `AacReconstructionProbe.Repair` lead with the missing parameter sets for that file; repair with a reference is unchanged.
+
 ## [0.8.0-preview.2] - 2026-11-03
 
 The last API changes before 1.0 (cancellation on every happy-path call that reads or writes files, writer types in `RecursiveAI.OneMedia.Writing`; the migration list is under Changed and Removed), OneAudio 1.7.2 with FLAC transcoding in the browser, and fixes from review. Previews stay previews as in 0.8.0-preview.1.

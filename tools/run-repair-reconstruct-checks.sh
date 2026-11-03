@@ -1,11 +1,12 @@
 #!/bin/bash
 # Checks the reconstruction through the command-line tool (`onemedia repair`), on a build machine.
-#   tools/run-repair-reconstruct-checks.sh WORKDIR spot|big
+#   tools/run-repair-reconstruct-checks.sh WORKDIR spot|big|sintel
 # spot: five ffmpeg-written recordings (H.264 B-frames + AAC, HEVC + AAC, MOV, 3GP with AMR, H.264 + MP3) are cut at 60 % of the media data
 #       (the movie box is lost with the tail), repaired with the healthy file as reference, and the packets of the result are compared with
 #       ffprobe's listing of the original: every packet's size, key flag and decode time must equal the original's first packets.
 #       One of them is also repaired without a reference, which must be refused (its parameter sets lived in the lost movie box). Output also goes through `ffmpeg -f null` for decode errors.
 # big:  a file of about 4.5 GB made by looping a small clip is cut at 90 % and repaired with the clip as reference; reports peak RSS.
+# sintel: the cut Blender trailer (see the case below).
 # ffmpeg/ffprobe come from ~/onemedia/oracles/bin.
 set -euo pipefail
 W=${1:?work dir}
@@ -98,6 +99,29 @@ big)
   ls -l "$W/big/out.mp4"
   ffmpeg -v error -i "$W/big/out.mp4" -f null - 2>&1 | head -3 || true
   rm -rf "$W/big"
+  ;;
+sintel)
+  # The cut trailer whose parameter sets lived only in the lost movie box: with no reference, all three entry points (the tool, Media.Repair,
+  # AacReconstructionProbe.Repair) must lead with the missing parameter sets; with the reference it must still repair at High confidence.
+  # The trailer is fetched by tools/corpus/fetch.sh (CC BY 3.0, fetch-only) and cut at the byte where 60 % of the file remains.
+  "$ROOT/tools/corpus/fetch.sh" sintel-trailer-480p >/dev/null
+  SRC=${ONEMEDIA_HOME:-$HOME/onemedia}/corpus/blender/sintel_trailer-480p.mp4
+  rm -rf "$W/sintel"; mkdir -p "$W/sintel"
+  head -c 2623423 "$SRC" > "$W/sintel/cut.mp4"
+  ffmpeg -v error -y -i "$SRC" -t 5 -c copy "$W/sintel/reference.mp4"
+  fail=0
+  dotnet "$TOOL" repair "$W/sintel/cut.mp4" "$W/sintel/out.mp4" > "$W/sintel/noref.txt" 2>&1 || true
+  head -3 "$W/sintel/noref.txt" | cut -c1-300
+  if head -2 "$W/sintel/noref.txt" | tail -1 | grep -q 'note: .*video parameter sets.*reference file from the same device'; then echo "onemedia repair: note leads: ok"; else echo "onemedia repair: MISSING NOTE"; fail=1; fi
+  CHECK=$W/scratch/artifacts/bin/OneMedia.ReconstructCheck/release/OneMedia.ReconstructCheck.dll
+  (cd "$ROOT/tools/OneMedia.ReconstructCheck" && dotnet build -c Release -v quiet -clp:NoSummary -p:NuGetAudit=false -m:4 2>&1 | tail -2)
+  dotnet "$CHECK" note "$W/sintel/cut.mp4" || fail=1
+  rm -f "$W/sintel/out.mp4"
+  dotnet "$TOOL" repair "$W/sintel/cut.mp4" "$W/sintel/out.mp4" --reference "$W/sintel/reference.mp4" 2>&1 | head -1
+  ffprobe -v error -count_packets -show_entries stream=codec_type,nb_read_packets -of csv=p=0 "$W/sintel/out.mp4"
+  rm -rf "$W/sintel"
+  echo "sintel-fail=$fail"
+  exit $fail
   ;;
 *) echo "unknown mode $WHAT"; exit 2 ;;
 esac
