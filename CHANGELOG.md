@@ -8,10 +8,6 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 First stable release. The public API is the one in 0.8.0-preview.4, unchanged, and is now kept compatible under package validation. Every area keeps the verification limits its documentation states; the items planned for 1.0.x are listed in the README and [docs/device-corpus.md](docs/device-corpus.md), first among them that strip leaves the location and serial number in DJI `djmd` samples of protocols outside the known table (the DJI Osmo Pocket 3).
 
-### Fixed
-
-- Correction to the 0.8.0-preview.4 notes: strip leaves both the position and the serial number in DJI `djmd` samples whose protocol is not in the table of known layouts, not only the serial. The DJI Osmo Pocket 3 (protocol `PP-101`) is such a camera; the report lists those samples as not removed ([docs/strip.md](docs/strip.md)).
-
 ## [0.8.0-preview.4] - 2026-11-03
 
 Fixes found by comparing 193 freely licensed real-device recordings with ffprobe, ExifTool and MediaInfo ([docs/device-corpus.md](docs/device-corpus.md)); each fix was checked on the recording that showed it. Strip does not yet remove the DJI Osmo Pocket 3 serial number from its telemetry samples (reported as not removed). Previews stay previews as before.
@@ -27,6 +23,10 @@ Fixes found by comparing 193 freely licensed real-device recordings with ffprobe
 - Reconstruction of a cut Pixel recording: a small metadata track (`mett`) between the samples broke AAC discovery; with the recording itself as reference 348 of 348 AAC packets are now equal (was 7), and a Xiaomi recording gets 991 of 991. With another recording of the same model as the reference the Pixel AAC track is still wrong (7 of 343).
 - Reconstruction reports Medium confidence, with a note, when the reference's frame durations vary (two Android recordings): the original's real durations are lost with its sample table.
 - AVI: audio chunks are key frames even when the index leaves the flag clear (checked on one PCM AVI against ffprobe, 37 of 37).
+
+### Correction (2026-11-03)
+
+- These notes say strip does not yet remove the serial number from DJI `djmd` samples. More exactly: strip left the camera serial number in the `djmd` samples of every protocol outside the table of known layouts, and the report listed those samples as not removed. The DJI Osmo Pocket 3 (protocol `PP-101`) is such a camera; its recording in the device corpus carries the serial number but no position in those samples. Fixed in 1.0.1.
 
 ## [0.8.0-preview.3] - 2026-11-03
 

@@ -62,9 +62,9 @@ Fixed during this pass: an AVI whose index leaves the flag clear on every sound 
 | Difference | Cause |
 |---|---|
 | duration within 0.05 s of ffprobe's (6 files) | last sample / edit rounding (the last-duration family) |
-| duration 7.0 s vs 5.87 s (DJI FC6310R) | ours is the longest track, a 7-sample 1 Hz telemetry track; ffprobe shows the video. A choice, not a defect: backlog item to leave `Data` tracks out of `TracksDuration` when audio or video exist |
+| duration 7.0 s vs 5.87 s (DJI FC6310R), fixed in 1.0.1 | ours was the longest track, a 7-sample 1 Hz telemetry track; ffprobe shows the video. Data tracks no longer set the file duration while an audio or video track exists: now 5.8725 s (ffprobe 5.872533; MediaInfo's video duration 5873 ms, its general duration still includes the data track) |
 | size 913x511 vs 912x510 (1 file) | the sample entry and track header say 913x511 (MP4Box and MediaInfo agree); ffprobe shows the H.264 SPS crop. We report the container's declaration |
-| audio channels 2 vs 1 (1 AAC file) | the sample entry says 2; the AudioSpecificConfig, ffprobe and MediaInfo say mono. **Unexplained which we should prefer**; not changed |
+| audio channels 2 vs 1 (1 AAC file), fixed in 1.0.1 | the sample entry says 2; the AudioSpecificConfig, ffprobe and MediaInfo say mono. The AudioSpecificConfig's channel configuration now wins: 1 |
 
 ## Facts against ExifTool 13.60 and MediaInfo 26.10
 
@@ -72,9 +72,9 @@ Fixed during this pass: an AVI whose index leaves the flag clear on every sound 
 
 | Field | Match | Not matching |
 |---|---|---|
-| Make | 129 (+1 other candidate) | 1 unreported by us (Fujifilm AVI, no layout in the tag docs), 1 not reported by ExifTool |
-| Model | 84 (+1 other candidate) | 1 unreported by us (the same Fujifilm AVI) |
-| Software | 95 | 5 reported by us but not by ExifTool (GoPro), 1 unreported by us (Panasonic: "Ver.x" sits deep in an Exif block of the `PANA` atom, not read) |
+| Make | 130 (+1 other candidate) | 1 not reported by ExifTool |
+| Model | 85 (+1 other candidate) | none |
+| Software | 96 | 5 reported by us but not by ExifTool (GoPro) |
 | Capture time (with zone certainty) | 189 of 189 | none |
 | Location presence | 18 of 18 files | none |
 | Rotation | 128 of 128 (Composite Rotation, as MediaInfo) | none |
@@ -105,38 +105,34 @@ Twelve device models; "none" = no reference, "sibling" = another recording of th
 | Model (class) | None | Sibling | Self |
 |---|---|---|---|
 | Nikon L340 (compact, H.264 + PCM) | refused (reference needed) | Medium; video 337/337 and PCM 564/564 equal | same |
-| Nikon D5300 (compact) | refused | Medium; video 519/519, PCM 483/483 (times: the original's edit list hides leading pictures) | same |
-| Olympus TG-4 (compact) | Low (video not framed) | Medium; video 253, PCM 386 equal (edit list as above) | same |
+| Nikon D5300 (compact) | refused | Medium; video 519/519, PCM 483/483, all times equal (1.0.1) | same |
+| Olympus TG-4 (compact) | Low (video not framed) | Medium; video 253, PCM 386 equal, all times equal (1.0.1) | same |
 | Canon 550D (compact) | refused | Medium; video 636, PCM 630 equal | same |
 | Olympus TG-830 (compact) | refused | Medium; video 180 and PCM 186 packets compared, one PCM packet differs in bytes (the cut) | same |
 | Compact camera with companded PCM | refused | refused: companded PCM has no ISO sample entry | refused |
 | iPhone (HEVC + AAC) | Low, AAC only (282 packets framed; 130 bytes equal) | High; video 288, AAC 280 equal | High |
 | iPhone (H.264 + AAC) | Low, AAC only (95 equal) | High; AAC 589, video 354 equal | High |
 | Sony camcorder (MP4) | refused | High; video 321, AAC 501 equal | High |
-| Pixel (HEVC + AAC) | refused | Medium; video 224 equal, AAC 7 of 343 bytes equal | Medium; video 224, AAC 348 of 348 equal |
+| Pixel (HEVC + AAC) | refused | Medium; video 224 equal, AAC 348 of 348 bytes equal | Medium; video 224, AAC 348 of 348 equal |
 | Android phone (H.264, variable frame rate) | Low, AAC 425 equal | Medium; video 197 and AAC 425 equal; times 3/197 (VFR) | same |
 | Xiaomi (HEVC + AAC, variable frame rate) | Low; 55 video samples | Medium; video 609 and AAC 991 bytes equal, video times 6/609 (VFR), AAC times 19/991 | same |
 
-What the table says: bytes and key flags equal for every recovered sample but one cause below; the one failure with a sibling reference is **unexplained** (Pixel AAC with a sibling: 7 of 343). Without a reference only files with in-band parameter sets recover (phones, some at Low); compact cameras and Sony MP4 need a reference.
-Time differences are limited to variable frame rate phones (the real durations are in the lost sample table) and to edit-list hiding of leading pictures.
+What the table says: bytes and key flags equal for every recovered sample but one cause below; Without a reference only files with in-band parameter sets recover (phones, some at Low); compact cameras and Sony MP4 need a reference.
+Time differences are limited to variable frame rate phones (the real durations are in the lost sample table).
 
-Fixes made on these files (tests: `ReconstructionTests`, 30; `VendorCameraTests`, 9):
+Fixes made on these files (tests: `ReconstructionTests`, 30; `VendorCameraTests`, 12):
 
 - Nikon L340 / D5300: the camera does not escape slice data (358 of 570 pictures hold `00 00 00` inside a NAL); the reference now switches the escape check off, and PCM runs end at a confirmed picture at any frame position. L340 self-reference was 1 of 570 frames; now 337 (video) and 564 PCM packets, all equal.
 - PCM packets now equal the original's (2,048 bytes, short last packet of a chunk), compared byte for byte; only the final partial packet at the cut differs.
 - Pixel AAC: a `mett` metadata track (206 to 232 byte samples, sometimes runs of equal sizes) sits between samples; gaps over 32 bytes broke the chain and false AAC starts inside it won. The sizes of the reference's unframed tracks now set the hop and the allowed gap. Self reference: AAC 348 of 348 equal (was 7). Xiaomi (runs of 452-byte samples): AAC 991 equal.
-- Make, model and software from vendor atoms (Nikon `NCDT`/`NCTG` and `TAGS`, Olympus `TAGS`, Panasonic `PANA`, Canon `CNMN`, DJI `©mdl`, Nikon AVI): all Make and Model rows on the corpus match ExifTool except the two listed above.
+- Leading pictures (Nikon D5300, Olympus TG-4): the original's edit list starts at the earliest shown picture, one frame in, while its first I picture sits three frames in, so the two B pictures before it are part of the clip. The reconstructed edit started at the I picture and hid them (`pts` and `edit` differed on every video sample of those files). The edit now starts at the earliest presentation time; on the D5300 and TG-4 pairs checked (4 files, sibling and self reference) video times are equal on every compared sample (519/519, 237/237, 211/211, 176/176).
+- Make, model and software from vendor atoms (Nikon `NCDT`/`NCTG` and `TAGS`, Olympus `TAGS`, Panasonic `PANA`, Canon `CNMN`, DJI `©mdl`, Nikon AVI): all Make and Model rows on the corpus match ExifTool. Added in 1.0.1: Fujifilm AVI make and model from the `strd` chunk (`AVIF`, then a little-endian TIFF directory; FUJIFILM / FinePix AV230 as ExifTool) and the Panasonic firmware text (`Ver.2.0`, IFD0 Software of the JPEG-wrapped Exif block at byte 0x200080 of the `PANA` atom, as ExifTool; the one Lumix GH6 file). Tests `VendorCameraTests` (12).
 
-## Planned for 1.0.x
+## Open after 1.0.1
 
-Privacy first:
-
-2. `TracksDuration` takes telemetry tracks into account (DJI FC6310R, above).
-3. AAC channel count: prefer the AudioSpecificConfig over the sample entry when they disagree.
-4. Pixel AAC reconstructed with a sibling recording as reference (7 of 343 packets equal).
-5. Panasonic "Ver.x" software, Fujifilm AVI make and model, Olympus MOV1/MOV2 layouts (no sample).
-6. Leading pictures in the edit list of reconstructed compact-camera files.
-7. The coverage gaps below: each is a device class to add and check when freely licensed files are found.
+- Olympus MOV1/MOV2 layouts: no sample in the corpus and the tag documentation does not settle the fields, so they stay unread.
+- The `dbgi` debug track of DJI files is not inspected by strip (see above).
+- The coverage gaps below: each is a device class to add and check when freely licensed files are found.
 
 ## Coverage gaps
 

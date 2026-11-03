@@ -119,7 +119,7 @@ confidence at Medium and adds a note (another track whose framing is unknown, or
   audio, 1536 for AC-3, 1024 for AAC, the packet size for PCM). Priming comes from the reference.
 - **Picture order (H.264 picture_order_cnt_type 0, HEVC):** POC is reconstructed from the slice headers (H.264 §8.2.1, H.265 §8.3.1), restarted at
   each IDR; the step between display positions is the gcd of the gaps between the sorted counts of each coded video sequence (differences between decode-order neighbours can all be multiples of the real step in a deep reference pyramid). Presentation times follow, decode times are in file order, and the
-  reorder delay is written as an edit list (the video track's priming), the way ffmpeg and x264 write B-frame files. Field pictures and POC type 1
+  edit list starts at the earliest presentation time (the video track's priming), the way ffmpeg and x264 write B-frame files. A B picture that shows before the first I picture of an open GOP stays in the clip: the edit starts at the earliest shown picture, not at the I picture (Nikon D5300 and Olympus TG-4 files: edit start 1 frame, I picture at frame 3; all picture times equal the original's). Field pictures and POC type 1
   keep decode order with a note; AV1 temporal units are already in output order.
 
 ## The output
@@ -167,8 +167,7 @@ bytes), and the window is a fixed size.
   equal (observed on a Blender clip: sample 0 lasts 11 frames and two later samples 2 frames each).
 - Dependence on a reference for PCM and for video without in-band parameter sets is by design (see above).
 - Variable frame rate phones: with a reference the original's real durations are in the lost sample table, so video times follow the reference's usual duration. Bytes, order and key frames are equal; the report's confidence is Medium with a note when the reference's durations vary (observed on two Android recordings: 3 and 6 of 197 and 609 pictures with equal times).
-- Leading pictures before the first I picture in the original's edit list (a Nikon D5300 and an Olympus TG-4) are hidden by its edit; ours has no edit, the media timelines are equal.
-- An AAC track recovered with *another* recording of the same model as the reference can fail where the recording itself as the reference succeeds (one Pixel recording: 7 of 343 AAC packets equal with a sibling reference, 348 of 348 with itself; cause not found).
+- AAC between timed-metadata samples (one Pixel recording): a sibling reference whose metadata samples are 210-212 bytes while the target's are 206-232 used to let a false 13-byte AAC frame inside a metadata item win. Sizes the reference does not list are now tried in a range 15 % wider than the reference's, a guessed size needing a sample of at least 64 bytes and three confirming steps; 348 of 348 AAC packets equal with a sibling (was 7 of 343), and unchanged with itself.
 
 ## Checks
 
