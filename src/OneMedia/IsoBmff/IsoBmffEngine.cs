@@ -305,6 +305,14 @@ internal sealed class IsoBmffEngine
                 // that another tool reports as mono).
                 channels = 1;
             }
+            else if (codec == CodecId.Aac && entry.Configuration.Format == "esds" && EsDescriptor.TryParse(entry.Configuration.Data, out EsDescriptor? aacEs)
+                && !aacEs!.DecoderSpecificInfo.IsEmpty && AudioSpecificConfig.TryParse(aacEs.DecoderSpecificInfo.Span, out AudioSpecificConfig asc) && asc.Channels > 0)
+            {
+                // ISO/IEC 14496-3 §1.6.2.1: the AudioSpecificConfig is what the decoder is configured with, so its channel count is the stream's. The
+                // sample entry's ChannelCount is informative (14496-12 §12.2.3) and some writers fix it at 2: observed in a mono screen recording
+                // whose entry says 2 where ffprobe and MediaInfo say mono.
+                channels = asc.Channels;
+            }
 
             audio = new AudioTrackInfo(rate, channels, entry.SampleSizeBits);
         }

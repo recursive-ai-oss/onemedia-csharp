@@ -434,25 +434,38 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
     public MediaTime ContainerDuration => Container.Duration;
 
     /// <summary>
-    /// The longest track duration as presented: the sum of the edit list's segments (ISO/IEC 14496-12 §8.6.6) when the track has one, else the media
+    /// The longest audio, video or subtitle track duration as presented (data tracks count only when no other track states one): the sum of the edit list's segments (ISO/IEC 14496-12 §8.6.6) when the track has one, else the media
     /// header's duration; <see cref="MediaTime.Unknown"/> when no track states one (Matroska, fragmented files).
     /// </summary>
     public MediaTime TracksDuration
     {
         get
         {
-            MediaTime longest = MediaTime.Unknown;
-            foreach (MediaTrack t in Container.Tracks)
+            // Data tracks (telemetry, timecode, camera-private data) do not set the length of the recording: a drone's telemetry track can be
+            // longer than its picture. They count only when nothing else states a duration (a file of telemetry alone).
+            MediaTime longest = Longest(includeData: false);
+            return longest.IsKnown ? longest : Longest(includeData: true);
+        }
+    }
+
+    private MediaTime Longest(bool includeData)
+    {
+        MediaTime longest = MediaTime.Unknown;
+        foreach (MediaTrack t in Container.Tracks)
+        {
+            if (!includeData && t.Kind == TrackKind.Data)
             {
-                MediaTime d = PresentedDuration(t);
-                if (d.IsKnown && (!longest.IsKnown || d > longest))
-                {
-                    longest = d;
-                }
+                continue;
             }
 
-            return longest;
+            MediaTime d = PresentedDuration(t);
+            if (d.IsKnown && (!longest.IsKnown || d > longest))
+            {
+                longest = d;
+            }
         }
+
+        return longest;
     }
 
     private static MediaTime PresentedDuration(MediaTrack t)
@@ -481,7 +494,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// The duration to present: the container's own figure, unless a track without an edit list is longer than it (a movie header shorter than its
-    /// tracks), in which case that track wins, as in other tools; with no container figure, <see cref="TracksDuration"/>. A track with an edit list never
+    /// tracks), in which case that track wins, as in other tools (data tracks such as telemetry never win); with no container figure, <see cref="TracksDuration"/>. A track with an edit list never
     /// overrides the container: its list may repeat or trim media, and the movie header already accounts for it. Both figures stay available as
     /// <see cref="ContainerDuration"/> and <see cref="TracksDuration"/>.
     /// </summary>
@@ -497,7 +510,7 @@ public sealed class MediaFile : IDisposable, IAsyncDisposable
             MediaTime best = ContainerDuration;
             foreach (MediaTrack t in Container.Tracks)
             {
-                if (t.Edit.Edits is not { Count: > 0 } && t.Duration.IsKnown && t.Duration > best)
+                if (t.Kind != TrackKind.Data && t.Edit.Edits is not { Count: > 0 } && t.Duration.IsKnown && t.Duration > best)
                 {
                     best = t.Duration;
                 }
