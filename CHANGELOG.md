@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.8.0-preview.2] - 2026-11-03
+
+The last API changes before 1.0 (cancellation on every happy-path call that reads or writes files, writer types in `RecursiveAI.OneMedia.Writing`; the migration list is under Changed and Removed), OneAudio 1.7.2 with FLAC transcoding in the browser, and fixes from review. Previews stay previews as in 0.8.0-preview.1.
+
 ### Added
 
 - `track.Decode()` in `RecursiveAI.OneMedia.Audio`: decodes an audio track, so `media.Audio!.Decode()` works as the README sketch shows.
