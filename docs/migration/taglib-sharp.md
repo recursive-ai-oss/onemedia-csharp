@@ -26,6 +26,9 @@ and are written back losslessly.
 | `file.Dispose()` | `media.Dispose()` |
 
 ```csharp
+using RecursiveAI.OneMedia;
+using RecursiveAI.OneMedia.Tags;
+
 using MediaFile media = Media.Open("in.mp4");
 string? title = media.Tags.Title;
 media.Tags.Title = "New title";
@@ -35,6 +38,10 @@ TagWriteReport report = media.SaveAs("tagged.mp4");
 ```
 
 ```csharp
+using RecursiveAI.OneMedia;
+using RecursiveAI.OneMedia.Tags;
+
+byte[] jpegBytes = File.ReadAllBytes("cover.jpg");
 using MediaFile media = Media.Open("in.mp4");
 media.Tags.SetPicture(jpegBytes, "image/jpeg", PictureType.FrontCover);
 media.SaveAs("cover.mp4");

@@ -28,6 +28,12 @@ internal static partial class IsoRepair
             return report.Build(RepairStatus.Unrepairable, 0);
         }
 
+        // The scanner's own notes (for instance that the video's parameter sets were lost with the movie box) lead the warnings, on every path.
+        foreach (string n in r.Notes)
+        {
+            report.Warn(n);
+        }
+
         // Almost nothing framed: the codec setup found in the stream was probably a coincidence (or the reference does not belong to this
         // recording), and a file of a few stray samples helps nobody.
         if (r.RecoveredFraction < MinRecoveredFraction)
@@ -87,11 +93,6 @@ internal static partial class IsoRepair
         if (r.SkippedRangeCount > r.SkippedRanges.Count)
         {
             report.Warn((r.SkippedRangeCount - r.SkippedRanges.Count) + " more skipped ranges are not listed.");
-        }
-
-        foreach (string n in r.Notes)
-        {
-            report.Warn(n);
         }
 
         RepairStatus status = emptyTrack || r.RecoveredFraction < 0.9 ? RepairStatus.PartiallyRepaired : RepairStatus.Repaired;

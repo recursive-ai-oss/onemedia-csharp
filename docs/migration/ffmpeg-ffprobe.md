@@ -18,6 +18,7 @@ subprocess, so there is no binary to locate, no argument builder and no temp-fil
 | `ffprobe -show_chapters`, `-show_data`, or any raw tag or box value | `media.Native[system, key]` (chapters through the native layer) |
 
 ```csharp
+using RecursiveAI.OneMedia;
 using var media = Media.Open("in.mp4");
 string line = $"{media.Format}, {media.ExactDuration}, {media.Tracks.Count} tracks";
 foreach (MediaTrack track in media.Tracks)
@@ -25,6 +26,7 @@ foreach (MediaTrack track in media.Tracks)
 ```
 
 ```csharp
+using RecursiveAI.OneMedia;
 using var media = Media.Open("in.mp4");
 foreach (OwnedPacket packet in media.Packets(media.Video!))
 {
@@ -39,7 +41,7 @@ For allocation-free loops use the demuxer's `TryReadPacket` into a caller buffer
 
 | Theirs | OneMedia |
 |---|---|
-| `ffmpeg -i in -c copy out.mkv` | `Media.Remux("in.mp4", "out.mkv")` returns a `RemuxReport` (`HasLosses`, dropped tracks) |
+| `ffmpeg -i in -c copy out.mkv` | `Media.Remux("in.mp4", "out.mkv")` returns a `RemuxReport` (`HasLosses`, dropped tracks); `-map`-style selection: `Media.Remux(in, out, new RemuxOptions { Select = ... })` |
 | `FFMpeg.SubVideo(in, out, from, to)`, `-ss -to -c copy` | `Media.Trim(in, out, from, to)`; `TrimMode.FrameAccurate` (default, edit list hides pre-roll) or keyframe |
 | `-movflags +faststart` (mov/mp4 muxer option), FFMpegCore `.WithFastStart()` | `Media.Faststart(in, out)` |
 | `FFMpeg.Join(out, parts...)` | `Media.Concat(out, parts...)` (mismatched configurations are refused or reported) |
@@ -48,14 +50,21 @@ For allocation-free loops use the demuxer's `TryReadPacket` into a caller buffer
 | `-f hls` / `-f dash` (the hls and dash muxers) | `Media.PackageHls(in, dir)` / `Media.PackageDash(in, dir)` |
 | `-c:s webvtt` (subtitle codec) on a sidecar | `Subtitles.Convert("a.srt", "a.vtt")` returns a `ConversionReport` |
 | make it play in a browser | `Media.CanPlay(path, BrowserProfiles.Chrome)`, `Media.MakePlayable(in, out, profile)` |
-| `FFMpeg.ExtractAudio` (audio track to a file) | no one-line equivalent for writing an audio-only file; `media.Decode()` (package `RecursiveAI.OneMedia.Audio`) gives decoded PCM through OneAudio |
+| `FFMpeg.ExtractAudio` / `-vn -c copy` (audio track to a file, no re-encode) | `Media.Remux(in, "audio.m4a", new RemuxOptions { Select = t => t.Kind == TrackKind.Audio })` (container from the extension; the options are the remux layer's) |
+| decoded audio (PCM) | `media.Decode()` (package `RecursiveAI.OneMedia.Audio`) gives decoded PCM through OneAudio |
 | `FFMpeg.Snapshot`, `GifSnapshot`, scaling, filters, `-c:v libx264` | out of scope: OneMedia decodes and encodes no video |
 
 ```csharp
+using RecursiveAI.OneMedia;
+using RecursiveAI.OneMedia.Editing;
+using RecursiveAI.OneMedia.Playback;
+using RecursiveAI.OneMedia.Remuxing;
+
 RemuxReport remux = Media.Remux("in.mp4", "out.mkv");
 var clip = Media.Trim("in.mp4", "clip.mp4", TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1.5));
 Media.Faststart("in.mp4", "fast.mp4");
 using (MediaFile media = Media.Open("in.mp4")) { media.Tags.Title = "Hello"; media.SaveAs("titled.mp4"); }
+RemuxReport audioOnly = Media.Remux("in.mp4", "audio.m4a", new RemuxOptions { Select = t => t.Kind == TrackKind.Audio });
 Media.PackageHls("in.mp4", "hls");
 Subtitles.Convert("sample.srt", "migrated.vtt");
 ```

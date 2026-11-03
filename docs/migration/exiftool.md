@@ -25,6 +25,7 @@ flag to call.
 | `-ee` on still images, MakerNotes, IPTC, XMP in JPEG | out of scope |
 
 ```csharp
+using RecursiveAI.OneMedia;
 using (MediaFile media = Media.Open("located.mp4"))
     _ = media.Native["QuickTime", "©xyz"];
 Media.SetCaptureTime("in.mp4", "dated.mp4", new DateTimeOffset(2024, 5, 1, 12, 0, 0, TimeSpan.FromHours(2)));

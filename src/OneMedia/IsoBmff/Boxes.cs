@@ -150,6 +150,8 @@ public static class BoxTypes
     public const uint Schi = 0x73636869;
     /// <summary>Pixel aspect ratio box.</summary>
     public const uint Pasp = 0x70617370;
+    /// <summary><c>btrt</c>: BitRateBox of a sample entry (ISO/IEC 14496-12 §8.5.2).</summary>
+    public const uint Btrt = 0x62747274;
     /// <summary>Elementary stream descriptor box.</summary>
     public const uint Esds = 0x65736473;
     /// <summary>Wave atom of QuickTime audio sample entries.</summary>

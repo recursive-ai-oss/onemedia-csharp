@@ -46,6 +46,12 @@ jobs:
         run: dotnet build OneMedia.slnx -c Release --no-restore
       - name: Test
         run: dotnet test --solution OneMedia.slnx -c Release --no-build
+      - name: Compile the C# snippets of the README and the migration pages as pasted
+        # tools/snippets/extract.py turns every fenced csharp block into its own file (a block that is only a fragment is skipped with a stated reason).
+        if: matrix.rid == 'linux-x64'
+        run: |
+          python3 tools/snippets/extract.py .
+          dotnet build samples/OneMedia.Snippets -c Release
       - name: Native AOT toolchain (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev

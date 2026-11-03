@@ -50,6 +50,11 @@ internal static class RepairCommand
         {
             RepairReport r = AacReconstructionProbe.Repair(input, output, reference);
             Console.WriteLine($"{r.Status}: {r.Format}, {r.InputLength} bytes in, {r.OutputLength} bytes out, confidence {r.Confidence}, {r.DroppedBytes} bytes dropped");
+            foreach (string w in r.Warnings)
+            {
+                Console.WriteLine("  note: " + w);
+            }
+
             foreach (RepairItem i in r.Items)
             {
                 Console.WriteLine($"  {i.Action,-8} {i.Structure}{(i.Track >= 0 ? " (track " + i.Track + ")" : string.Empty)} @{i.Range.Offset}+{i.Range.Length} [{i.Confidence}] {i.Detail}");
@@ -58,11 +63,6 @@ internal static class RepairCommand
             foreach (RepairTrackReport t in r.Tracks)
             {
                 Console.WriteLine($"  track {t.Track} {t.Codec}: {t.Packets} packets, {t.DroppedPackets} dropped [{t.Confidence}]{(t.Ranges.Count > 0 ? ", " + t.Ranges.Count + " input ranges" : string.Empty)}");
-            }
-
-            foreach (string w in r.Warnings)
-            {
-                Console.WriteLine("  note: " + w);
             }
 
             return r.Status switch

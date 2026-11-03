@@ -21,16 +21,20 @@ its tracks (`media.Tracks`) and its tags (`media.Tags`, `media.Native`).
 | `Settings.ID3v2_tagSubVersion = 3` | not a global switch; the file's ID3v2 version is kept, a new tag is 2.4, or 2.3 through the writer option `Id3v2Version` (docs/tag-writing.md) |
 
 ```csharp
+using RecursiveAI.OneMedia;
 using MediaFile media = Media.Open("aac.m4a");
 MediaTrack audio = media.Audio!;
 string summary = $"{media.Tags.Title} / {media.Tags.Album} / {audio.Audio!.Value.SampleRate} Hz / {audio.BitRate} bit/s / {media.Duration}";
 ```
 
 ```csharp
+using RecursiveAI.OneMedia;
+using RecursiveAI.OneMedia.Writing;
+
 using MediaFile media = Media.Open("atl.m4a");
 media.Tags.Title = "Edited";
 try { media.SaveInPlace(); }
-catch (PaddingRequiredException) { media.Save(); }   // no room in the file's padding: atomic replace  (using RecursiveAI.OneMedia.Writing;)
+catch (PaddingRequiredException) { media.Save(); }   // no room in the file's padding: atomic replace
 ```
 
 ## Differences that matter

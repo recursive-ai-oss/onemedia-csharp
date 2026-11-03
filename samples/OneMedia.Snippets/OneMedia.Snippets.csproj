@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compiles (never runs) the C# blocks of the README and the migration pages exactly as pasted: tools/snippets/extract.py writes
+       obj/snippets/*.cs first. Not in the solution and not packed. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Snippets</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="obj/snippets/*.cs" />
+    <ProjectReference Include="../../src/OneMedia/OneMedia.csproj" />
+    <ProjectReference Include="../../src/OneMedia.Audio/OneMedia.Audio.csproj" />
+  </ItemGroup>
+
+</Project>

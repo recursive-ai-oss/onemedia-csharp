@@ -210,6 +210,19 @@ corpus every difference is scoped in `tools/OneMedia.Oracles/exceptions.tsv` (fi
 | same two files, codec | the `cvid` (Cinepak) entry has no neutral codec id in the ISO reader | the track keeps its FourCC; a mapping is a follow-up |
 | `0625rvt6-42.mov` | `ima4` has no neutral codec id in the ISO reader; ffprobe reads 352x288 from the H.263 picture header, the container says 240x180 | ours is the container's value |
 
+## Track bit rate (`MediaTrack.BitRate`)
+
+For a progressive file the value is the sum of the track's sample sizes times 8 over the track's media duration (`mdhd`), rounded down, worked out the first time
+`BitRate` is read: the sample size table is read then, not when the file is opened. The average the sample entry declares (`esds` avgBitrate, `btrt`) is the fallback
+when the table or the duration is missing, and the value of fragmented files. It is the figure ffprobe 7.0.2 prints as `bit_rate`: on 123 files from the corpus
+(the ISO fixtures, the Blender, sample and generated MP4/MOV/M4A/3GP files under 300 MB) 186 streams could be compared, and 160 are equal. The others:
+
+| Streams | Difference | Reason |
+|---|---|---|
+| 11 video streams with an edit list (B-frame delay, as in `bframes_aac.mp4`: ffprobe 43,496, ours 41,823) | ffprobe divides by the duration the edit list presents (the media duration less the delay) | ours always divides by the media duration; ffprobe does so for other video tracks with edit lists, and its rule was not worked out from output alone |
+| 12 streams in cut-off, fragmented or damaged files (`au30sec.mp4`, `W41CA_MAV_0000.mp4`, `discont-frag.mp4`, `mp3audioproblem.mp4`, `multitrack.mov`, `cat-two-parts.mp4`, `0625rvt6-42.mov`, `behind_scenes_clip1.mov`) | the header's duration and the packets disagree | ffprobe's duration is not the box value there |
+| 3 streams | ffprobe prints N/A | ours is still a number |
+
 ## Windows evidence: Media Foundation and the Shell
 
 The Windows runs described in docs/asf.md also put 8 MP4-family files through the Media Foundation source reader and the Shell: `h264-aac.mp4` (edit list, B-frames), `h264-aac-negative-cts.mp4` (negative composition offsets),

@@ -21,6 +21,7 @@ values; there is no text report to parse.
 | Inform templates | not provided: write the projection you want in C# |
 
 ```csharp
+using RecursiveAI.OneMedia;
 using MediaFile media = Media.Open("in.mp4");
 MediaTrack? video = media.Video;
 string line = $"{media.Format} {media.Duration} {video?.Codec} {video?.Video?.Width}x{video?.Video?.Height}";
