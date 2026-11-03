@@ -42,7 +42,9 @@ internal static class StripTarget
         TelemetryScrub.Camm(block, Base, 1, cats, sink);
         TelemetryScrub.Mebx(block, Base, 1, table, cats, sink);
         TiffScrub.Scrub(block, Base, "exif", 1, cats, sink);
-        _ = DjiScrub.Djmd(block, Base, 1, cats, sink);
+        DjiScrub.State djiState = new();
+        _ = DjiScrub.Djmd(block, Base, 1, cats, sink, djiState);
+        _ = DjiScrub.Djmd(block, Base, 1, cats, new StripSink(new PatchSet()), djiState);
         TextScrub.Sample(block, Base, "text", 1, cats, sink);
         byte[] firmware = block.Length >= 8 ? block[..6] : [];
         TelemetryScrub.GoProSettings(block, Base, firmware, "fdsc", 1, cats, sink);
