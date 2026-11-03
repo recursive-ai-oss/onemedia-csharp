@@ -298,8 +298,43 @@ public sealed record MediaTrack
     /// <summary>Channel count: <see cref="Audio"/>'s <c>Channels</c>. Null when the track has no audio info. 0 when the container does not say.</summary>
     public int? Channels => Audio?.Channels;
 
-    /// <summary>Average bit rate in bits per second as declared, or 0.</summary>
-    public long BitRate { get; init; }
+    /// <summary>
+    /// Average bit rate in bits per second, or 0 when it is not known. Most readers report what the container declares. For a progressive ISO file (MP4, MOV, 3GP)
+    /// it is the sizes of all the track's samples times 8, divided by the track's media duration, rounded down (the figure ffprobe prints as <c>bit_rate</c>),
+    /// worked out from the sample size table the first time it is read (the table is read then, not when the file is opened);
+    /// the average the sample entry declares (<c>esds</c> or <c>btrt</c>) is used when the table or the duration is missing.
+    /// </summary>
+    public long BitRate
+    {
+        get
+        {
+            if (_bitRateSource is { } source)
+            {
+                _bitRateSource = null;
+                long computed = source();
+                if (computed > 0)
+                {
+                    _bitRate = computed;
+                }
+            }
+
+            return _bitRate;
+        }
+        init
+        {
+            _bitRate = value;
+            _bitRateSource = null;
+        }
+    }
+
+    private long _bitRate;
+    private Func<long>? _bitRateSource;
+
+    /// <summary>Works the bit rate out on first use; a result of 0 or less keeps the value set through <see cref="BitRate"/>.</summary>
+    internal Func<long>? BitRateSource
+    {
+        init => _bitRateSource = value;
+    }
 
     /// <summary>
     /// What the container's reader learned about the codec from parameter sets inside the stream itself, for formats that carry no

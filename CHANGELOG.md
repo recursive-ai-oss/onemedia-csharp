@@ -9,6 +9,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - `track.Decode()` in `RecursiveAI.OneMedia.Audio`: decodes an audio track, so `media.Audio!.Decode()` works as the README sketch shows.
 - `docs/api-review.md`: the public-surface review before 1.0, and `tools/OneMedia.ApiList`, which lists the public surface of built assemblies.
 - `docs/platforms.md`: the known limits in the browser runtime (FLAC `MakePlayable` target, synchronous readers over late-answering sources).
+- `Media.Remux(input, output, RemuxOptions options, cancellationToken)`: the remux layer's own options (stream selection and the rest) from the happy path, in one line. An audio-only file is `Media.Remux("in.mp4", "audio.m4a", new RemuxOptions { Select = t => t.Kind == TrackKind.Audio })`.
+- `samples/OneMedia.Snippets` and `tools/snippets/extract.py`: every fenced C# block of the README and the migration pages is compiled as pasted (one file per block, with the `using` lines it shows); CI runs it on Linux x64. A fragment can be skipped with `<!-- snippet-skip: reason -->`.
 
 ### Changed
 
@@ -26,6 +28,15 @@ Breaking against 0.8.0-preview.1, allowed before 1.0. To migrate:
 ### Removed
 
 - `RemuxSession.IsoOptions` is internal (it also carried WAV options and only the remuxer and the segmenter used it).
+
+### Fixed
+
+- A cut-off MP4/MOV/3GP with no reference file lost its explanation when almost nothing could be framed: the note that the video's parameter sets were lost with the movie box was dropped before the `RepairReport` was built, leaving only "Only n % of the media data could be cut into samples". The note now leads `RepairReport.Warnings` on every path, and `onemedia repair` prints the notes straight after the status line. Tested through `Media.Repair` and `onemedia repair` on a recording in which about 1.6 % frames.
+- `MediaTrack.BitRate` was 0 for every MP4/MOV/3GP track (the ATL migration page printed `0 bit/s` for `aac.m4a`). It is now the sum of the track's sample sizes times 8 over its media duration, rounded down, worked out on first use (opening a file reads no more); a fragmented file, or one without a size table or duration, gets the average the sample entry declares (`esds` or `btrt`). It equals ffprobe's `bit_rate` for `aac.m4a` and `bframes_aac.mp4` (26,931 and 25,857) and for 160 of the 186 streams of 123 corpus files compared with ffprobe 7.0.2; the other 26 (video tracks with an edit list, damaged or cut-off files) are listed in `docs/isobmff.md`.
+- Migration pages: the C# snippets now carry the `using` lines they need (`TrimMode`, `BrowserProfiles`, `RemuxReport`, the tag and writer types) and compile as pasted; the MetadataExtractor page said movie-header times have certainty `Unknown` (they are `Utc`); the ffmpeg page said an audio-only file is not one line (it is, with `Media.Remux` and a `Select`).
+- README: the packaging-memory and transport-stream probe gaps are no longer listed as open (packaging peaks at 112–130 MiB at 6 s segments; the probe stops at 6 MB, at most 7.1 MB read), and the subtitle speed figures are the 0.8 ones (geometric mean 0.47× on both machines, worst row 1.16× x64 and 1.07× arm64).
+- Correction to the 0.8.0-preview.1 entry on AVI reads: "48 instead of about 99" for the 4.6 GB OpenDML file was wrong. Counted as read system calls by the `avi-probe` cell, the probe makes 7 reads (94 before the change) and `tagged-mpeg4-mp3.avi` 9 (89); the reader asks its source for 10 reads while opening the 4.6 GB file and reading its tags (`docs/io-results.txt`), 9 range requests over HTTP. The same 7 and 9 on the 0.8.0-preview.1 tag.
+- `docs/bench-results/0.8-allocations-memory-io.md` listed the MPEG family maximum as 25,425,648 B in 96 requests; it is 7,080,536 B in 26 (the figure after the fix).
 
 ## [0.8.0-preview.1] - 2026-11-02
 

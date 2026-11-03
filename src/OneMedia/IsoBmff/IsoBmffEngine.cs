@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Globalization;
 using RecursiveAI.OneMedia.Codecs;
+using RecursiveAI.OneMedia.Codecs.Aac;
 
 namespace RecursiveAI.OneMedia.IsoBmff;
 
@@ -64,7 +65,7 @@ internal sealed class IsoBmffEngine
         for (int i = 0; i < States.Length; i++)
         {
             IsoTrack t = movie.Tracks[i];
-            MediaTrack info = BuildTrack(t, movie, qt, sidxDuration, ref gaplessUsed, out long editStart);
+            MediaTrack info = BuildTrack(t, movie, qt, sidxDuration, tableSource, ref gaplessUsed, out long editStart);
             infos[i] = info;
             SampleCursor? cursor = t.HasSampleTable && t.SampleCount > 0 ? new SampleCursor(t.Layout, tableSource, defects, fileLength, movie.Range.Offset) : null;
             States[i] = new TrackState { Track = t, Info = info, Cursor = cursor, EditStartTicks = editStart, GroupFrames = info.Kind == TrackKind.Audio && info.Codec == CodecId.Pcm, SamplePackets = SamplePacketsOf(t, info.Kind, info.Codec) };
@@ -220,7 +221,7 @@ internal sealed class IsoBmffEngine
         return best;
     }
 
-    private static MediaTrack BuildTrack(IsoTrack t, IsoMovie movie, bool quickTime, MediaTime sidxDuration, ref bool gaplessUsed, out long editStart)
+    private static MediaTrack BuildTrack(IsoTrack t, IsoMovie movie, bool quickTime, MediaTime sidxDuration, IMediaSource tableSource, ref bool gaplessUsed, out long editStart)
     {
         TrackKind kind = t.HandlerType switch
         {
@@ -315,6 +316,8 @@ internal sealed class IsoBmffEngine
             Configuration = entry?.Configuration ?? default,
             Timescale = timescale,
             Duration = duration,
+            BitRate = DeclaredBitRate(entry),
+            BitRateSource = movie.IsFragmented ? null : SampleSizeBitRate(t, timescale, duration, tableSource),
             Edit = edit,
             Language = t.Media.Language,
             Name = string.IsNullOrEmpty(t.HandlerName) ? null : t.HandlerName,
@@ -325,6 +328,97 @@ internal sealed class IsoBmffEngine
             IsProtected = entry?.IsProtected ?? false,
             DurationIsPartial = movie.IsFragmented && duration.IsKnown,
         };
+    }
+
+    // The track's average bit rate worked out from its sample size table, read when the property is first used and not before, so opening a file
+    // costs no more reads for it. ffprobe's bit_rate for these files is the sum of the sample sizes times 8 over the media duration, rounded down;
+    // the sample entry's declared average is the fallback when there is no table or duration. Returns 0 when the table cannot be read.
+    private static Func<long>? SampleSizeBitRate(IsoTrack t, long timescale, MediaTime duration, IMediaSource source)
+    {
+        SampleTableLayout layout = t.Layout;
+        if (!layout.HasSizes || layout.SampleCount <= 0 || !duration.IsKnown || duration.Ticks <= 0 || timescale <= 0)
+        {
+            return null;
+        }
+
+        return () =>
+        {
+            try
+            {
+                long total = 0;
+                if (layout.ConstantSize != 0)
+                {
+                    total = (long)layout.ConstantSize * layout.SampleCount;
+                }
+                else if (layout.SizeTable.IsPresent)
+                {
+                    long entries = layout.SizeTable.Count;
+                    TableWindow sizes = new(source, layout.SizeTable.Offset, ((entries * layout.SizeFieldBits) + 7) / 8);
+                    for (long i = 0; i < entries; i++)
+                    {
+                        uint size;
+                        bool ok;
+                        switch (layout.SizeFieldBits)
+                        {
+                            case 32:
+                                ok = sizes.TryU32(i * 4, out size);
+                                break;
+                            case 16:
+                                ok = sizes.TryU16(i * 2, out size);
+                                break;
+                            case 8:
+                                ok = sizes.TryU8(i, out byte b8);
+                                size = b8;
+                                break;
+                            default:
+                                // §8.7.3.3: 4-bit sizes, the first of each pair in the high nibble.
+                                ok = sizes.TryU8(i / 2, out byte b4);
+                                size = (uint)((i & 1) == 0 ? b4 >> 4 : b4 & 0xF);
+                                break;
+                        }
+
+                        if (!ok)
+                        {
+                            return 0;
+                        }
+
+                        total += size;
+                    }
+                }
+
+                return (long)(((UInt128)(ulong)total * 8 * (ulong)timescale) / (ulong)duration.Ticks);
+            }
+            catch (Exception e) when (e is IOException or ObjectDisposedException or MediaException)
+            {
+                // The file was closed before the first use, or the table cannot be read: the declared average stands.
+                return 0;
+            }
+        };
+    }
+
+    // The average bit rate the sample entry declares: the avgBitrate of an MPEG-4 elementary stream descriptor (ISO/IEC 14496-1 §7.2.6.6, in
+    // esds) or of a BitRateBox (ISO/IEC 14496-12 §8.5.2.2, btrt: bufferSizeDB, maxBitrate, avgBitrate). 0 when neither is present or
+    // the value is zero. It is the fallback for the average worked out from the sample sizes (see SampleSizeBitRate).
+    private static long DeclaredBitRate(SampleEntry? entry)
+    {
+        if (entry is null)
+        {
+            return 0;
+        }
+
+        if (entry.Configuration.Format == "esds" && EsDescriptor.TryParse(entry.Configuration.Data, out EsDescriptor? es) && es is { AvgBitrate: > 0 })
+        {
+            return es.AvgBitrate;
+        }
+
+        ExtensionBox? btrt = entry.FindExtension(BoxTypes.Btrt);
+        if (btrt is not null && btrt.Payload.Length >= 12)
+        {
+            uint avg = Be.U32(btrt.Payload.Span, 8);
+            return avg;
+        }
+
+        return 0;
     }
 
     // §8.3.1: tracks of one alternate group are alternatives of each other (only one plays); QuickTime players pick the first enabled.

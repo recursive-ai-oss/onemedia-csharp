@@ -46,6 +46,13 @@ internal static class Migration
             }
             return $"remux losses: {remux.HasLosses}; clip {clip.Duration.ToTimeSpan()}";
         }),
+        ("migration/ffmpeg: audio track to a file", dir =>
+        {
+            // page: ffmpeg-ffprobe
+            RecursiveAI.OneMedia.Remuxing.RemuxReport audioOnly = Media.Remux("in.mp4".Under(dir), "audio.m4a".Under(dir), new RecursiveAI.OneMedia.Remuxing.RemuxOptions { Select = t => t.Kind == TrackKind.Audio });
+            using MediaFile written = Media.Open("audio.m4a".Under(dir));
+            return $"{written.Tracks.Count} track(s), {written.Audio?.Codec}, lost {audioOnly.Losses.Count}";
+        }),
         ("migration/ffmpeg: hls, subtitles", dir =>
         {
             // page: ffmpeg-ffprobe

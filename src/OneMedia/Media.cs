@@ -84,6 +84,17 @@ public static partial class Media
     /// <exception cref="MuxRefusedException">No track of the input can be written.</exception>
     public static Remuxing.RemuxReport Remux(string input, string output, CancellationToken cancellationToken = default) => Remuxing.Remuxer.Remux(input, output, cancellationToken: cancellationToken);
 
+    /// <summary>Copies the tracks of a file into another container, with the layer's own options (track selection, and so on). The container comes from the output's extension.</summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The new file; refused if it exists.</param>
+    /// <param name="options">What to select and how to map it; see <see cref="Remuxing.RemuxOptions"/>. These are the remux layer's options, passed through unchanged.</param>
+    /// <param name="cancellationToken">Cancels the operation; checked between steps and passed to the layer below.</param>
+    /// <returns>What was written and everything that did not carry over.</returns>
+    /// <exception cref="ArgumentException">The extension names no container.</exception>
+    /// <exception cref="UnsupportedMediaException">The input is not recognised, or the container cannot be written.</exception>
+    /// <exception cref="MuxRefusedException">No selected track of the input can be written.</exception>
+    public static Remuxing.RemuxReport Remux(string input, string output, Remuxing.RemuxOptions options, CancellationToken cancellationToken = default) => Remuxing.Remuxer.Remux(input, output, options, cancellationToken);
+
     /// <summary>Copies the tracks of a file into a chosen container without touching the compressed data.</summary>
     /// <param name="input">The input file.</param>
     /// <param name="output">The new file; refused if it exists.</param>
