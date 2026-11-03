@@ -6,28 +6,43 @@ namespace RecursiveAI.OneMedia.Privacy;
 /// Strips DJI <c>djmd</c> samples (protocol buffer messages). The position message, the altitude fields and the aircraft serial number are
 /// overwritten with zeros in place, and the field's key byte is changed to field number 15 of the same wire type, so a reader that looks the
 /// field up by its number no longer finds it (a zero double would otherwise read back as a position at 0, 0). The message keeps its length.
+/// The serial number sits at the same path in every protocol seen; where the position is stored depends on the protocol. A sample whose protocol
+/// is not in the table of known layouts (a sample that names none takes the protocol an earlier sample of the track named) is stripped
+/// conservatively: the serial goes by its path, and so does everything outside the two groups known to hold only camera settings and a frame
+/// counter (field 3, children 1 and 2) and the device and stream descriptions (fields 1 and 2), plus any double anywhere and any bytes that do not
+/// parse as protocol buffer fields. Unknown content is removed, never left.
 /// </summary>
 internal static class DjiScrub
 {
     private const int MaxDepth = 8;
 
-    /// <summary>Strips one sample.</summary>
-    /// <returns>False when the sample names no protocol this library maps, so its position fields could not be located.</returns>
-    public static bool Djmd(ReadOnlySpan<byte> packet, long fileOffset, long trackId, StripCategories cats, StripSink sink)
+    /// <summary>What a track's earlier samples said about the protocol.</summary>
+    internal sealed class State
     {
-        if (!FindProtocol(packet, 0, 0, out DjmdDecoder.Layout layout))
+        public bool Known;
+        public DjmdDecoder.Layout Layout;
+    }
+
+    /// <summary>Strips one sample.</summary>
+    /// <returns>True when the sample was stripped conservatively because its protocol layout is not known.</returns>
+    public static bool Djmd(ReadOnlySpan<byte> packet, long fileOffset, long trackId, StripCategories cats, StripSink sink, State state)
+    {
+        if (FindProtocol(packet, 0, 0, out bool known, out DjmdDecoder.Layout layout))
         {
-            return false;
+            state.Known = known;
+            state.Layout = layout;
         }
 
-        Walk(packet, 0, 0, 0, fileOffset, trackId, cats, sink, layout);
-        return true;
+        bool conservative = !state.Known;
+        Walk(packet, 0, 0, 0, fileOffset, trackId, cats, sink, state.Layout, conservative);
+        return conservative;
     }
 
     // Pass 1: the protocol name sits at 1-1-1, in the first messages.
-    private static bool FindProtocol(ReadOnlySpan<byte> message, ulong path, int depth, out DjmdDecoder.Layout layout)
+    private static bool FindProtocol(ReadOnlySpan<byte> message, ulong path, int depth, out bool known, out DjmdDecoder.Layout layout)
     {
         layout = default;
+        known = false;
         ProtobufReader r = new(message);
         while (r.TryRead(out int number, out ProtobufWireType wt, out _, out ReadOnlySpan<byte> payload, out _))
         {
@@ -51,10 +66,11 @@ internal static class DjiScrub
                     n = n[..dot];
                 }
 
-                return DjmdDecoder.TryLayout(n, out layout);
+                known = DjmdDecoder.TryLayout(n, out layout);
+                return true;
             }
 
-            if (depth < MaxDepth && (key == 1 || key == 0x0101) && FindProtocol(payload, key, depth + 1, out layout))
+            if (depth < MaxDepth && (key == 1 || key == 0x0101) && FindProtocol(payload, key, depth + 1, out known, out layout))
             {
                 return true;
             }
@@ -63,18 +79,25 @@ internal static class DjiScrub
         return false;
     }
 
-    private static void Walk(ReadOnlySpan<byte> message, ulong path, int depth, int baseOffset, long fileOffset, long trackId, StripCategories cats, StripSink sink, DjmdDecoder.Layout layout)
+    private static void Walk(ReadOnlySpan<byte> message, ulong path, int depth, int baseOffset, long fileOffset, long trackId, StripCategories cats, StripSink sink, DjmdDecoder.Layout layout, bool conservative)
     {
         ProtobufReader r = new(message);
+        int lastEnd = 0;
         while (r.TryRead(out int number, out ProtobufWireType wt, out ulong v, out ReadOnlySpan<byte> payload, out int start))
         {
+            int end = r.Position;
+            lastEnd = end;
             if (number > 255)
             {
+                if (conservative && depth == 0)
+                {
+                    NeutraliseUnknown(message, baseOffset, start, end, wt, payload.Length, fileOffset, trackId, cats, sink);
+                }
+
                 continue;
             }
 
             ulong key = DjmdDecoder.Append(path, number);
-            int end = r.Position;
             string? name = null;
             StripCategories cat = StripCategories.Location;
             if (key == DjmdDecoder.Serial && wt == ProtobufWireType.LengthDelimited)
@@ -105,10 +128,61 @@ internal static class DjiScrub
                 continue;
             }
 
-            if (wt == ProtobufWireType.LengthDelimited && depth < MaxDepth && Descends(key, layout))
+            if (conservative && IsUnknown(path, depth, number, wt))
             {
-                Walk(payload, key, depth + 1, baseOffset + end - payload.Length, fileOffset, trackId, cats, sink, layout);
+                NeutraliseUnknown(message, baseOffset, start, end, wt, payload.Length, fileOffset, trackId, cats, sink);
+                continue;
             }
+
+            if (wt == ProtobufWireType.LengthDelimited && depth < MaxDepth && (Descends(key, layout) || (conservative && DescendsConservatively(depth, payload))))
+            {
+                Walk(payload, key, depth + 1, baseOffset + end - payload.Length, fileOffset, trackId, cats, sink, layout, conservative);
+            }
+        }
+
+        // Bytes that do not parse as fields at the top level (a truncated or foreign message) cannot be understood, so in a conservative pass they
+        // are removed. A nested payload that does not parse is left: DJI stores some values (the shutter speed) as raw bytes in a nested field,
+        // and a position is not stored that way.
+        if (conservative && depth == 0 && lastEnd < message.Length && (cats & StripCategories.Location) != 0)
+        {
+            long at = fileOffset + baseOffset;
+            sink.Patches.Zero(at + lastEnd, message.Length - lastEnd);
+            sink.Note(StripCategories.Location, "djmd", "djmd unparsed bytes", trackId, at + lastEnd, message.Length - lastEnd, StripAction.Zeroed);
+        }
+    }
+
+    // Conservative pass: the top level holds the device description (1), the stream description (2) and the per-frame group (3); inside the
+    // per-frame group child 1 is the frame counter and child 2 the camera settings in every layout seen. Everything else is where positions,
+    // aircraft and gimbal state live in the layouts that have them, so an unknown layout loses it. A double is how every layout stores a coordinate.
+    private static bool IsUnknown(ulong path, int depth, int number, ProtobufWireType wt) =>
+        wt == ProtobufWireType.Fixed64
+        || (depth == 0 && number is not (1 or 2 or 3))
+        || (depth == 1 && path == 3 && number is not (1 or 2));
+
+    // Text (names, versions, the model) is read as text, not as nested messages, so a printable string is never rewritten by accident.
+    private static bool DescendsConservatively(int depth, ReadOnlySpan<byte> payload)
+    {
+        if (depth > 2)
+        {
+            return false;
+        }
+
+        foreach (byte b in payload)
+        {
+            if (b is < 0x20 or > 0x7E)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void NeutraliseUnknown(ReadOnlySpan<byte> message, int baseOffset, int start, int end, ProtobufWireType wt, int payloadLength, long fileOffset, long trackId, StripCategories cats, StripSink sink)
+    {
+        if ((cats & StripCategories.Location) != 0)
+        {
+            Neutralise(message, baseOffset, start, end, wt, payloadLength, fileOffset, trackId, StripCategories.Location, "djmd unmapped field", sink);
         }
     }
 

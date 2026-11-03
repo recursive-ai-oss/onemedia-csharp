@@ -113,6 +113,6 @@ Method: `tools/run-dji-mdpm-compare.sh` (synthetic files from `tools/gen-dji-fix
 | published AVCHD samples `dean00007.mts`, `avchd_lite_14s_playback_speed_problems.MTS` | no GPS in either; ExifTool and OneMedia both report none |
 | Pull path | decoders into a reused collector allocate 0 bytes (test); 300,000 text samples (1,200,000 items, 80 MB file): 0 bytes after the first quarter, 41 MB resident |
 
-One real `djmd` recording is in the device corpus: a DJI Osmo Pocket 3, whose 40 samples equal ExifTool's reading ([device-corpus.md](device-corpus.md)). Its protocol (`PP-101`) is not in the layout table, so its position fields are not mapped and strip leaves those samples unchanged ([strip.md](strip.md)). No freely licensed DJI aircraft video or sidecar was found, so the aircraft layouts and the text formats still rest on published format descriptions and ExifTool's reading of synthetic messages.
+One real `djmd` recording is in the device corpus: a DJI Osmo Pocket 3, whose 40 samples equal ExifTool's reading ([device-corpus.md](device-corpus.md)). Its protocol (`PP-101`) is not in the layout table, so its fields are not mapped; strip treats such samples conservatively ([strip.md](strip.md)), and the recording holds no position in its samples. No freely licensed DJI aircraft video or sidecar was found, so the aircraft layouts and the text formats still rest on published format descriptions and ExifTool's reading of synthetic messages.
 
 Fuzz: targets `telemetry-dji-text`, `telemetry-djmd`, `telemetry-mdpm`.

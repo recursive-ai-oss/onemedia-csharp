@@ -141,6 +141,23 @@ def djmd_osmo_sample(i):
     ])
 
 
+def djmd_unknown_sample(i):
+    """A protocol that is not in the table of known layouts (the shape of an Osmo Pocket 3 stream: only the first sample names the protocol and
+    holds the serial number). The position is in a group the tag documentation does not list for it, as doubles; the last sample ends in
+    bytes that are not protocol buffer fields."""
+    lat, lon = 40.1 + i * 1e-4, -105.2 - i * 1e-4
+    head = msg(1, msg(1, string(1, "dvtm_ZZ-999.proto"), string(5, "SYNTHETIC-SERIAL"), string(10, "Synthetic Model"))) if i == 0 else b""
+    tail = b"\xff\xff\xff\xff\xff" if i == 4 else b""
+    return head + b"".join([
+        msg(3,
+            msg(1, num("v", 1, i + 1)),
+            msg(2, msg(3, num("v", 1, 400 + i))),
+            msg(6, num("f64", 1, lat), num("f64", 2, lon)),
+            msg(7, msg(1, num("v", 1, 21500 + i)))),
+        msg(5, num("f64", 1, lat)),
+    ]) + tail
+
+
 def klv(key, typ, size, repeat, data):
     if typ == b"c":
         repeat = len(data)  # text: one byte per element
@@ -179,6 +196,7 @@ def main():
     UNITS = 1
     open(os.path.join(out, "djmd-real.mp4"), "wb").write(mp4(b"djmd", b"meta", [djmd_real_sample(i) for i in range(5)]))
     open(os.path.join(out, "djmd-osmo.mp4"), "wb").write(mp4(b"djmd", b"meta", [djmd_osmo_sample(i) for i in range(5)]))
+    open(os.path.join(out, "djmd-unknown.mp4"), "wb").write(mp4(b"djmd", b"meta", [djmd_unknown_sample(i) for i in range(5)]))
     for wire in ("f32", "f64", "varint"):
         samples = [djmd_sample(wire, i) for i in range(5)]
         open(os.path.join(out, f"djmd-{wire}.mp4"), "wb").write(mp4(b"djmd", b"meta", samples))

@@ -388,7 +388,8 @@ internal static class IsoStrip
             }
 
             int generation = file.BeginRead();
-            bool unknownProtocol = false;
+            int conservativeSamples = 0;
+            DjiScrub.State djmdState = new();
             try
             {
                 while (true)
@@ -417,7 +418,11 @@ internal static class IsoStrip
                     switch (format)
                     {
                         case TelemetryFormat.Djmd:
-                            unknownProtocol |= !DjiScrub.Djmd(bytes, offset, track.Id, options.Categories, sink);
+                            if (DjiScrub.Djmd(bytes, offset, track.Id, options.Categories, sink, djmdState))
+                            {
+                                conservativeSamples++;
+                            }
+
                             break;
                         case TelemetryFormat.Gpmf:
                             TelemetryScrub.Gpmf(bytes, offset, "gpmd", track.Id, options.Categories, sink);
@@ -445,9 +450,9 @@ internal static class IsoStrip
                 }
             }
 
-            if (unknownProtocol)
+            if (conservativeSamples > 0)
             {
-                sink.Leftover(options.Categories, "djmd", "message", track.Id, ByteRange.None, "A sample names a protocol that is not in the table of known DJI layouts, so its position and serial fields could not be located.");
+                sink.AddNote("Track " + track.Id + ": " + conservativeSamples + " djmd sample(s) belong to a protocol that is not in the table of known DJI layouts; the serial number was removed by its path and everything outside the device description, the stream description, the frame counter and the camera settings was removed, as was every double (docs/strip.md).");
             }
         }
     }

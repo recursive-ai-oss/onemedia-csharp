@@ -66,6 +66,51 @@ public class StripTelemetryTextTests
         }
     }
 
+    // A protocol outside the table of known layouts (the shape of an Osmo Pocket 3 stream: only the first sample names the protocol and holds the
+    // serial number). Its position, which the tables cannot locate, and the serial must go; what is understood stays.
+    [Fact]
+    public void DjmdOfAnUnknownProtocolLosesSerialAndEveryDoubleAndKeepsWhatItUnderstands()
+    {
+        (string path, byte[] original) = Copy("telemetry", "djmd-unknown.mp4");
+        try
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                Assert.True(Contains(original, BitConverter.GetBytes(40.1 + i * 1e-4)));
+                Assert.True(Contains(original, BitConverter.GetBytes(-105.2 - i * 1e-4)));
+            }
+
+            byte[] output = Run(path, original, null, out StripReport report, out StripPlan plan);
+            Assert.True(plan.Plan.IsSameLayout);
+            Assert.Equal(original.Length, output.Length);
+            Assert.True(report.IsComplete, string.Join("; ", report.NotRemoved.Select(l => l.Name + " " + l.Reason)));
+            Assert.Contains(report.Notes, n => n.Contains("not in the table", StringComparison.Ordinal));
+            Assert.False(Contains(output, "SYNTHETIC-SERIAL"u8));
+            for (int i = 0; i < 5; i++)
+            {
+                Assert.False(Contains(output, BitConverter.GetBytes(40.1 + i * 1e-4)));
+                Assert.False(Contains(output, BitConverter.GetBytes(-105.2 - i * 1e-4)));
+            }
+
+            // The unparsed bytes at the end of the last sample are gone too.
+            Assert.False(Contains(output, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF]));
+            // The device description, the camera settings and the frame counter are untouched: the protocol and model text stay.
+            Assert.True(Contains(output, "dvtm_ZZ-999.proto"u8));
+            Assert.True(Contains(output, "Synthetic Model"u8));
+            using MediaFile after = MediaFile.Open(new MemoryMediaSource(output));
+            Assert.Contains(after.Telemetry, c => c.Name == "djmd message" && c.Samples.Count == 5);
+
+            // Only device ids asked: the serial goes, the doubles stay.
+            output = Run(path, original, StripOptions.DeviceIdsOnly, out _, out _);
+            Assert.False(Contains(output, "SYNTHETIC-SERIAL"u8));
+            Assert.True(Contains(output, BitConverter.GetBytes(40.1)));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void DjmdSerialGoesOnlyWhenDeviceIdsAreAsked()
     {

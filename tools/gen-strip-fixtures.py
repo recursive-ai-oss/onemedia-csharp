@@ -209,7 +209,7 @@ def write_seeds(root):
     open(os.path.join(root, 'strip-file', 'mixed.seed'), 'wb').write(b'\x00' + build())
     # The DJI, AVCHD and text-track fixtures of the telemetry tests are seeds for strip-file too.
     tele = os.path.join(os.path.dirname(os.path.abspath(root)), 'telemetry')
-    for fixture in ('dji-text.mp4', 'djmd-real.mp4', 'djmd-osmo.mp4', 'mdpm-gps.mts'):
+    for fixture in ('dji-text.mp4', 'djmd-real.mp4', 'djmd-osmo.mp4', 'djmd-unknown.mp4', 'mdpm-gps.mts'):
         path = os.path.join(tele, fixture)
         if os.path.exists(path):
             open(os.path.join(root, 'strip-file', fixture + '.seed'), 'wb').write(b'\x00' + open(path, 'rb').read())

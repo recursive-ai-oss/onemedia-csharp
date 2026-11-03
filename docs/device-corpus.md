@@ -96,7 +96,7 @@ Time zones: AVCHD clips carry the camera clock zone in the MDPM flags byte (63 f
 
 ## Strip
 
-10 files carrying location or device ids, from several classes: 9 come out clean (ExifTool and MediaInfo show no location and no device id). The DJI Osmo Pocket 3 `djmd` samples still hold the camera serial number and position: the samples name protocol `PP-101`, which is not in the table of known layouts, so the strip leaves them unchanged and the report lists the track as not removed ([strip.md](strip.md)).
+10 files carrying location or device ids, from several classes: 9 come out clean (ExifTool and MediaInfo show no location and no device id). The tenth, the DJI Osmo Pocket 3, kept its camera serial number in the first `djmd` sample in 1.0.0 (the protocol, `PP-101`, is not in the table of known layouts, so the samples were left unchanged; its samples hold no position). Since 1.0.1 unknown protocols are stripped conservatively ([strip.md](strip.md)): ExifTool 13.60 `-a -G1 -ee` shows no serial, a byte search of the output for the serial finds nothing, the video and audio payload hashes equal the input's and ffprobe opens it. The report still lists the `dbgi` debug track as not removed (its layout is not known; it holds ISP statistics, no serial or position that the search found).
 
 ## Repair (cut at 60 %, `tools/device-repair-check.py`)
 
@@ -131,7 +131,6 @@ Fixes made on these files (tests: `ReconstructionTests`, 30; `VendorCameraTests`
 
 Privacy first:
 
-1. **Strip leaves the DJI Osmo Pocket 3 serial number and location** in its `djmd` telemetry samples: its protocol (`PP-101`) is not in the table of known layouts, so those samples are left unchanged. `StripDeviceIds` reports the field as not removed, so the leftover is visible in the report; until it is fixed, do not rely on strip to remove device identifiers from that camera's files.
 2. `TracksDuration` takes telemetry tracks into account (DJI FC6310R, above).
 3. AAC channel count: prefer the AudioSpecificConfig over the sample entry when they disagree.
 4. Pixel AAC reconstructed with a sibling recording as reference (7 of 343 packets equal).
