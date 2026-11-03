@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.8.0-preview.4] - 2026-11-03
+
+Fixes found by comparing 193 freely licensed real-device recordings with ffprobe, ExifTool and MediaInfo ([docs/device-corpus.md](docs/device-corpus.md)); each fix was checked on the recording that showed it. Strip does not yet remove the DJI Osmo Pocket 3 serial number from its telemetry samples (reported as not removed). Previews stay previews as before.
+
 ### Fixed
 
 - QuickTime PCM audio (`sowt`, `twos`, ...) whose sample table states a size of one byte per frame came out in packets a quarter or half of the real size. The frame size is taken from the sample description (checked on Canon, Nikon and Olympus recordings against ffprobe).

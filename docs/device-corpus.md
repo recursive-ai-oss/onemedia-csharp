@@ -127,14 +127,17 @@ Fixes made on these files (tests: `ReconstructionTests`, 30; `VendorCameraTests`
 - Pixel AAC: a `mett` metadata track (206 to 232 byte samples, sometimes runs of equal sizes) sits between samples; gaps over 32 bytes broke the chain and false AAC starts inside it won. The sizes of the reference's unframed tracks now set the hop and the allowed gap. Self reference: AAC 348 of 348 equal (was 7). Xiaomi (runs of 452-byte samples): AAC 991 equal.
 - Make, model and software from vendor atoms (Nikon `NCDT`/`NCTG` and `TAGS`, Olympus `TAGS`, Panasonic `PANA`, Canon `CNMN`, DJI `©mdl`, Nikon AVI): all Make and Model rows on the corpus match ExifTool except the two listed above.
 
-## Backlog
+## Planned for 1.0.x
 
-- DJI Osmo Pocket 3 `djmd` serial number (strip).
-- `TracksDuration` takes telemetry tracks into account (DJI FC6310R, above).
-- AAC channel count: prefer the AudioSpecificConfig over the sample entry when they disagree.
-- Pixel AAC with a sibling reference (7 of 343).
-- Panasonic "Ver.x" software, Fujifilm AVI make and model, Olympus MOV1/MOV2 layouts (no sample).
-- Leading pictures in the edit list of reconstructed compact-camera files.
+Privacy first:
+
+1. **Strip leaves the DJI Osmo Pocket 3 serial number** in its `djmd` telemetry samples: the layout of that protocol is not in the published tag tables. `StripDeviceIds` reports the field as not removed, so the leftover is visible in the report; until it is fixed, do not rely on strip to remove device identifiers from that camera's files.
+2. `TracksDuration` takes telemetry tracks into account (DJI FC6310R, above).
+3. AAC channel count: prefer the AudioSpecificConfig over the sample entry when they disagree.
+4. Pixel AAC reconstructed with a sibling recording as reference (7 of 343 packets equal).
+5. Panasonic "Ver.x" software, Fujifilm AVI make and model, Olympus MOV1/MOV2 layouts (no sample).
+6. Leading pictures in the edit list of reconstructed compact-camera files.
+7. The coverage gaps below: each is a device class to add and check when freely licensed files are found.
 
 ## Coverage gaps
 
