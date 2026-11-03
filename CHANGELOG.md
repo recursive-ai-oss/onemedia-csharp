@@ -4,6 +4,23 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-03
+
+Fixes for the items listed as planned in 1.0.0. Each was checked on the recording that showed it ([docs/device-corpus.md](docs/device-corpus.md)); no public API changed.
+
+### Fixed
+
+- **Strip, DJI `djmd` samples with a protocol outside the table of known layouts** (the Osmo Pocket 3, `PP-101`): the camera serial number is removed from every sample, and everything outside the device description, the stream description and the frame counter and camera settings is overwritten, as is every 64-bit double, so an unmapped layout cannot leave a position behind. In 1.0.0 these samples were left unchanged and the report listed them as not removed. Checked on the Osmo Pocket 3 recording: ExifTool 13.60 `-a -G1 -ee` shows no serial number, a byte search of the output for the serial finds nothing, the video and audio payload hashes equal the input's and ffprobe opens it. That recording's samples carry the serial number and no position. The `dbgi` debug track is still not inspected ([docs/strip.md](docs/strip.md)).
+- **File duration with a telemetry track** (DJI FC6310R): data tracks no longer set the file duration while an audio or video track exists; 5.8725 s, was 7.0 s (ffprobe 5.872533).
+- **AAC channel count**: the AudioSpecificConfig wins over a sample entry that disagrees (one recording: 1 channel, was 2; ffprobe and MediaInfo say 1).
+- **Reconstruction of a cut Pixel 8 Pro recording with another recording of the same model as the reference**: 348 of 348 AAC packets equal the original's (was 7 of 343). The cause was a false AAC frame inside a timed-metadata sample whose size the reference did not list; sizes beyond the reference's range are now tried, with a confirmation rule. The pair with a Pixel 8 and the self-reference runs are unchanged.
+- **Reconstruction of cut Nikon D5300 and Olympus TG-4 recordings**: the edit list now starts at the earliest shown picture, as the camera wrote it, so the B pictures before the first I picture are no longer hidden; picture times equal the original's on every compared sample (4 recordings, sibling and self reference: 519/519, 237/237, 211/211, 176/176; they differed on every sample before).
+- **Facts**: Make and Model of a Fujifilm AVI (`strd` chunk; FUJIFILM / FinePix AV230, as ExifTool) and the Panasonic firmware text in the `PANA` atom (`Ver.2.0` on a Lumix GH6 recording, as ExifTool) are read. Olympus MOV1/MOV2 layouts stay unread (no sample).
+
+### Changed
+
+- `PACKAGE.md` links its documents on the release tag, so the nuget.org page keeps pointing at the text that shipped. The README no longer says the API may change before 1.0.
+
 ## [1.0.0] - 2026-11-03
 
 First stable release. The public API is the one in 0.8.0-preview.4, unchanged, and is now kept compatible under package validation. Every area keeps the verification limits its documentation states; the items planned for 1.0.x are listed in the README and [docs/device-corpus.md](docs/device-corpus.md), first among them that strip leaves the location and serial number in DJI `djmd` samples of protocols outside the known table (the DJI Osmo Pocket 3).
