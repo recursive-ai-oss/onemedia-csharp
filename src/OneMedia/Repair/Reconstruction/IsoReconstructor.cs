@@ -1242,13 +1242,20 @@ public static class IsoReconstructor
         int count = idx.Count;
         long[] display = new long[count];
         bool ordered = ComputeDisplayOrder(setups[track], samples, idx, display, t, out long delay);
-        t.Delay = delay;
+        // The edit starts at the earliest presentation time, as cameras write it: pictures that show before the first I picture in display
+        // order (leading B pictures) are part of the clip. Observed in Nikon D5300 and Olympus TG-4 files, whose edit starts one frame in while
+        // the first I picture sits three frames in.
+        long firstShown = long.MaxValue;
         for (int k = 0; k < count; k++)
         {
+            long shown = ordered ? display[k] + delay : k;
+            firstShown = Math.Min(firstShown, shown);
             t.Dts.Add(k * frame);
-            t.Pts.Add((ordered ? display[k] + delay : k) * frame);
+            t.Pts.Add(shown * frame);
             t.Duration.Add(frame);
         }
+
+        t.Delay = ordered && count > 0 ? firstShown : 0;
 
         if (!ordered)
         {
