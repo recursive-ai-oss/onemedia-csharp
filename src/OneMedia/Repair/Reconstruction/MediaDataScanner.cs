@@ -123,6 +123,8 @@ internal sealed class MediaDataScanner
     }
 
     private int[] _fillerGaps = [];
+    private int _exactFillerCount;
+    private const int GuessedGapMinSample = 64;
 
     /// <summary>
     /// Sizes (inclusive ranges) of the samples of reference tracks that cannot be framed, such as a timed-metadata track whose samples sit between
@@ -132,6 +134,7 @@ internal sealed class MediaDataScanner
     public void SetFillerSizes(IReadOnlyList<(int Min, int Max)> sizes)
     {
         SortedSet<int> gaps = [];
+        SortedSet<int> widened = [];
         foreach ((int min, int max) in sizes)
         {
             if (min < 1)
@@ -152,10 +155,23 @@ internal sealed class MediaDataScanner
                 {
                     gaps.Add(g);
                 }
+
+                // A reference from another recording of the same device shows only part of the sizes this recording uses (observed: a
+                // timed-metadata track of 210 to 212 bytes in the reference, 206 to 232 in the cut file). Sizes up to 15 % beyond the range
+                // are tried too, after the listed ones: the recording itself as the reference never needs them, and trying them first made it
+                // take a size inside the item for the gap (a false sample follows by chance).
+                int low = Math.Max(1, min - (int)((long)max * 15 / 100));
+                int high = (int)Math.Min(64 << 10, max + ((long)max * 15 / 100));
+                for (int g = low; g <= high; g++)
+                {
+                    widened.Add(g);
+                }
             }
         }
 
-        _fillerGaps = [.. gaps];
+        widened.ExceptWith(gaps);
+        _exactFillerCount = gaps.Count;
+        _fillerGaps = [.. gaps, .. widened];
     }
 
     public List<SampleRec> Samples { get; } = [];
@@ -304,11 +320,15 @@ internal sealed class MediaDataScanner
     // The size of the unframed samples at pos, when a confirmed sample of a known track starts right after a run of them.
     private int? FillerHop(long pos, List<TrackFramer> order)
     {
-        foreach (int gap in _fillerGaps)
+        for (int i = 0; i < _fillerGaps.Length; i++)
         {
+            int gap = _fillerGaps[i];
             foreach (TrackFramer f in order)
             {
-                if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok && ConfirmResync(f, pos + gap, info, order))
+                // A size beyond the reference's range is a guess. Inside an item of the unframed track a few bytes can parse as a tiny sample that
+                // the tolerance for stray bytes then carries to the real next sample, so a guessed size counts only for a sample of some length, with
+                // a longer run after it.
+                if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok && (i < _exactFillerCount || info.Length >= GuessedGapMinSample) && ConfirmResync(f, pos + gap, info, order, i >= _exactFillerCount))
                 {
                     return gap;
                 }
@@ -503,12 +523,12 @@ internal sealed class MediaDataScanner
     // After a gap no track explains, a candidate counts only when it is confirmed. Other tracks need a neighbour that is explained. A video
     // access unit is long and checkable but still can occur by chance inside unframed data, so it needs the next video access unit to follow
     // within a short distance and to continue its numbering (H.264 frame_num), or the input to end.
-    private bool ConfirmResync(TrackFramer f, long pos, FrameInfo info, List<TrackFramer> order)
+    private bool ConfirmResync(TrackFramer f, long pos, FrameInfo info, List<TrackFramer> order, bool guessedGap = false)
     {
         if (f.Kind != TrackKind.Video || info.Length < 32)
         {
             // A sample of a few bytes (a silent audio frame) parses by chance inside other data far more easily than a long one: it needs a longer run after it.
-            return Chain(pos + info.Length, order, info.Length < 16 ? 4 : 2, null, MaxChainGap);
+            return Chain(pos + info.Length, order, guessedGap ? 3 : info.Length < 16 ? 4 : 2, null, MaxChainGap);
         }
 
         long after = pos + info.Length;
