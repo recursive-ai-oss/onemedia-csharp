@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.8.0-preview.3] - 2026-11-03
+
+Fixes from review of 0.8.0-preview.2, including a correction to its repair notes (below). Previews stay previews as before.
+
 ### Added
 
 - `track.Decode(out AudioDecodeReport report)` in `RecursiveAI.OneMedia.Audio`: the track-level form of `media.Decode(out report, track)`, so HE-AAC rate and channel signalling can be read without the file.
