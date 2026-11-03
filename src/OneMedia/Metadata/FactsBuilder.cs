@@ -237,6 +237,31 @@ internal sealed class FactsBuilder(DefectLog defects)
             _ => VendorCameraRecords.ReadNikonTags(head) is { IsEmpty: false } nikon ? nikon : VendorCameraRecords.ReadOlympusTags(head),
         };
         AddVendorIdentity(id, $"{t.System}:{t.Key}", t.ValueRange);
+        if (t.Key == "PANA")
+        {
+            AddPanasonicSoftware(t);
+        }
+    }
+
+    // The PANA atom is a fixed layout (the model name sits at byte 12); at byte 0x200080 it holds a TIFF/Exif block whose IFD0 Software field is the
+    // firmware revision the camera prints ("Ver.2.0"). Observed in a Lumix mirrorless file, where it is the only place that names the firmware; only the
+    // Software text is taken from the block, not its times or position.
+    private const long PanaExifOffset = 0x200080;
+    private const long PanaExifMaxBytes = 256 * 1024;
+
+    private void AddPanasonicSoftware(NativeTag t)
+    {
+        if (t.ValueRange.Length < PanaExifOffset + 16)
+        {
+            return;
+        }
+
+        byte[] exif = t.ReadValueAt(PanaExifOffset, PanaExifMaxBytes);
+        if (Exif.ExifBlock.TryParse(exif, t.ValueRange.Offset + PanaExifOffset, t.IoLimits, defects, out Exif.ExifBlock block, searchBytes: 0)
+            && block.Find("IFD0", 0x0131) is { } e && e.AsText()?.Trim() is { Length: > 0 } software)
+        {
+            AddVendorString(Software, software, $"{t.System}:{t.Key}:IFD0.Software", e.ValueRange);
+        }
     }
 
     /// <summary>Adds the identity read from a vendor AVI chunk.</summary>

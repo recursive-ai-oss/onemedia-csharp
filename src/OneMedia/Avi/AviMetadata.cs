@@ -49,6 +49,19 @@ internal static class AviMetadataReader
             facts.AddVendorIdentity(VendorCameraRecords.ReadNikonAviTags(nctg.ReadData(4096, cancellationToken)), "riff:ncdt/nctg", nctg.Range);
         }
 
+        if (reader.Root?.Find(RiffChunk.Ids.List, "hdrl") is { } headerList)
+        {
+            // Fujifilm cameras keep their maker and model in the strd chunk of the video stream.
+            foreach (IStructureNode n in headerList.Children)
+            {
+                if (n is RiffChunk { Id: var id, ListType: "strl" } strl && id == RiffChunk.Ids.List && strl.Find(RiffChunk.Make("strd")) is { } strd)
+                {
+                    facts.AddVendorIdentity(VendorCameraRecords.ReadFujifilmAviStrd(strd.ReadData(4096, cancellationToken)), "riff:strd", strd.Range);
+                    break;
+                }
+            }
+        }
+
         if (reader.Duration.IsKnown)
         {
             facts.Duration.Add(0, new FactCandidate<MediaTime>(reader.Duration, "container", reader.Duration.ToString(), "the longest stream: length times scale over rate"));

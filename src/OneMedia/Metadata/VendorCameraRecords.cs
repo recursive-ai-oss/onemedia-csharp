@@ -188,6 +188,62 @@ internal static class VendorCameraRecords
         return new Identity(make, model, software);
     }
 
+    /// <summary>
+    /// Reads the <c>strd</c> chunk of a Fujifilm AVI video stream. The chunk starts with the text <c>AVIF</c> and four bytes, then holds a little-endian
+    /// TIFF directory without a TIFF header: an entry count, 12-byte entries of tag, type, count and value, and text values at offsets counted from the
+    /// start of the directory (observed in a FinePix movie: the entries sit at byte 8 of the chunk and tags 0x010F and 0x0110 give the maker and model).
+    /// </summary>
+    /// <param name="chunk">The chunk's data.</param>
+    public static Identity ReadFujifilmAviStrd(ReadOnlySpan<byte> chunk)
+    {
+        if (chunk.Length < 10 || !chunk.StartsWith("AVIF"u8))
+        {
+            return default;
+        }
+
+        ReadOnlySpan<byte> ifd = chunk[8..];
+        int count = BinaryPrimitives.ReadUInt16LittleEndian(ifd);
+        string? make = null;
+        string? model = null;
+        string? software = null;
+        for (int i = 0; i < count && 2 + ((i + 1) * 12) <= ifd.Length; i++)
+        {
+            ReadOnlySpan<byte> e = ifd.Slice(2 + (i * 12), 12);
+            ushort tag = BinaryPrimitives.ReadUInt16LittleEndian(e);
+            if (tag is not (0x010F or 0x0110 or 0x0131) || BinaryPrimitives.ReadUInt16LittleEndian(e[2..]) != 2)
+            {
+                continue;
+            }
+
+            uint length = BinaryPrimitives.ReadUInt32LittleEndian(e[4..]);
+            ReadOnlySpan<byte> text;
+            if (length <= 4)
+            {
+                text = e.Slice(8, (int)length);
+            }
+            else
+            {
+                uint at = BinaryPrimitives.ReadUInt32LittleEndian(e[8..]);
+                if (at > ifd.Length || length > ifd.Length - at)
+                {
+                    continue;
+                }
+
+                text = ifd.Slice((int)at, (int)length);
+            }
+
+            string? value = CleanText(text);
+            switch (tag)
+            {
+                case 0x010F: make = value; break;
+                case 0x0110: model = value; break;
+                default: software = value; break;
+            }
+        }
+
+        return new Identity(make, model, software);
+    }
+
     // A zero-padded text field: the part before the first NUL, trimmed, accepted only when it is printable ASCII or Latin-1.
     // stopAtControl ends the text at any control byte instead of rejecting it. joinParts drops NULs inside the text and keeps the
     // rest (the firmware field of a Nikon AVI holds "A1.00", a NUL, " B1.00" and is shown as one string).

@@ -243,6 +243,12 @@ public sealed class NativeTag
     /// <summary>Reads at most <paramref name="max"/> leading bytes of the stored value, for atoms that hold a few strings before large payloads.</summary>
     internal byte[] ReadValuePrefix(int max) => Loader is not null ? Loader() : _io.ReadUpTo(ValueRange, max);
 
+    /// <summary>Reads up to <paramref name="max"/> bytes of the stored value starting <paramref name="offset"/> bytes in, for atoms with a fixed layout that holds a block deep inside.</summary>
+    internal byte[] ReadValueAt(long offset, long max) =>
+        Loader is not null || offset < 0 || offset >= ValueRange.Length ? [] : _io.Read(new ByteRange(ValueRange.Offset + offset, Math.Min(max, ValueRange.Length - offset)));
+
+    internal MediaLimits IoLimits => _io.Limits;
+
     private string? LoadText()
     {
         try

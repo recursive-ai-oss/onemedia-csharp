@@ -125,6 +125,43 @@ public class VendorCameraTests
         Assert.True(VendorCameraRecords.ReadPanasonicPana(new byte[200]).IsEmpty);
     }
 
+    // The strd chunk of a Fujifilm AVI: "AVIF", four bytes, then a TIFF-style directory whose text values are counted from the directory start.
+    private static byte[] FujifilmStrd(string make, string model)
+    {
+        byte[] makeBytes = Text(make, make.Length + 1);
+        byte[] modelBytes = Text(model, model.Length + 1);
+        int dir = 2 + (3 * 12);
+        byte[] d = new byte[8 + dir + makeBytes.Length + modelBytes.Length];
+        "AVIF"u8.CopyTo(d);
+        BinaryPrimitives.WriteUInt16LittleEndian(d.AsSpan(8), 3);
+        Span<byte> e0 = d.AsSpan(10, 12);
+        BinaryPrimitives.WriteUInt16LittleEndian(e0, 0x010F);
+        BinaryPrimitives.WriteUInt16LittleEndian(e0[2..], 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(e0[4..], (uint)makeBytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(e0[8..], (uint)dir);
+        Span<byte> e1 = d.AsSpan(22, 12);
+        BinaryPrimitives.WriteUInt16LittleEndian(e1, 0x0110);
+        BinaryPrimitives.WriteUInt16LittleEndian(e1[2..], 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(e1[4..], (uint)modelBytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(e1[8..], (uint)(dir + makeBytes.Length));
+        // a third entry of another type is skipped
+        BinaryPrimitives.WriteUInt16LittleEndian(d.AsSpan(34), 0x0132);
+        BinaryPrimitives.WriteUInt16LittleEndian(d.AsSpan(36), 3);
+        makeBytes.CopyTo(d, 8 + dir);
+        modelBytes.CopyTo(d, 8 + dir + makeBytes.Length);
+        return d;
+    }
+
+    [Fact]
+    public void FujifilmAviStrdGivesMakeAndModel()
+    {
+        VendorCameraRecords.Identity id = VendorCameraRecords.ReadFujifilmAviStrd(FujifilmStrd("EXAMPLEMAKER", "Model X1"));
+        Assert.Equal("EXAMPLEMAKER", id.Make);
+        Assert.Equal("Model X1", id.Model);
+        Assert.True(VendorCameraRecords.ReadFujifilmAviStrd("AVIF"u8).IsEmpty);
+        Assert.True(VendorCameraRecords.ReadFujifilmAviStrd(Text("NOTAVIFAT", 64)).IsEmpty);
+    }
+
     [Fact]
     public void CanonCnmnAndDjiModelAtomsGiveTheModel()
     {
