@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using RecursiveAI.OneMedia.Codecs.Pcm;
 using RecursiveAI.OneMedia.IsoBmff;
 using RecursiveAI.OneMedia.Repair.Reconstruction;
 
@@ -187,6 +188,238 @@ public sealed class ReconstructionTests
         AssertPrefix(original, rebuilt, TrackKind.Video);
         AssertPrefix(original, rebuilt, TrackKind.Audio);
         Assert.True(report.RecoveredFraction > 0.5, $"recovered {report.RecoveredFraction}");
+    }
+
+    // A compact camera whose H.264 slice data is not escaped: most pictures hold 00 00 00 inside a NAL unit, which a valid stream never does.
+    // The reference shows it, and the pictures are found all the same.
+    [Fact]
+    public void PicturesWithUnescapedSliceDataAreFoundWhenTheReferenceShowsIt()
+    {
+        byte[] source = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "avi", "avcc-odd-source.mp4"));
+        using MemoryStream ms = new();
+        using (IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(source)))
+        using (IsoMuxer mux = new(ms, new IsoMuxOptions { Layout = IsoLayout.MoovLast }))
+        {
+            foreach (MediaTrack t in d.Tracks)
+            {
+                mux.AddTrack(t);
+            }
+
+            while (d.TryReadPacket(out PacketView v))
+            {
+                byte[] data = v.Data.ToArray();
+                if (d.Tracks[v.Info.TrackIndex].Kind == TrackKind.Video && data.Length > 40)
+                {
+                    data.AsSpan(data.Length - 12, 4).Clear(); // inside the last NAL unit, past its header
+                }
+
+                mux.WritePacket(v.Info, data);
+            }
+
+            mux.Finish();
+        }
+
+        byte[] healthy = ms.ToArray();
+        List<Packet> original = Packets(healthy);
+        Assert.NotEmpty(OfKind(original, TrackKind.Video));
+        byte[] cut = Cut(healthy, 0.8);
+        (ReconstructionReport report, byte[] output) = Rebuild(cut, healthy);
+        List<Packet> rebuilt = Packets(output);
+        AssertPrefix(original, rebuilt, TrackKind.Video);
+        Assert.True(OfKind(rebuilt, TrackKind.Video).Count >= 3, "pictures found: " + OfKind(rebuilt, TrackKind.Video).Count);
+        Assert.Contains(report.Notes, n => n.Contains("emulation prevention", StringComparison.Ordinal));
+
+        // Without the reference's evidence the check stays on and the same pictures are turned down.
+        (ReconstructionReport _, byte[] strict) = Rebuild(cut, source);
+        Assert.True(OfKind(Packets(strict), TrackKind.Video).Count < OfKind(rebuilt, TrackKind.Video).Count);
+    }
+
+    // A compact camera interleaves one second of sound (here 46 packets of 2,048 bytes and a short one) with a run of pictures. The sound ends
+    // between two packets' worth of bytes, so the picture after it does not start on a packet boundary, and it must still be found.
+    [Fact]
+    public void SoundChunksThatEndOffAPacketBoundaryDoNotHideThePicturesAfterThem()
+    {
+        byte[] source = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "avi", "avcc-odd-source.mp4"));
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(source));
+        MediaTrack video = d.Tracks.First(t => t.Kind == TrackKind.Video) with { Index = 0, Timescale = 90000 };
+        List<byte[]> pictures = [];
+        List<bool> keys = [];
+        while (d.TryReadPacket(out PacketView v))
+        {
+            if (d.Tracks[v.Info.TrackIndex].Kind == TrackKind.Video)
+            {
+                pictures.Add(v.Data.ToArray());
+                keys.Add(v.Info.IsKeyframe);
+            }
+        }
+
+        Assert.True(keys[0]);
+        MediaTrack sound = new() { Index = 1, Kind = TrackKind.Audio, Codec = CodecId.Pcm, Timescale = 48000, Audio = new AudioTrackInfo(48000, 1, 16) };
+        Random rnd = new(7);
+        using MemoryStream ms = new();
+        using (IsoMuxer mux = new(ms, new IsoMuxOptions { Kind = IsoFileKind.Mov, Layout = IsoLayout.MoovLast }))
+        {
+            mux.AddTrack(video);
+            mux.AddTrack(sound, new IsoTrackOptions { Pcm = new PcmSampleFormat(PcmEncoding.SignedInteger, 16, 16, false) });
+            long frames = 0;
+            long picture = 0;
+            for (int group = 0; group < 4; group++)
+            {
+                for (int i = 0; i < 47; i++)
+                {
+                    byte[] pcm = new byte[i < 46 ? 2048 : 1888];
+                    rnd.NextBytes(pcm);
+                    long n = pcm.Length / 2;
+                    mux.WritePacket(new PacketInfo(1, new MediaTime(frames, 48000), MediaTime.Unknown, new MediaTime(n, 48000), PacketAttributes.Keyframe, ByteRange.None, pcm.Length), pcm);
+                    frames += n;
+                }
+
+                for (int i = 0; i < pictures.Count; i++, picture++)
+                {
+                    MediaTime t = new(picture * 3000, 90000);
+                    mux.WritePacket(new PacketInfo(0, t, t, new MediaTime(3000, 90000), keys[i] ? PacketAttributes.Keyframe : PacketAttributes.None, ByteRange.None, pictures[i].Length), pictures[i]);
+                }
+            }
+
+            mux.Finish();
+        }
+
+        byte[] healthy = ms.ToArray();
+        List<Packet> original = Packets(healthy);
+        byte[] cut = Cut(healthy, 0.8);
+        (ReconstructionReport _, byte[] output) = Rebuild(cut, healthy);
+        List<Packet> rebuilt = Packets(output);
+        AssertPrefix(original, rebuilt, TrackKind.Video);
+
+        // The cut falls inside a chunk of sound, so the last rebuilt packet is the start of the original's packet at that place.
+        List<Packet> rebuiltSound = OfKind(rebuilt, TrackKind.Audio);
+        Packet last = rebuiltSound[^1];
+        Assert.True(OfKind(original, TrackKind.Audio)[rebuiltSound.Count - 1].Data.AsSpan().StartsWith(last.Data));
+        rebuilt.Remove(last);
+        AssertPrefix(original, rebuilt, TrackKind.Audio);
+        Assert.True(OfKind(rebuilt, TrackKind.Video).Count >= 3 * pictures.Count - 1, "pictures found: " + OfKind(rebuilt, TrackKind.Video).Count);
+        Assert.True(OfKind(rebuilt, TrackKind.Audio).Count >= 3 * 47 - 1, "sound packets found: " + OfKind(rebuilt, TrackKind.Audio).Count);
+    }
+
+    // A phone puts a sample of a metadata track nobody can frame (200 to 230 bytes, longer than the few bytes a chain of samples may skip) before
+    // every sound frame. The reference says how big those samples are, so the sound frame after one is found and is not mistaken for part of it.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SamplesOfAnUnframedTrackAreSkippedByTheSizesTheReferenceShows(bool equalSizedRuns)
+    {
+        byte[] source = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "avi", "avcc-odd-source.mp4"));
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(source));
+        MediaTrack video = d.Tracks.First(t => t.Kind == TrackKind.Video) with { Index = 0, Timescale = 90000 };
+        List<byte[]> pictures = [];
+        List<bool> keys = [];
+        while (d.TryReadPacket(out PacketView v))
+        {
+            if (d.Tracks[v.Info.TrackIndex].Kind == TrackKind.Video)
+            {
+                pictures.Add(v.Data.ToArray());
+                keys.Add(v.Info.IsKeyframe);
+            }
+        }
+
+        MediaTrack amr = new()
+        {
+            Index = 1,
+            Kind = TrackKind.Audio,
+            Codec = CodecId.AmrNb,
+            CodecTag = "samr",
+            Configuration = new CodecConfiguration(new byte[] { 0x46, 0x46, 0x4D, 0x50, 0, 0x81, 0xFF, 0, 1 }, "damr"),
+            Timescale = 8000,
+            Audio = new AudioTrackInfo(8000, 1),
+        };
+        MediaTrack meta = new() { Index = 2, Kind = TrackKind.Data, CodecTag = "mett", Configuration = new CodecConfiguration(new byte[] { 0, 0, 0, 0, 0, 0, 0, 1, 0 }, "mett"), Timescale = 90000 };
+        Random rnd = new(11);
+        using MemoryStream ms = new();
+        using (IsoMuxer mux = new(ms, new IsoMuxOptions { Kind = IsoFileKind.Mp4, Layout = IsoLayout.MoovLast }))
+        {
+            mux.AddTrack(video);
+            mux.AddTrack(amr);
+            mux.AddTrack(meta);
+            long n = 0;
+            for (int group = 0; group < 3; group++)
+            {
+                for (int i = 0; i < pictures.Count; i++, n++)
+                {
+                    MediaTime t = new(n * 3000, 90000);
+                    // Either one sample of 200 to 230 bytes, or a run of three samples of 215 bytes (a recorder that writes its metadata in chunks).
+                    for (int r = 0; r < (equalSizedRuns ? 3 : 1); r++)
+                    {
+                        byte[] note = new byte[equalSizedRuns ? 215 : 200 + rnd.Next(31)];
+                        Array.Fill(note, (byte)'A'); // text-like bytes, none of which is an AMR table-of-contents byte or a plausible NAL header
+                        MediaTime nt = new((n * 3 + r) * 1000, 90000);
+                        mux.WritePacket(new PacketInfo(2, nt, nt, new MediaTime(1000, 90000), PacketAttributes.Keyframe, ByteRange.None, note.Length), note);
+                    }
+
+                    byte[] frame = new byte[32];
+                    rnd.NextBytes(frame);
+                    frame[0] = (7 << 3) | 4;
+                    mux.WritePacket(new PacketInfo(1, new MediaTime(n * 160, 8000), new MediaTime(n * 160, 8000), new MediaTime(160, 8000), PacketAttributes.Keyframe, ByteRange.None, frame.Length), frame);
+                    mux.WritePacket(new PacketInfo(0, t, t, new MediaTime(3000, 90000), keys[i] ? PacketAttributes.Keyframe : PacketAttributes.None, ByteRange.None, pictures[i].Length), pictures[i]);
+                }
+            }
+
+            mux.Finish();
+        }
+
+        byte[] healthy = ms.ToArray();
+        List<Packet> original = Packets(healthy);
+        Assert.Equal(3 * pictures.Count, OfKind(original, TrackKind.Audio).Count);
+        byte[] cut = Cut(healthy, 0.85);
+        (ReconstructionReport _, byte[] output) = Rebuild(cut, healthy);
+        List<Packet> rebuilt = Packets(output);
+        AssertPrefix(original, rebuilt, TrackKind.Video);
+        AssertPrefix(original, rebuilt, TrackKind.Audio);
+        Assert.True(OfKind(rebuilt, TrackKind.Audio).Count >= 3 * pictures.Count - 4, "sound frames found: " + OfKind(rebuilt, TrackKind.Audio).Count);
+    }
+
+    // A phone that records a variable frame rate: a reference with unequal frame durations gives the typical duration to every picture, so the
+    // times can differ from the recording's and the track is not reported with the top confidence. Equal durations keep it.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void VariableFrameDurationsInTheReferenceLowerTheConfidence(bool variable)
+    {
+        byte[] source = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "avi", "avcc-odd-source.mp4"));
+        using IsoBmffDemuxer d = IsoBmffDemuxer.Open(new MemoryMediaSource(source));
+        MediaTrack video = d.Tracks.First(t => t.Kind == TrackKind.Video) with { Index = 0, Timescale = 90000 };
+        List<byte[]> pictures = [];
+        List<bool> keys = [];
+        while (d.TryReadPacket(out PacketView v))
+        {
+            if (d.Tracks[v.Info.TrackIndex].Kind == TrackKind.Video)
+            {
+                pictures.Add(v.Data.ToArray());
+                keys.Add(v.Info.IsKeyframe);
+            }
+        }
+
+        using MemoryStream ms = new();
+        using (IsoMuxer mux = new(ms, new IsoMuxOptions { Layout = IsoLayout.MoovLast }))
+        {
+            mux.AddTrack(video);
+            long at = 0;
+            for (int i = 0; i < 6 * pictures.Count; i++)
+            {
+                long duration = variable && i % 2 == 1 ? 6000 : 3000;
+                MediaTime t = new(at, 90000);
+                int k = i % pictures.Count;
+                mux.WritePacket(new PacketInfo(0, t, t, new MediaTime(duration, 90000), keys[k] ? PacketAttributes.Keyframe : PacketAttributes.None, ByteRange.None, pictures[k].Length), pictures[k]);
+                at += duration;
+            }
+
+            mux.Finish();
+        }
+
+        byte[] healthy = ms.ToArray();
+        (ReconstructionReport report, byte[] _) = Rebuild(Cut(healthy, 0.8), healthy);
+        ReconstructedTrack track = Assert.Single(report.Tracks);
+        Assert.Equal(variable ? ReconstructionConfidence.Medium : ReconstructionConfidence.High, track.Confidence);
+        Assert.Equal(variable, track.Notes.Any(n => n.Contains("durations vary", StringComparison.Ordinal)));
     }
 
     private static string TempFile(byte[] bytes)

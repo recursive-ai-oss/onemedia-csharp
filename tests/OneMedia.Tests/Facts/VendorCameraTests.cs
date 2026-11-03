@@ -146,6 +146,22 @@ public class VendorCameraTests
     }
 
     [Fact]
+    public void FixtureWithFiveVendorAtomsGivesACandidateFromEach()
+    {
+        // Written by tools/gen-vendor-camera-fixture.py.
+        TagTestHelpers.WithIso(TagTestHelpers.Fixture("vendor_camera_atoms.mov"), m =>
+        {
+            string[] models = [.. m.Facts.Model.Candidates.Select(c => c.Value)];
+            Assert.Contains("Z9000", models);
+            Assert.Contains("L99", models);
+            Assert.Contains("TG-4", models);
+            Assert.Contains("DC-X1", models);
+            Assert.Contains("Canon EOS Q1", models);
+            Assert.Contains("Panasonic", m.Facts.Make.Candidates.Select(c => c.Value));
+        });
+    }
+
+    [Fact]
     public void NikonAviChunkGivesMakeModelAndSoftware()
     {
         static byte[] Rec(ushort tag, string s)

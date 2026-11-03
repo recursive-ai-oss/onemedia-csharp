@@ -122,6 +122,42 @@ internal sealed class MediaDataScanner
         _pcmTrack = pcmTrack;
     }
 
+    private int[] _fillerGaps = [];
+
+    /// <summary>
+    /// Sizes (inclusive ranges) of the samples of reference tracks that cannot be framed, such as a timed-metadata track whose samples sit between
+    /// the others. A chain of samples allows a gap of exactly such a size between two samples, in addition to the few bytes of <see cref="MaxChainGap"/>.
+    /// A track whose samples all have one size is often written as a run of them, so multiples of that size (up to 64 KiB) count too.
+    /// </summary>
+    public void SetFillerSizes(IReadOnlyList<(int Min, int Max)> sizes)
+    {
+        SortedSet<int> gaps = [];
+        foreach ((int min, int max) in sizes)
+        {
+            if (min < 1)
+            {
+                continue;
+            }
+
+            if (min == max)
+            {
+                for (long g = min; g <= (64 << 10) && gaps.Count < 4096; g += min)
+                {
+                    gaps.Add((int)g);
+                }
+            }
+            else
+            {
+                for (int g = min; g <= max; g++)
+                {
+                    gaps.Add(g);
+                }
+            }
+        }
+
+        _fillerGaps = [.. gaps];
+    }
+
     public List<SampleRec> Samples { get; } = [];
 
     public List<ByteRange> Used { get; } = [];
@@ -226,8 +262,15 @@ internal sealed class MediaDataScanner
 
         // Each sample may follow a few bytes of something unframed. Discovering a track allows none, since a wrong guess about
         // arbitrary data (PCM) must not be confirmed by chance.
-        for (int gap = 0; gap <= maxGap; gap++)
+        int count = maxGap + 1 + (maxGap > 0 ? _fillerGaps.Length : 0);
+        for (int n = 0; n < count; n++)
         {
+            int gap = n <= maxGap ? n : _fillerGaps[n - maxGap - 1];
+            if (n > maxGap && gap <= maxGap)
+            {
+                continue;
+            }
+
             if (pos + gap >= _end)
             {
                 return usedMust && maxGap > 0;
@@ -256,6 +299,23 @@ internal sealed class MediaDataScanner
         }
 
         return false;
+    }
+
+    // The size of the unframed samples at pos, when a confirmed sample of a known track starts right after a run of them.
+    private int? FillerHop(long pos, List<TrackFramer> order)
+    {
+        foreach (int gap in _fillerGaps)
+        {
+            foreach (TrackFramer f in order)
+            {
+                if (TryOne(f, pos + gap, out FrameInfo info) == Status.Ok && ConfirmResync(f, pos + gap, info, order))
+                {
+                    return gap;
+                }
+            }
+        }
+
+        return null;
     }
 
     public void Run()
@@ -356,6 +416,16 @@ internal sealed class MediaDataScanner
                 pos += hitInfo.Length;
                 lastEnd = pos;
                 atBoundary = true;
+                continue;
+            }
+
+            if (unframedStart < 0 && pos == lastEnd && partial is null && _fillerGaps.Length > 0 && FillerHop(pos, order) is { } hop)
+            {
+                // A sample of a track nobody can frame sits here (its size is in the reference's range): the next sample begins right after it,
+                // before any byte inside it that looks like a sample start by chance.
+                unframedStart = pos;
+                pos += hop;
+                atBoundary = false;
                 continue;
             }
 
@@ -534,10 +604,13 @@ internal sealed class MediaDataScanner
         }
     }
 
-    // PCM has no framing: the bytes up to the next place another track's sample starts (checked at sample-aligned positions) belong to it.
+    // PCM has no framing: the bytes up to the next place another track's sample starts belong to it. A chunk of PCM ends between two frames of
+    // sound, not on a packet boundary (a chunk of 48,048 frames is cut into packets of 1,024 with a short one at its end), so every frame
+    // position is a possible end. A picture found inside sound by chance is common over that many positions, so a picture ends the run only when
+    // the next picture follows it, as after any gap no track explains.
     private long PcmRun(long pos, List<TrackFramer> order)
     {
-        int align = _pcm!.FixedPackets ? _pcm.BlockAlign * _pcm.PacketFrames : _pcm.BlockAlign;
+        int align = _pcm!.BlockAlign;
         long maxRun = Math.Min(_end - pos, 4L << 20);
         long run = 0;
         for (long q = align; q <= maxRun; q += align)
@@ -551,7 +624,7 @@ internal sealed class MediaDataScanner
             bool other = false;
             foreach (TrackFramer f in order)
             {
-                if (f.Kind == TrackKind.Video && TryOne(f, pos + q, out FrameInfo video) == Status.Ok && video.Length >= 32)
+                if (f.Kind == TrackKind.Video && TryOne(f, pos + q, out FrameInfo video) == Status.Ok && video.Length >= 32 && ConfirmResync(f, pos + q, video, order))
                 {
                     other = true;
                     break;
@@ -567,8 +640,8 @@ internal sealed class MediaDataScanner
             run = q;
         }
 
-        // A run that ends where nothing follows (the cut) loses its last partial packet.
-        return run - (run % _pcm.BlockAlign);
+        // A run that ends where nothing follows (the cut) loses its last partial frame.
+        return run - (run % align);
     }
 
     private void AddPcm(long pos, long run)

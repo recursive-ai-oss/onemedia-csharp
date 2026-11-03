@@ -54,6 +54,13 @@ internal sealed class NalVideoFramer : TrackFramer
 
     public int LengthSize { get; }
 
+    /// <summary>
+    /// Whether NAL unit payloads must be free of <c>00 00 00</c>, <c>00 00 01</c> and <c>00 00 02</c> (H.264 §7.4.1 emulation prevention). On by default; it is
+    /// turned off for a camera whose reference file shows it does not escape its slice data (observed in a compact camera's H.264 movies, where
+    /// most pictures carry such sequences), because the check would turn down every picture of that camera.
+    /// </summary>
+    public bool ExpectEscapedPayloads { get; set; } = true;
+
     public override TrackKind Kind => TrackKind.Video;
 
     /// <summary>True once an SPS and a PPS are known, from the reference's configuration or from the stream.</summary>
@@ -187,8 +194,13 @@ internal sealed class NalVideoFramer : TrackFramer
 
     // H.264 §7.4.1 and H.265 §7.4.2: inside a NAL unit the byte sequences 00 00 00, 00 00 01 and 00 00 02 never occur (the encoder inserts an
     // emulation prevention byte), so a stretch of audio or other data that has one is not a NAL unit. A cut-off NAL unit is checked as far as it goes.
-    private static bool EmulationPreventionHolds(ReadOnlySpan<byte> payload)
+    private bool EmulationPreventionHolds(ReadOnlySpan<byte> payload)
     {
+        if (!ExpectEscapedPayloads)
+        {
+            return true;
+        }
+
         ReadOnlySpan<byte> z0 = [0, 0, 0];
         ReadOnlySpan<byte> z1 = [0, 0, 1];
         ReadOnlySpan<byte> z2 = [0, 0, 2];

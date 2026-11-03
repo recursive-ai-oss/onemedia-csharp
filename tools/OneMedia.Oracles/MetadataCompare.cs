@@ -264,7 +264,8 @@ internal static partial class MetadataCompare
 
         if (f.Orientation.Best is { } o)
         {
-            double? r = FirstNumber(etn, "Rotation"), x = FirstNumber(mi, "Rotation");
+            // ExifTool's Composite Rotation is derived from the track matrix; a maker tag of the same name (a Panasonic orientation code) is not degrees.
+            double? r = FirstNumber(etn, "Rotation", "Composite"), x = FirstNumber(mi, "Rotation");
             double ours = o.Value.RotationDegrees;
             string verdict = (r is null && x is null) ? (ours == 0 ? "match-absent" : "unreported") : Verdict(ours, r is null ? null : Mod360(r.Value), x is null ? null : Mod360(x.Value), 0.5);
             rows.Add(new Row(name, "fact", "Rotation", ours.ToString(CultureInfo.InvariantCulture) + (o.Value.MirrorHorizontal ? "+mirror" : ""), r?.ToString(CultureInfo.InvariantCulture) ?? "-", x?.ToString(CultureInfo.InvariantCulture) ?? "-", verdict, State(r is not null, r is not null && Math.Abs(Mod360(r.Value) - ours) <= 0.5), State(x is not null, x is not null && Math.Abs(Mod360(x.Value) - ours) <= 0.5)));
