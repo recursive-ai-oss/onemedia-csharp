@@ -4,6 +4,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- Correction to the 0.8.0-preview.4 notes: strip leaves both the position and the serial number in DJI `djmd` samples whose protocol is not in the table of known layouts, not only the serial. The DJI Osmo Pocket 3 (protocol `PP-101`) is such a camera; the report lists those samples as not removed ([docs/strip.md](docs/strip.md)).
+
 ## [0.8.0-preview.4] - 2026-11-03
 
 Fixes found by comparing 193 freely licensed real-device recordings with ffprobe, ExifTool and MediaInfo ([docs/device-corpus.md](docs/device-corpus.md)); each fix was checked on the recording that showed it. Strip does not yet remove the DJI Osmo Pocket 3 serial number from its telemetry samples (reported as not removed). Previews stay previews as before.
