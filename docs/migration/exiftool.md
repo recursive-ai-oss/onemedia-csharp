@@ -40,6 +40,6 @@ Media.StripDeviceIds("located.mp4", "nodevice.mp4");
 - **Writes are reported.** `SetCaptureTime` and `Save*` return what was written and what could not be represented; they do not
   change media bytes (the per-track payload hash stays the same).
 - **Strip is documented, not exhaustive.** It removes the documented location and device fields in every system and telemetry track;
-  it does not search free text, unknown vendor atoms or trailers (docs/strip.md).
+  its report names the vendor boxes, chunks, tracks and trailers it has no rule for; it does not search free text (docs/strip.md).
 - **Parity is checked, not assumed.** Reads are compared against ExifTool 13.60 on the test corpus; docs/facts.md lists the
   differences that remain.
