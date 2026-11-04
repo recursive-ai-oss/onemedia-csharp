@@ -14,14 +14,16 @@ device identifiers. This page states exactly what is looked for, what is done to
 - **ISO base media (MP4, MOV, 3GP, M4A, fragmented MP4): nothing moves.** Every change keeps its length: a field is overwritten with zeros, a whole atom
   or item becomes a `free` box of its own size. No chunk offset, `moof` offset or `sidx` entry changes. `EditPlan.IsSameLayout` is true.
 - **Make and model stay.** Camera make/model/software, firmware version, and orientation are not touched.
-- **The report is complete or says why not.** `StripReport.Entries` lists each field or telemetry stream that was neutralised: category, system, name,
+- **The report names what it removed and what it left.** `StripReport.Entries` lists each field or telemetry stream that was neutralised: category, system, name,
   track, the byte range in the original (for telemetry that occurs in many samples: first to last occurrence), the number of occurrences and bytes, and the
   action. `StripEntry.CountText` says what the count counts (`1 occurrence`, `3 occurrences in 40 samples`; `SamplesExamined` is the number of samples of the
   track that were looked at, so a count of 1 in 40 samples does not mean 39 were missed). `NotRemoved` lists everything the file holds that the strip found and
   left, **named from what is in this file**: a field with a rule that could not be edited, and also every box, chunk, element, object, opaque value, picture
   with metadata, data track and trailer the strip has no rule for (see "What the report names" below). `IsComplete` is true when it is empty. The CLI exits
-  3 when it is not. The areas that are out of scope by design (free text, make and model, container dates) are the fixed `NotExamined` list, not
-  per-file findings.
+  3 when it is not. The areas no run looks at are the fixed `NotExamined` list (three items, below), not per-file findings. How far this has been
+  checked: the generated fixtures in the tests and the device-corpus sweep (36 recordings that ExifTool shows with a position or serial number, plus every
+  AVI, and 687 further corpus files; [device-corpus.md](device-corpus.md)) found no position or serial left in the output that the report did not name.
+  Layouts outside those files can still hold one the rules do not know; the report then names the box, chunk or track, not the field.
 - **Categories.** `StripCategories.Location` and `StripCategories.DeviceIds` (flags); the default is both. CLI: `--location`, `--device-ids`.
 
 ## Actions
@@ -53,7 +55,7 @@ device identifiers. This page states exactly what is looked for, what is done to
 | `mebx` track | atoms whose key (from the sample entry's key table) contains the location words above, including nested detected-face groups: value zeroed, local id set to 0 | atoms whose key names a serial/id |
 | `djmd` track (DJI protobuf, protocols in the table of `DjmdDecoder`) | the position message (latitude, longitude, units), `abs_alt`, `rel_alt`: value overwritten with zeros (a varint as `80 … 00`, the same length), key changed to field 15 of the same wire type | the serial number (path 1-1-5): zeros, key changed to field 15, in every sample, whatever the protocol. **Unknown protocols** (a sample that names a protocol outside the table, or none and no earlier sample of the track named one; the DJI Osmo Pocket 3, `PP-101`, is one) are stripped conservatively: besides the serial, every field outside the device description (top-level field 1), the stream description (2) and the frame counter and camera settings (field 3, children 1 and 2) is overwritten the same way, as is every 64-bit double anywhere (how every known layout stores a coordinate), and bytes at the top level that do not parse as fields are zeroed. The report carries a note with the number of such samples, not a `NotRemoved` entry. The protocol is table-known for: `wm265e`, `pm320`, `wm260`, `wm261`, `Mavic4`, `Air3`, `Air3s`, `Lito_X1`, `Mini4_Pro`, `wa345e`, `AVATA2`, `NEO2`, `dji_neo`, `ac203`, `ac204`, `ac206`, `oq101` (a sample without a protocol name takes the name an earlier sample of the track gave). The model string stays |
 | subtitle and text tracks in ISO files (`tx3g`, `text`, `wvtt`, `stpp`, DJI per-frame text) | text rules below: overwritten with spaces | `serial`-style keys |
-| GoPro settings block (start of `mdat` before the first sample, and `fdsc` samples) | the position string by value | lens serial (48 bytes), camera-serial hash (16), camera serial (15) after the `FIRM` string; and every value read from a removed field, by value |
+| GoPro settings block (start of `mdat` before the first sample, and `fdsc` samples) | the position string by value | lens serial (48 bytes), camera-serial hash (16), camera serial (15) after the `FIRM` string; and every value read from a removed field, by value. Occurrences in `fdsc` samples are counted in the `gopro settings` entries, whose range starts in the `mdat` gap; the `fdsc` track has no entry of its own (checked on ten GoPro sample files: the serial numbers ExifTool reads from the `fdsc` track are gone after strip) |
 
 "By value": after the labelled fields are read, their values (serials ≥ 6 bytes, the media id, the position text, facts-layer serial and location readings)
 are searched for in every data track that no decoder handles and in the unreferenced settings block. Each occurrence is zeroed and reported
@@ -168,7 +170,7 @@ with a layout nobody documented); those are in the by-design column or named as 
 
 ## Not covered (and what the report says)
 
-Every `StripReport` carries `StripReport.NotExamined`, a fixed list of areas no run looks at: free text in tags, comments and descriptions; unknown vendor atoms and boxes; trailers (data after the last structure). `onemedia strip` prints it as a `not examined:` line. An empty `NotRemoved` says nothing about these. Everything else the file holds that the strip has no rule for is named per file in `NotRemoved` ("What the report names"). Since 1.0.2 the report names vendor atoms, boxes, chunks, objects and opaque values from what is in the file; before, only the fixed list above said they were not looked at, and a Fujifilm AVI kept its `strd` serial number without a word in the report.
+Every `StripReport` carries `StripReport.NotExamined`, a fixed list of three areas no run looks at: free text in tags, comments and descriptions; vendor boxes and chunks nested below the levels listed in `NotRemoved`; trailers after the last structure, in formats whose structure is not walked (MP3, FLAC, Ogg, TS, PS, FLV, DV, elementary streams). `onemedia strip` prints it as a `not examined:` line. An empty `NotRemoved` says nothing about these. Everything else the file holds that the strip has no rule for is named per file in `NotRemoved` ("What the report names"). Since 1.0.2 the report names vendor atoms, boxes, chunks, objects and opaque values from what is in the file; before, only the fixed list above said they were not looked at, and a Fujifilm AVI kept its `strd` serial number without a word in the report.
 
 Found by the review (`docs/strip-review.md`) and left on purpose or for lack of a layout. Since 1.0.2 a file that holds one of these is told so by name in `NotRemoved` unless an item says otherwise:
 
@@ -180,7 +182,7 @@ Found by the review (`docs/strip-review.md`) and left on purpose or for lack of 
   and addresses in subtitle text.
 - Placements the tag layer does not read: a `udta` outside `moov`/`trak`, `udta` or `meta` inside a `traf`, an `xml ` box in `meta`, upper-case
   `©XYZ`/`LOCI`, a GPS IFD reached from the Exif IFD instead of IFD0, an Exif block in an unlisted atom or a `uuid` box (Canon CMT), bytes appended after
-  the last box, vendor atoms (`gps ` NMEA, Samsung trailers), unknown data tracks (Sony `rtmd`; the report names them in its notes).
+  the last box, vendor atoms (`gps ` NMEA, Samsung trailers), unknown data tracks (Sony `rtmd`; listed in `NotRemoved` by track since 1.0.2, a note before).
 - XMP packets that are not UTF-8: reported in `NotRemoved`.
 - A chained Ogg file: only the first logical stream's comments are read and edited; a later link's comments stay.
 
