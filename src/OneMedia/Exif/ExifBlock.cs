@@ -221,10 +221,27 @@ public sealed class ExifBlock
         ReadOnlyMemory<byte> tiff = data[start..];
         bool big = tiff.Span[0] == 'M';
         long baseOffset = dataOffset < 0 ? -1 : dataOffset + start;
+        block = ParseDirectories(tiff, baseOffset, big, ReadU32(tiff.Span[4..], big), defects);
+        return true;
+    }
+
+    /// <summary>
+    /// Parses a directory that has no TIFF header, as some cameras embed it: the first directory starts at the first byte of <paramref name="directories"/>,
+    /// and every offset counts from there. Little-endian (observed in a Fujifilm AVI <c>strd</c> chunk; the chunk's own 8 header bytes are not part of the data passed here).
+    /// </summary>
+    /// <param name="directories">The bytes from the first directory's entry count to the end of the block.</param>
+    /// <param name="dataOffset">Where <paramref name="directories"/> starts in the source, for byte ranges; -1 when unknown.</param>
+    /// <param name="defects">Receives defects, as for <see cref="TryParse"/>.</param>
+    /// <returns>The parsed block; entries read before a defect are kept.</returns>
+    internal static ExifBlock ParseHeaderless(ReadOnlyMemory<byte> directories, long dataOffset, DefectLog defects) =>
+        ParseDirectories(directories, dataOffset, false, 0, defects);
+
+    private static ExifBlock ParseDirectories(ReadOnlyMemory<byte> tiff, long baseOffset, bool big, uint firstDirectory, DefectLog defects)
+    {
         List<ExifEntry> entries = [];
         HashSet<uint> seen = [];
         Queue<(string Name, uint Offset)> work = new();
-        work.Enqueue(("IFD0", ReadU32(tiff.Span[4..], big)));
+        work.Enqueue(("IFD0", firstDirectory));
         while (work.Count > 0)
         {
             (string name, uint offset) = work.Dequeue();
@@ -248,8 +265,7 @@ public sealed class ExifBlock
             }
         }
 
-        block = new ExifBlock(big, entries);
-        return true;
+        return new ExifBlock(big, entries);
     }
 
     private static void ReadDirectory(ReadOnlyMemory<byte> tiff, long baseOffset, bool big, string name, uint offset, List<ExifEntry> entries, Queue<(string, uint)> work, DefectLog defects)

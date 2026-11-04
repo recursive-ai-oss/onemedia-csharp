@@ -36,6 +36,117 @@ internal sealed class PatchSet
     /// <summary>Builds the plan for a file of <paramref name="length"/> bytes.</summary>
     public EditPlan ToPlan(long length)
     {
+        List<(long Start, long End, byte[]? Data)> runs = BuildRuns();
+        PieceList pieces = new();
+        long pos = 0;
+        foreach ((long start, long end, byte[]? data) in runs)
+        {
+            long s = Math.Max(start, pos);
+            long e = Math.Min(end, length);
+            if (e <= s)
+            {
+                continue;
+            }
+
+            pieces.AddCopy(pos, s - pos);
+            if (data is not null)
+            {
+                pieces.AddData(data.AsMemory((int)(s - start), (int)(e - s)));
+            }
+            else
+            {
+                AddZeros(pieces, e - s);
+            }
+
+            pos = e;
+        }
+
+        pieces.AddCopy(pos, length - pos);
+        return pieces.ToPlan(length, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Applies the patches, which are in source coordinates, on top of another plan: every part of a copied source range that a patch covers becomes new
+    /// bytes, and no piece changes its length, so the plan's change notes stay valid. This lets a patch (a camera record inside a stream header) combine with a
+    /// tag rewrite that moves other bytes.
+    /// </summary>
+    /// <param name="basePlan">The plan to patch.</param>
+    /// <param name="uncovered">Receives the patches' source ranges that no copied piece of the base plan covers in full (the base plan rewrote or dropped them), so they could not be applied.</param>
+    /// <returns>The patched plan.</returns>
+    public EditPlan Overlay(EditPlan basePlan, out List<ByteRange> uncovered)
+    {
+        List<(long Start, long End, byte[]? Data)> runs = BuildRuns();
+        long[] applied = new long[runs.Count];
+        List<OutputPiece> output = new(basePlan.Pieces.Count + (runs.Count * 2));
+        foreach (OutputPiece piece in basePlan.Pieces)
+        {
+            if (piece.Kind != OutputPieceKind.Copy)
+            {
+                output.Add(piece);
+                continue;
+            }
+
+            long from = piece.SourceRange.Offset, end = piece.SourceRange.End, pos = from;
+            int first = FirstRunEndingAfter(runs, from);
+            for (int i = first; i < runs.Count && runs[i].Start < end; i++)
+            {
+                long s = Math.Max(runs[i].Start, pos), e = Math.Min(runs[i].End, end);
+                if (e <= s)
+                {
+                    continue;
+                }
+
+                if (s > pos)
+                {
+                    output.Add(OutputPiece.Copy(pos, s - pos));
+                }
+
+                output.Add(runs[i].Data is { } d ? OutputPiece.Data(d.AsMemory((int)(s - runs[i].Start), (int)(e - s))) : ZeroPiece(e - s));
+                applied[i] += e - s;
+                pos = e;
+            }
+
+            if (pos < end)
+            {
+                output.Add(OutputPiece.Copy(pos, end - pos));
+            }
+        }
+
+        uncovered = [];
+        for (int i = 0; i < runs.Count; i++)
+        {
+            if (applied[i] != runs[i].End - runs[i].Start)
+            {
+                uncovered.Add(new ByteRange(runs[i].Start, runs[i].End - runs[i].Start));
+            }
+        }
+
+        return new EditPlan(output, basePlan.SourceLength, basePlan.Changes, basePlan.PaddingUsed, basePlan.PaddingAvailable, basePlan.PaddingRequired, basePlan.ShortfallIn);
+    }
+
+    private static int FirstRunEndingAfter(List<(long Start, long End, byte[]? Data)> runs, long offset)
+    {
+        int lo = 0, hi = runs.Count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (runs[mid].End <= offset)
+            {
+                lo = mid + 1;
+            }
+            else
+            {
+                hi = mid;
+            }
+        }
+
+        return lo;
+    }
+
+    private static OutputPiece ZeroPiece(long n) => n <= ZeroBlock.Length ? OutputPiece.Data(ZeroBlock.AsMemory(0, (int)n)) : OutputPiece.Generated(n, new ZeroFill(n));
+
+    private List<(long Start, long End, byte[]? Data)> BuildRuns()
+    {
         // Disjoint, sorted writes (first one wins on overlap).
         List<(long Start, byte[] Data)> writes = [];
         foreach ((long Start, byte[] Data) w in _writes.OrderBy(w => w.Start))
@@ -100,32 +211,7 @@ internal sealed class PatchSet
         }
 
         runs.Sort((a, b) => a.Start.CompareTo(b.Start));
-        PieceList pieces = new();
-        long pos = 0;
-        foreach ((long start, long end, byte[]? data) in runs)
-        {
-            long s = Math.Max(start, pos);
-            long e = Math.Min(end, length);
-            if (e <= s)
-            {
-                continue;
-            }
-
-            pieces.AddCopy(pos, s - pos);
-            if (data is not null)
-            {
-                pieces.AddData(data.AsMemory((int)(s - start), (int)(e - s)));
-            }
-            else
-            {
-                AddZeros(pieces, e - s);
-            }
-
-            pos = e;
-        }
-
-        pieces.AddCopy(pos, length - pos);
-        return pieces.ToPlan(length, 0, 0, 0);
+        return runs;
     }
 
     private static void AddZeros(PieceList pieces, long n)

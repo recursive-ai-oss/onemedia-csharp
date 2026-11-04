@@ -161,6 +161,26 @@ internal static class OtherStrip
             FindUnreadTags(source, file, cats, left, ct);
         }
 
+        if (file.Format == MediaFormatId.Avi)
+        {
+            // Camera data in the stream headers is edited in place (same length) on top of whatever the tag writer plans; what cannot be edited is reported.
+            PatchSet patches = new();
+            StripSink sink = new(patches);
+            AviStrip.Scan(source, options.Limits ?? MediaLimits.Default, cats, sink, ct);
+            if (patches.Count > 0)
+            {
+                plan = patches.Overlay(plan, out List<ByteRange> uncovered);
+                foreach (ByteRange r in uncovered)
+                {
+                    sink.Leftover(cats, "riff:strd", "stream data", 0, r, "The tag rewrite replaced this range, so the camera data in it could not be edited.");
+                }
+            }
+
+            entries.AddRange(sink.Entries());
+            left.AddRange(sink.Leftovers);
+            notes.AddRange(sink.Notes);
+        }
+
         notes.Add("Only tag fields and subtitle text are inspected in this format; position or serial data inside the other streams is not.");
         return new StripPlan(plan, new StripReport(cats, entries, left, notes));
     }
