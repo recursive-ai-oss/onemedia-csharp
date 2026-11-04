@@ -101,10 +101,11 @@ public class StripReviewTests
     }
 
     [Fact]
-    public void UnknownDataTracksAreNamedInTheNotes()
+    public void UnknownDataTracksAreListedAsNotRemoved()
     {
         Strip("tele-unknown-track.mp4", out StripReport report);
-        Assert.Contains(report.Notes, n => n.Contains("Data track 2", StringComparison.Ordinal) && n.Contains("xxxx", StringComparison.Ordinal));
+        Assert.Contains(report.NotRemoved, l => l.System == "track" && l.TrackId == 2 && l.Name.Contains("xxxx", StringComparison.Ordinal));
+        Assert.False(report.IsComplete);
     }
 
     [Fact]

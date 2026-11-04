@@ -1,4 +1,5 @@
 using System.Linq;
+using RecursiveAI.OneMedia.Asf;
 using RecursiveAI.OneMedia.Tags;
 using RecursiveAI.OneMedia.Writing;
 
@@ -108,6 +109,8 @@ internal static class OtherStrip
         List<StripEntry> entries = [];
         List<StripLeftover> left = [];
         List<string> notes = [];
+        PatchSet patches = new();
+        StripSink sink = new(patches);
         TagEdits edits = new();
         HashSet<(string, string)> seen = [];
         List<NativeTag> matched = [];
@@ -164,25 +167,66 @@ internal static class OtherStrip
         if (file.Format == MediaFormatId.Avi)
         {
             // Camera data in the stream headers is edited in place (same length) on top of whatever the tag writer plans; what cannot be edited is reported.
-            PatchSet patches = new();
-            StripSink sink = new(patches);
             AviStrip.Scan(source, options.Limits ?? MediaLimits.Default, cats, sink, ct);
-            if (patches.Count > 0)
-            {
-                plan = patches.Overlay(plan, out List<ByteRange> uncovered);
-                foreach (ByteRange r in uncovered)
-                {
-                    sink.Leftover(cats, "riff:strd", "stream data", 0, r, "The tag rewrite replaced this range, so the camera data in it could not be edited.");
-                }
-            }
-
-            entries.AddRange(sink.Entries());
-            left.AddRange(sink.Leftovers);
-            notes.AddRange(sink.Notes);
         }
 
-        notes.Add("Only tag fields and subtitle text are inspected in this format; position or serial data inside the other streams is not.");
+        // What the strip has no rule for is named in the report, from what this file holds.
+        StripInventory.OpaqueTags(source, file.Metadata, cats, static t => StripRules.Classify(t.System, t.Key) != StripCategories.None, left, ct);
+        InventoryFormat(source, file, cats, left, sink, ct);
+        if (patches.Count > 0)
+        {
+            plan = patches.Overlay(plan, out List<ByteRange> uncovered);
+            foreach (ByteRange r in uncovered)
+            {
+                sink.Leftover(cats, "riff", "padding or stream data", 0, r, "The tag rewrite replaced this range, so the change planned for it could not be made.");
+            }
+        }
+
+        entries.AddRange(sink.Entries());
+        left.AddRange(sink.Leftovers);
+        notes.AddRange(sink.Notes);
+        notes.Add("Only tag fields and subtitle text are inspected in this format; anything else the file holds is listed in NotRemoved.");
         return new StripPlan(plan, new StripReport(cats, entries, left, notes));
+    }
+
+    private static readonly HashSet<Guid> AsfKnown =
+    [
+        AsfGuids.FileProperties, AsfGuids.StreamProperties, AsfGuids.HeaderExtension, AsfGuids.CodecList, AsfGuids.ContentDescription, AsfGuids.ExtendedContentDescription,
+        AsfGuids.StreamBitrateProperties, AsfGuids.Padding, AsfGuids.ScriptCommand, AsfGuids.Metadata, AsfGuids.MetadataLibrary, AsfGuids.ExtendedStreamProperties,
+        AsfGuids.LanguageList, AsfGuids.Compatibility, AsfGuids.StreamPrioritization, AsfGuids.Data, AsfGuids.SimpleIndex, AsfGuids.Index, AsfGuids.IndexParameters,
+
+        // Seen in published samples (docs/asf.md), 34 to 88 bytes each: too small to hold text, and the reader treats them as structure. Listed by GUID so that
+        // an object nobody has looked at is still named in the report.
+        new("75B22635-668E-11CF-A6D9-00AA0062CE6C"), new("D6E229DC-35DA-11D1-9034-00A0C90349BE"), new("A08649CF-4775-4670-8A16-6E35357566CD"),
+        new("AF5FD596-E6A0-4A5C-830B-DC2D4CF07E92"), new("D9AADE20-7C17-4F9C-BC28-8555DD98E2A2"),
+    ];
+
+    private static void InventoryFormat(IMediaSource source, MediaFile file, StripCategories cats, List<StripLeftover> left, StripSink sink, CancellationToken ct)
+    {
+        MediaFormatId f = file.Format;
+        if (f == MediaFormatId.Wav)
+        {
+            byte[] head = new byte[4];
+            bool riff = source.Read(0, head, ct) == 4 && (head.AsSpan().SequenceEqual("RIFF"u8) || head.AsSpan().SequenceEqual("RF64"u8) || head.AsSpan().SequenceEqual("BW64"u8));
+            StripInventory.FlatChunks(source, riff ? StripInventory.ChunkFlavour.Riff : StripInventory.ChunkFlavour.Wave64, cats, left, sink, ct);
+        }
+        else if (f == MediaFormatId.Aiff)
+        {
+            StripInventory.FlatChunks(source, StripInventory.ChunkFlavour.Aiff, cats, left, sink, ct);
+        }
+        else if (f == MediaFormatId.Caf)
+        {
+            StripInventory.FlatChunks(source, StripInventory.ChunkFlavour.Caf, cats, left, sink, ct);
+        }
+        else if (f == MediaFormatId.Asf)
+        {
+            StripInventory.AsfObjects(source, AsfKnown, cats, left, ct);
+        }
+
+        if (f != MediaFormatId.Avi)
+        {
+            StripInventory.DataTracks(file, cats, left);
+        }
     }
 
     // The Matroska reader finds Tags and Attachments through the SeekHead and the elements before the first Cluster; a writer that appends a Tags
@@ -225,9 +269,23 @@ internal static class OtherStrip
                     "A Tags element that no SeekHead entry points to (after the last Cluster) is not read by the tag layer, so it was not inspected or edited."));
             }
 
+            if (inSegment && !KnownMatroskaIds.Contains(id))
+            {
+                left.Add(new StripLeftover(cats, TagSystems.Matroska, "element 0x" + id.ToString("X", System.Globalization.CultureInfo.InvariantCulture), 0, new ByteRange(at, start + size - at),
+                    $"A top-level element with id 0x{id:X} ({size} bytes) that RFC 9559 does not list for a Segment was not inspected or edited."));
+            }
+
             at = start + size;
         }
+
+        if (inSegment && segmentEnd < source.Length && at >= segmentEnd && !StripInventory.IsAllZero(source, segmentEnd, source.Length - segmentEnd, ct))
+        {
+            left.Add(new StripLeftover(cats, TagSystems.Matroska, "trailer", 0, new ByteRange(segmentEnd, source.Length - segmentEnd), $"{source.Length - segmentEnd} bytes follow the Segment and are not inspected."));
+        }
     }
+
+    // RFC 9559 §5.1: the children of a Segment (SeekHead, Info, Tracks, Cluster, Cues, Attachments, Chapters, Tags), the EBML Void and CRC-32 elements.
+    private static readonly HashSet<uint> KnownMatroskaIds = [0x114D9B74, 0x1549A966, 0x1654AE6B, 0x1F43B675, 0x1C53BB6B, 0x1941A469, 0x1043A770, 0x1254C367, 0xEC, 0xBF];
 
     // A subtitle block sits inside a cluster or chunk whose checksum or size a same-length edit would have to maintain, so text that looks like a
     // position or serial number is reported, not edited.

@@ -52,6 +52,13 @@ internal static class TsStrip
             sink.Leftover(StripCategories.Location, "mdpm", "camera data", 0, ByteRange.None, "The packet size of the transport stream could not be determined, so the video was not searched.");
         }
 
+        List<StripLeftover> found = [];
+        StripInventory.DataTracks(file, cats, found);
+        foreach (StripLeftover l in found)
+        {
+            sink.Leftover(l.Category, l.System, l.Name, l.TrackId, l.Range, l.Reason);
+        }
+
         sink.AddNote("MPEG transport streams have no tag system; the only position data looked for is the AVCHD camera data (MDPM) in the H.264 video.");
         sink.AddNote("The video payload changes, by necessity: MDPM sits inside the H.264 SEI. Only the position entries' bytes differ; the decoded pictures are identical.");
         sink.AddNote("No serial number field of MDPM is documented in the public tag descriptions; the maker and model entries (0xE0 and the Sony model entries) stay.");

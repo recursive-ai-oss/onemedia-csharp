@@ -81,6 +81,56 @@ internal static class IsoStrip
 
         ScrubTracks(file, options, secrets, firmware, sink, ct);
         ScrubLeadingGap(source, file, options, secrets, firmware, sink, ct);
+        // Vendor atoms and boxes often wrap an Exif block (a thumbnail with its own Exif, a maker's record): the blocks found inside values that no rule handles are
+        // scrubbed like any other Exif block. What the strip still has no rule for is named in the report, from what this file holds.
+        HashSet<(string, string, long)> scrubbedInside = [];
+        foreach (NativeTag tag in meta.NativeTags)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (tag.Kind != TagValueKind.Binary || tag.ValueRange.IsNone || IsHandled(tag))
+            {
+                continue;
+            }
+
+            if (tag.Key is "free" or "skip" or "wide")
+            {
+                // Padding that holds bytes kept something; padding has no meaning, so it is zeroed.
+                if (!StripInventory.IsAllZero(source, tag.ValueRange.Offset, tag.ValueRange.Length, ct))
+                {
+                    sink.Zero(cats, tag.System, tag.Key, tag.TrackId, tag.ValueRange.Offset, tag.ValueRange.Length);
+                    scrubbedInside.Add((tag.System, tag.Key, tag.TrackId));
+                }
+            }
+            else if (ScrubEmbeddedExif(source, tag.ValueRange, tag.TrackId, options, sink, ct) > 0)
+            {
+                scrubbedInside.Add((tag.System, tag.Key, tag.TrackId));
+                sink.AddNote("The '" + tag.Key + "' atom holds Exif blocks, which were scrubbed; its other content is not inspected.");
+            }
+        }
+
+        List<StripLeftover> found = [];
+        StripInventory.OpaqueTags(source, meta, cats, t => IsHandled(t) || scrubbedInside.Contains((t.System, t.Key, t.TrackId)), found, ct);
+        StripInventory.IsoBoxes(source, cats, found, (box, type) =>
+        {
+            if (type is "free" or "skip" or "wide")
+            {
+                sink.Zero(cats, "iso", type, 0, box.PayloadOffset, box.PayloadSize);
+                return true;
+            }
+
+            if (ScrubEmbeddedExif(source, new ByteRange(box.PayloadOffset, box.PayloadSize), 0, options, sink, ct) == 0)
+            {
+                return false;
+            }
+
+            sink.AddNote("The 'uuid' box at offset " + box.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture) + " holds Exif blocks, which were scrubbed; its other content is not inspected.");
+            return true;
+        }, ct);
+        foreach (StripLeftover l in found)
+        {
+            sink.Leftover(l.Category, l.System, l.Name, l.TrackId, l.Range, l.Reason);
+        }
+
         sink.AddNote("Subtitle and text tracks are scanned for coordinates and serial numbers written as text (docs/strip.md lists the patterns); other text in them stays.");
         sink.AddNote("Key names in a QuickTime metadata key table (keys box) and in mebx sample entries stay; their values are gone.");
         sink.AddNote("Layout is unchanged: every changed range keeps its length and no other byte moved.");
@@ -247,6 +297,45 @@ internal static class IsoStrip
         }
     }
 
+    // A key some rule handles, in the sense of the rules (removed, or scrubbed as GPMF or as an Exif atom).
+    private static bool IsHandled(NativeTag t) =>
+        StripRules.Classify(t.System, t.Key) != StripCategories.None
+        || (t.System == TagSystems.QuickTimeUserData && (t.Key == "GPMF" || Array.IndexOf(ExifAtoms, t.Key) >= 0));
+
+    // Exif blocks inside a vendor value, found by their APP1 marker text (Exif, two zero bytes, then a TIFF header; Exif 2.32 §4.7.2). Returns how many were scrubbed.
+    private static int ScrubEmbeddedExif(IMediaSource source, ByteRange range, long trackId, StripOptions options, StripSink sink, CancellationToken ct)
+    {
+        MediaLimits limits = options.Limits ?? MediaLimits.Default;
+        if (range.IsNone || range.Length < 16 || range.Length > limits.MaxTagBytes)
+        {
+            return 0;
+        }
+
+        byte[] bytes = new byte[range.Length];
+        source.ReadExactly(range.Offset, bytes, ct);
+        int count = 0, pos = 0;
+        while (pos < bytes.Length - 16)
+        {
+            ct.ThrowIfCancellationRequested();
+            int i = bytes.AsSpan(pos).IndexOf("Exif\0\0"u8);
+            if (i < 0)
+            {
+                break;
+            }
+
+            i += pos;
+            int length = (int)Math.Min(bytes.Length - i, 1 << 20);
+            if (TiffScrub.Scrub(bytes.AsMemory(i, length), range.Offset + i, "exif", trackId, options.Categories, sink, limits))
+            {
+                count++;
+            }
+
+            pos = i + 6;
+        }
+
+        return count;
+    }
+
     private static void ScrubXmp(IMediaSource source, XmpPacket x, StripCategories cats, StripSink sink)
     {
         if (x.PacketRange.IsNone)
@@ -371,9 +460,10 @@ internal static class IsoStrip
                 sink.Leftover(options.Categories, "dbgi", "debug track", track.Id, ByteRange.None, "The track's layout is not known; any position or serial number in it stays.");
             }
 
-            if (format == TelemetryFormat.None && track.Kind == TrackKind.Data && track.CodecTag is not ("dbgi" or "tmcd"))
+            if (format == TelemetryFormat.None && track.Kind == TrackKind.Data && track.CodecTag is not ("dbgi" or "tmcd" or "fdsc"))
             {
-                sink.AddNote("Data track " + track.Id + " (" + (track.CodecTag ?? "unknown") + ") has no known layout: only the values of fields removed elsewhere were searched for in it; a position or serial number stored in another form stays.");
+                sink.Leftover(options.Categories, "track", (track.CodecTag ?? "unknown") + " data", track.Id, ByteRange.None,
+                    "The track's layout is not known: only the values of fields removed elsewhere were searched for in it; a position or serial number stored in another form stays.");
             }
 
             if (format == TelemetryFormat.None && !otherData && !text)
@@ -388,7 +478,8 @@ internal static class IsoStrip
             }
 
             int generation = file.BeginRead();
-            int conservativeSamples = 0;
+            int conservativeSamples = 0, samplesRead = 0;
+            sink.BeginSamples(track.Id);
             DjiScrub.State djmdState = new();
             try
             {
@@ -401,6 +492,7 @@ internal static class IsoStrip
                         break;
                     }
 
+                    samplesRead++;
                     long offset = view.Info.SourceRange.IsNone ? -1 : view.Info.SourceRange.Offset;
                     if (offset < 0)
                     {
@@ -448,6 +540,8 @@ internal static class IsoStrip
                 {
                     demuxer.SetTrackEnabled(t.Index, true);
                 }
+
+                sink.EndSamples(track.Id, samplesRead);
             }
 
             if (conservativeSamples > 0)

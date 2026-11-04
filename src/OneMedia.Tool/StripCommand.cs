@@ -58,7 +58,7 @@ internal static class StripCommand
             StripReport report = inPlace ? PrivacyStrip.SaveInPlace(input, options) : PrivacyStrip.SaveAs(input, output!, options, overwrite);
             foreach (StripEntry e in report.Entries)
             {
-                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{e.Action,-19} {e.Category,-9} {e.System}:{e.Name} track {e.TrackId} x{e.Count} {e.Bytes} bytes at {e.Range.Offset}+{e.Range.Length}"));
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{e.Action,-19} {e.Category,-9} {e.System}:{e.Name} track {e.TrackId}, {e.CountText}, {e.Bytes} bytes at {e.Range.Offset}+{e.Range.Length}"));
             }
 
             foreach (StripLeftover l in report.NotRemoved)

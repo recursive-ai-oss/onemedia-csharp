@@ -62,10 +62,21 @@ public enum StripAction
 /// <param name="Name">The native key, or the telemetry key (<c>GPS5</c>, <c>camm type 6</c>).</param>
 /// <param name="TrackId">The track (0 for the movie or file).</param>
 /// <param name="Range">Where the field was in the original file. For telemetry that occurs in many samples: the span from the first to the last occurrence.</param>
-/// <param name="Count">How many occurrences were neutralised (1 for a tag; the number of samples for telemetry).</param>
+/// <param name="Count">How many occurrences of this field were neutralised: 1 for a tag; for telemetry the number of places in the samples where the field was found, out of <see cref="SamplesExamined"/>.</param>
 /// <param name="Bytes">Total bytes overwritten, removed or rewritten for this entry.</param>
 /// <param name="Action">What was done.</param>
-public sealed record StripEntry(StripCategories Category, string System, string Name, long TrackId, ByteRange Range, int Count, long Bytes, StripAction Action);
+public sealed record StripEntry(StripCategories Category, string System, string Name, long TrackId, ByteRange Range, int Count, long Bytes, StripAction Action)
+{
+    /// <summary>
+    /// For a finding in timed samples (telemetry, subtitle text): how many samples of the track the strip looked at, so that <see cref="Count"/> can be read as
+    /// "<c>Count</c> occurrences in <c>SamplesExamined</c> samples". 0 for a field that is not a per-sample finding.
+    /// </summary>
+    public int SamplesExamined { get; init; }
+
+    /// <summary>What <see cref="Count"/> counts, in words: <c>1 occurrence</c>, <c>3 occurrences in 40 samples</c>.</summary>
+    public string CountText => Count.ToString(global::System.Globalization.CultureInfo.InvariantCulture) + (Count == 1 ? " occurrence" : " occurrences")
+        + (SamplesExamined > 0 ? " in " + SamplesExamined.ToString(global::System.Globalization.CultureInfo.InvariantCulture) + " samples" : string.Empty);
+}
 
 /// <summary>Something the strip found that holds location or a device identifier and could not take out.</summary>
 /// <param name="Category">The category.</param>

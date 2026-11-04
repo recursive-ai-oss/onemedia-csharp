@@ -202,7 +202,7 @@ public class StripAviTests
     }
 
     [Fact]
-    public void VendorChunksAndATrailerAreNamedInTheReport()
+    public void VendorChunksAndATrailerAreNamedAndPaddingWithBytesIsZeroed()
     {
         byte[] top = AviBuilder.Concat(
             AviBuilder.Chunk("JUNK", Encoding.ASCII.GetBytes(Serial)),
@@ -210,9 +210,12 @@ public class StripAviTests
             AviBuilder.Chunk("Xtra", new byte[6]));
         byte[] file = Avi(null, extraTop: top);
         byte[] output = Strip(file, out StripReport report);
-        Assert.Equal(file, output);
+        Assert.Equal(file.Length, output.Length);
+        Assert.True(Has(file, Serial));
+        Assert.False(Has(output, Serial));
+        Assert.Contains(report.Entries, e => e.System == "riff" && e.Name == "JUNK" && e.Action == StripAction.Zeroed);
         string[] names = [.. report.NotRemoved.Select(l => l.Name)];
-        Assert.Contains("JUNK", names);
+        Assert.DoesNotContain("JUNK", names);
         Assert.Contains("LIST ncdt", names);
         Assert.Contains("Xtra", names);
 

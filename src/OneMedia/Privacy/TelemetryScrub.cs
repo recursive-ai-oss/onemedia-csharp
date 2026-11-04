@@ -18,7 +18,11 @@ internal sealed class StripSink
         public int Count;
         public long Bytes;
         public StripAction Action;
+        public bool PerSample;
+        public int Samples;
     }
+
+    private long _samplingTrack = -1;
 
     private readonly Dictionary<(StripCategories, string, string, long, StripAction), Agg> _byKey = [];
     private readonly List<Agg> _order = [];
@@ -65,7 +69,7 @@ internal sealed class StripSink
         (StripCategories, string, string, long, StripAction) key = (cat, system, name, trackId, action);
         if (!_byKey.TryGetValue(key, out Agg? a))
         {
-            a = new Agg { Category = cat, System = system, Name = name, TrackId = trackId, Action = action };
+            a = new Agg { Category = cat, System = system, Name = name, TrackId = trackId, Action = action, PerSample = _samplingTrack == trackId };
             _byKey[key] = a;
             _order.Add(a);
         }
@@ -81,8 +85,25 @@ internal sealed class StripSink
 
     public void AddNote(string note) => _notes.Add(note);
 
+    /// <summary>Starts a scan of the samples of a track: entries noted from now until <see cref="EndSamples"/> are per-sample findings.</summary>
+    public void BeginSamples(long trackId) => _samplingTrack = trackId;
+
+    /// <summary>Ends the scan and records how many samples it looked at, for the entries it produced.</summary>
+    public void EndSamples(long trackId, int samples)
+    {
+        foreach (Agg a in _order)
+        {
+            if (a.PerSample && a.TrackId == trackId)
+            {
+                a.Samples = samples;
+            }
+        }
+
+        _samplingTrack = -1;
+    }
+
     public IReadOnlyList<StripEntry> Entries() =>
-        [.. _order.Select(a => new StripEntry(a.Category, a.System, a.Name, a.TrackId, new ByteRange(a.First, a.Last - a.First), a.Count, a.Bytes, a.Action))];
+        [.. _order.Select(a => new StripEntry(a.Category, a.System, a.Name, a.TrackId, new ByteRange(a.First, a.Last - a.First), a.Count, a.Bytes, a.Action) { SamplesExamined = a.Samples })];
 }
 
 /// <summary>

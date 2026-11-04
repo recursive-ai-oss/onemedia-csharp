@@ -14,7 +14,6 @@ internal static class AviStrip
     private static readonly HashSet<string> KnownRoot = ["hdrl", "INFO", "movi", "idx1", "IDIT"];
     private static readonly HashSet<string> KnownHeaderList = ["avih", "strl", "odml", "IDIT"];
     private static readonly HashSet<string> KnownStreamList = ["strh", "strf", "strn", "indx", "vprp"];
-    private const int MaxZeroScan = 16 * 1024 * 1024;
 
     public static void Scan(IMediaSource source, MediaLimits limits, StripCategories cats, StripSink sink, CancellationToken ct)
     {
@@ -88,7 +87,7 @@ internal static class AviStrip
     private static void ScanStrd(IMediaSource source, RiffChunk strd, int stream, MediaLimits limits, StripCategories cats, StripSink sink, CancellationToken ct)
     {
         long size = strd.PayloadSize;
-        if (size <= 0 || IsAllZero(source, strd.Offset + strd.HeaderSize, size, ct))
+        if (size <= 0 || StripInventory.IsAllZero(source, strd.Offset + strd.HeaderSize, size, ct))
         {
             return;
         }
@@ -124,12 +123,20 @@ internal static class AviStrip
             return;
         }
 
+        if (!c.IsList && c.PayloadSize == 0)
+        {
+            return; // an empty chunk holds nothing
+        }
+
         if (!c.IsList && c.FourCc is "JUNK" or "PAD " or "junk")
         {
-            if (IsAllZero(source, c.Offset + c.HeaderSize, c.PayloadSize, ct))
+            // Padding has no meaning; bytes in it are zeroed, and the entry says so.
+            if (!StripInventory.IsAllZero(source, c.Offset + c.HeaderSize, c.PayloadSize, ct))
             {
-                return;
+                sink.Zero(cats, "riff", c.FourCc, 0, c.Offset + c.HeaderSize, c.PayloadSize);
             }
+
+            return;
         }
 
         string place = where.Length == 0 ? "the file" : "the '" + where + "' list";
@@ -158,7 +165,7 @@ internal static class AviStrip
                 continue;
             }
 
-            if (IsAllZero(source, at, source.Length - at, ct))
+            if (StripInventory.IsAllZero(source, at, source.Length - at, ct))
             {
                 return;
             }
@@ -167,32 +174,5 @@ internal static class AviStrip
                 $"{source.Length - at} bytes follow the last RIFF form and are not inspected.");
             return;
         }
-    }
-
-    private static bool IsAllZero(IMediaSource source, long offset, long length, CancellationToken ct)
-    {
-        byte[] buffer = new byte[Math.Min(length, 64 * 1024) is var n && n > 0 ? (int)n : 1];
-        long done = 0;
-        long cap = Math.Min(length, MaxZeroScan);
-        while (done < cap)
-        {
-            ct.ThrowIfCancellationRequested();
-            int want = (int)Math.Min(buffer.Length, cap - done);
-            int got = source.Read(offset + done, buffer.AsSpan(0, want), ct);
-            if (got <= 0)
-            {
-                return true;
-            }
-
-            if (buffer.AsSpan(0, got).IndexOfAnyExcept((byte)0) >= 0)
-            {
-                return false;
-            }
-
-            done += got;
-        }
-
-        // Beyond the scan cap the rest is assumed to hold content: reporting is the safe side.
-        return length <= MaxZeroScan;
     }
 }
