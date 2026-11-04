@@ -143,6 +143,7 @@ Found by the review (`docs/strip-review.md`) and left on purpose or for lack of 
   formats are only reported, not edited. Standalone subtitle files.
 - DJI's `dbgi` debug track (undocumented layout): not inspected; the report lists it in `NotRemoved`. Fields of `djmd` messages the decoder does not map
   (GPS time, home point, quaternions): not touched when the protocol is in the table; for an unknown protocol they are removed along with everything else outside the groups named above. The Osmo Pocket 3 recording in the device corpus has no position in its `djmd` samples; its serial number is removed.
+- AVI files: only RIFF INFO tags are edited. Camera data in a stream's `strd` chunk stays; a Fujifilm AVI keeps its `InternalSerialNumber` there (seen in the device corpus with ExifTool).
 - The names in a `keys` box and in `mebx` sample entries stay (a name is not a value); values are gone.
 - Sidecar files next to the video (DJI `.SRT`, Sony clip XML, XMP): the strip works on one file.
 - Position or serial data the strip does not know a name for. The rules are the tables in `StripRules`; unknown vendor atoms stay.
