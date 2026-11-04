@@ -4,6 +4,22 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-03
+
+Privacy strip: nothing it has no rule for is left without a mention. Each fix below was checked on the file that showed it ([docs/device-corpus.md](docs/device-corpus.md), [docs/strip.md](docs/strip.md)); the public API only gains members.
+
+### Fixed
+
+- **Strip left the camera serial number of a Fujifilm AVI** (`InternalSerialNumber`, in the maker note inside the video stream's `strd` chunk) and did not mention it in the report. Strip now parses that chunk's Exif directory and zeroes the maker note and the serial, owner and GPS entries in place, with the same length. Checked on the corpus recording (FinePix AV230): ExifTool 13.60 `-a -G1 -ee` shows no FujiFilm group and no serial afterwards (before: serial `Y-7031 ...`), a byte search for the serial finds it 1 time in the input and 0 times in the output, ffprobe opens the output, the audio and video `framemd5` of input and output are equal, and 129 bytes differ, all inside the chunk.
+- **Strip left Exif serial numbers and a GPS directory inside two vendor records that it did not look into**, again without a report entry: the Panasonic `PANA` atom of one `.MOV` (a maker note with internal, body, lens and accessory serial numbers) and the Canon `uuid` box of one `.MP4` (thumbnail Exif with `ImageUniqueID`, an owner-name entry and a GPS directory). Strip now finds Exif blocks inside vendor atoms and `uuid` boxes and scrubs them with the Exif rules; ExifTool shows none of those fields afterwards on either file, no secret is found in the output bytes, and `framemd5` is equal.
+- **The strip report is no longer silent about what it has no rule for.** `StripReport.NotRemoved` now names, from what the file holds: vendor boxes, chunks, elements and objects outside the format's structure, opaque `udta`/`mdta`/ID3/APE/ASF values, pictures that hold Exif, XMP or Photoshop segments, data tracks of unknown layout, `uuid` boxes by GUID, and bytes after the last structure. Padding that holds bytes (`free`, `skip`, `wide`, `JUNK`, `PAD `) is zeroed and listed in `Entries`. Checked on the 36 device-corpus recordings that ExifTool flags for GPS, serial or location tags plus every AVI: 36 of 36 have no secret left in their bytes, 36 of 36 have equal audio/video `framemd5`, the 14 that still hold something list each item in `NotRemoved`, and the only ExifTool fields left after strip are `WindowLocation` (a screen position) and `YCbCrPositioning` (a chroma setting), which name no place and no device. On 687 other files (published samples and generated files, run through the tool only) the strip finished on all but 10, which a reader refuses to open with a typed error (damaged or unsupported files).
+
+### Changed
+
+- `StripEntry.Count` is described and printed per occurrence: `onemedia strip` prints `1 occurrence in 40 samples` where it printed `x1`, so a count of 1 no longer reads as 39 samples missed. New members `StripEntry.SamplesExamined` and `StripEntry.CountText`.
+- `StripReport.NotExamined` lists three areas (free text; vendor boxes and chunks nested below the levels the strip walks; trailers in formats whose structure it does not walk) instead of the former "unknown vendor atoms and boxes" and "trailers", which the report now names per file. `onemedia strip` exits 3 for more files than before, because it now has more to name.
+- Data tracks of unknown layout in ISO files are listed in `NotRemoved` (they were a note).
+
 ## [1.0.1] - 2026-11-03
 
 Fixes for the items listed as planned in 1.0.0. Each was checked on the recording that showed it ([docs/device-corpus.md](docs/device-corpus.md)); no public API changed.
@@ -20,6 +36,10 @@ Fixes for the items listed as planned in 1.0.0. Each was checked on the recordin
 ### Changed
 
 - `PACKAGE.md` links its documents on the release tag, so the nuget.org page keeps pointing at the text that shipped. The README no longer says the API may change before 1.0.
+
+### Correction (2026-11-03)
+
+- These notes and the 1.0.1 documents said strip reports what it found and could not remove (README, `docs/strip.md`, `StripReport.NotRemoved`). For AVI files that was not so: strip did not look inside a stream's `strd` chunk, so the camera serial number of a Fujifilm AVI in the device corpus (`InternalSerialNumber`) stayed in the output and the report did not mention it. The same held for any vendor box, chunk or opaque value without a rule: only a fixed "not examined" line said they were not looked at. The device-corpus strip section ("10 files ... 9 come out clean") did not include an AVI. Fixed in 1.0.2.
 
 ## [1.0.0] - 2026-11-03
 
