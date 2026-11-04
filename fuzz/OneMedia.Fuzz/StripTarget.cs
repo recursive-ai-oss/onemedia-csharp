@@ -42,6 +42,7 @@ internal static class StripTarget
         TelemetryScrub.Camm(block, Base, 1, cats, sink);
         TelemetryScrub.Mebx(block, Base, 1, table, cats, sink);
         TiffScrub.Scrub(block, Base, "exif", 1, cats, sink);
+        TiffScrub.ScrubFujifilmAviStrd(block, Base, "riff:strd", 1, cats, sink);
         DjiScrub.State djiState = new();
         _ = DjiScrub.Djmd(block, Base, 1, cats, sink, djiState);
         _ = DjiScrub.Djmd(block, Base, 1, cats, new StripSink(new PatchSet()), djiState);
@@ -65,6 +66,24 @@ internal static class StripTarget
         if (plan.Length != length || !plan.IsSameLayout)
         {
             throw new InvalidOperationException("the plan changed the layout");
+        }
+
+        // The patches laid over a plan that moves bytes (a tag rewrite) keep that plan's length and apply wherever the copied range is still there.
+        PieceList moved = new();
+        moved.AddData(new byte[7]);
+        moved.AddCopy(3, length - 3);
+        EditPlan shifted = patches.Overlay(moved.ToPlan(length, 0, 0, 0), out List<ByteRange> uncovered);
+        if (shifted.Length != length + 4)
+        {
+            throw new InvalidOperationException("the overlay changed the plan's length");
+        }
+
+        foreach (ByteRange r in uncovered)
+        {
+            if (r.Offset >= 3)
+            {
+                throw new InvalidOperationException("a patch inside a copied range was not applied");
+            }
         }
 
         foreach (StripEntry e in sink.Entries())

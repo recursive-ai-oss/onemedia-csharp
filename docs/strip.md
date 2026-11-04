@@ -16,7 +16,12 @@ device identifiers. This page states exactly what is looked for, what is done to
 - **Make and model stay.** Camera make/model/software, firmware version, and orientation are not touched.
 - **The report is complete or says why not.** `StripReport.Entries` lists each field or telemetry stream that was neutralised: category, system, name,
   track, the byte range in the original (for telemetry that occurs in many samples: first to last occurrence), the number of occurrences and bytes, and the
-  action. `NotRemoved` lists what was found and left, with the reason. `IsComplete` is true when it is empty. The CLI exits 3 when it is not.
+  action. `StripEntry.CountText` says what the count counts (`1 occurrence`, `3 occurrences in 40 samples`; `SamplesExamined` is the number of samples of the
+  track that were looked at, so a count of 1 in 40 samples does not mean 39 were missed). `NotRemoved` lists everything the file holds that the strip found and
+  left, **named from what is in this file**: a field with a rule that could not be edited, and also every box, chunk, element, object, opaque value, picture
+  with metadata, data track and trailer the strip has no rule for (see "What the report names" below). `IsComplete` is true when it is empty. The CLI exits
+  3 when it is not. The areas that are out of scope by design (free text, make and model, container dates) are the fixed `NotExamined` list, not
+  per-file findings.
 - **Categories.** `StripCategories.Location` and `StripCategories.DeviceIds` (flags); the default is both. CLI: `--location`, `--device-ids`.
 
 ## Actions
@@ -100,6 +105,15 @@ bytes), follows each H.264 PID, looks in the first 8 KiB of every PES packet for
   packet apart and goes on, so the packets after the damage are searched too.
 - Only H.264 video PIDs are followed; MPEG-2 video and other PIDs are not inspected.
 
+### AVI `strd` (Fujifilm)
+
+A Fujifilm camera writes the text `AVIF`, four bytes and an Exif directory without a TIFF header into the `strd` chunk of its video stream (offsets count from the
+directory, observed with ExifTool in a FinePix movie: IFD0 with make and model, an Exif IFD, and a Fujifilm maker note that holds `InternalSerialNumber`).
+The strip parses that directory with the Exif reader and applies the Exif rules above: the GPS directory is emptied, the maker note and the serial and owner
+entries are zeroed and their tag ids set to 0xFFFF. Make and model stay readable. The chunk keeps its length and no other byte moves, also when an INFO tag
+removal rewrites the tag area in the same run (the change is applied on top of that plan). A `strd` chunk of any other layout, with bytes in it, is listed in
+`NotRemoved` with its stream, size and offset.
+
 ### Other formats
 
 Matroska, ID3, APE, Vorbis comments, RIFF INFO, ASF: every native tag whose key contains one of the words above (`location`, `gps`, `latitude`,
@@ -107,7 +121,7 @@ Matroska, ID3, APE, Vorbis comments, RIFF INFO, ASF: every native tag whose key 
 writer for that format (`docs/tag-writing.md` describes what it rewrites). In Matroska the removal reaches every copy: tags aimed at a track, chapter,
 edition or attachment, and SimpleTags nested under another. The report lists them as `Removed`. A Matroska Tags element that no SeekHead entry points to
 (after the last Cluster) is invisible to the tag layer; the strip finds it by hopping over the top-level elements and lists it in `NotRemoved`. Where the tag writer refuses a file, the tags are listed in `NotRemoved`. Position or serial data inside
-the streams of these formats is not inspected, except subtitle text (above).
+the streams of these formats is not inspected, except subtitle text (above); what else the file holds is named in `NotRemoved` ("What the report names").
 
 **Layout of these edits (measured on the test files).** The Matroska tag writer turns a removed `SimpleTag` into a `Void` element of the same size and
 fixes the checksum of its parent, so a Matroska strip keeps the layout (`IsSameLayout`; `SaveInPlace` works). The ID3v2 writer keeps the tag's size when
@@ -121,11 +135,42 @@ ID3 tag used to stay in the file as stale bytes inside the padding; the writer n
 Zero everywhere. A zero latitude/longitude/altitude is what a reader then shows for the stripped GPMF/CAMM samples where the stream is still read (CAMM
 packets are renamed to an unassigned type, GPMF keys to `EMPT`, mebx atoms to local id 0, so ExifTool and OneMedia stop reporting the streams).
 
+## What the report names
+
+The strip reads the structure of each file once more, after the rules have run, and lists in `NotRemoved` what it has no rule for. Each finding says what
+was present (name, size, offset, track) and that it was not inspected or edited. The table gives, per format, what is removed, what is named, and what is out
+of scope. Two things are cheap and safe, so they are done rather than named: **padding** (`free`, `skip`, `wide`, `JUNK`, `PAD `, `FLLR`) that holds bytes is
+zeroed and listed in `Entries` (padding has no meaning), and an **Exif block inside a vendor value** (a maker's record in a `udta` atom or `uuid` box, found by
+its `Exif` marker) is scrubbed with the Exif rules; the report's notes then say the rest of that atom was not inspected. Padding that is all zero is not reported.
+
+Pictures (cover art, thumbnails) are named only when they hold metadata: a JPEG with an Exif, XMP or Photoshop segment, a PNG with `eXIf` or XMP, or an image
+format the strip cannot look into. Opaque values that name neither a position nor a device are listed as harmless and not reported: the FLAC seek table,
+QuickTime movie-window and play-flag atoms (`WLOC`, `SelO`, `AllF`, `LOOP`, `ptv `), QuickTime Player's mute key, ASF leaky-bucket pairs, CD table-of-contents
+values (`WM/MCDI`, ID3 `MCDI`), embedded fonts, firmware text, and all DV packs. These are judgements ([Agent default]) and are listed in `StripInventory`.
+
+| Format | Removed (rules) | Named in `NotRemoved` when present | Out of scope by design |
+|---|---|---|---|
+| ISO base media: MP4, MOV, 3GP, M4A, fMP4 | Everything in "ISO base media" above; Exif in vendor atoms and `uuid` boxes; padding with bytes | Boxes outside the movie-file structure at top level, in `moov` and in `trak` (vendor boxes, compressed `cmov`, non-XMP `uuid` boxes by GUID); opaque `udta`/`mdta`/`ilst` values; pictures with metadata; data tracks of unknown layout (`mett`, `dbgi`, `rtmd`...); bytes after the last box | Free text; make, model, software, firmware; `mvhd`/`tkhd` dates; names in `keys`/`mebx`; sidecar files |
+| Matroska, WebM | Tags by key (all copies); SimpleTags nested; subtitle text is only reported | A `Tags` element no SeekHead points to; Segment children RFC 9559 does not list; opaque or picture attachments with metadata; data tracks; bytes after the Segment | Free text in tags and chapters; `Title`, `MuxingApp`, `DateUTC`; `SegmentUID` |
+| AVI (incl. OpenDML, DV-in-AVI) | RIFF INFO tags by key; Fujifilm `strd` (Exif directory); padding with bytes | `strd` of another layout with bytes; chunks outside `avih`/`strl`/`odml`/`INFO`/`movi`/`idx1` (for example `LIST ncdt`, `vedt`); bytes after the last RIFF form (an `AVIX` form is structure) | Free text; `IDIT` date; DV pack dates and camera settings (no position or serial pack exists) |
+| WAV, BWF, RF64, W64 | INFO, `bext`, `iXML`, `cart` and ID3-chunk tags by key; padding with bytes | Chunks outside the defined set (vendor chunks, other `LIST` types, `uuid`); bytes after the last chunk | Free text; `bext` originator fields not matching a rule |
+| AIFF, AIFC | `NAME`/`AUTH`/`(c) `/`ANNO`/`COMT` and ID3-chunk tags by key | `APPL` and other undefined chunks; trailers | Free text |
+| CAF | `info` strings by key | `uuid` and other undefined chunks; trailers | Free text |
+| ASF, WMV, WMA | Content description and extended content description by key | Header and Header Extension objects that are not in the reader's list (including content-encryption objects, which hold licence URLs); binary or picture attributes | Free text; DRM payload (the file reports `Protected`) |
+| MP3, ID3, APE, Lyrics3 | ID3v2/v1 and APE items by key | Binary frames and items: `PRIV`, `GEOB`, `UFID`, chapter frames, unknown frames; pictures with metadata | Free text (`COMM`, `USLT`) |
+| FLAC, Ogg (Vorbis comments) | Comments by key | `APPLICATION` blocks, `CUESHEET`, pictures with metadata | Free text; a later link of a chained Ogg |
+| MPEG-TS, M2TS | AVCHD camera data (MDPM) position entries | MDPM SEI beyond the first 8 KiB of a packet; data and private streams (SCTE-35, KLV, teletext, timed metadata) | Descriptors and service names; no serial field of MDPM is documented |
+| MPEG-PS, FLV, DV, elementary streams | Tags by key where the format has them | Data tracks; opaque values | Free text; DV pack dates |
+| Standalone subtitle files, sidecars | Not opened | Not opened | The strip works on one media file |
+
+An area the strip still cannot see is one it has no structure reader for (a chained container, bytes inside a codec bitstream, the inside of a data track
+with a layout nobody documented); those are in the by-design column or named as a data track.
+
 ## Not covered (and what the report says)
 
-Every `StripReport` carries `StripReport.NotExamined`, a fixed list of areas no run looks at: free text in tags, comments and descriptions; unknown vendor atoms and boxes; trailers (data after the last structure). `onemedia strip` prints it as a `not examined:` line. An empty `NotRemoved` says nothing about these. Where the strip finds a place it cannot read (an unknown data track, a DJI `dbgi` track, a non-UTF-8 XMP packet) it lists that place in `NotRemoved` or the notes, as before.
+Every `StripReport` carries `StripReport.NotExamined`, a fixed list of areas no run looks at: free text in tags, comments and descriptions; unknown vendor atoms and boxes; trailers (data after the last structure). `onemedia strip` prints it as a `not examined:` line. An empty `NotRemoved` says nothing about these. Everything else the file holds that the strip has no rule for is named per file in `NotRemoved` ("What the report names"). Since 1.0.2 the report names vendor atoms, boxes, chunks, objects and opaque values from what is in the file; before, only the fixed list above said they were not looked at, and a Fujifilm AVI kept its `strd` serial number without a word in the report.
 
-Found by the review (`docs/strip-review.md`) and left on purpose or for lack of a layout; none of these is reported unless said so:
+Found by the review (`docs/strip-review.md`) and left on purpose or for lack of a layout. Since 1.0.2 a file that holds one of these is told so by name in `NotRemoved` unless an item says otherwise:
 
 - Names the key rules do not know: a custom `mdta` key such as `com.example.position`, `unit_id` or `hardware.id`; ID3 `TXXX`/`GEOB`/`PRIV` frames
   with unlisted descriptions; RIFF INFO `ISRC`/`IENG`, BWF `bext` originator fields; Matroska track names and titles.
@@ -143,15 +188,15 @@ Found by the review (`docs/strip-review.md`) and left on purpose or for lack of 
   formats are only reported, not edited. Standalone subtitle files.
 - DJI's `dbgi` debug track (undocumented layout): not inspected; the report lists it in `NotRemoved`. Fields of `djmd` messages the decoder does not map
   (GPS time, home point, quaternions): not touched when the protocol is in the table; for an unknown protocol they are removed along with everything else outside the groups named above. The Osmo Pocket 3 recording in the device corpus has no position in its `djmd` samples; its serial number is removed.
-- AVI files: only RIFF INFO tags are edited. Camera data in a stream's `strd` chunk stays; a Fujifilm AVI keeps its `InternalSerialNumber` there (seen in the device corpus with ExifTool).
+- AVI files: RIFF INFO tags and the Fujifilm `strd` Exif directory are edited (above). Other camera data in a stream's `strd` chunk, and the `LIST ncdt` of Nikon AVI files, stay and are named in `NotRemoved`. Up to 1.0.1 the Fujifilm `InternalSerialNumber` stayed and the report did not mention it.
 - The names in a `keys` box and in `mebx` sample entries stay (a name is not a value); values are gone.
 - Sidecar files next to the video (DJI `.SRT`, Sony clip XML, XMP): the strip works on one file.
-- Position or serial data the strip does not know a name for. The rules are the tables in `StripRules`; unknown vendor atoms stay.
+- Position or serial data the strip does not know a name for. The rules are the tables in `StripRules`; unknown vendor atoms stay and are named in `NotRemoved`.
 - Free-text fields (title, comment, description) are not scanned for coordinates.
-- Thumbnails/cover art images with their own Exif are not opened.
+- Thumbnails/cover art images with their own Exif are not opened; they are named in `NotRemoved` when they hold Exif, XMP or Photoshop segments.
 - Filesystem timestamps and the file name.
 - Container dates (`mvhd`/`tkhd` creation time) stay: dates are a separate unit.
-- Matroska, ASF, RIFF, ID3: only tag fields (see above).
+- Matroska, ASF, RIFF, ID3: tag fields only; anything else present is named in `NotRemoved` (table above).
 
 ## Verification method
 

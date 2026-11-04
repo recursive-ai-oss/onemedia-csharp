@@ -104,22 +104,26 @@ public sealed class StripReport
     /// <summary>Every field and telemetry stream that was neutralised, in file order of first occurrence.</summary>
     public IReadOnlyList<StripEntry> Entries { get; }
 
-    /// <summary>Everything that was found and left in place, with the reason. Empty means nothing the strip knows to look for remains.</summary>
+    /// <summary>
+    /// Everything the strip found and left in place, with the reason: fields it could not edit, and vendor boxes, chunks, objects, opaque values, pictures with metadata,
+    /// data tracks and trailers it has no rule for, each named from what this file holds. Empty means none was found, apart from the areas in <see cref="NotExamined"/>.
+    /// </summary>
     public IReadOnlyList<StripLeftover> NotRemoved { get; }
 
     /// <summary>Remarks that are neither entries nor leftovers (a layout that was kept, a tag system the format does not have).</summary>
     public IReadOnlyList<string> Notes { get; }
 
     /// <summary>
-    /// Areas no strip run examines, the same on every report: free text in tags and comments (outside the listed fields and the text rules for subtitle tracks),
-    /// atoms and boxes from vendors the strip has no rule for, and data appended after the last structure (trailers). An empty <see cref="NotRemoved"/> does not
-    /// speak for these. docs/strip.md describes each.
+    /// Areas no strip run examines, the same on every report: free text in tags, comments and descriptions; vendor boxes and chunks nested below the levels the
+    /// strip walks; and trailers in formats whose structure it does not walk. What the strip does find that it has no rule for (a vendor box, chunk, object or
+    /// opaque value at the levels it walks, a data track, a trailer in ISO, Matroska, RIFF, AIFF, CAF and ASF files) is named per file in <see cref="NotRemoved"/>.
+    /// docs/strip.md describes each.
     /// </summary>
     public static IReadOnlyList<string> NotExamined { get; } = new[]
     {
         "free text in tags, comments and descriptions",
-        "unknown vendor atoms and boxes",
-        "trailers: data after the last structure",
+        "vendor boxes and chunks nested below the levels listed in NotRemoved",
+        "trailers after the last structure, in formats whose structure is not walked (MP3, FLAC, Ogg, TS, PS, FLV, DV, elementary streams)",
     };
 
     /// <summary>True when <see cref="NotRemoved"/> is empty.</summary>

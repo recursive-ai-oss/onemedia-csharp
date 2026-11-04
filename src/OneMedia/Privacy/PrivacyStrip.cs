@@ -15,8 +15,9 @@ namespace RecursiveAI.OneMedia.Privacy;
 /// <para>For MP4, MOV and 3GP every change is made in place in the copy: a field is overwritten with zeros, an atom becomes a <c>free</c> box of its own size,
 /// and no other byte moves (<see cref="EditPlan.IsSameLayout"/> is true, so <see cref="SaveInPlace"/> works too). Other formats go through the tag writers,
 /// which rewrite the tag area. <c>docs/strip.md</c> lists every rule, the neutral values and what is not covered.</para>
-/// <para>What the strip does not know to look for stays. The <see cref="StripReport"/> lists what was changed and, in <see cref="StripReport.NotRemoved"/>,
-/// what it found and could not take out.</para>
+/// <para>What the strip has no rule for stays, and is named: the <see cref="StripReport"/> lists what was changed and, in <see cref="StripReport.NotRemoved"/>,
+/// what it found and could not take out, including vendor boxes, chunks, objects and opaque values from what the file holds. Padding that holds bytes is zeroed,
+/// and so is an Exif block inside a vendor atom. AVI files get the same treatment for the Fujifilm <c>strd</c> chunk.</para>
 /// </remarks>
 public static class PrivacyStrip
 {

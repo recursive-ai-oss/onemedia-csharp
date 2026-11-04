@@ -201,6 +201,57 @@ def build(hole=0, big_path=None):
     return ftyp + mdat + moov + xmp
 
 
+def fuji_strd(serial=b'FAKESERIAL0042-ZZ'):
+    """A synthetic Fujifilm-style strd block: AVIF, four bytes, then an Exif directory without a TIFF header (offsets count from the directory) with a maker note and a GPS directory."""
+    import struct
+    make, model = b'EXAMPLEMAKER\0', b'Model X1\0'
+    note = (b'FUJIFILM' + struct.pack('<I', 12) + b'\0\0\0\0' + serial).ljust(40, b'\0')
+    entries = 4
+    make_at = 2 + entries * 12 + 4
+    model_at = make_at + len(make)
+    exif_at = model_at + len(model)
+    note_at = exif_at + 18
+    gps_at = note_at + len(note)
+    lat_at = gps_at + 2 + 24 + 4
+    def ent(tag, typ, count, val):
+        return struct.pack('<HHII', tag, typ, count, val)
+    d = struct.pack('<H', entries) + ent(0x010F, 2, len(make), make_at) + ent(0x0110, 2, len(model), model_at) + ent(0x8769, 4, 1, exif_at) + ent(0x8825, 4, 1, gps_at) + struct.pack('<I', 0)
+    d += make + model
+    d += struct.pack('<H', 1) + ent(0x927C, 7, len(note), note_at) + struct.pack('<I', 0) + note
+    d += struct.pack('<H', 2) + ent(1, 2, 2, 0x4E) + ent(2, 5, 3, lat_at) + struct.pack('<I', 0)
+    d += b''.join(struct.pack('<II', v, 1) for v in (47, 37, 0))
+    return b'AVIF' + b'\x02\x1e\x02\x2c' + d
+
+
+def riff_chunk(cid, data):
+    import struct
+    return cid + struct.pack('<I', len(data)) + data + (b'\0' if len(data) & 1 else b'')
+
+
+def riff_list(kind, *children):
+    import struct
+    body = kind + b''.join(children)
+    return b'LIST' + struct.pack('<I', len(body)) + body
+
+
+def avi_with_strd():
+    """A small AVI whose video stream header list holds the synthetic Fujifilm strd, a JUNK chunk with bytes and a vendor chunk after the index."""
+    import struct
+    avih = struct.pack('<IIIIIIIIII', 40000, 0, 0, 0x10, 2, 0, 1, 0, 64, 48) + b'\0' * 16
+    strh = b'vidsFMP4' + struct.pack('<IHHIIIIIIII', 0, 0, 0, 0, 1, 25, 0, 2, 0, 0xFFFFFFFF, 0) + b'\0' * 8
+    bmi = struct.pack('<IiiHHI', 40, 64, 48, 1, 24, 0x34504D46) + b'\0' * 20
+    strl = riff_list(b'strl', riff_chunk(b'strh', strh), riff_chunk(b'strf', bmi), riff_chunk(b'strd', fuji_strd()))
+    hdrl = riff_list(b'hdrl', riff_chunk(b'avih', avih), strl)
+    frames = [riff_chunk(b'00dc', bytes([i]) * (40 + i)) for i in range(2)]
+    movi = riff_list(b'movi', *frames)
+    idx, off = b'', 4
+    for f in frames:
+        idx += b'00dc' + struct.pack('<III', 0x10, off, len(f) - 8)
+        off += len(f)
+    body = b'AVI ' + hdrl + riff_chunk(b'JUNK', b'PRIVATE-BYTES-IN-PADDING') + movi + riff_chunk(b'idx1', idx) + riff_chunk(b'vndr', b'vendor chunk')
+    return b'RIFF' + struct.pack('<I', len(body)) + body
+
+
 def write_seeds(root):
     """Fuzz seeds: strip-file is a selector byte plus the fixture; strip-bytes is a selector byte, a key-length byte (0) and one block."""
     import os
@@ -213,6 +264,8 @@ def write_seeds(root):
         path = os.path.join(tele, fixture)
         if os.path.exists(path):
             open(os.path.join(root, 'strip-file', fixture + '.seed'), 'wb').write(b'\x00' + open(path, 'rb').read())
+    open(os.path.join(root, 'strip-file', 'avi-fujifilm-strd.seed'), 'wb').write(b'\x00' + avi_with_strd())
+    open(os.path.join(root, 'strip-bytes', 'fujifilm-strd.seed'), 'wb').write(b'\x00\x00' + fuji_strd())
     for name, block in (('gpmf', gpmf_sample(0)), ('camm6', camm_sample(6)), ('tiff', b'Exif\0\0' + tiff()), ('xmp', xmp_packet(512))):
         open(os.path.join(root, 'strip-bytes', name + '.seed'), 'wb').write(b'\x00\x00' + block)
 
