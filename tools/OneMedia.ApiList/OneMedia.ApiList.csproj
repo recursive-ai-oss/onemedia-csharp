@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Lists the public surface of built assemblies, one line per type or member, for the API review (docs/api-review.md). Never referenced from src/. -->
+  <!-- Lists the public surface of built assemblies, one line per type or member, for API reviews. Never referenced from src/. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>RecursiveAI.OneMedia.ApiList</RootNamespace>
